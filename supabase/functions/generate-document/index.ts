@@ -2823,10 +2823,9 @@ async function generateSingleDocument(
           };
           const normLblLocal = (v: unknown) =>
             String(v ?? "").toLowerCase().replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ").trim();
-          // Strict Condition classification per RE851D spec:
+          // RE851D detail-row classification:
           //   anticipated -> ANT bucket (Expected column, original_balance)
-          //   remain / paydown -> REM bucket (Remaining column, current_balance)
-          //   payoff -> EXCLUDE entirely (no row published in either bucket)
+          //   all other populated lien rows -> REM bucket (Remaining column)
           // Priority: explicit `condition` dropdown wins; then explicit
           // existing_* booleans win over a (potentially stale) anticipated=true
           // flag, since the UI saves all four condition flags whenever the user
@@ -2836,16 +2835,25 @@ async function generateSingleDocument(
             const n = parseFloat(String(raw ?? "").replace(/[^0-9.\-]/g, ""));
             return Number.isFinite(n) && n !== 0;
           };
+          const hasDisplayRowData = (lp: string) => {
+            const get = (sfx: string) => fieldValues.get(`${lp}.${sfx}`)?.rawValue;
+            return [
+              "lien_priority_now", "priority", "remaining_new_lien_priority", "lien_priority_after",
+              "holder", "lienHolder", "beneficiary", "original_balance", "originalBalance",
+              "current_balance", "currentBalance", "regular_payment", "regularPayment",
+              "maturity_date", "matDate", "balloon", "balloon_amount", "balloonAmount",
+            ].some((sfx) => String(get(sfx) ?? "").trim() !== "");
+          };
           const classifyLocal = (lp: string): "anticipated" | "remain" | "paydown" | "payoff" | "none" => {
             const get = (sfx: string) => fieldValues.get(`${lp}.${sfx}`)?.rawValue;
             const lbl = normLblLocal(get("condition"));
-            if (lbl === "existing - payoff" || lbl === "payoff") return "payoff";
+            if (lbl === "existing - payoff" || lbl === "payoff") return "remain";
             if (lbl === "anticipated") return "anticipated";
             if (lbl === "will remain" || lbl === "existing - remain" || lbl === "remain") return "remain";
             if (lbl === "remain - paydown" || lbl === "existing - paydown" || lbl === "paydown") return "paydown";
             // Boolean aliases (UI persistence path). Existing-* flags win over
             // anticipated boolean to defeat stale data; payoff still hard-wins.
-            if (truthy2(get("existing_payoff")) || truthy2(get("existingPayoff"))) return "payoff";
+            if (truthy2(get("existing_payoff")) || truthy2(get("existingPayoff"))) return "remain";
             if (truthy2(get("existing_paydown")) || truthy2(get("existingPaydown"))) return "paydown";
             if (truthy2(get("existing_remain")) || truthy2(get("existingRemain"))) return "remain";
             if (truthy2(get("anticipated"))) {
@@ -2859,6 +2867,7 @@ async function generateSingleDocument(
             }
             const antLbl = normLblLocal(get("anticipated"));
             if (antLbl === "anticipated" || antLbl === "this loan" || antLbl === "other") return "anticipated";
+            if ((antLbl === "false" || antLbl === "no" || antLbl === "0" || antLbl === "") && hasDisplayRowData(lp)) return "remain";
             return "none";
           };
 
