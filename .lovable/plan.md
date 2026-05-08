@@ -1,62 +1,54 @@
-## Annual Property Taxes — RE851D per-property population
 
-### Diagnosis
+## RE851D — Annual Property Taxes (Multi-Property) Population
 
-The publishers already exist in `supabase/functions/generate-document/index.ts` (lines 1205–1229) and emit per-property values from CSR → Property → Property Tax:
+### What already exists (confirmed)
 
-- `pr_pt_annualTaxes_{N}` ← `propertytax{N}.annual_payment` (currency)
-- `pr_pt_actual_{N}` / `pr_pt_actual_{N}_glyph` ← Confidence == "Actual"
-- `pr_pt_estimated_{N}` / `pr_pt_estimated_{N}_glyph` ← Confidence == "Estimated"
+The edge function `supabase/functions/generate-document/index.ts` already publishes per-property RE851D Annual Property Taxes aliases (lines ~1197–1229) and they are listed in the `_N` rewrite registry (lines ~3585–3590).
 
-The template `Re851d_v1(1)(2)(13)` already uses these tag literals:
+Existing field keys (use these in the template):
 
-- `{{pr_pt_annualTaxes_N}}`
-- `{{pr_pt_actual_N_glyph}}`
-- `{{pr_pt_estimated_N_glyph}}`
+| Purpose | Field Key (template tag) | Source |
+|---|---|---|
+| Annual tax amount (currency) | `pr_pt_annualTaxes_N` | `propertytax{N}.annual_payment` (after address-bridge) → fallback `property{N}.annual_property_taxes` / `.annual_tax` / `.propertytax_annual_payment` |
+| ACTUAL checkbox glyph (☑/☐) | `pr_pt_actual_N_glyph` | `propertytax{N}.tax_confidence` == "Actual" |
+| ESTIMATED checkbox glyph (☑/☐) | `pr_pt_estimated_N_glyph` | `propertytax{N}.tax_confidence` == "Estimated" |
+| Bare boolean variants | `pr_pt_actual_N`, `pr_pt_estimated_N` | (for `{{#if …}}` conditionals) |
 
-**Why they aren't populating:** these keys are **missing from the RE851D `_N` rewrite registration list** (around line 3585 in `index.ts`), so `_N` never gets rewritten to `_1`, `_2`, … per property. The publisher emits `pr_pt_annualTaxes_2`, but the document still contains literal `pr_pt_annualTaxes_N` and never matches.
+`_N` is rewritten per property index 1..N at generation time. Values are mutually exclusive; if `tax_confidence` is null both checkboxes render ☐. If `annual_payment` is blank the amount tag resolves to empty.
 
-A second, smaller defect was found in the template XML: two occurrences of `{{pr_pt_estimated_N_glyph}}}}` carry an extra trailing `}}`. After the rewrite they will render as `☑}}` / `☐}}`. This is a template authoring issue, not a code issue.
+### Why nothing is populating in the user's deal
 
-### Field keys to use in template
+Inspection of deal `24d10982-…459ef`: the deal currently has **zero** `propertytax{N}.*` keys saved in `deal_section_values` and no `property{N}.annual_property_taxes` value, so the publisher correctly produces empty output. The mapping itself is wired; the deal just has no Property Tax data entered yet for either property.
 
-These are the canonical keys (no admin/dictionary changes needed — they are runtime-published aliases):
+There is also one robustness gap: if the CSR enters tax data via the Property Tax sub-section but the row's `property` field (address) does NOT match a Property's `address` exactly (or as a substring), the address-bridge skips it and per-property aliases are never emitted for that property index.
 
-| Purpose | Tag to place in template |
-|---|---|
-| Annual tax amount (currency) | `{{pr_pt_annualTaxes_N}}` |
-| ACTUAL checkbox glyph | `{{pr_pt_actual_N_glyph}}` |
-| ESTIMATED checkbox glyph | `{{pr_pt_estimated_N_glyph}}` |
+### Plan
 
-`_N` is rewritten per property (Property #1 → `_1`, #2 → `_2`, …). Boolean variants `pr_pt_actual_N` / `pr_pt_estimated_N` are also published if `{{#if}}` blocks are preferred.
+1. Register the three publisher tags in **Field Dictionary** (read-only, calculated, no UI input) so admins can see/discover them and so they pass any "must exist in dictionary" lookups when added to a template:
+   - `pr_pt_annualTaxes` — label "Annual Property Tax (per property)", section `property`, data_type `currency`, `is_calculated=true`, `is_repeatable=true`.
+   - `pr_pt_actual` — label "Annual Tax Confidence — ACTUAL", section `property`, data_type `boolean`, `is_calculated=true`, `is_repeatable=true`.
+   - `pr_pt_estimated` — label "Annual Tax Confidence — ESTIMATED", section `property`, data_type `boolean`, `is_calculated=true`, `is_repeatable=true`.
 
-### Code change (single file)
+2. In `supabase/functions/generate-document/index.ts` per-property publisher (around lines 1197–1229) tighten the resolution chain so values still populate when no `propertytax{N}` record exists or address-bridge misses:
+   - Amount fallback order: `propertytax{N}.annual_payment` → `property{N}.annual_property_taxes` → `property{N}.annual_tax` → `property{N}.propertytax_annual_payment` → (when only one tax record exists overall) `propertytax1.annual_payment`.
+   - Confidence fallback order: `propertytax{N}.tax_confidence` → `property{N}.tax_confidence` → (single-record) `propertytax1.tax_confidence`.
+   - Keep mutual exclusivity & null-safe behavior already in place.
+   - No change to `pr_pt_*` output names.
 
-**`supabase/functions/generate-document/index.ts`** — append to the RE851D `_N` rewrite key list near line 3585 (alongside `propertytax.annual_payment_N`, `propertytax.delinquent_N`, etc.):
+3. Verify with a small log line that, for each `idx`, the resolved `(annual, confidence, actualGlyph, estimatedGlyph)` is what we expect.
 
-```
-"pr_pt_annualTaxes_N",
-"pr_pt_actual_N_glyph", "pr_pt_actual_N",
-"pr_pt_estimated_N_glyph", "pr_pt_estimated_N",
-```
+4. Document the three tags in the Admin → Field Dictionary description so the CSR/template author knows the exact merge tag names.
 
-Longest variants (`_glyph`) listed first so the longest-match scanner consumes them before the bare boolean key.
+### Validation
 
-### Validation behavior (already implemented in publisher)
-
-- Only one of ACTUAL / ESTIMATED resolves to ☑; the other is ☐.
-- If Confidence is null/blank, both render as ☐.
-- If Annual Payment is blank, no `pr_pt_annualTaxes_{N}` is published → tag falls through anti-fallback shield (renders blank).
-- Currency formatting handled by existing `dataType: "currency"` pipeline.
+- Property 1: Annual = 4.00, Confidence = Estimated → template renders `$4.00` + ESTIMATED ☑, ACTUAL ☐.
+- Property 2: Annual = 10000, Confidence = Actual → `$10,000.00` + ACTUAL ☑, ESTIMATED ☐.
+- Confidence null → both ☐.
+- Annual blank → amount tag empty.
+- No data mixing across `_N` indices (per-index isolation already enforced).
 
 ### Out of scope
 
-- No field-dictionary additions (publisher already exposes these as merge tags).
-- No template upload/edit (user owns the template; the trailing `}}}}` typo on the ESTIMATED tag should be corrected by the user in two places).
-- No DB schema, UI form, or other template changes.
-
-### Verification
-
-1. Deploy `generate-document`.
-2. Regenerate RE851D for deal `db7517e9-…` with multiple properties having Property Tax set.
-3. Confirm each property row in ANNUAL PROPERTY TAXES shows: `$amount` + correct ☑ next to ACTUAL or ESTIMATED, others ☐.
+- No new tables / schema changes.
+- No UI changes to PropertyTaxForm or PropertyTaxModal.
+- No changes to other RE851D sections.
