@@ -296,7 +296,7 @@ export function formatByDataType(value: string | number | null, dataType: string
     case "currency":
       return formatCurrency(value);
     case "percentage":
-      return formatPercentage(value, 2);
+      return formatPercentage(value, 4);
     case "date":
       return formatDateMMDDYYYY(String(value));
     case "number": {
