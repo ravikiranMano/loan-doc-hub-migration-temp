@@ -134,7 +134,14 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
   const renderContent = () => {
     switch (activeSection) {
       case 'borrower':
-        return (
+        return borrowerSectionVariant === 'authorized_party' ? (
+          <BorrowerAuthorizedPartyForm
+            fields={emptyFields}
+            values={values}
+            onValueChange={handleValueChange}
+            disabled={isReadOnly}
+          />
+        ) : (
           <BorrowerPrimaryForm
             fields={emptyFields}
             values={values}
