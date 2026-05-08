@@ -6916,23 +6916,45 @@ async function generateSingleDocument(
                 const isNo = truthy(fieldValues.get(noK)?.rawValue);
                 const isUnk = truthy(fieldValues.get(unkK)?.rawValue) || (!isYes && !isNo);
                 const states = [isYes, isNo, isUnk];
-                // find the next 3 glyph runs (☐/☑/☑) within window in raw xml order
+                // Find the next 3 checkbox controls within window in raw xml order.
+                // Templates may use either glyph runs (☐/☑/☒) OR image-based runs
+                // (a <w:r> containing a <w:drawing>). Match either.
                 const slice = xml.slice(rawWinStart, rawWinEnd);
-                const glyphRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([☐☑☑])(<\/w:t>\s*<\/w:r>)/g;
-                const labels = ["YES", "NO", "Unknown"];
-                let gIdx = 0;
+                const glyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([\u2610\u2611\u2612])(<\/w:t>\s*<\/w:r>)/g;
+                const drawingRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:drawing\b[\s\S]*?<\/w:drawing>\s*<\/w:r>/g;
+                type Hit = { idx: number; len: number; kind: "glyph" | "drawing"; cur?: string; pre?: string; post?: string };
+                const hits: Hit[] = [];
                 let gm: RegExpExecArray | null;
+                while ((gm = glyphRunRe.exec(slice)) !== null) {
+                  hits.push({ idx: gm.index, len: gm[0].length, kind: "glyph", pre: gm[1], cur: gm[2], post: gm[3] });
+                }
+                let dm: RegExpExecArray | null;
+                while ((dm = drawingRunRe.exec(slice)) !== null) {
+                  hits.push({ idx: dm.index, len: dm[0].length, kind: "drawing" });
+                }
+                hits.sort((a, b) => a.idx - b.idx);
+                const labels = ["YES", "NO", "Unknown"];
                 let labelsInjected = 0;
-                while ((gm = glyphRe.exec(slice)) !== null && gIdx < 3) {
+                for (let gIdx = 0; gIdx < Math.min(3, hits.length); gIdx++) {
+                  const h = hits[gIdx];
                   const want = states[gIdx] ? "\u2611" : "\u2610";
-                  const start = rawWinStart + gm.index;
-                  const end = start + gm[0].length;
-                  if (gm[2] !== want) {
-                    inserts.push({ at: -end, html: `${gm[1]}${want}${gm[3]}|||REPLACE|||${start}` });
+                  const start = rawWinStart + h.idx;
+                  const end = start + h.len;
+                  let needReplace = false;
+                  let replacement = "";
+                  if (h.kind === "glyph") {
+                    if (h.cur !== want) {
+                      needReplace = true;
+                      replacement = `${h.pre}${want}${h.post}`;
+                    }
+                  } else {
+                    // Always swap drawing → glyph run so the rendered state matches.
+                    needReplace = true;
+                    replacement = `<w:r><w:rPr><w:rFonts w:ascii="Segoe UI Symbol" w:hAnsi="Segoe UI Symbol" w:cs="Segoe UI Symbol"/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${want}</w:t></w:r>`;
                   }
-                  // Label-presence check: look at XML after the glyph run, up to the
-                  // next </w:p> (bounded ~400 chars), strip tags, and search for
-                  // the expected label token.
+                  if (needReplace) {
+                    inserts.push({ at: -end, html: `${replacement}|||REPLACE|||${start}` });
+                  }
                   const tailEndCap = Math.min(xml.length, end + 400);
                   const pEnd = xml.indexOf("</w:p>", end);
                   const tailEnd = pEnd > 0 ? Math.min(pEnd, tailEndCap) : tailEndCap;
@@ -6945,7 +6967,6 @@ async function generateSingleDocument(
                     inserts.push({ at: end, html: labelRun });
                     labelsInjected += 1;
                   }
-                  gIdx += 1;
                 }
                 debugLog(
                   `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"} labelsInjected=${labelsInjected}`,
