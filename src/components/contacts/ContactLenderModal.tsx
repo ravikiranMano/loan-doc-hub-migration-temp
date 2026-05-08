@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { format } from 'date-fns';
-import { CalendarIcon } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -18,9 +16,6 @@ import {
 } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
-import { cn } from '@/lib/utils';
 import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } from '@/lib/contactFormValidation';
 import { toast } from 'sonner';
 import type { ContactLender } from '@/pages/contacts/ContactLendersPage';
@@ -58,7 +53,6 @@ const emptyForm = (): Omit<ContactLender, 'id' | 'lenderId'> => ({
   mailingState: '',
   mailingZip: '',
   sameAsPrimary: false,
-  dob: '',
 });
 
 export const ContactLenderModal: React.FC<ContactLenderModalProps> = ({
@@ -66,7 +60,6 @@ export const ContactLenderModal: React.FC<ContactLenderModalProps> = ({
 }) => {
   const [form, setForm] = useState(emptyForm());
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [dobOpen, setDobOpen] = useState(false);
 
   const set = (field: string, value: any) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -167,41 +160,6 @@ export const ContactLenderModal: React.FC<ContactLenderModalProps> = ({
               <div>
                 <Label>Email</Label>
                 <EmailInput value={form.email} onValueChange={(v) => set('email', v)} />
-              </div>
-              <div>
-                <Label>DOB</Label>
-                <Popover open={dobOpen} onOpenChange={setDobOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "h-10 w-full justify-start text-left font-normal",
-                        !form.dob && "text-muted-foreground"
-                      )}
-                    >
-                      {form.dob || <span>mm/dd/yyyy</span>}
-                      <CalendarIcon className="ml-auto h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                    <EnhancedCalendar
-                      mode="single"
-                      selected={form.dob ? new Date(form.dob) : undefined}
-                      onSelect={(date) => {
-                        if (date && date >= new Date()) {
-                          toast.error('Enter valid date of birth');
-                          set('dob', format(date, 'MM/dd/yyyy'));
-                        } else {
-                          set('dob', date ? format(date, 'MM/dd/yyyy') : '');
-                        }
-                        setDobOpen(false);
-                      }}
-                      onClear={() => { set('dob', ''); setDobOpen(false); }}
-                      onToday={() => { set('dob', format(new Date(), 'MM/dd/yyyy')); setDobOpen(false); }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
               </div>
               <div>
                 <Label>Home Phone</Label>
