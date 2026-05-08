@@ -3583,6 +3583,11 @@ async function generateSingleDocument(
           "pr_p_paidByLoan_N",
           "pr_p_sourceOfPaymen_N", "pr_p_sourceOfPayment_N",
           "ln_p_loanToValueRatio_N", "propertytax_annual_payment_N",
+          // RE851D ANNUAL PROPERTY TAXES per-property aliases.
+          // _glyph variants listed first so longest-match wins over bare booleans.
+          "pr_pt_annualTaxes_N",
+          "pr_pt_actual_N_glyph", "pr_pt_actual_N",
+          "pr_pt_estimated_N_glyph", "pr_pt_estimated_N",
           // RE851D propertytax dotted-form _N tags. Order is critical: longer
           // matches FIRST so "delinquent_amount_N" wins before "delinquent_N".
           "propertytax.delinquent_amount_N",
