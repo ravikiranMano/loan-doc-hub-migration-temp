@@ -1270,7 +1270,9 @@ async function generateSingleDocument(
           fieldValues.set(`pr_pt_estimated_${idx}`,       { rawValue: isEstimated ? "true" : "false", dataType: "boolean" });
           fieldValues.set(`pr_pt_actual_${idx}_glyph`,    { rawValue: isActual    ? "☑" : "☐",        dataType: "text" });
           fieldValues.set(`pr_pt_estimated_${idx}_glyph`, { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
-          debugLog(`[generate-document] RE851D pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
+          // Always-on diagnostic so we can verify per-property tax state in logs
+          // even when DOC_GEN_DEBUG is off.
+          console.log(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
         // Delinquent payment count
         const delinqV =
@@ -4258,7 +4260,11 @@ async function generateSingleDocument(
                 // position handling the glyph tags stay literal and the YES/NO
                 // checkboxes never resolve.
                 const idxToken = indexNum > 5 ? `_overflow${indexNum}` : `_${indexNum}`;
-                const middleSuffixRe = /_N(_yes_glyph|_no_glyph|_yes|_no)$/;
+                // _N may sit in the middle when followed by a known suffix:
+                //   _yes_glyph / _no_glyph / _yes / _no  (lien questionnaires)
+                //   _glyph                                (pr_pt_actual_N_glyph,
+                //                                          pr_pt_estimated_N_glyph)
+                const middleSuffixRe = /_N(_yes_glyph|_no_glyph|_yes|_no|_glyph)$/;
                 if (middleSuffixRe.test(tag)) {
                   replacement = tag.replace(middleSuffixRe, `${idxToken}$1`);
                 } else {
@@ -4752,6 +4758,13 @@ async function generateSingleDocument(
         "propertytax_delinquent", "propertytax.delinquent",
         "propertytax_delinquent_amount", "propertytax.delinquent_amount",
         "propertytax_source_of_information", "propertytax.source_of_information",
+        // RE851D ANNUAL PROPERTY TAXES per-property publisher aliases. Without
+        // these, suffixed keys like pr_pt_annualTaxes_1 / pr_pt_actual_1_glyph
+        // miss the resolver's priority-1 direct match and fall back to the
+        // bare dictionary entry, blanking the value in the rendered DOCX.
+        "pr_pt_annualTaxes",
+        "pr_pt_actual", "pr_pt_actual_glyph",
+        "pr_pt_estimated", "pr_pt_estimated_glyph",
         // Lien-derived per-property aliases used by the questionnaire blocks.
         "pr_li_delinquencyPaidByLoan", "pr_li_delinquencyPaidByLoan_yes",
         "pr_li_delinquencyPaidByLoan_no", "pr_li_delinquencyPaidByLoan_yes_glyph",
