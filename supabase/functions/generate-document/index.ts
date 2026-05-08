@@ -1238,31 +1238,21 @@ async function generateSingleDocument(
         if (taxV?.rawValue) {
           fieldValues.set(`propertytax_annual_payment_${idx}`, { rawValue: taxV.rawValue, dataType: taxV.dataType || "currency" });
         }
-        // RE851D ANNUAL PROPERTY TAXES — per-property publisher.
+        // RE851D ANNUAL PROPERTY TAXES — per-property publisher (STRICT).
         // Resolution chain (per index):
-        //   amount: propertytax{N}.annual_payment
+        //   amount: propertytax{N}.annual_payment (direct or bridged in)
         //         → property{N}.annual_property_taxes / .annual_tax / .propertytax_annual_payment
-        //         → propertytax1.annual_payment (only when a single tax record exists overall)
-        //   confidence: propertytax{N}.tax_confidence
+        //   confidence: propertytax{N}.tax_confidence (direct or bridged in)
         //             → property{N}.tax_confidence
-        //             → propertytax1.tax_confidence (single-record fallback)
-        // Mutually exclusive ACTUAL/ESTIMATED checkboxes; both ☐ when null.
+        // No global single-record fallback: unmatched indices stay blank with
+        // both glyphs unchecked, satisfying "each property renders independently".
+        // Mutually exclusive ACTUAL/ESTIMATED checkboxes; both ☐ when blank.
         {
-          // Count distinct propertytax{srcIdx} records in the deal.
-          let taxRecordCount = 0;
-          for (const [k] of fieldValues.entries()) {
-            if (/^propertytax(\d+)\.annual_payment$/.test(k) || /^propertytax(\d+)\.tax_confidence$/.test(k)) {
-              taxRecordCount++;
-            }
-          }
-          const singleTaxRecord = taxRecordCount > 0 && taxRecordCount <= 2; // amount + confidence keys count separately
-
           const annual =
             fieldValues.get(`propertytax${idx}.annual_payment`) ||
             fieldValues.get(`${prefix}.annual_property_taxes`) ||
             fieldValues.get(`${prefix}.annual_tax`) ||
-            fieldValues.get(`${prefix}.propertytax_annual_payment`) ||
-            (singleTaxRecord ? fieldValues.get(`propertytax1.annual_payment`) : undefined);
+            fieldValues.get(`${prefix}.propertytax_annual_payment`);
           if (annual && annual.rawValue !== undefined && annual.rawValue !== null && String(annual.rawValue) !== "") {
             fieldValues.set(`pr_pt_annualTaxes_${idx}`, {
               rawValue: annual.rawValue,
@@ -1272,7 +1262,6 @@ async function generateSingleDocument(
           const conf = String(
             fieldValues.get(`propertytax${idx}.tax_confidence`)?.rawValue ||
             fieldValues.get(`${prefix}.tax_confidence`)?.rawValue ||
-            (singleTaxRecord ? fieldValues.get(`propertytax1.tax_confidence`)?.rawValue : "") ||
             ""
           ).trim().toLowerCase();
           const isActual = conf === "actual";
