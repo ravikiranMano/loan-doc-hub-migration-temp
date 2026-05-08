@@ -31,6 +31,7 @@ interface ContactBorrowerDetailLayoutProps {
   initialSection?: BorrowerSection;
   backLabel?: string;
   titlePrefix?: string;
+  borrowerSectionVariant?: 'primary' | 'authorized_party';
 }
 
 const NON_BORROWER_PREFIXES = ['ach.', 'coborrower.', 'borrower.guarantor.', 'borrower.authorized_party.', 'borrower.1098.'];
