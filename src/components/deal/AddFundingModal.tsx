@@ -375,7 +375,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const la = parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
     if (la > 0 && fa > 0) {
-      const computed = (fa / la * 100).toFixed(2);
+      const computed = roundPctForStorage(fa / la * 100);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
