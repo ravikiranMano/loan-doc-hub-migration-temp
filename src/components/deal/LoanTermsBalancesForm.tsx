@@ -240,8 +240,9 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               onFocus={() => setFocusedPercentField(key)}
               onBlur={() => {
                 setFocusedPercentField(null);
-                const v = normalizeInterestOnBlur(getValue(key), 2);
-                if (v !== getValue(key)) setValue(key, v);
+                // Store rates at 4 decimal places (platform-wide standard).
+                const stored = roundPctForStorage(getValue(key));
+                if (stored !== getValue(key) && stored !== '') setValue(key, stored);
               }}
               disabled={disabled}
               className="h-8 text-sm pr-7"
