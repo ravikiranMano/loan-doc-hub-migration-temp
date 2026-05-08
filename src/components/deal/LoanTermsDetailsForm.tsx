@@ -315,7 +315,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             }}
             onBlur={() => {
               const val = getValue(fieldKey);
-              if (val) { const num = parseFloat(val); if (!isNaN(num)) setValue(fieldKey, num.toFixed(2)); }
+              if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(fieldKey, stored); }
             }}
             disabled={disabled}
             className="h-8 text-xs pr-5"
