@@ -25,18 +25,15 @@ const hydrateAG = (c: ContactRecord): ContactRecord => ({
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'contact_id', label: 'Contact ID', visible: true },
   { id: 'borrower_type', label: 'Type', visible: true },
-  { id: 'full_name', label: 'Entity Name', visible: true },
+  { id: 'full_name', label: 'Full Name', visible: true },
   { id: 'first_name', label: 'First', visible: true },
   { id: 'middle_initial', label: 'Middle', visible: false },
   { id: 'last_name', label: 'Last', visible: true },
   { id: 'capacity', label: 'Capacity', visible: false },
   { id: 'email', label: 'Email', visible: true },
-  { id: 'phone.home', label: 'Home Phone', visible: true },
-  { id: 'phone.home2', label: 'Home Phone 2', visible: false },
-  { id: 'phone.work', label: 'Work Phone', visible: false },
-  { id: 'phone.cell', label: 'Cell Phone', visible: true },
-  { id: 'phone.fax', label: 'Fax', visible: false },
-  { id: 'preferred_phone', label: 'Preferred Phone', visible: false },
+  { id: 'tax_id_type', label: 'Tax ID Type', visible: false },
+  { id: 'tin', label: 'TIN', visible: false },
+  { id: 'issue_1098', label: 'Issue 1098', visible: false },
   { id: 'address.street', label: 'Address Street', visible: false },
   { id: 'address.city', label: 'Address City', visible: false },
   { id: 'address.state', label: 'Address State', visible: false },
@@ -45,15 +42,25 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'mailing.city', label: 'Mailing City', visible: false },
   { id: 'mailing.state', label: 'Mailing State', visible: false },
   { id: 'mailing.zip', label: 'Mailing Zip', visible: false },
+  { id: 'phone.home', label: 'Home Phone', visible: true },
+  { id: 'phone.home2', label: 'Home Phone 2', visible: false },
+  { id: 'phone.work', label: 'Work Phone', visible: false },
+  { id: 'phone.cell', label: 'Cell Phone', visible: true },
+  { id: 'phone.fax', label: 'Fax', visible: false },
+  { id: 'preferred_phone', label: 'Preferred Phone', visible: false },
   { id: 'city', label: 'City', visible: true },
   { id: 'state', label: 'State', visible: true },
-  { id: 'delivery_print', label: 'Delivery Print', visible: false },
-  { id: 'delivery_email', label: 'Delivery Email', visible: false },
-  { id: 'delivery_sms', label: 'Delivery SMS', visible: false },
-  { id: 'agreement_on_file', label: 'Agreement on File', visible: false },
+  { id: 'send_pref.payment_notification', label: 'Send Payment Notification', visible: false },
+  { id: 'send_pref.borrower_statement', label: 'Send Borrower Statement', visible: false },
+  { id: 'send_pref.late_notice', label: 'Send Late Notice', visible: false },
+  { id: 'send_pref.maturity_notice', label: 'Send Maturity Notice', visible: false },
+  { id: 'delivery_online', label: 'Delivery Online', visible: false },
+  { id: 'delivery_mail', label: 'Delivery Mail', visible: false },
+  { id: 'ford.1', label: 'FORD 1', visible: false },
+  { id: 'ford.2', label: 'FORD 2', visible: false },
 ];
 
-const BOOLEAN_COLUMNS = new Set<string>(['delivery_print', 'delivery_email', 'delivery_sms', 'agreement_on_file']);
+const BOOLEAN_COLUMNS = new Set<string>(['issue_1098', 'delivery_online', 'delivery_mail', 'send_pref.payment_notification', 'send_pref.borrower_statement', 'send_pref.late_notice', 'send_pref.maturity_notice']);
 
 const FILTER_OPTIONS: FilterOption[] = [
   {
