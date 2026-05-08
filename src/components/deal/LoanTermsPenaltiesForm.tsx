@@ -225,7 +225,7 @@ const DistributionFields: React.FC<{
     const sanitized = sanitizePct(val);
     const newVendor = parseFloat(sanitized) || 0;
     const capped = Math.min(newVendor, Math.max(0, 100 - lendersClamped - otherClamped));
-    const finalVal = capped === newVendor ? sanitized : capped.toFixed(2);
+    const finalVal = capped === newVendor ? sanitized : roundPctForStorage(capped);
     onValueChange(`${prefix}.distribution.origination_vendors`, finalVal);
   };
 
