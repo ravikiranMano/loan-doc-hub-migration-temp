@@ -35,6 +35,7 @@ interface CreateContactModalProps {
   onOpenChange: (open: boolean) => void;
   contactType: 'lender' | 'broker' | 'borrower';
   onSubmit: (data: Record<string, string>) => void;
+  title?: string;
 }
 
 const LENDER_TYPE_OPTIONS = [
@@ -134,7 +135,7 @@ const getInitialForm = (contactType: string): Record<string, string> => {
 };
 
 export const CreateContactModal: React.FC<CreateContactModalProps> = ({
-  open, onOpenChange, contactType, onSubmit,
+  open, onOpenChange, contactType, onSubmit, title,
 }) => {
   const [form, setForm] = useState<Record<string, string>>(() => getInitialForm(contactType));
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -449,7 +450,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
           : "max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto"
       )}>
         <DialogHeader className={contactType === 'lender' || contactType === 'borrower' ? "shrink-0" : undefined}>
-          <DialogTitle>Create New {typeLabel}</DialogTitle>
+          <DialogTitle>{title ?? `Create New ${typeLabel}`}</DialogTitle>
         </DialogHeader>
 
         {contactType === 'lender' && (
