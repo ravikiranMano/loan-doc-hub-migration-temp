@@ -2911,16 +2911,16 @@ async function generateSingleDocument(
                 const isNo = balloon === "false" || balloon === "no";
                 const isUnknown = !isYes && !isNo;
 
-                const isAntBucket = tagPrefix === "pr_li_ant";
-                const isRemBucket = tagPrefix === "pr_li_rem";
                 const fields: Array<[string, string, string]> = [
                   ["priority", firstNonEmpty("lien_priority_now", "priority", "remaining_new_lien_priority", "lien_priority_after", "n"), "text"],
                   ["interestRate", firstNonEmpty("interest_rate", "intRate"), "percent"],
                   ["beneficiary", firstNonEmpty("holder", "lienHolder", "beneficiary"), "text"],
-                  // Strict bucket isolation: Expected (ANT) column shows original_balance only;
-                  // Remaining (REM) column shows current_balance only. No cross-leak.
-                  ["originalAmount", isRemBucket ? "" : firstNonEmpty("original_balance", "originalBalance"), "currency"],
-                  ["principalBalance", isAntBucket ? "" : firstNonEmpty("current_balance", "currentBalance"), "currency"],
+                  // Both REMAINING and EXPECTED sections of the RE851D template
+                  // include columns for ORIGINAL AMOUNT and APPROXIMATE PRINCIPAL
+                  // BALANCE, so publish both regardless of bucket. Empty values
+                  // simply leave the cell blank.
+                  ["originalAmount", firstNonEmpty("original_balance", "originalBalance"), "currency"],
+                  ["principalBalance", firstNonEmpty("current_balance", "currentBalance"), "currency"],
                   ["monthlyPayment", firstNonEmpty("regular_payment", "regularPayment"), "currency"],
                   ["maturityDate", firstNonEmpty("maturity_date", "matDate"), "date"],
                   ["balloonAmount", firstNonEmpty("balloon_amount", "balloonAmount"), "currency"],
