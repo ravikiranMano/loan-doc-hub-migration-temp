@@ -303,9 +303,7 @@ export function formatForDisplay(value: string, dataType: string): string {
         maximumFractionDigits: 2,
       }).format(num);
     case 'percentage':
-      const pct = parseFloat(value);
-      if (isNaN(pct)) return value;
-      return pct.toFixed(2);
+      return formatPercentDisplay(value, 4);
     default:
       return value;
   }
