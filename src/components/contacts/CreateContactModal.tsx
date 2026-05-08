@@ -203,6 +203,13 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
     }
   }, [isSameAsPrimary, primaryStreet, primaryCity, primaryState, primaryZip]);
 
+  // Adapter: LenderInfoForm reads/writes keys with `lender.` prefix; modal stores unprefixed.
+  const lenderPrefixedValues = React.useMemo(() => {
+    const out: Record<string, string> = {};
+    Object.entries(form).forEach(([k, v]) => { out[`lender.${k}`] = v; });
+    return out;
+  }, [form]);
+
   const handleSubmit = () => {
     // Check at least one meaningful field is filled
     const skipKeys = ['mailing_same_as_primary', 'preferred.home', 'preferred.home2', 'preferred.work', 'preferred.cell', 'preferred.fax',
