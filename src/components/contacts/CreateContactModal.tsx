@@ -83,7 +83,7 @@ const getInitialForm = (contactType: string): Record<string, string> => {
       'preferred.home': 'false', 'preferred.work': 'false', 'preferred.cell': 'false', 'preferred.fax': 'false',
       ach: 'false', servicing_agreement_on_file: 'false', freeze_outgoing_disbursements: 'false',
       investor_questionnaire_due: 'false', investor_questionnaire_due_date: '',
-      'delivery.print': 'false', 'delivery.email': 'false', 'delivery.sms': 'false',
+      'delivery.online': 'false', 'delivery.mail': 'false', 'delivery.sms': 'false',
       'send_pref.payment_notification': 'false', 'send_pref.late_notice': 'false',
       'send_pref.borrower_statement': 'false', 'send_pref.maturity_notice': 'false',
       vesting: '',
