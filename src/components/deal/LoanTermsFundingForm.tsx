@@ -9,6 +9,35 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 import type { FundingFormData } from './AddFundingModal';
 import { resolveLegacyKey } from '@/lib/legacyKeyMap';
 import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
+import { Decimal } from '@/lib/precisionFormat';
+
+/**
+ * Recompute monthly payment for every lender row using Decimal arithmetic
+ * (no native floating point). Each lender's payment is independent:
+ *   payment_i = originalAmount_i * lenderRate_i / 100 / 12
+ * Any sub-cent rounding remainder between the exact total and the sum of
+ * rounded shares is assigned to the single lender flagged with
+ * `roundingAdjustment` (mutual exclusivity is enforced elsewhere).
+ * Guarantees every row — including the last — has its payment persisted.
+ */
+const recomputeLenderPayments = (records: FundingRecord[]): FundingRecord[] => {
+  if (!records.length) return records;
+  const exact = records.map(r => {
+    const p = new Decimal(r.originalAmount || 0);
+    const rate = new Decimal(r.lenderRate || 0);
+    return p.mul(rate).div(100).div(12);
+  });
+  const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
+  const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
+  const diff = sumExact.minus(sumRounded);
+  const adjIdx = records.findIndex(r => r.roundingAdjustment);
+  if (adjIdx >= 0 && !diff.isZero()) {
+    rounded[adjIdx] = rounded[adjIdx].plus(diff);
+  }
+  return records.map((r, i) => ({ ...r, regularPayment: rounded[i].toNumber() }));
+};
 
 /** Strip commas/$ from a string before parseFloat so formatted values like "3,423.00" parse correctly */
 const safeParseFloat = (v: string | undefined): number => {
@@ -461,10 +490,12 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
 
     // Mutual exclusivity for Rounding Adjustment: only ONE lender can hold it.
     // If the new record enables it, atomically clear it on every existing record in the same write.
+    // Mutual exclusivity for Rounding Adjustment: only ONE lender can hold it.
+    // If the new record enables it, atomically clear it on every existing record in the same write.
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = [...baseRecords, newRecord];
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord]);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
@@ -544,11 +575,11 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     // Mutual exclusivity for Rounding Adjustment: only ONE lender can hold it.
     // When this update sets roundingAdjustment=true, atomically clear it on every other record in the same write.
     const enablingRounding = updates.roundingAdjustment === true;
-    const updatedRecords = fundingRecords.map((record) => {
+    const updatedRecords = recomputeLenderPayments(fundingRecords.map((record) => {
       if (record.id === id) return { ...record, ...updates };
       if (enablingRounding && record.roundingAdjustment) return { ...record, roundingAdjustment: false };
       return record;
-    });
+    }));
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
