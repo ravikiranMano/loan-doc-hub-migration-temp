@@ -1,43 +1,52 @@
-## Scope
-Remove the **Tax ID Type**, **TIN**, and **TIN Verified** fields from the Lender forms under CONTACTS and from the Add Lender modal. UI-only removal. No backend, no schema, no API changes — existing save/update flow continues unchanged (omitted fields simply stop being written; previously stored values remain in `contacts.contact_data` untouched).
+## RE851D — Fix "Is there Additional Securing Property?" checkbox count
 
-## Files & Exact Changes
+### Current state
 
-### 1. `src/components/contacts/CreateContactModal.tsx` (Add Lender modal)
-Lines 534–565 — the entire "Tax Info" section in the lender column 1:
-- Remove the `<h3>Tax Info</h3>` header
-- Remove **Tax ID Type** label + Select + error line
-- Remove **TIN** label + Input (with SSN/EIN formatting) + error line
-- Remove **TIN Verified** checkbox (`renderCheckbox('TIN Verified', 'tin_verified')`)
+`supabase/functions/generate-document/index.ts` already publishes `pr_p_multipleProperties_yes/_no/_glyph` aliases (line ~1063) and runs a question-anchored safety pass (line ~4384). Both derive the count from `propertyIndices`, a `Set<number>` populated by scanning every `property{N}.*` key in `fieldValues` (line ~984).
 
-Result: the Tax Info subsection disappears completely; surrounding sections (DOB above, Primary Address column to the right) are unchanged.
+### Problem
 
-### 2. `src/components/contacts/ContactLenderDetailForm.tsx` (Lender contact detail edit form)
-Lines 185–189 — in the "Financial / Compliance" section:
-- Remove the **TIN** label + Input grid cell
-- Remove the adjacent empty `<div />` spacer (since the grid no longer needs it)
+`propertyIndices` counts an index as soon as **any** `property{N}.<field>` key exists in `fieldValues` — even if every value for that property is empty/blank. Stale or never-populated property slots (common when a property record is removed from CSR but the section row leaves zeroed keys behind) inflate the count, so YES is checked when only one real property exists.
 
-ACH / Send 1099 / Agreement on File checkboxes remain. (`Tax ID Type` and `TIN Verified` are already not present in this form.)
+Additionally, `propertyIndices.add(1)` (line 992) unconditionally seeds index 1, which is correct for address auto-compute but means the count is never below 1 — that's fine for the NO branch but should not affect multi-detection.
 
-### 3. `src/components/contacts/lender-detail/LenderTaxReporting.tsx` (Tax Reporting sub-tab)
-- Remove the **TIN Number + TIN Type** two-column block (lines 169–206)
-- Remove the **TIN Verified** checkbox block (lines 208–217)
-- Remove now-unused imports/helpers tied solely to those fields:
-  - `formatTIN`, `maskTIN`, `validateTIN`, `stripTINInput` from `@/lib/tinValidation`
-  - The `tinNumber`, `tinType`, `tinVerified`, `mappedTinKind`, `tinFocused`, `tinTouched`, `tinError`, `tinDisplay`, `handleTinChange` locals and related `useState`/`useMemo` hooks
-  - Remove `tinNumber`, `tinType`, `tinVerified` keys from the `K` constant
-- Keep: Designated Recipient, Issue 1099 (auto-populate logic intact), Alternate Reporting, Notes — and all entity-type / 1099 derivation logic.
+### Fix
 
-## Out of Scope (left untouched per minimal-change policy)
-- `src/components/contacts/lender-detail/Lender1099.tsx` — the IRS 1099 form has its own legally-required TIN/TIN Type fields and is a separate feature ([1099 Reporting memory](mem://features/contacts/1099-reporting-system)). Not removed.
-- `src/components/deal/LenderTaxInfoForm.tsx` — deal-level (not under "Contacts > Lender").
-- `src/components/contacts/lender-detail/LenderDashboard.tsx` — read-only display panel, not a form. TIN value continues to display when present.
-- `src/pages/contacts/ContactLendersPage.tsx` grid columns (`tax_id_type`, `tax_id`, `tin_verified`) — already `visible: false`, no UI impact.
-- Database schema, save/update APIs, field_dictionary entries — all unchanged. Persisted values for these keys remain in JSONB but are no longer written or read by these forms.
+Introduce a single derived `realPropertyCount` based on properties that have at least one non-empty meaningful identifier field, and use it for both the publisher and the safety pass.
 
-## Validation
-- Add Lender modal opens with no Tax Info subsection.
-- Lender detail "Financial / Compliance" section shows only ACH / Send 1099 / Agreement on File.
-- Lender detail "Tax Reporting" sub-tab shows only Designated Recipient, Issue 1099, Alternate Reporting, Notes.
-- Saving a lender works without errors (no required-field regressions because none of the three were required at the API layer).
-- 1099 form continues to function unchanged.
+1. After `propertyIndices` is built (around line 992), compute:
+   ```ts
+   const PROP_PRESENCE_FIELDS = ["address", "street", "city", "state", "zip", "county", "legal_description"];
+   const realPropertyIndices = [...propertyIndices].filter((idx) => {
+     const prefix = `property${idx}`;
+     return PROP_PRESENCE_FIELDS.some((f) => {
+       const v = fieldValues.get(`${prefix}.${f}`)?.rawValue;
+       return v !== undefined && v !== null && String(v).trim() !== "";
+     });
+   }).sort((a, b) => a - b);
+   const realPropertyCount = realPropertyIndices.length;
+   ```
+
+2. Update the publisher block (lines 1063–1071):
+   - `isMultiple = realPropertyCount > 1`
+   - `isSingle  = realPropertyCount <= 1` (covers both 0 and 1 → NO checked, per spec table "≤ 1 → NO ✅")
+   - Keep the same four alias keys and dataTypes so the template binding is unchanged.
+
+3. Update the safety pass (line ~4391):
+   - Replace `[...propertyIndices].sort(...).slice(0,5).length` with `realPropertyCount`.
+   - Keep all anchor regex / overlap guards unchanged.
+
+4. Add a single debug log line: `RE851D multipleProperties: realCount=<n> rawIndices=<list> realIndices=<list> → YES=<bool> NO=<bool>`.
+
+### Out of scope
+
+- No UI changes, no schema changes, no template edits.
+- `addressToPropIndex`, per-property publishers, lien/tax mappings, and all other RE851D logic remain untouched.
+- Mutual exclusivity is already guaranteed by deriving both flags from the same boolean.
+
+### Validation
+
+- 0 properties → YES ☐, NO ☑
+- 1 property  → YES ☐, NO ☑
+- 2+ properties → YES ☑, NO ☐
+- Stale empty `property2.*` keys with no address/street/etc. → counted as 1, NO ☑.

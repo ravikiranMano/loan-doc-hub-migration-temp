@@ -1058,16 +1058,27 @@ async function generateSingleDocument(
       const sortedPropIndices = [...propertyIndices].sort((a, b) => a - b).slice(0, MAX_PROPERTIES);
 
       // ── RE851D: Multiple Properties Yes/No checkboxes ──
-      // YES if >1 property, NO if exactly 1. Publishes boolean + glyph aliases
-      // following the same convention as other RE851D yes/no pairs.
+      // YES if >1 real property, NO if ≤1. Counts only properties with at
+      // least one non-empty identifier field (address/street/city/etc.) so
+      // stale empty property{N}.* keys do not inflate the count.
+      const PROP_PRESENCE_FIELDS = ["address", "street", "city", "state", "zip", "county", "legal_description"];
+      const realPropertyIndices = sortedPropIndices.filter((idx) => {
+        const prefix = `property${idx}`;
+        return PROP_PRESENCE_FIELDS.some((f) => {
+          const v = fieldValues.get(`${prefix}.${f}`)?.rawValue;
+          return v !== undefined && v !== null && String(v).trim() !== "";
+        });
+      });
+      const realPropertyCount = realPropertyIndices.length;
       {
-        const isMultiple = sortedPropIndices.length > 1;
-        const isSingle   = sortedPropIndices.length === 1;
+        const isMultiple = realPropertyCount > 1;
+        const isSingle   = !isMultiple; // ≤1 → NO checked (covers 0 and 1)
         const base = "pr_p_multipleProperties";
         fieldValues.set(`${base}_yes`,       { rawValue: isMultiple ? "true" : "false", dataType: "boolean" });
         fieldValues.set(`${base}_no`,        { rawValue: isSingle   ? "true" : "false", dataType: "boolean" });
         fieldValues.set(`${base}_yes_glyph`, { rawValue: isMultiple ? "☑" : "☐",       dataType: "text" });
         fieldValues.set(`${base}_no_glyph`,  { rawValue: isSingle   ? "☑" : "☐",       dataType: "text" });
+        console.log(`[RE851D] multipleProperties: realCount=${realPropertyCount} rawIndices=[${sortedPropIndices.join(",")}] realIndices=[${realPropertyIndices.join(",")}] → YES=${isMultiple} NO=${isSingle}`);
       }
 
       // ── RE851D: Build property-address → property-index map ──
@@ -4388,7 +4399,14 @@ async function generateSingleDocument(
           // (pr_p_multipleProperties_*_glyph) remains primary; this pass only
           // fires when the next two glyph runs are still raw ☐/☑/☑.
           {
-            const propCount = [...propertyIndices].sort((a, b) => a - b).slice(0, 5).length;
+            const PRESENCE = ["address", "street", "city", "state", "zip", "county", "legal_description"];
+            const propCount = [...propertyIndices]
+              .sort((a, b) => a - b)
+              .slice(0, 5)
+              .filter((idx) => PRESENCE.some((f) => {
+                const v = fieldValues.get(`property${idx}.${f}`)?.rawValue;
+                return v !== undefined && v !== null && String(v).trim() !== "";
+              })).length;
             const isMultipleQ = propCount > 1;
             const multiQRe = /Are there multiple properties on the loan/gi;
             const multiGlyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([☐☑☑])(<\/w:t>\s*<\/w:r>)/g;
