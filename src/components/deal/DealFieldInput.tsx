@@ -105,10 +105,9 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
         }
         break;
       case 'percentage': {
-        const pctNum = parseFloat(value);
-        if (!isNaN(pctNum)) {
-          formattedValue = pctNum.toFixed(2);
-        }
+        // Store percent/rate at 4 decimals (platform-wide standard).
+        const stored = roundPctForStorage(value);
+        if (stored !== '') formattedValue = stored;
         break;
       }
       case 'number':
