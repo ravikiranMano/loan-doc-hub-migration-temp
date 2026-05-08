@@ -136,8 +136,9 @@ const getInitialForm = (contactType: string): Record<string, string> => {
 };
 
 export const CreateContactModal: React.FC<CreateContactModalProps> = ({
-  open, onOpenChange, contactType, onSubmit, title,
+  open, onOpenChange, contactType, onSubmit, title, borrowerSubtype,
 }) => {
+  const isAG = borrowerSubtype === 'additional_guarantor';
   const [form, setForm] = useState<Record<string, string>>(() => getInitialForm(contactType));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
