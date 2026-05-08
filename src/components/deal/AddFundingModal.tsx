@@ -25,6 +25,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
+import { roundPctForStorage } from '@/lib/precisionFormat';
 
 interface AddFundingModalProps {
   open: boolean;
