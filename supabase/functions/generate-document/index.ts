@@ -1144,6 +1144,31 @@ async function generateSingleDocument(
         if (taxV?.rawValue) {
           fieldValues.set(`propertytax_annual_payment_${idx}`, { rawValue: taxV.rawValue, dataType: taxV.dataType || "currency" });
         }
+        // RE851D ANNUAL PROPERTY TAXES — per-property publisher
+        {
+          const annual =
+            fieldValues.get(`propertytax${idx}.annual_payment`) ||
+            fieldValues.get(`${prefix}.annual_property_taxes`) ||
+            fieldValues.get(`${prefix}.annual_tax`) ||
+            fieldValues.get(`${prefix}.propertytax_annual_payment`);
+          if (annual && annual.rawValue !== undefined && annual.rawValue !== null && String(annual.rawValue) !== "") {
+            fieldValues.set(`pr_pt_annualTaxes_${idx}`, {
+              rawValue: annual.rawValue,
+              dataType: "currency",
+            });
+          }
+          const conf = String(
+            fieldValues.get(`propertytax${idx}.tax_confidence`)?.rawValue ||
+            fieldValues.get(`${prefix}.tax_confidence`)?.rawValue ||
+            ""
+          ).trim().toLowerCase();
+          const isActual = conf === "actual";
+          const isEstimated = conf === "estimated";
+          fieldValues.set(`pr_pt_actual_${idx}`,          { rawValue: isActual    ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`pr_pt_estimated_${idx}`,       { rawValue: isEstimated ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`pr_pt_actual_${idx}_glyph`,    { rawValue: isActual    ? "☑" : "☐",        dataType: "text" });
+          fieldValues.set(`pr_pt_estimated_${idx}_glyph`, { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
+        }
         // Delinquent payment count
         const delinqV =
           fieldValues.get(`${prefix}.delinquent_how_many`) ||
