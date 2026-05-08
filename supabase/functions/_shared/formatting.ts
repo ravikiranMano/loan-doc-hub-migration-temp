@@ -152,11 +152,26 @@ export function formatLowercase(value: string | null): string {
 // Number/Percentage Formatters
 // ============================================
 
-export function formatPercentage(value: string | number | null, decimals = 2): string {
+/**
+ * Smart-trim percentage formatter (matches client `formatPercentDisplay`):
+ *   - min 2 decimals, max `decimals` decimals
+ *   - trailing zeros beyond the 2nd decimal are stripped
+ *   - source value is the stored precision (4dp), never re-derived
+ */
+export function formatPercentage(value: string | number | null, decimals = 4): string {
   if (value === null || value === undefined || value === "") return "";
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (isNaN(num)) return "";
-  return `${num.toFixed(decimals)}%`;
+  const safeMax = Math.max(2, Math.floor(decimals));
+  let s = num.toFixed(safeMax);
+  if (safeMax === 2) return `${s}%`;
+  const dotIdx = s.indexOf(".");
+  if (dotIdx === -1) return `${s}%`;
+  const intPart = s.slice(0, dotIdx);
+  const decPart = s.slice(dotIdx + 1);
+  const head = decPart.slice(0, 2);
+  const tail = decPart.slice(2).replace(/0+$/, "");
+  return tail.length === 0 ? `${intPart}.${head}%` : `${intPart}.${head}${tail}%`;
 }
 
 export function formatNumber(value: string | number | null): string {
