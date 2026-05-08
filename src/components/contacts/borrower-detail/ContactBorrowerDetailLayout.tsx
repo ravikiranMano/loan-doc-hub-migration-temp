@@ -50,6 +50,7 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
   initialSection = 'borrower',
   backLabel = 'Back to Borrowers',
   titlePrefix = 'Borrower',
+  borrowerSectionVariant = 'primary',
 }) => {
   const { loading: permissionsLoading, isFormViewOnly } = useFormPermissions();
   const [activeSection, setActiveSection] = useState<BorrowerSection>(initialSection);
