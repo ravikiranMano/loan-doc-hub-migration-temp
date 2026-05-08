@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { AlertCircle, Lock, Calculator, Asterisk, CheckCircle2, CalendarIcon } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { parseToCanonical, formatForDisplay } from '@/lib/fieldTransforms';
+import { roundPctForStorage } from '@/lib/precisionFormat';
 import { isNegativeValue, INTEREST_NEGATIVE_MESSAGE } from '@/lib/interestValidation';
 import { useDirtyFields } from '@/contexts/DirtyFieldsContext';
 import type { FieldDefinition } from '@/hooks/useDealFields';
