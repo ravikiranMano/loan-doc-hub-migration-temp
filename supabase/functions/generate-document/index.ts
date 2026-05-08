@@ -1057,7 +1057,7 @@ async function generateSingleDocument(
       // Strict: only copy when destination key is empty; idx==1 canonical fallback
       // remains intact.
       {
-        const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information"];
+        const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information", "tax_confidence"];
         const srcIndices = new Set<number>();
         for (const [k] of fieldValues.entries()) {
           const m = k.match(/^propertytax(\d+)\./);

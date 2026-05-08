@@ -1,60 +1,82 @@
-## Root cause
+## Goal
+Populate the "ANNUAL PROPERTY TAXES" section in RE851D per-property (N-indexed), driven by CSR → Property → Property Tax (Annual Payment + Confidence). Add three new template field keys with strict per-property isolation.
 
-The UI persists the eight values under different dictionary keys than the RE885 template expects.
+## New Field Keys (to add to Admin → Field Dictionary)
 
-| Template tag | UI persists under (dictionary alias) |
-|---|---|
-| `of_int_days` | `of_int_days` (via `origination_fees.901_interest_for_days_days`) — alias exists |
-| `of_int_pd` | `of_int_pd` (via `origination_fees.901_interest_for_days_per_day`) — alias exists |
-| `of_haz_mon` | `of_fe_hazardInsuraMonths` (`origination_fees.1001_hazard_insurance_months`) — **mismatch** |
-| `of_haz_amt` | `of_fe_hazardInsuraPerMonth` (`origination_fees.1001_hazard_insurance_per_month`) — **mismatch** |
-| `of_mi_mon` | `of_fe_mortgageInsuraMonths` (`origination_fees.1002_mortgage_insurance_months`) — **mismatch** |
-| `of_mi_amt` | `of_fe_mortgageInsuraPerMonth` (`origination_fees.1002_mortgage_insurance_per_month`) — **mismatch** |
-| `of_tax_mon` | `of_fe_coProperTaxesMonths` (`origination_fees.1004_co_property_taxes_months`) — **mismatch** |
-| `of_tax_amt` | `of_fe_coProperTaxesPer` (`origination_fees.1004_co_property_taxes_per_month`) — **mismatch** |
-
-The UI saves correctly; the template tags simply don't resolve because no one publishes the short `of_haz_*`/`of_mi_*`/`of_tax_*` aliases at generation time. The `of_int_*` pair is already aliased via `legacyKeyMap.ts`, but we'll defensively re-publish from the dotted form too.
-
-## Fix (single, minimal, additive)
-
-In `supabase/functions/generate-document/index.ts`, inside the existing **RE885 alias publisher** block (around line 719–795), add one new section that resolves the source value for each of the 8 fields and publishes the short alias (only when not already present, matching the pattern used for `of_re_estimatedClosing`, `of_fe_creditLifediInsuraLabel`, etc.).
-
-For each of the 8 outputs, source resolution order:
-
-1. The short alias itself (already populated → no-op).
-2. The current dictionary alias (e.g. `of_fe_hazardInsuraMonths`).
-3. The dotted UI key (e.g. `origination_fees.1001_hazard_insurance_months`).
-
-Mapping table to publish:
-
-| Output alias | Dictionary alias source | Dotted UI key source | dataType |
+| Field Key | Source | Type | Behavior |
 |---|---|---|---|
-| `of_int_days` | `of_int_days` | `origination_fees.901_interest_for_days_days` | number |
-| `of_int_pd` | `of_int_pd` | `origination_fees.901_interest_for_days_per_day` | currency |
-| `of_haz_mon` | `of_fe_hazardInsuraMonths` | `origination_fees.1001_hazard_insurance_months` | number |
-| `of_haz_amt` | `of_fe_hazardInsuraPerMonth` | `origination_fees.1001_hazard_insurance_per_month` | currency |
-| `of_mi_mon` | `of_fe_mortgageInsuraMonths` | `origination_fees.1002_mortgage_insurance_months` | number |
-| `of_mi_amt` | `of_fe_mortgageInsuraPerMonth` | `origination_fees.1002_mortgage_insurance_per_month` | currency |
-| `of_tax_mon` | `of_fe_coProperTaxesMonths` | `origination_fees.1004_co_property_taxes_months` | number |
-| `of_tax_amt` | `of_fe_coProperTaxesPer` | `origination_fees.1004_co_property_taxes_per_month` | currency |
+| `pr_pt_annualTaxes_N` | `propertytax{K}.annual_payment` (matched to property{N}) | currency | Formatted currency (e.g. `$10,000.00`); blank if empty |
+| `pr_pt_actual_N_glyph` | `propertytax{K}.tax_confidence` | text | `☑` if Confidence == "Actual", else `☐` |
+| `pr_pt_estimated_N_glyph` | `propertytax{K}.tax_confidence` | text | `☑` if Confidence == "Estimated", else `☐` |
 
-Add a single `console.log` line summarizing the eight resolved values (mirroring the existing RE885 publisher log) for production traceability.
+Also publish boolean siblings `pr_pt_actual_N` and `pr_pt_estimated_N` (`"true"`/`"false"`) for `{{#if}}` template use.
 
-## Constraints honored
+`N` aligns with the property sequence already used by other RE851D pr_p_* aliases (1, 2, 3 …).
 
-- **No UI changes.** Forms, save flow, and field dictionary entries stay exactly as-is.
-- **No DB schema changes.** No migrations, no new tables/columns, no edits to `field_dictionary` rows.
-- **No template changes.** RE885 docx is untouched.
-- **No impact on other doc fields.** Aliases are written only when the target key is empty, mirroring every existing publisher in this block.
-- **Idempotent & safe**: missing/null source values → no alias published (so SDT defaults / blanks behave as today).
+## Implementation (single file)
 
-## Files touched
+**File:** `supabase/functions/generate-document/index.ts`
 
-- `supabase/functions/generate-document/index.ts` — one additive block inside the existing RE885 alias publisher region (~15–25 lines).
+### Change 1 — Bridge `tax_confidence` along with existing tax fields
+In the existing RE851D propertytax address-keyed pre-bridge block (around line 1060), extend `TAX_FIELDS` to include `tax_confidence`:
+```ts
+const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information", "tax_confidence"];
+```
+This ensures `propertytax{srcIdx}.tax_confidence` is copied to `propertytax{destIdx}.tax_confidence` so per-property lookup by the property's index works.
 
-## Validation
+### Change 2 — Per-property publisher block
+Inside the existing `for (const idx of sortedPropIndices)` loop (right after the existing `propertytax_annual_payment_${idx}` publisher around line 1146), add a new isolated block:
 
-1. Open an existing deal with values entered in Origination Fees rows 901, 1001, 1002, 1004.
-2. Generate RE885.
-3. Inspect edge function logs — new line shows all 8 resolved values.
-4. Confirm the 8 placeholders in the produced .docx render the typed values, and that other RE885 fields are unchanged.
+```ts
+// RE851D ANNUAL PROPERTY TAXES — per-property publisher
+{
+  // Annual Payment → currency
+  const annual =
+    fieldValues.get(`propertytax${idx}.annual_payment`) ||
+    fieldValues.get(`${prefix}.annual_property_taxes`) ||
+    fieldValues.get(`${prefix}.annual_tax`);
+  if (annual?.rawValue !== undefined && annual.rawValue !== null && String(annual.rawValue) !== "") {
+    fieldValues.set(`pr_pt_annualTaxes_${idx}`, {
+      rawValue: annual.rawValue,
+      dataType: "currency",
+    });
+  }
+
+  // Confidence → ACTUAL / ESTIMATED checkboxes
+  const conf = String(
+    fieldValues.get(`propertytax${idx}.tax_confidence`)?.rawValue ||
+    fieldValues.get(`${prefix}.tax_confidence`)?.rawValue ||
+    ""
+  ).trim().toLowerCase();
+
+  const isActual    = conf === "actual";
+  const isEstimated = conf === "estimated";
+
+  fieldValues.set(`pr_pt_actual_${idx}`,          { rawValue: isActual    ? "true" : "false", dataType: "boolean" });
+  fieldValues.set(`pr_pt_estimated_${idx}`,       { rawValue: isEstimated ? "true" : "false", dataType: "boolean" });
+  fieldValues.set(`pr_pt_actual_${idx}_glyph`,    { rawValue: isActual    ? "☑" : "☐",        dataType: "text" });
+  fieldValues.set(`pr_pt_estimated_${idx}_glyph`, { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
+}
+```
+
+### Change 3 — Anti-fallback shield
+Add `pr_pt_actual_`, `pr_pt_estimated_`, `pr_pt_annualTaxes_` to the existing RE851D anti-fallback shield list (the block that defaults unpublished `pr_*_N` glyphs to `☐` so empty per-index tags don't bleed from idx=1). For `_glyph` defaults publish `☐`; the boolean form defaults to `"false"`; `pr_pt_annualTaxes_N` stays empty (no fallback).
+
+## Validation Rules (encoded in logic)
+- Confidence null/empty → both checkboxes `☐` (mutual exclusivity guaranteed since only one branch can match).
+- Annual Payment blank → `pr_pt_annualTaxes_N` not published (template renders blank).
+- Per-property isolation enforced by the existing address-keyed bridge — no cross-index bleed.
+- Currency formatted via the existing `dataType: "currency"` pipeline.
+
+## Template usage (for the Word template)
+```
+$ {{pr_pt_annualTaxes_1}}    {{pr_pt_actual_1_glyph}} ACTUAL    {{pr_pt_estimated_1_glyph}} ESTIMATED
+$ {{pr_pt_annualTaxes_2}}    {{pr_pt_actual_2_glyph}} ACTUAL    {{pr_pt_estimated_2_glyph}} ESTIMATED
+...
+```
+
+## Out of Scope
+- No UI changes.
+- No DB schema / migration changes.
+- No changes to existing aliases (`propertytax_annual_payment_N` remains for backward compatibility).
+- No changes to other document templates.
