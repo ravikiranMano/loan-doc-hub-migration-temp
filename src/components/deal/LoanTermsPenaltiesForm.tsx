@@ -196,7 +196,7 @@ const DistributionFields: React.FC<{
   // If Lenders hits 100, force Origination Vendor to 0 (Company auto = 0).
   useEffect(() => {
     if (lendersIs100 && vendorRaw !== '' && vendorClamped !== 0) {
-      onValueChange(`${prefix}.distribution.origination_vendors`, '0.00');
+      onValueChange(`${prefix}.distribution.origination_vendors`, '0.0000');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lendersIs100]);
