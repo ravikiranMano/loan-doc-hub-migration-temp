@@ -85,9 +85,10 @@ export const unformatCurrencyDisplay = (value: string): string => {
  */
 export const formatPercentageDisplay = (value: string): string => {
   if (!value) return '';
-  const num = parseFloat(value.replace(/,/g, ''));
-  if (isNaN(num)) return '';
-  return num.toFixed(2);
+  // Re-use the platform-wide smart-trim formatter (min 2dp, max 4dp).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { formatPercentDisplay } = require('./precisionFormat');
+  return formatPercentDisplay(value, 4);
 };
 
 /**
