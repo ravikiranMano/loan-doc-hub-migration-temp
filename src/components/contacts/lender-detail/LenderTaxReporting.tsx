@@ -94,7 +94,7 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-5xl">
       <h4 className="text-lg font-semibold text-foreground">Tax Reporting</h4>
 
       <div className="space-y-4">
