@@ -6,6 +6,7 @@
  */
 
 import { format, parseISO, isValid } from 'date-fns';
+import { formatPercentDisplay } from './precisionFormat';
 
 export type TransformType = 
   | 'currency'
