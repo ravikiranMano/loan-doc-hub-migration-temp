@@ -35,6 +35,7 @@ interface CreateContactModalProps {
   onOpenChange: (open: boolean) => void;
   contactType: 'lender' | 'broker' | 'borrower';
   onSubmit: (data: Record<string, string>) => void;
+  title?: string;
 }
 
 const LENDER_TYPE_OPTIONS = [
