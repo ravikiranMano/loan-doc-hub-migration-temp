@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { format } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -16,6 +18,9 @@ import {
 } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { cn } from '@/lib/utils';
 import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } from '@/lib/contactFormValidation';
 import { toast } from 'sonner';
 import type { ContactLender } from '@/pages/contacts/ContactLendersPage';
@@ -53,6 +58,7 @@ const emptyForm = (): Omit<ContactLender, 'id' | 'lenderId'> => ({
   mailingState: '',
   mailingZip: '',
   sameAsPrimary: false,
+  dob: '',
 });
 
 export const ContactLenderModal: React.FC<ContactLenderModalProps> = ({
