@@ -1102,18 +1102,27 @@ async function generateSingleDocument(
       // Used to route propertytax{N} rows to their associated property by the
       // tax row's `.property` field (which carries the property's address).
       const normAddr = (s: string) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+      // Per-property candidate strings: full address + street/city/zip components
+      // so the bridge can match labels that wrap or strip the address.
+      type PropCandidate = { idx: number; full: string; street: string; city: string; zip: string };
+      const propCandidates: PropCandidate[] = [];
       const addressToPropIndex = new Map<string, number>();
       for (const pi of sortedPropIndices) {
-        const a = normAddr(String(fieldValues.get(`property${pi}.address`)?.rawValue || ""));
-        if (a && !addressToPropIndex.has(a)) addressToPropIndex.set(a, pi);
+        const full = normAddr(String(fieldValues.get(`property${pi}.address`)?.rawValue || ""));
+        const street = normAddr(String(fieldValues.get(`property${pi}.street`)?.rawValue || ""));
+        const city = normAddr(String(fieldValues.get(`property${pi}.city`)?.rawValue || ""));
+        const zip = normAddr(String(fieldValues.get(`property${pi}.zip`)?.rawValue || ""));
+        propCandidates.push({ idx: pi, full, street, city, zip });
+        if (full && !addressToPropIndex.has(full)) addressToPropIndex.set(full, pi);
       }
 
       // ── RE851D: Pre-bridge propertytax{srcIdx} → propertytax{destIdx} by address match ──
-      // Scan all propertytax{srcIdx}.property values; if they match a property's
-      // normalized address, copy the four spec'd tax fields into the destination
-      // index so the per-index tax publisher below emits per-property aliases.
-      // Strict: only copy when destination key is empty; idx==1 canonical fallback
-      // remains intact.
+      // Match strategy (first match wins, ties → lowest property index):
+      //   a) exact normalized full-address match
+      //   b) property full-address is substring of tax-row .property
+      //   c) tax-row .property is substring of property full-address
+      //   d) token overlap: street AND (city OR zip) appear in tax-row .property
+      // Only copies when destination key is empty.
       {
         const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information", "tax_confidence"];
         const srcIndices = new Set<number>();
@@ -1122,20 +1131,44 @@ async function generateSingleDocument(
           if (m) srcIndices.add(parseInt(m[1], 10));
         }
         const bridgeLog: string[] = [];
+        const unmatchedLog: string[] = [];
+        const sortedCandidates = [...propCandidates].sort((a, b) => a.idx - b.idx);
         for (const srcIdx of srcIndices) {
           const propAddrRaw = String(fieldValues.get(`propertytax${srcIdx}.property`)?.rawValue || "");
           if (!propAddrRaw) continue;
-          // Address may be stored as "Borrower - Street, City, ST, ZIP" — try
-          // exact match first, then a relaxed match where the property address
-          // is a substring of the tax-row property string.
-          const propAddrNorm = normAddr(propAddrRaw);
-          let destIdx = addressToPropIndex.get(propAddrNorm);
+          const taxNorm = normAddr(propAddrRaw);
+
+          let destIdx: number | undefined = addressToPropIndex.get(taxNorm);
+          // (b) property full ⊂ tax string
           if (!destIdx) {
-            for (const [a, pi] of addressToPropIndex.entries()) {
-              if (a && propAddrNorm.includes(a)) { destIdx = pi; break; }
+            for (const c of sortedCandidates) {
+              if (c.full && taxNorm.includes(c.full)) { destIdx = c.idx; break; }
             }
           }
-          if (!destIdx || destIdx === srcIdx) continue;
+          // (c) tax string ⊂ property full
+          if (!destIdx) {
+            for (const c of sortedCandidates) {
+              if (c.full && c.full.includes(taxNorm)) { destIdx = c.idx; break; }
+            }
+          }
+          // (d) street + (city OR zip) token overlap
+          if (!destIdx) {
+            for (const c of sortedCandidates) {
+              if (!c.street) continue;
+              if (taxNorm.includes(c.street) && (
+                (c.city && taxNorm.includes(c.city)) ||
+                (c.zip && taxNorm.includes(c.zip))
+              )) { destIdx = c.idx; break; }
+            }
+          }
+
+          if (!destIdx) {
+            unmatchedLog.push(
+              `pt${srcIdx}.property="${propAddrRaw}" candidates=[${sortedCandidates.map(c => `${c.idx}:"${c.full || c.street}"`).join("|")}]`
+            );
+            continue;
+          }
+          if (destIdx === srcIdx) continue;
           for (const tf of TAX_FIELDS) {
             const srcKey = `propertytax${srcIdx}.${tf}`;
             const destKey = `propertytax${destIdx}.${tf}`;
@@ -1154,6 +1187,9 @@ async function generateSingleDocument(
         }
         if (bridgeLog.length > 0) {
           debugLog(`[generate-document] RE851D propertytax bridge (address-keyed): ${bridgeLog.join(", ")}`);
+        }
+        if (unmatchedLog.length > 0) {
+          debugLog(`[generate-document] RE851D propertytax UNMATCHED: ${unmatchedLog.join(" ;; ")}`);
         }
       }
 
