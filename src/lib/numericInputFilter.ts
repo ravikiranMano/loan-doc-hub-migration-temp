@@ -87,9 +87,7 @@ export const unformatCurrencyDisplay = (value: string): string => {
  */
 export const formatPercentageDisplay = (value: string): string => {
   if (!value) return '';
-  // Re-use the platform-wide smart-trim formatter (min 2dp, max 4dp).
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { formatPercentDisplay } = require('./precisionFormat');
+  // Platform-wide smart-trim formatter (min 2dp, max 4dp, suppresses trailing zeros beyond 2nd).
   return formatPercentDisplay(value, 4);
 };
 
