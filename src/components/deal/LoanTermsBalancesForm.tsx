@@ -28,6 +28,7 @@ interface LoanTermsBalancesFormProps {
 }
 
 import { LOAN_TERMS_BALANCES_KEYS } from "@/lib/fieldKeyMap";
+import { formatPercentDisplay as smartPercentDisplay, roundPctForStorage } from "@/lib/precisionFormat";
 
 // Use central field key map
 const FIELD_KEYS = LOAN_TERMS_BALANCES_KEYS;
