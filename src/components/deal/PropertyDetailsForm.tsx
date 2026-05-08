@@ -88,13 +88,15 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   // Auto-calculate LTV, Protective Equity, CLTV
   useEffect(() => {
     const loanAmountRaw = values['loan_terms.loan_amount'] || '';
+    const propertyValueRaw = getFieldValue(FIELD_KEYS.appraisedValue);
     const purchasePriceRaw = getFieldValue(FIELD_KEYS.purchasePrice);
     const loanAmount = parseFloat(loanAmountRaw.replace(/[,$]/g, ''));
+    const propertyValue = parseFloat(propertyValueRaw.replace(/[,$]/g, ''));
     const purchasePrice = parseFloat(purchasePriceRaw.replace(/[,$]/g, ''));
 
-    // LTV = (Loan Amount / Purchase Price) × 100
-    if (!isNaN(loanAmount) && !isNaN(purchasePrice) && purchasePrice > 0) {
-      const ltv = ((loanAmount / purchasePrice) * 100).toFixed(2);
+    // LTV = (Loan Amount / Property Value) × 100
+    if (!isNaN(loanAmount) && !isNaN(propertyValue) && propertyValue > 0) {
+      const ltv = ((loanAmount / propertyValue) * 100).toFixed(2);
       if (getFieldValue(FIELD_KEYS.ltv) !== ltv) {
         onValueChange(FIELD_KEYS.ltv, ltv);
       }
@@ -116,7 +118,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         onValueChange(FIELD_KEYS.cltv, cltv);
       }
     }
-  }, [values['loan_terms.loan_amount'], values[FIELD_KEYS.purchasePrice], existingLiensTotal]);
+  }, [values['loan_terms.loan_amount'], values[FIELD_KEYS.appraisedValue], existingLiensTotal]);
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
   const informationProvidedBy = getFieldValue(FIELD_KEYS.informationProvidedBy);
