@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const sectionRe = /ENCUMBRANCE\(S\)\s+(REMAINING|EXPECTED\s+OR\s+ANTICIPATED)/gi;
     let m: RegExpExecArray | null;
     while ((m = sectionRe.exec(xml)) !== null) {
-      out.push({ at: m.index, kind: m[1], slice: xml.slice(m.index, m.index + 6000).replace(/<[^>]+>/g, "|").replace(/\|+/g, "|") });
+      out.push({ at: m.index, kind: m[1], vis: xml.slice(m.index, m.index + 60000).replace(/<[^>]+>/g, "|").replace(/\|+/g, "|").slice(0, 2500) });
     }
     return new Response(JSON.stringify({ count: out.length, sections: out }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
