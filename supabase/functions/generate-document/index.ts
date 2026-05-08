@@ -6910,6 +6910,64 @@ async function generateSingleDocument(
       }
     }
 
+          // ── RE851D ANNUAL PROPERTY TAXES ACTUAL/ESTIMATED safety pass ──
+          // For each PROPERTY #K block, locate the "ANNUAL PROPERTY TAXES"
+          // anchor and force the next two checkbox glyph runs (typically
+          // sitting before the labels "ACTUAL" and "ESTIMATED") based on the
+          // per-property tax confidence:
+          //   confidence === Actual    → ACTUAL ☑  ESTIMATED ☐
+          //   confidence === Estimated → ACTUAL ☐  ESTIMATED ☑
+          //   blank/other              → both ☐
+          // Strictly bounded look-ahead window (4 KB) within each PROPERTY #K
+          // region. Skips any glyph already overlapping a queued rewrite span.
+          if (regions.props.length > 0) {
+            const taxAnchorRe = /ANNUAL\s+PROPERTY\s+TAX/gi;
+            const taxGlyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([☐☑☒])(<\/w:t>\s*<\/w:r>)/g;
+            let tqm: RegExpExecArray | null;
+            while ((tqm = taxAnchorRe.exec(xml)) !== null) {
+              const qStart = tqm.index;
+              let pIdx: number | null = null;
+              for (const p of regions.props) {
+                if (qStart >= p.range[0] && qStart < p.range[1]) { pIdx = p.k; break; }
+              }
+              if (pIdx === null) continue;
+              const windowEnd = Math.min(xml.length, qStart + 4096);
+              taxGlyphRunRe.lastIndex = qStart;
+              const tgms: RegExpExecArray[] = [];
+              let tgm: RegExpExecArray | null;
+              while ((tgm = taxGlyphRunRe.exec(xml)) !== null && tgm.index < windowEnd) {
+                tgms.push(tgm);
+                if (tgms.length >= 2) break;
+              }
+              if (tgms.length < 2) continue;
+              const overlapsT = (s: number, e: number) =>
+                rewrites.some((r) => s < r.end && e > r.start) ||
+                consumed.some(([cs, ce]) => s < ce && e > cs);
+              const aM = tgms[0];
+              const eM = tgms[1];
+              const aS = aM.index, aE = aS + aM[0].length;
+              const eS = eM.index, eE = eS + eM[0].length;
+              if (overlapsT(aS, aE) || overlapsT(eS, eE)) continue;
+              const truthy = (raw: unknown): boolean => {
+                if (raw === null || raw === undefined) return false;
+                if (typeof raw === "boolean") return raw;
+                const s = String(raw).trim().toLowerCase();
+                return ["true", "yes", "y", "1", "checked", "on"].includes(s);
+              };
+              const isActualK = truthy(fieldValues.get(`pr_pt_actual_${pIdx}`)?.rawValue);
+              const isEstK = truthy(fieldValues.get(`pr_pt_estimated_${pIdx}`)?.rawValue);
+              const aGlyph = isActualK ? "☑" : "☐";
+              const eGlyph = isEstK ? "☑" : "☐";
+              rewrites.push({ start: aS, end: aE, replacement: `${aM[1]}${aGlyph}${aM[3]}` });
+              rewrites.push({ start: eS, end: eE, replacement: `${eM[1]}${eGlyph}${eM[3]}` });
+              consumed.push([aS, aE]);
+              consumed.push([eS, eE]);
+              totalRewrites += 2;
+              console.log(
+                `[RE851D] annual-tax glyph anchored: PROP#${pIdx} actual=${isActualK} estimated=${isEstK}`
+              );
+            }
+          }
 
     // ── RE851D post-render flush ──
     // If any RE851D safety pass mutated the in-memory cache, rezip exactly
