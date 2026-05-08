@@ -241,7 +241,6 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
         }
       }
       if (!(form['primary_address.street'] || '').trim()) errs['primary_address.street'] = 'Street is required';
-      if (!(form['primary_address.street'] || '').trim()) errs['primary_address.street'] = 'Street is required';
       if (!(form['primary_address.city'] || '').trim()) errs['primary_address.city'] = 'City is required';
       if (!form['primary_address.state']) errs['primary_address.state'] = 'State is required';
       if (!(form['primary_address.zip'] || '').trim()) errs['primary_address.zip'] = 'ZIP is required';
