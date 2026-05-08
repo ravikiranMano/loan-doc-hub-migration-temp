@@ -3948,7 +3948,7 @@ async function generateSingleDocument(
             out[filename] = bytes;
             continue;
           }
-          let xml = __xmlGet(filename, bytes);
+          let xml = decoder.decode(bytes);
           if (!xml.includes("_N")) {
             out[filename] = bytes;
             continue;
