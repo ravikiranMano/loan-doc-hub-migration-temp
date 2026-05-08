@@ -56,9 +56,6 @@ const computeIssue1099 = (entityType: string, taxedAsCorp: boolean): string => {
 const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValueChange, disabled = false }) => {
   const designated = values[K.designated] === 'true';
   const issue1099Raw = values[K.issue1099] || '';
-  const tinNumber = values[K.tinNumber] || '';
-  const tinType = values[K.tinType] || '';
-  const tinVerified = values[K.tinVerified] === 'true';
   const altReporting = values[K.altReporting] || '';
   const notes = values[K.notes] || '';
   const manuallyModified = values[K.manualFlag] === 'true';
