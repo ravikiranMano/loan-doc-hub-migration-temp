@@ -169,6 +169,41 @@ export const ContactLenderModal: React.FC<ContactLenderModalProps> = ({
                 <EmailInput value={form.email} onValueChange={(v) => set('email', v)} />
               </div>
               <div>
+                <Label>DOB</Label>
+                <Popover open={dobOpen} onOpenChange={setDobOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "h-10 w-full justify-start text-left font-normal",
+                        !form.dob && "text-muted-foreground"
+                      )}
+                    >
+                      {form.dob || <span>mm/dd/yyyy</span>}
+                      <CalendarIcon className="ml-auto h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                    <EnhancedCalendar
+                      mode="single"
+                      selected={form.dob ? new Date(form.dob) : undefined}
+                      onSelect={(date) => {
+                        if (date && date >= new Date()) {
+                          toast.error('Enter valid date of birth');
+                          set('dob', format(date, 'MM/dd/yyyy'));
+                        } else {
+                          set('dob', date ? format(date, 'MM/dd/yyyy') : '');
+                        }
+                        setDobOpen(false);
+                      }}
+                      onClear={() => { set('dob', ''); setDobOpen(false); }}
+                      onToday={() => { set('dob', format(new Date(), 'MM/dd/yyyy')); setDobOpen(false); }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div>
                 <Label>Home Phone</Label>
                 <PhoneInput value={form.homePhone} onValueChange={(v) => set('homePhone', v)} />
               </div>
