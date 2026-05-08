@@ -192,7 +192,16 @@ export const InsuranceModal: React.FC<InsuranceModalProps> = ({ open, onOpenChan
                 </div>
                 {renderInlineField('paymentMailingStreet', 'Street')}
                 {renderInlineField('paymentMailingCity', 'City')}
-                {renderInlineSelect('paymentMailingState', 'State', US_STATES, 'Select state')}
+                <div className="flex items-center gap-2">
+                  <Label className="w-[100px] shrink-0 text-xs text-foreground">State</Label>
+                  <Select value={String(formData.paymentMailingState || '') || undefined} onValueChange={(val) => handleChange('paymentMailingState', val === '__select__' ? '' : val)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select state" /></SelectTrigger>
+                    <SelectContent className="bg-background border border-border !z-[9999]" position="popper" sideOffset={4}>
+                      <SelectItem value="__select__">Select</SelectItem>
+                      {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex items-center gap-2">
                   <Label className="w-[100px] shrink-0 text-xs text-foreground">ZIP</Label>
                   <ZipInput value={String(formData.paymentMailingZip || '')} onValueChange={(v) => handleChange('paymentMailingZip', v)} className="h-7 text-xs" />
