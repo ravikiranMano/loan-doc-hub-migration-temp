@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatTIN, maskTIN, validateTIN, stripTINInput } from '@/lib/tinValidation';
+
 
 interface LenderTaxReportingProps {
   values: Record<string, string>;
