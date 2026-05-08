@@ -366,45 +366,6 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               </Popover>
             </div>)}
 
-            {/* Tax ID Section */}
-            <div className="space-y-3 mt-2">
-              {wrapField('taxIdType', <div className="flex items-center gap-3">
-                <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Tax ID Type</Label>
-                <Select
-                  value={getValue('taxIdType')}
-                  onValueChange={(value) => handleChange('taxIdType', value)}
-                  disabled={disabled}
-                >
-                  <SelectTrigger className="h-8">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TAX_ID_TYPE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>)}
-              {wrapField('taxId', <div className="flex items-center gap-3">
-                <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">TIN</Label>
-                <Input
-                  value={getValue('taxId')}
-                  onChange={(e) => handleChange('taxId', e.target.value)}
-                  disabled={disabled}
-                  className="h-8"
-                />
-              </div>)}
-              {wrapField('tinVerified', <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={getBoolValue('tinVerified')}
-                  onCheckedChange={(checked) => handleChange('tinVerified', !!checked)}
-                  disabled={disabled}
-                />
-                <Label className="text-sm text-muted-foreground font-semibold">TIN Verified</Label>
-              </div>)}
-            </div>
           </div>
         </div>
 
