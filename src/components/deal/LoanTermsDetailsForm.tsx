@@ -498,7 +498,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                     }}
                     onBlur={() => {
                       const val = getValue(FIELD_KEYS.adjRateIncreasePercent);
-                      if (val) { const num = parseFloat(val); if (!isNaN(num)) setValue(FIELD_KEYS.adjRateIncreasePercent, num.toFixed(2)); }
+                      if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(FIELD_KEYS.adjRateIncreasePercent, stored); }
                     }}
                     disabled={disabled}
                     className="h-8 text-xs pr-5"
