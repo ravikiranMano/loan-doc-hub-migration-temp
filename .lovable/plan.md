@@ -1,83 +1,60 @@
-# Platform-Wide Decimal Precision for Rates & Percentages
+## Root cause
 
-## Goal
+The UI persists the eight values under different dictionary keys than the RE885 template expects.
 
-Standardize how every percentage / rate field is **stored** (≥4 decimals) and **displayed** (min 2, max N, suppress trailing zeros beyond 2nd decimal) without changing any UI layout, schema, or save APIs.
+| Template tag | UI persists under (dictionary alias) |
+|---|---|
+| `of_int_days` | `of_int_days` (via `origination_fees.901_interest_for_days_days`) — alias exists |
+| `of_int_pd` | `of_int_pd` (via `origination_fees.901_interest_for_days_per_day`) — alias exists |
+| `of_haz_mon` | `of_fe_hazardInsuraMonths` (`origination_fees.1001_hazard_insurance_months`) — **mismatch** |
+| `of_haz_amt` | `of_fe_hazardInsuraPerMonth` (`origination_fees.1001_hazard_insurance_per_month`) — **mismatch** |
+| `of_mi_mon` | `of_fe_mortgageInsuraMonths` (`origination_fees.1002_mortgage_insurance_months`) — **mismatch** |
+| `of_mi_amt` | `of_fe_mortgageInsuraPerMonth` (`origination_fees.1002_mortgage_insurance_per_month`) — **mismatch** |
+| `of_tax_mon` | `of_fe_coProperTaxesMonths` (`origination_fees.1004_co_property_taxes_months`) — **mismatch** |
+| `of_tax_amt` | `of_fe_coProperTaxesPer` (`origination_fees.1004_co_property_taxes_per_month`) — **mismatch** |
 
-## Display rule (single source of truth)
+The UI saves correctly; the template tags simply don't resolve because no one publishes the short `of_haz_*`/`of_mi_*`/`of_tax_*` aliases at generation time. The `of_int_*` pair is already aliased via `legacyKeyMap.ts`, but we'll defensively re-publish from the dotted form too.
 
-A new helper `formatPercentDisplay(value, maxDecimals)` will:
+## Fix (single, minimal, additive)
 
-- Return `''` for empty/NaN
-- Always show **at least 2** decimals
-- Show **up to `maxDecimals`** decimals
-- Strip trailing zeros only **beyond the 2nd** decimal place
+In `supabase/functions/generate-document/index.ts`, inside the existing **RE885 alias publisher** block (around line 719–795), add one new section that resolves the source value for each of the 8 fields and publishes the short alias (only when not already present, matching the pattern used for `of_re_estimatedClosing`, `of_fe_creditLifediInsuraLabel`, etc.).
 
-Examples (matches spec exactly):
+For each of the 8 outputs, source resolution order:
 
-```
-10        → 10.00
-10.5      → 10.50
-10.875    → 10.875
-10.8756   → 10.8756   (when max=4)
-10.8756   → 10.876    (when max=3, rounded)
-27.2727   → 27.2727   (when max=4)
-```
+1. The short alias itself (already populated → no-op).
+2. The current dictionary alias (e.g. `of_fe_hazardInsuraMonths`).
+3. The dotted UI key (e.g. `origination_fees.1001_hazard_insurance_months`).
 
-## Per-field max display precision
+Mapping table to publish:
 
-| Field group                                         | Storage | Display max |
-|-----------------------------------------------------|--------:|------------:|
-| Interest rates (Note Rate, Default Rate, Sold Rate) | 4       | 3           |
-| Pro Rata / Funding distribution %                   | 4       | 4           |
-| LTV, CLTV, Protective Equity                        | 4       | 2           |
-| Late Charge %                                       | 4       | 3           |
-| Dollar amounts (unchanged)                          | 2       | 2           |
+| Output alias | Dictionary alias source | Dotted UI key source | dataType |
+|---|---|---|---|
+| `of_int_days` | `of_int_days` | `origination_fees.901_interest_for_days_days` | number |
+| `of_int_pd` | `of_int_pd` | `origination_fees.901_interest_for_days_per_day` | currency |
+| `of_haz_mon` | `of_fe_hazardInsuraMonths` | `origination_fees.1001_hazard_insurance_months` | number |
+| `of_haz_amt` | `of_fe_hazardInsuraPerMonth` | `origination_fees.1001_hazard_insurance_per_month` | currency |
+| `of_mi_mon` | `of_fe_mortgageInsuraMonths` | `origination_fees.1002_mortgage_insurance_months` | number |
+| `of_mi_amt` | `of_fe_mortgageInsuraPerMonth` | `origination_fees.1002_mortgage_insurance_per_month` | currency |
+| `of_tax_mon` | `of_fe_coProperTaxesMonths` | `origination_fees.1004_co_property_taxes_months` | number |
+| `of_tax_amt` | `of_fe_coProperTaxesPer` | `origination_fees.1004_co_property_taxes_per_month` | currency |
 
-## Files to change
+Add a single `console.log` line summarizing the eight resolved values (mirroring the existing RE885 publisher log) for production traceability.
 
-1. **New** `src/lib/precisionFormat.ts`
-   - `formatPercentDisplay(value, max)` – the smart-trim formatter above
-   - `roundPctForStorage(value)` – `Number(value).toFixed(4)` (string), used on blur/save
-   - `roundDollarForStorage(value)` – `toFixed(2)` (string)
-   - All math uses `decimal.js` (small, already-tree-shakable). Add via `bun add decimal.js`.
+## Constraints honored
 
-2. **`src/lib/fieldTransforms.ts`**
-   - `formatPercentage(value, decimals=2)` becomes a thin wrapper that calls `formatPercentDisplay(value, decimals)` and appends `%`. Default `decimals` raised to `3` so `applyTransform('percentage')` (used by document merge) emits the smart-trim form. Existing callers that pass an explicit number keep working.
-   - `formatForDisplay` `case 'percentage'` switches to `formatPercentDisplay(value, 4)` so generic inline UI shows up to 4 with trailing-zero suppression.
-   - `parseToCanonical` unchanged (still strips formatting).
+- **No UI changes.** Forms, save flow, and field dictionary entries stay exactly as-is.
+- **No DB schema changes.** No migrations, no new tables/columns, no edits to `field_dictionary` rows.
+- **No template changes.** RE885 docx is untouched.
+- **No impact on other doc fields.** Aliases are written only when the target key is empty, mirroring every existing publisher in this block.
+- **Idempotent & safe**: missing/null source values → no alias published (so SDT defaults / blanks behave as today).
 
-3. **`src/lib/numericInputFilter.ts`**
-   - `formatPercentageDisplay(value)` switches to `formatPercentDisplay(value, 4)` (currently hard-coded `toFixed(2)`).
+## Files touched
 
-4. **`src/components/deal/DealFieldInput.tsx`**
-   - `handleBlur` `case 'percentage'`: store with `roundPctForStorage` (4dp) instead of `toFixed(2)`.
-   - Display path already routes through `formatForDisplay`, so it picks up new behavior automatically.
+- `supabase/functions/generate-document/index.ts` — one additive block inside the existing RE885 alias publisher region (~15–25 lines).
 
-5. **Targeted per-field display caps** (only files that already inline `toFixed`/`formatPercentage` for these fields — no layout changes):
-   - `LoanTermsDetailsForm.tsx` – Note Rate, Default Rate → `formatPercentDisplay(v, 3)`
-   - `LoanTermsBalancesForm.tsx` – Sold Rate → `(v, 3)`
-   - `LoanTermsPenaltiesForm.tsx` – Late Charge % → `(v, 3)`; distribution % (Pro Rata) → `(v, 4)`
-   - `FundingDetailForm.tsx`, `LoanFundingGrid.tsx`, `LenderDisbursementModal.tsx`, `AddFundingModal.tsx`, `FundingAdjustmentModal.tsx` – Pro Rata → `(v, 4)`
-   - `PropertyDetailsForm.tsx` – LTV, CLTV, Protective Equity → `(v, 2)` (already 2dp; just route through helper so trailing-zero rule is consistent)
-   - `LienDetailForm.tsx`, `PropertiesTableView.tsx`, `LienSectionContent.tsx` – any percent column → `(v, 2)` unless it's an interest rate (then 3)
+## Validation
 
-6. **Distribution math** (`LoanTermsPenaltiesForm.tsx`, `FundingDetailForm.tsx`, allocation helpers in `loanAllocationValidation.ts`)
-   - Replace remaining `parseFloat(...) + parseFloat(...)` percent sums with `Decimal` arithmetic so 33.3333 × 3 = 99.9999 (not 99.99999999…). Final compare uses `Decimal.eq` / tolerance `1e-4`.
-   - Dollar distribution: keep computing from runtime dollar inputs (already does); ensure rounding only at final write with `roundDollarForStorage`.
-
-7. **Document merge** (`supabase/functions/_shared/field-resolver.ts`, `formatting.ts`)
-   - Percentage formatter switches to the smart-trim algorithm with the same per-field max table. Stored value (already 4dp) is the source — never re-derive from displayed.
-   - No change to dollar formatting.
-
-## Critical guarantees
-
-- **No** schema migration, no new tables, no new APIs.
-- Existing `setValue` / save paths untouched — only the value they receive changes (now `toFixed(4)` for percents).
-- All UI layouts, components, labels, and order untouched.
-- `decimal.js` is the only new dependency.
-
-## Out of scope
-
-- Changing field labels, ordering, locking behavior, or any non-percentage field.
-- Backfilling historical values stored at 2dp — they’ll simply continue to display correctly (2dp is a valid prefix of 4dp).
+1. Open an existing deal with values entered in Origination Fees rows 901, 1001, 1002, 1004.
+2. Generate RE885.
+3. Inspect edge function logs — new line shows all 8 resolved values.
+4. Confirm the 8 placeholders in the produced .docx render the typed values, and that other RE885 fields are unchanged.

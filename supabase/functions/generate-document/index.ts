@@ -793,6 +793,49 @@ async function generateSingleDocument(
           `EstimatedCashAtClosing="${fieldValues.get("origination_fees.re885_cash_at_closing_amount")?.rawValue ?? ""}"`
       );
 
+      // RE885 Interest / Hazard / MI / Property-Tax short-name alias publisher.
+      // The UI persists these under the dotted dictionary keys (901/1001/1002/1004),
+      // but the RE885 template uses the short tags `of_int_days`, `of_int_pd`,
+      // `of_haz_mon`, `of_haz_amt`, `of_mi_mon`, `of_mi_amt`, `of_tax_mon`, `of_tax_amt`.
+      // Resolve from (short alias → dictionary alias → dotted UI key) and publish
+      // only when the target is empty so existing publishers are never overridden.
+      const re885ShortAliasMap: Array<{
+        out: string;
+        sources: string[];
+        dataType: string;
+      }> = [
+        { out: "of_int_days", sources: ["of_int_days", "origination_fees.901_interest_for_days_days"], dataType: "number" },
+        { out: "of_int_pd",   sources: ["of_int_pd",   "origination_fees.901_interest_for_days_per_day"], dataType: "currency" },
+        { out: "of_haz_mon",  sources: ["of_haz_mon",  "of_fe_hazardInsuraMonths",  "origination_fees.1001_hazard_insurance_months"],     dataType: "number" },
+        { out: "of_haz_amt",  sources: ["of_haz_amt",  "of_fe_hazardInsuraPerMonth","origination_fees.1001_hazard_insurance_per_month"],  dataType: "currency" },
+        { out: "of_mi_mon",   sources: ["of_mi_mon",   "of_fe_mortgageInsuraMonths","origination_fees.1002_mortgage_insurance_months"],   dataType: "number" },
+        { out: "of_mi_amt",   sources: ["of_mi_amt",   "of_fe_mortgageInsuraPerMonth","origination_fees.1002_mortgage_insurance_per_month"], dataType: "currency" },
+        { out: "of_tax_mon",  sources: ["of_tax_mon",  "of_fe_coProperTaxesMonths", "origination_fees.1004_co_property_taxes_months"],    dataType: "number" },
+        { out: "of_tax_amt",  sources: ["of_tax_amt",  "of_fe_coProperTaxesPer",    "origination_fees.1004_co_property_taxes_per_month"], dataType: "currency" },
+      ];
+      const re885ShortAliasResolved: Record<string, unknown> = {};
+      for (const { out, sources, dataType } of re885ShortAliasMap) {
+        let src: any = undefined;
+        for (const s of sources) {
+          const v = fieldValues.get(s);
+          if (v && v.rawValue !== null && v.rawValue !== undefined && v.rawValue !== "") {
+            src = v;
+            break;
+          }
+        }
+        if (src) {
+          if (!fieldValues.has(out)) {
+            fieldValues.set(out, { rawValue: src.rawValue, dataType: src.dataType || dataType });
+          }
+          re885ShortAliasResolved[out] = fieldValues.get(out)?.rawValue ?? "";
+        } else {
+          re885ShortAliasResolved[out] = "";
+        }
+      }
+      console.log(
+        `[generate-document] RE885 short-alias publisher: ${JSON.stringify(re885ShortAliasResolved)}`
+      );
+
       // RE885 Proposed Loan Term unit -> mutually exclusive boolean checkboxes.
       // UI persists single text value `of_re_loanTermUnit` ('years'|'months').
       // Template uses `{{#if of_re_proposedLoanTerm.years}}` / `.months`.
