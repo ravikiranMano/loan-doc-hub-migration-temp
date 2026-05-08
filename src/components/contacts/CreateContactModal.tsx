@@ -36,6 +36,7 @@ interface CreateContactModalProps {
   contactType: 'lender' | 'broker' | 'borrower';
   onSubmit: (data: Record<string, string>) => void;
   title?: string;
+  borrowerSubtype?: 'additional_guarantor';
 }
 
 const LENDER_TYPE_OPTIONS = [
@@ -135,8 +136,9 @@ const getInitialForm = (contactType: string): Record<string, string> => {
 };
 
 export const CreateContactModal: React.FC<CreateContactModalProps> = ({
-  open, onOpenChange, contactType, onSubmit, title,
+  open, onOpenChange, contactType, onSubmit, title, borrowerSubtype,
 }) => {
+  const isAG = borrowerSubtype === 'additional_guarantor';
   const [form, setForm] = useState<Record<string, string>>(() => getInitialForm(contactType));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -776,26 +778,50 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               </div>
               {borrowerErrors['email'] && <p className="text-[10px] text-destructive ml-[108px]">{borrowerErrors['email']}</p>}
 
-              {/* Date Authorized */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Date Authorized</Label>
-                <Input
-                  type="date"
-                  value={form['date_authorized'] || ''}
-                  onChange={(e) => set('date_authorized', e.target.value)}
-                  className="h-7 text-xs flex-1"
-                />
-              </div>
-
-              {/* Delivery Options - placed below Email per Borrower form */}
-              <div className="pt-2">
-                <h4 className="font-semibold text-xs text-foreground pb-1">Delivery Options</h4>
-                <div className="flex items-center gap-4">
-                  {renderCheckbox('Print', 'delivery_print')}
-                  {renderCheckbox('Email', 'delivery_email')}
-                  {renderCheckbox('SMS', 'delivery_sms')}
+              {/* Date Authorized — hidden for Additional Guarantor */}
+              {!isAG && (
+                <div className="flex items-center gap-2">
+                  <Label className="w-[100px] shrink-0 text-xs">Date Authorized</Label>
+                  <Input
+                    type="date"
+                    value={form['date_authorized'] || ''}
+                    onChange={(e) => set('date_authorized', e.target.value)}
+                    className="h-7 text-xs flex-1"
+                  />
                 </div>
-              </div>
+              )}
+
+              {/* Tax ID Type / TIN / Issue 1098 — Additional Guarantor only */}
+              {isAG && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[100px] shrink-0 text-xs">Tax ID Type</Label>
+                    <Select value={form['tax_id_type'] || ''} onValueChange={(v) => set('tax_id_type', v)}>
+                      <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent className="bg-background border border-border z-[200]">
+                        {TAX_ID_TYPE_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[100px] shrink-0 text-xs">TIN</Label>
+                    <Input value={form['tin'] || ''} onChange={(e) => set('tin', e.target.value)} className="h-7 text-xs flex-1" />
+                  </div>
+                  {renderCheckbox('Issue 1098', 'issue_1098')}
+                </>
+              )}
+
+              {/* Delivery Options - placed below Email per Borrower form (hidden for AG) */}
+              {!isAG && (
+                <div className="pt-2">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Delivery Options</h4>
+                  <div className="flex items-center gap-4">
+                    {renderCheckbox('Print', 'delivery_print')}
+                    {renderCheckbox('Email', 'delivery_email')}
+                    {renderCheckbox('SMS', 'delivery_sms')}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Column 2: Primary Address + Mailing */}
@@ -851,14 +877,25 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   <ZipInput value={form['mailing.zip'] || ''} onValueChange={(val) => set('mailing.zip', val)} disabled={isSameAsPrimary} className="h-7 text-xs" />
                 </div>
               </div>
-              <div className="pt-2 space-y-1">
-                <h4 className="font-semibold text-xs text-foreground pb-1">Send</h4>
-                {renderCheckbox('Payment Confirmation', 'send_pref.payment_confirmation')}
-                {renderCheckbox('Coupon Book', 'send_pref.coupon_book')}
-                {renderCheckbox('Payment Statement', 'send_pref.payment_statement')}
-                {renderCheckbox('Late Notice', 'send_pref.late_notice')}
-                {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
-              </div>
+              {!isAG && (
+                <div className="pt-2 space-y-1">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Send</h4>
+                  {renderCheckbox('Payment Confirmation', 'send_pref.payment_confirmation')}
+                  {renderCheckbox('Coupon Book', 'send_pref.coupon_book')}
+                  {renderCheckbox('Payment Statement', 'send_pref.payment_statement')}
+                  {renderCheckbox('Late Notice', 'send_pref.late_notice')}
+                  {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
+                </div>
+              )}
+              {isAG && (
+                <div className="pt-2 space-y-1">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Delivery</h4>
+                  <div className="flex items-center gap-4">
+                    {renderCheckbox('Online', 'delivery_online')}
+                    {renderCheckbox('Mail', 'delivery_mail')}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Column 3: Phone (with second Home + Preferred) */}
@@ -872,12 +909,18 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 onValueChange={(value) => handleBorrowerPref(value, true)}
                 className="space-y-1.5"
               >
-                {[
+                {(isAG ? [
+                  { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home', hasPref: true },
+                  { label: 'Home', phoneKey: 'phone.home2', prefKey: 'preferred.home2', hasPref: true },
+                  { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work', hasPref: true },
+                  { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell', hasPref: true },
+                  { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax', hasPref: false },
+                ] : [
                   { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home', hasPref: true },
                   { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work', hasPref: true },
                   { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell', hasPref: true },
                   { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax', hasPref: false },
-                ].map((p, idx) => (
+                ]).map((p, idx) => (
                   <div key={`${p.phoneKey}-${idx}`} className="flex items-center gap-2">
                     <Label className="w-[40px] shrink-0 text-xs">{p.label}</Label>
                     <PhoneInput
@@ -894,26 +937,45 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 ))}
               </RadioGroup>
 
-              <div className="pt-2">
-                <h4 className="font-semibold text-xs text-foreground pb-1">Vesting</h4>
-                <Textarea value={form['vesting'] || ''} onChange={(e) => set('vesting', e.target.value)} className="text-xs min-h-[60px] resize-none" />
-              </div>
+              {!isAG && (
+                <div className="pt-2">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Vesting</h4>
+                  <Textarea value={form['vesting'] || ''} onChange={(e) => set('vesting', e.target.value)} className="text-xs min-h-[60px] resize-none" />
+                </div>
+              )}
+
+              {isAG && (
+                <div className="pt-2 space-y-1">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Send</h4>
+                  {renderCheckbox('Payment Notification', 'send_pref.payment_notification')}
+                  {renderCheckbox('Borrower Statement', 'send_pref.borrower_statement')}
+                  {renderCheckbox('Late Notice', 'send_pref.late_notice')}
+                  {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
+                </div>
+              )}
 
               <div className="pt-2">
                 <h4 className="font-semibold text-xs text-foreground pb-1">FORD</h4>
-                <div className="space-y-1">
-                  {([['ford.1', 'ford.2'], ['ford.3', 'ford.4'], ['ford.5', 'ford.6'], ['ford.7', 'ford.8']] as const).map(([dropdownKey, inputKey], idx) => (
-                    <div key={idx} className="grid grid-cols-2 gap-1">
-                      <Select value={form[dropdownKey] || ''} onValueChange={(v) => set(dropdownKey, v)}>
-                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent className="bg-background border border-border z-[200]">
-                          {BORROWER_FORD_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Input value={form[inputKey] || ''} onChange={(e) => set(inputKey, e.target.value)} className="h-7 text-xs" />
-                    </div>
-                  ))}
-                </div>
+                {isAG ? (
+                  <div className="grid grid-cols-2 gap-1">
+                    <Input value={form['ford.1'] || ''} onChange={(e) => set('ford.1', e.target.value)} className="h-7 text-xs" />
+                    <Input value={form['ford.2'] || ''} onChange={(e) => set('ford.2', e.target.value)} className="h-7 text-xs" />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {([['ford.1', 'ford.2'], ['ford.3', 'ford.4'], ['ford.5', 'ford.6'], ['ford.7', 'ford.8']] as const).map(([dropdownKey, inputKey], idx) => (
+                      <div key={idx} className="grid grid-cols-2 gap-1">
+                        <Select value={form[dropdownKey] || ''} onValueChange={(v) => set(dropdownKey, v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent className="bg-background border border-border z-[200]">
+                            {BORROWER_FORD_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Input value={form[inputKey] || ''} onChange={(e) => set(inputKey, e.target.value)} className="h-7 text-xs" />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
