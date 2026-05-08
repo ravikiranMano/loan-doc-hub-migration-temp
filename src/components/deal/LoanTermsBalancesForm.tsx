@@ -697,7 +697,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                       const num = parseFloat(v);
                       if (!isNaN(num)) {
                         const clamped = Math.min(Math.max(num, 0), 100);
-                        setValue(FIELD_KEYS.salesTaxPercent, clamped.toFixed(2));
+                        setValue(FIELD_KEYS.salesTaxPercent, roundPctForStorage(clamped));
                       }
                     }}
                     disabled={disabled}
