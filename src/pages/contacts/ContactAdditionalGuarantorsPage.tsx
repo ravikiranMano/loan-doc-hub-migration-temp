@@ -86,6 +86,7 @@ const AdditionalGuarantorDetail: React.FC<AdditionalGuarantorDetailProps> = ({ c
       initialSection="borrower"
       backLabel="Back to Additional Guarantors"
       titlePrefix="Additional Guarantor"
+      borrowerSectionVariant="additional_guarantor"
     />
   );
 };

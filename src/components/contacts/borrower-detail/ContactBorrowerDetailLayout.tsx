@@ -31,7 +31,7 @@ interface ContactBorrowerDetailLayoutProps {
   initialSection?: BorrowerSection;
   backLabel?: string;
   titlePrefix?: string;
-  borrowerSectionVariant?: 'primary' | 'authorized_party';
+  borrowerSectionVariant?: 'primary' | 'authorized_party' | 'additional_guarantor';
 }
 
 const NON_BORROWER_PREFIXES = ['ach.', 'coborrower.', 'borrower.guarantor.', 'borrower.authorized_party.', 'borrower.1098.'];
@@ -134,14 +134,27 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
   const renderContent = () => {
     switch (activeSection) {
       case 'borrower':
-        return borrowerSectionVariant === 'authorized_party' ? (
-          <BorrowerAuthorizedPartyForm
-            fields={emptyFields}
-            values={values}
-            onValueChange={handleValueChange}
-            disabled={isReadOnly}
-          />
-        ) : (
+        if (borrowerSectionVariant === 'authorized_party') {
+          return (
+            <BorrowerAuthorizedPartyForm
+              fields={emptyFields}
+              values={values}
+              onValueChange={handleValueChange}
+              disabled={isReadOnly}
+            />
+          );
+        }
+        if (borrowerSectionVariant === 'additional_guarantor') {
+          return (
+            <BorrowerAdditionalGuarantorForm
+              fields={emptyFields}
+              values={values}
+              onValueChange={handleValueChange}
+              disabled={isReadOnly}
+            />
+          );
+        }
+        return (
           <BorrowerPrimaryForm
             fields={emptyFields}
             values={values}
