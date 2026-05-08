@@ -6449,11 +6449,19 @@ async function generateSingleDocument(
             continue;
           }
           let xml = __xmlGet(filename, bytes);
-          const xmlLowerAEA = __xmlGetLower(filename, xml);
-          const hasAnchor = xmlLowerAEA.indexOf("set forth in an attachment") !== -1;
+          // Use the visible-text projection so anchor + Yes/No label matching
+          // works even when Word fragments the phrase across multiple
+          // <w:r><w:t>…</w:t></w:r> runs (the prior raw-XML scan silently
+          // failed in that — very common — case, leaving the YES checkbox
+          // unchecked on every property).
+          const projAEA = __getVisProj(filename, xml);
+          const txtAEA = projAEA.txt;
+          const txtLowerAEA = txtAEA.toLowerCase();
+          const hasAnchor = txtLowerAEA.indexOf("set forth in an attachment") !== -1;
 
-          // Build property regions (only used by Pass A)
-          const propAnchors: number[] = [...__getVisProj(filename, xml).propAnchorsRaw];
+          // Build property regions (only used by Pass A) from the projection's
+          // raw-xml anchors. propRanges values are already xml indices.
+          const propAnchors: number[] = [...projAEA.propAnchorsRaw];
           const propRanges: Array<{ k: number; start: number; end: number }> = [];
           if (propAnchors.length === 0) {
             propRanges.push({ k: 1, start: 0, end: xml.length });
@@ -6509,30 +6517,40 @@ async function generateSingleDocument(
             return null;
           };
 
-          // Pass A — YES/NO safety pass anchored on attachment phrase
+          // Pass A — YES/NO safety pass anchored on attachment phrase.
+          // All scanning is done against the visible-text projection (txtAEA)
+          // and converted back to xml indices via projAEA.map[ti] before we
+          // hand off to findControlNearAEA, which still operates on raw xml.
           if (hasAnchor) {
-            const anchorRe = /set\s*forth\s*in\s*an\s*attachment/gi;
+            const anchorReTxt = /set\s*forth\s*in\s*an\s*attachment/gi;
+            const yesReTxt = /\b(?:Y\s*E\s*S|Yes)\b/g;
+            const noReTxt  = /\b(?:N\s*O|No)\b/g;
             let am: RegExpExecArray | null;
             let scanned = 0;
-            while ((am = anchorRe.exec(xml)) !== null) {
+            const forcedProps: number[] = [];
+            while ((am = anchorReTxt.exec(txtAEA)) !== null) {
               scanned++;
-              const aStart = am.index;
-              const region = propRanges.find((p) => aStart >= p.start && aStart < p.end);
+              const aStartXml = projAEA.map[am.index];
+              const region = propRanges.find((p) => aStartXml >= p.start && aStartXml < p.end);
               const propK = region ? region.k : 1;
-              const winStart = Math.max(region ? region.start : 0, aStart - 600);
-              const winEnd = Math.min(region ? region.end : xml.length, aStart + 1500);
+              const winStartXml = Math.max(region ? region.start : 0, aStartXml - 600);
+              const winEndXml   = Math.min(region ? region.end : xml.length, aStartXml + 1500);
 
-              const yRe = new RegExp(yesLabelReSrc.source, "gi");
-              const nRe = new RegExp(noLabelReSrc.source, "gi");
-              yRe.lastIndex = aStart;
-              nRe.lastIndex = aStart;
-              const yL = yRe.exec(xml);
-              const nL = nRe.exec(xml);
-              if (!yL || !nL) continue;
-              if (yL.index >= winEnd || nL.index >= winEnd) continue;
+              // Find next Yes / No labels in visible text after the anchor.
+              yesReTxt.lastIndex = am.index + am[0].length;
+              noReTxt.lastIndex  = am.index + am[0].length;
+              const yLm = yesReTxt.exec(txtAEA);
+              const nLm = noReTxt.exec(txtAEA);
+              if (!yLm || !nLm) continue;
 
-              const yC = findControlNearAEA(yL.index, yL.index + yL[0].length, winStart, winEnd);
-              const nC = findControlNearAEA(nL.index, nL.index + nL[0].length, winStart, winEnd);
+              const yLstartXml = projAEA.map[yLm.index];
+              const yLendXml   = projAEA.map[yLm.index + yLm[0].length];
+              const nLstartXml = projAEA.map[nLm.index];
+              const nLendXml   = projAEA.map[nLm.index + nLm[0].length];
+              if (yLstartXml >= winEndXml || nLstartXml >= winEndXml) continue;
+
+              const yC = findControlNearAEA(yLstartXml, yLendXml, winStartXml, winEndXml);
+              const nC = findControlNearAEA(nLstartXml, nLendXml, winStartXml, winEndXml);
               if (!yC || !nC || yC.idx === nC.idx) continue;
 
               const isYes = yesPropIdx.has(propK);
@@ -6552,9 +6570,13 @@ async function generateSingleDocument(
 
               rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
               rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
+              forcedProps.push(propK);
               console.log(`[generate-document] RE851D additional-encumbrance PROP#${propK}: forced ${isYes ? "YES" : "NO"}`);
             }
-            console.log(`[generate-document] RE851D additional-encumbrance: scanned ${scanned} anchor(s) in ${filename}`);
+            console.log(
+              `[generate-document] RE851D AEA Pass A: anchors=${scanned} rewrites=${rewrites.length} ` +
+              `yesProps=[${[...yesPropIdx].sort((a,b)=>a-b).join(",")}] forcedProps=[${forcedProps.join(",")}] in ${filename}`
+            );
           }
 
           // Pass B — append addendum at end of word/document.xml
