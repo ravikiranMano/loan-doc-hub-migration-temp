@@ -196,15 +196,15 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
   return (
     <div className="p-6">
-      {/* 4-column layout: Name | Primary Address | Phone + Preferred + Send | Mailing Address + Vesting + FORD */}
+      {/* 4-column layout per screenshot: Name | Primary+Mailing+Delivery | Phone+Send | Vesting+FORD */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
+
         {/* Column 1: Name */}
         <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-foreground border-b pb-2">Lender Details</h3>
+          <h3 className="text-sm font-semibold text-foreground border-b pb-2">Name</h3>
           <div className="space-y-3">
             {wrapField('lenderId', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Lender ID</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender ID</Label>
               <Input
                 value={getValue('lenderId')}
                 onChange={(e) => handleChange('lenderId', e.target.value)}
@@ -213,8 +213,25 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               />
             </div>)}
 
+            {wrapField('status', <div className="flex items-center gap-3">
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Status</Label>
+              <Select
+                value={getValue('status') || undefined}
+                onValueChange={(value) => handleChange('status', value)}
+                disabled={disabled}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="On Hold">On Hold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>)}
+
             {wrapField('type', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Lender Type</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender Type</Label>
               <Select
                 value={getValue('type')}
                 onValueChange={(value) => handleChange('type', value)}
@@ -233,28 +250,8 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               </Select>
             </div>)}
 
-            {wrapField('status', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Status</Label>
-              <Select
-                value={getValue('status') || undefined}
-                onValueChange={(value) => handleChange('status', value)}
-                disabled={disabled}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-50">
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="On Hold">On Hold</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>)}
-
-            {wrapField('fullName', <div className="flex items-start gap-3">
-              <div className="min-w-[140px] shrink-0 pt-1">
-                <Label className="text-sm text-muted-foreground text-left">Full Name:</Label>
-                <p className="text-[10px] text-muted-foreground/70 leading-tight">If Entity, Use Entity</p>
-              </div>
+            {wrapField('fullName', <div className="flex items-center gap-3">
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">If Entity</Label>
               <Input
                 value={getValue('fullName')}
                 onChange={(e) => handleChange('fullName', e.target.value)}
@@ -262,12 +259,9 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 className="h-8"
               />
             </div>)}
-            
-            {wrapField('firstName', <div className="flex items-start gap-3">
-              <div className="min-w-[140px] shrink-0 pt-1">
-                <Label className="text-sm text-muted-foreground text-left">First:</Label>
-                <p className="text-[10px] text-muted-foreground/70 leading-tight">If Entity, Use Signer</p>
-              </div>
+
+            {wrapField('firstName', <div className="flex items-center gap-3">
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">First</Label>
               <Input
                 value={getValue('firstName')}
                 onChange={(e) => handleChange('firstName', e.target.value)}
@@ -275,9 +269,9 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 className="h-8"
               />
             </div>)}
-            
+
             {wrapField('middleName', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Middle</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Middle</Label>
               <Input
                 value={getValue('middleName')}
                 onChange={(e) => handleChange('middleName', e.target.value)}
@@ -285,9 +279,9 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 className="h-8"
               />
             </div>)}
-            
+
             {wrapField('lastName', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Last</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Last</Label>
               <Input
                 value={getValue('lastName')}
                 onChange={(e) => handleChange('lastName', e.target.value)}
@@ -297,7 +291,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             </div>)}
 
             {wrapField('capacity', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Capacity</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Capacity</Label>
               <Select
                 value={getValue('capacity') || undefined}
                 onValueChange={(value) => handleChange('capacity', value)}
@@ -325,9 +319,8 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               </Select>
             </div>)}
 
-            
             {wrapField('email', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Email</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Email</Label>
               <EmailInput
                 value={getValue('email')}
                 onValueChange={(v) => handleChange('email', v)}
@@ -336,9 +329,8 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               />
             </div>)}
 
-            {/* DOB */}
             {wrapField('dob', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">DOB</Label>
+              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">DOB</Label>
               <Popover open={dobOpen} onOpenChange={setDobOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -354,22 +346,89 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                   <EnhancedCalendar
-                     mode="single"
-                     selected={safeParseDateStr(getValue('dob'))}
-                     onSelect={(date) => { handleChange('dob', date ? format(date, 'yyyy-MM-dd') : ''); setDobOpen(false); }}
-                     onClear={() => { handleChange('dob', ''); setDobOpen(false); }}
-                     onToday={() => { handleChange('dob', format(new Date(), 'yyyy-MM-dd')); setDobOpen(false); }}
-                     initialFocus
-                   />
-                 </PopoverContent>
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseDateStr(getValue('dob'))}
+                    onSelect={(date) => { handleChange('dob', date ? format(date, 'yyyy-MM-dd') : ''); setDobOpen(false); }}
+                    onClear={() => { handleChange('dob', ''); setDobOpen(false); }}
+                    onToday={() => { handleChange('dob', format(new Date(), 'yyyy-MM-dd')); setDobOpen(false); }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>)}
+          </div>
+
+          {/* Agreement on File + Investor Questionnaire on File */}
+          <div className="space-y-3 mt-4 pt-3 border-t">
+            {wrapField('servicingAgreementOnFile', <div className="flex items-center gap-2">
+              <Checkbox
+                checked={getBoolValue('servicingAgreementOnFile')}
+                onCheckedChange={(checked) => handleChange('servicingAgreementOnFile', !!checked)}
+                disabled={disabled}
+              />
+              <Label className="text-sm text-muted-foreground flex-1">Agreement on File</Label>
+              <Popover open={agreementDateOpen} onOpenChange={setAgreementDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn("h-7 text-xs w-[120px]", !getValue('servicingAgreementOnFileDate') && "text-muted-foreground")}
+                    disabled={disabled || !getBoolValue('servicingAgreementOnFile')}
+                  >
+                    {safeFormatDate(getValue('servicingAgreementOnFileDate'), 'MM/dd/yyyy') || 'Date'}
+                    <CalendarIcon className="ml-auto h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseDateStr(getValue('servicingAgreementOnFileDate'))}
+                    onSelect={(date) => { handleChange('servicingAgreementOnFileDate', date ? format(date, 'yyyy-MM-dd') : ''); setAgreementDateOpen(false); }}
+                    onClear={() => { handleChange('servicingAgreementOnFileDate', ''); setAgreementDateOpen(false); }}
+                    onToday={() => { handleChange('servicingAgreementOnFileDate', format(new Date(), 'yyyy-MM-dd')); setAgreementDateOpen(false); }}
+                    initialFocus
+                  />
+                </PopoverContent>
               </Popover>
             </div>)}
 
+            {wrapField('investorQuestionnaireDue', <div className="flex items-center gap-2">
+              <Checkbox
+                checked={getBoolValue('investorQuestionnaireDue')}
+                onCheckedChange={(checked) => {
+                  handleChange('investorQuestionnaireDue', !!checked);
+                  if (!checked) handleChange('investorQuestionnaireDueDate', '');
+                }}
+                disabled={disabled}
+              />
+              <Label className="text-sm text-muted-foreground flex-1">Investor Questionnaire on File</Label>
+              <Popover open={investorDateOpen} onOpenChange={setInvestorDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn("h-7 text-xs w-[120px]", !getValue('investorQuestionnaireDueDate') && "text-muted-foreground")}
+                    disabled={disabled || !getBoolValue('investorQuestionnaireDue')}
+                  >
+                    {safeFormatDate(getValue('investorQuestionnaireDueDate'), 'MM/dd/yyyy') || 'Date'}
+                    <CalendarIcon className="ml-auto h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseDateStr(getValue('investorQuestionnaireDueDate'))}
+                    onSelect={(date) => { handleChange('investorQuestionnaireDueDate', date ? format(date, 'yyyy-MM-dd') : ''); setInvestorDateOpen(false); }}
+                    onClear={() => { handleChange('investorQuestionnaireDueDate', ''); setInvestorDateOpen(false); }}
+                    onToday={() => { handleChange('investorQuestionnaireDueDate', format(new Date(), 'yyyy-MM-dd')); setInvestorDateOpen(false); }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>)}
           </div>
         </div>
 
-        {/* Column 2: Primary Address + Mailing Address + Extra fields */}
+        {/* Column 2: Primary Address + Mailing Address + Delivery */}
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-foreground border-b pb-2">Primary Address</h3>
           <div className="space-y-3">
@@ -398,28 +457,30 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
           </div>
 
           {/* Mailing Address */}
-          <h3 className="text-sm font-semibold text-foreground border-b pb-2 mt-4">Mailing Address</h3>
-          {wrapField('mailingSameAsPrimary', <div className="flex items-center gap-2 mb-2">
-            <Checkbox
-              checked={getBoolValue('mailingSameAsPrimary')}
-              onCheckedChange={(checked) => {
-                handleChange('mailingSameAsPrimary', !!checked);
-                if (checked) {
-                  handleChange('mailingStreet', getValue('primaryStreet'));
-                  handleChange('mailingCity', getValue('primaryCity'));
-                  handleChange('mailingState', getValue('primaryState'));
-                  handleChange('mailingZip', getValue('primaryZip'));
-                } else {
-                  handleChange('mailingStreet', '');
-                  handleChange('mailingCity', '');
-                  handleChange('mailingState', '');
-                  handleChange('mailingZip', '');
-                }
-              }}
-              disabled={disabled}
-            />
-            <Label className="text-xs text-muted-foreground">Same as Primary Address</Label>
-          </div>)}
+          <div className="flex items-center justify-between border-b pb-2 mt-4">
+            <h3 className="text-sm font-semibold text-foreground">Mailing Address</h3>
+            {wrapField('mailingSameAsPrimary', <div className="flex items-center gap-2">
+              <Label className="text-xs text-muted-foreground">Same as Primary</Label>
+              <Checkbox
+                checked={getBoolValue('mailingSameAsPrimary')}
+                onCheckedChange={(checked) => {
+                  handleChange('mailingSameAsPrimary', !!checked);
+                  if (checked) {
+                    handleChange('mailingStreet', getValue('primaryStreet'));
+                    handleChange('mailingCity', getValue('primaryCity'));
+                    handleChange('mailingState', getValue('primaryState'));
+                    handleChange('mailingZip', getValue('primaryZip'));
+                  } else {
+                    handleChange('mailingStreet', '');
+                    handleChange('mailingCity', '');
+                    handleChange('mailingState', '');
+                    handleChange('mailingZip', '');
+                  }
+                }}
+                disabled={disabled}
+              />
+            </div>)}
+          </div>
           <div className="space-y-3">
             {wrapField('mailingStreet', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[60px] text-left shrink-0">Street</Label>
@@ -445,63 +506,63 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             </div>)}
           </div>
 
-          {/* Extra fields */}
-          <div className="space-y-3 mt-4 border-t pt-3">
-            {wrapField('servicingAgreementOnFile', <div className="flex items-center gap-2">
-              <Checkbox
-                checked={getBoolValue('servicingAgreementOnFile')}
-                onCheckedChange={(checked) => {
-                  handleChange('servicingAgreementOnFile', !!checked);
-                }}
-                disabled={disabled}
-              />
-              <Label className="text-sm text-muted-foreground mr-2">Servicing Agreement on File</Label>
-            </div>)}
-            {wrapField('freezeOutgoingDisbursements', <div className="flex items-center gap-2">
-              <Checkbox
-                checked={getBoolValue('freezeOutgoingDisbursements')}
-                onCheckedChange={(checked) => {
-                  handleChange('freezeOutgoingDisbursements', !!checked);
-                }}
-                disabled={disabled}
-              />
-              <Label className="text-sm text-muted-foreground mr-2">Freeze Outgoing Disbursements</Label>
-            </div>)}
-            {wrapField('investorQuestionnaireDue', <div className="flex items-center gap-2">
-              <Checkbox
-                checked={getBoolValue('investorQuestionnaireDue')}
-                onCheckedChange={(checked) => {
-                  handleChange('investorQuestionnaireDue', !!checked);
-                  if (!checked) {
-                    handleChange('investorQuestionnaireDueDate', '');
-                  }
-                }}
-                disabled={disabled}
-              />
-              <Label className="text-sm text-muted-foreground mr-2">Investor Questionnaire Due Date</Label>
-              <Popover open={investorDateOpen} onOpenChange={setInvestorDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("h-7 text-xs", !getValue('investorQuestionnaireDueDate') && "text-muted-foreground")} disabled={disabled || !getBoolValue('investorQuestionnaireDue')}>
-                    {safeFormatDate(getValue('investorQuestionnaireDueDate'), 'MM/dd/yyyy') || 'MM/DD/YYYY'}
-                    <CalendarIcon className="ml-auto h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseDateStr(getValue('investorQuestionnaireDueDate'))}
-                    onSelect={(date) => { handleChange('investorQuestionnaireDueDate', date ? format(date, 'yyyy-MM-dd') : ''); setInvestorDateOpen(false); }}
-                    onClear={() => { handleChange('investorQuestionnaireDueDate', ''); setInvestorDateOpen(false); }}
-                    onToday={() => { handleChange('investorQuestionnaireDueDate', format(new Date(), 'yyyy-MM-dd')); setInvestorDateOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+          {/* Delivery Options */}
+          <div className="mt-4">
+            <h4 className="text-sm font-semibold text-foreground border-b pb-1 mb-2">Delivery</h4>
+            {wrapField('deliveryOnline', <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={getBoolValue('deliveryOnline')}
+                  onCheckedChange={(checked) => {
+                    const v = !!checked;
+                    handleChange('deliveryOnline', v);
+                    const parts: string[] = [];
+                    if (v) parts.push('Online');
+                    if (getBoolValue('deliveryMail')) parts.push('Mail');
+                    if (getBoolValue('deliverySms')) parts.push('SMS');
+                    handleChange('deliveryOptions', parts.join(','));
+                  }}
+                  disabled={disabled}
+                />
+                <Label className="text-sm text-muted-foreground">Online</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={getBoolValue('deliveryMail')}
+                  onCheckedChange={(checked) => {
+                    const v = !!checked;
+                    handleChange('deliveryMail', v);
+                    const parts: string[] = [];
+                    if (getBoolValue('deliveryOnline')) parts.push('Online');
+                    if (v) parts.push('Mail');
+                    if (getBoolValue('deliverySms')) parts.push('SMS');
+                    handleChange('deliveryOptions', parts.join(','));
+                  }}
+                  disabled={disabled}
+                />
+                <Label className="text-sm text-muted-foreground">Mail</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={getBoolValue('deliverySms')}
+                  onCheckedChange={(checked) => {
+                    const v = !!checked;
+                    handleChange('deliverySms', v);
+                    const parts: string[] = [];
+                    if (getBoolValue('deliveryOnline')) parts.push('Online');
+                    if (getBoolValue('deliveryMail')) parts.push('Mail');
+                    if (v) parts.push('SMS');
+                    handleChange('deliveryOptions', parts.join(','));
+                  }}
+                  disabled={disabled}
+                />
+                <Label className="text-sm text-muted-foreground">SMS</Label>
+              </div>
             </div>)}
           </div>
         </div>
 
-        {/* Column 3: Phone + Preferred */}
+        {/* Column 3: Phone + Preferred + Send */}
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b pb-2">
             <h3 className="text-sm font-semibold text-foreground">Phone</h3>
@@ -537,62 +598,8 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             ))}
           </RadioGroup>
 
-          {/* Delivery Options */}
+          {/* Send section */}
           <div className="mt-4">
-            <h4 className="text-sm font-semibold text-foreground border-b pb-1 mb-2">Delivery</h4>
-            {wrapField('deliveryOnline', <div className="flex items-center gap-4 mb-3">
-              <div className="flex items-center gap-1">
-                <Checkbox
-                  checked={getBoolValue('deliveryOnline')}
-                  onCheckedChange={(checked) => {
-                    const v = !!checked;
-                    handleChange('deliveryOnline', v);
-                    const parts: string[] = [];
-                    if (v) parts.push('Online');
-                    if (getBoolValue('deliveryMail')) parts.push('Mail');
-                    if (getBoolValue('deliverySms')) parts.push('SMS');
-                    handleChange('deliveryOptions', parts.join(','));
-                  }}
-                  disabled={disabled}
-                />
-                <Label className="text-sm text-muted-foreground">Online</Label>
-              </div>
-              <div className="flex items-center gap-1">
-                <Checkbox
-                  checked={getBoolValue('deliveryMail')}
-                  onCheckedChange={(checked) => {
-                    const v = !!checked;
-                    handleChange('deliveryMail', v);
-                    const parts: string[] = [];
-                    if (getBoolValue('deliveryOnline')) parts.push('Online');
-                    if (v) parts.push('Mail');
-                    if (getBoolValue('deliverySms')) parts.push('SMS');
-                    handleChange('deliveryOptions', parts.join(','));
-                  }}
-                  disabled={disabled}
-                />
-                <Label className="text-sm text-muted-foreground">Mail</Label>
-              </div>
-              <div className="flex items-center gap-1">
-                <Checkbox
-                  checked={getBoolValue('deliverySms')}
-                  onCheckedChange={(checked) => {
-                    const v = !!checked;
-                    handleChange('deliverySms', v);
-                    const parts: string[] = [];
-                    if (getBoolValue('deliveryOnline')) parts.push('Online');
-                    if (getBoolValue('deliveryMail')) parts.push('Mail');
-                    if (v) parts.push('SMS');
-                    handleChange('deliveryOptions', parts.join(','));
-                  }}
-                  disabled={disabled}
-                />
-                <Label className="text-sm text-muted-foreground">SMS</Label>
-              </div>
-            </div>)}
-
-
-            {/* Send section below */}
             <h4 className="text-sm font-semibold text-foreground border-b pb-1 mb-2">Send</h4>
             <div className="space-y-2">
               {wrapField('sendPaymentNotification', <div className="flex items-center gap-2">
@@ -633,7 +640,6 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
         {/* Column 4: Vesting + FORD */}
         <div className="space-y-4">
-          {/* Vesting */}
           <h4 className="text-sm font-semibold text-foreground border-b pb-2">Vesting</h4>
           {wrapField('vesting', <Textarea
             value={getValue('vesting')}
@@ -643,7 +649,6 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             className="resize-none w-full"
           />)}
 
-          {/* FORD */}
           <h4 className="text-sm font-semibold text-foreground mt-4 mb-2">FORD</h4>
           <div className="space-y-2">
             {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
