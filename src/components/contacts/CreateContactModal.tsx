@@ -778,26 +778,50 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               </div>
               {borrowerErrors['email'] && <p className="text-[10px] text-destructive ml-[108px]">{borrowerErrors['email']}</p>}
 
-              {/* Date Authorized */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Date Authorized</Label>
-                <Input
-                  type="date"
-                  value={form['date_authorized'] || ''}
-                  onChange={(e) => set('date_authorized', e.target.value)}
-                  className="h-7 text-xs flex-1"
-                />
-              </div>
-
-              {/* Delivery Options - placed below Email per Borrower form */}
-              <div className="pt-2">
-                <h4 className="font-semibold text-xs text-foreground pb-1">Delivery Options</h4>
-                <div className="flex items-center gap-4">
-                  {renderCheckbox('Print', 'delivery_print')}
-                  {renderCheckbox('Email', 'delivery_email')}
-                  {renderCheckbox('SMS', 'delivery_sms')}
+              {/* Date Authorized — hidden for Additional Guarantor */}
+              {!isAG && (
+                <div className="flex items-center gap-2">
+                  <Label className="w-[100px] shrink-0 text-xs">Date Authorized</Label>
+                  <Input
+                    type="date"
+                    value={form['date_authorized'] || ''}
+                    onChange={(e) => set('date_authorized', e.target.value)}
+                    className="h-7 text-xs flex-1"
+                  />
                 </div>
-              </div>
+              )}
+
+              {/* Tax ID Type / TIN / Issue 1098 — Additional Guarantor only */}
+              {isAG && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[100px] shrink-0 text-xs">Tax ID Type</Label>
+                    <Select value={form['tax_id_type'] || ''} onValueChange={(v) => set('tax_id_type', v)}>
+                      <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent className="bg-background border border-border z-[200]">
+                        {TAX_ID_TYPE_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[100px] shrink-0 text-xs">TIN</Label>
+                    <Input value={form['tin'] || ''} onChange={(e) => set('tin', e.target.value)} className="h-7 text-xs flex-1" />
+                  </div>
+                  {renderCheckbox('Issue 1098', 'issue_1098')}
+                </>
+              )}
+
+              {/* Delivery Options - placed below Email per Borrower form (hidden for AG) */}
+              {!isAG && (
+                <div className="pt-2">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Delivery Options</h4>
+                  <div className="flex items-center gap-4">
+                    {renderCheckbox('Print', 'delivery_print')}
+                    {renderCheckbox('Email', 'delivery_email')}
+                    {renderCheckbox('SMS', 'delivery_sms')}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Column 2: Primary Address + Mailing */}
