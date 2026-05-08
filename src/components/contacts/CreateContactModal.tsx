@@ -28,6 +28,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } from '@/lib/contactFormValidation';
 import { toast } from 'sonner';
 import { US_STATES } from '@/lib/usStates';
+import { LenderInfoForm } from '@/components/deal/LenderInfoForm';
 
 interface CreateContactModalProps {
   open: boolean;
@@ -82,7 +83,7 @@ const getInitialForm = (contactType: string): Record<string, string> => {
       'preferred.home': 'false', 'preferred.work': 'false', 'preferred.cell': 'false', 'preferred.fax': 'false',
       ach: 'false', servicing_agreement_on_file: 'false', freeze_outgoing_disbursements: 'false',
       investor_questionnaire_due: 'false', investor_questionnaire_due_date: '',
-      'delivery.print': 'false', 'delivery.email': 'false', 'delivery.sms': 'false',
+      'delivery.online': 'false', 'delivery.mail': 'false', 'delivery.sms': 'false',
       'send_pref.payment_notification': 'false', 'send_pref.late_notice': 'false',
       'send_pref.borrower_statement': 'false', 'send_pref.maturity_notice': 'false',
       vesting: '',
@@ -202,6 +203,13 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
     }
   }, [isSameAsPrimary, primaryStreet, primaryCity, primaryState, primaryZip]);
 
+  // Adapter: LenderInfoForm reads/writes keys with `lender.` prefix; modal stores unprefixed.
+  const lenderPrefixedValues = React.useMemo(() => {
+    const out: Record<string, string> = {};
+    Object.entries(form).forEach(([k, v]) => { out[`lender.${k}`] = v; });
+    return out;
+  }, [form]);
+
   const handleSubmit = () => {
     // Check at least one meaningful field is filled
     const skipKeys = ['mailing_same_as_primary', 'preferred.home', 'preferred.home2', 'preferred.work', 'preferred.cell', 'preferred.fax',
@@ -244,7 +252,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
       if (!(form['primary_address.city'] || '').trim()) errs['primary_address.city'] = 'City is required';
       if (!form['primary_address.state']) errs['primary_address.state'] = 'State is required';
       if (!(form['primary_address.zip'] || '').trim()) errs['primary_address.zip'] = 'ZIP is required';
-      if (form['delivery.print'] !== 'true' && form['delivery.email'] !== 'true' && form['delivery.sms'] !== 'true') {
+      if (form['delivery.online'] !== 'true' && form['delivery.mail'] !== 'true' && form['delivery.sms'] !== 'true') {
         errs['delivery'] = 'Select at least one delivery option';
       }
       if (Object.keys(errs).length > 0) {
@@ -447,211 +455,15 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
         {contactType === 'lender' && (
           <>
           <div className="flex-1 overflow-y-auto min-h-0 sleek-scrollbar">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-0">
-            {/* Column 1: Name / Details */}
-            <div className="space-y-1.5">
-              <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Name</h3>
-              {/* Lender Type - required */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Lender Type</Label>
-                <Select value={form['type'] || ''} onValueChange={(v) => { set('type', v); clrLErr('type'); }}>
-                  <SelectTrigger className={cn("h-7 text-xs flex-1", lenderErrors['type'] && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-background border border-border z-[200]">
-                    {LENDER_TYPE_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {lenderErrors['type'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['type']}</p>}
-
-              {/* Full Name - alpha+spaces, max 100, required */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Full Name</Label>
-                <Input value={form['full_name'] || ''} onChange={(e) => { set('full_name', e.target.value); clrLErr('full_name'); }} onKeyDown={alphaSpaceKD} onPaste={(e) => { e.preventDefault(); set('full_name', e.clipboardData.getData('text').replace(/[^A-Za-z ]/g, '')); }} onBlur={() => { const v = (form['full_name'] || '').trim(); set('full_name', v); if (!v) setLErr('full_name', 'Full Name is required'); else clrLErr('full_name'); }} maxLength={100} className={cn("h-7 text-xs flex-1", lenderErrors['full_name'] && "border-destructive")} />
-              </div>
-              {lenderErrors['full_name'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['full_name']}</p>}
-
-              {/* First Name - alpha only, required */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">First</Label>
-                <Input value={form['first_name'] || ''} onChange={(e) => { set('first_name', e.target.value); clrLErr('first_name'); }} onKeyDown={alphaOnlyKD} onPaste={(e) => { e.preventDefault(); set('first_name', e.clipboardData.getData('text').replace(/[^A-Za-z]/g, '')); }} onBlur={() => { const v = (form['first_name'] || '').trim(); set('first_name', v); if (!v) setLErr('first_name', 'Enter valid first name'); else clrLErr('first_name'); }} className={cn("h-7 text-xs flex-1", lenderErrors['first_name'] && "border-destructive")} />
-              </div>
-              {lenderErrors['first_name'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['first_name']}</p>}
-
-              {/* Middle Name - alpha only, optional */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Middle</Label>
-                <Input value={form['middle_name'] || ''} onChange={(e) => set('middle_name', e.target.value)} onKeyDown={alphaOnlyKD} onPaste={(e) => { e.preventDefault(); set('middle_name', e.clipboardData.getData('text').replace(/[^A-Za-z]/g, '')); }} onBlur={() => set('middle_name', (form['middle_name'] || '').trim())} className="h-7 text-xs flex-1" />
-              </div>
-
-              {/* Last Name - alpha only, required */}
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Last</Label>
-                <Input value={form['last_name'] || ''} onChange={(e) => { set('last_name', e.target.value); clrLErr('last_name'); }} onKeyDown={alphaOnlyKD} onPaste={(e) => { e.preventDefault(); set('last_name', e.clipboardData.getData('text').replace(/[^A-Za-z]/g, '')); }} onBlur={() => { const v = (form['last_name'] || '').trim(); set('last_name', v); if (!v) setLErr('last_name', 'Enter valid last name'); else clrLErr('last_name'); }} className={cn("h-7 text-xs flex-1", lenderErrors['last_name'] && "border-destructive")} />
-              </div>
-              {lenderErrors['last_name'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['last_name']}</p>}
-
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Email</Label>
-                <EmailInput value={form['email'] || ''} onValueChange={(v) => { set('email', v); clrLErr('email'); }} className="h-7 text-xs" />
-              </div>
-              {lenderErrors['email'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['email']}</p>}
-
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">DOB</Label>
-                <Popover open={dobOpen} onOpenChange={setDobOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("h-7 text-xs flex-1 justify-start font-normal", !form['dob'] && "text-muted-foreground", lenderErrors['dob'] && "border-destructive")}>
-                      <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                      {form['dob'] || 'Date'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[200]" align="start">
-                    <EnhancedCalendar
-                      mode="single"
-                      selected={form['dob'] ? new Date(form['dob']) : undefined}
-                      onSelect={(date) => {
-                        if (date && date >= new Date()) {
-                          setLErr('dob', 'Enter valid date of birth');
-                          set('dob', format(date, 'MM/dd/yyyy'));
-                        } else {
-                          set('dob', date ? format(date, 'MM/dd/yyyy') : '');
-                          clrLErr('dob');
-                        }
-                        setDobOpen(false);
-                      }}
-                      onClear={() => { set('dob', ''); clrLErr('dob'); setDobOpen(false); }}
-                      onToday={() => { set('dob', format(new Date(), 'MM/dd/yyyy')); setLErr('dob', 'Enter valid date of birth'); setDobOpen(false); }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              {lenderErrors['dob'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['dob']}</p>}
-
-            </div>
-
-            {/* Column 2: Primary Address + Mailing + Options */}
-            <div className="space-y-1.5">
-              <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Primary Address</h3>
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">Street</Label>
-                <Input value={form['primary_address.street'] || ''} onChange={(e) => { set('primary_address.street', e.target.value); clrLErr('primary_address.street'); }} onBlur={() => set('primary_address.street', (form['primary_address.street'] || '').trim())} maxLength={150} className={cn("h-7 text-xs flex-1", lenderErrors['primary_address.street'] && "border-destructive")} />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">City</Label>
-                <Input value={form['primary_address.city'] || ''} onChange={(e) => { set('primary_address.city', e.target.value); clrLErr('primary_address.city'); }} onKeyDown={alphaSpaceKD} onPaste={(e) => { e.preventDefault(); set('primary_address.city', e.clipboardData.getData('text').replace(/[^A-Za-z ]/g, '')); }} onBlur={() => set('primary_address.city', (form['primary_address.city'] || '').trim())} className={cn("h-7 text-xs flex-1", lenderErrors['primary_address.city'] && "border-destructive")} />
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">State</Label>
-                <Select value={form['primary_address.state'] || ''} onValueChange={(v) => set('primary_address.state', v)}>
-                  <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-background border border-border z-[200]">
-                    {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="w-[100px] shrink-0 text-xs">ZIP</Label>
-                <ZipInput value={form['primary_address.zip'] || ''} onValueChange={(val) => set('primary_address.zip', val)} className="h-7 text-xs" />
-              </div>
-              <div className="pt-2 space-y-1.5">
-                <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-1">Mailing Address</h3>
-                {renderCheckbox('Same as Primary', 'mailing_same_as_primary')}
-                <div className="flex items-center gap-2">
-                  <Label className="w-[100px] shrink-0 text-xs">Street</Label>
-                  <Input value={form['mailing.street'] || ''} onChange={(e) => set('mailing.street', e.target.value)} onBlur={() => set('mailing.street', (form['mailing.street'] || '').trim())} disabled={isSameAsPrimary} maxLength={150} className="h-7 text-xs flex-1" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="w-[100px] shrink-0 text-xs">City</Label>
-                  <Input value={form['mailing.city'] || ''} onChange={(e) => set('mailing.city', e.target.value)} onKeyDown={alphaSpaceKD} onPaste={(e) => { e.preventDefault(); set('mailing.city', e.clipboardData.getData('text').replace(/[^A-Za-z ]/g, '')); }} onBlur={() => set('mailing.city', (form['mailing.city'] || '').trim())} disabled={isSameAsPrimary} className="h-7 text-xs flex-1" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="w-[100px] shrink-0 text-xs">State</Label>
-                  <Select value={form['mailing.state'] || ''} onValueChange={(v) => set('mailing.state', v)} disabled={isSameAsPrimary}>
-                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent className="bg-background border border-border z-[200]">
-                      {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="w-[100px] shrink-0 text-xs">ZIP</Label>
-                  <ZipInput value={form['mailing.zip'] || ''} onValueChange={(val) => set('mailing.zip', val)} disabled={isSameAsPrimary} className="h-7 text-xs" />
-                </div>
-              </div>
-              <div className="pt-2 space-y-1">
-                <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-1">Options</h3>
-                {renderCheckbox('ACH', 'ach')}
-                {renderCheckbox('Agreement on File', 'servicing_agreement_on_file')}
-                {renderCheckbox('Frozen', 'freeze_outgoing_disbursements')}
-                {renderCheckbox('Investor Questionnaire Due', 'investor_questionnaire_due')}
-              </div>
-            </div>
-
-            {/* Column 3: Phone + Delivery + Send */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between border-b border-border pb-1 mb-2">
-                <h3 className="font-semibold text-xs text-foreground">Phone</h3>
-                <span className="font-semibold text-xs text-foreground">Pref</span>
-              </div>
-              <RadioGroup
-                value={['preferred.home', 'preferred.work', 'preferred.cell', 'preferred.fax'].find((key) => form[key] === 'true') || ''}
-                onValueChange={(value) => handleLenderPref(value, true)}
-                className="space-y-1.5"
-              >
-                {[
-                  { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home' },
-                  { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work' },
-                  { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell' },
-                  { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax' },
-                ].map((p) => (
-                  <div key={p.label} className="flex items-center gap-2">
-                    <Label className="w-[40px] shrink-0 text-xs">{p.label}</Label>
-                    <PhoneInput
-                      value={form[p.phoneKey] || ''}
-                      onValueChange={(v) => set(p.phoneKey, v)}
-                      className="h-7 text-xs flex-1"
-                    />
-                    <RadioGroupItem value={p.prefKey} id={`lender-${p.prefKey}`} />
-                  </div>
-                ))}
-              </RadioGroup>
-              <div className="pt-2 space-y-1">
-                <h3 className={cn("font-semibold text-xs border-b pb-1 mb-1", lenderErrors['delivery'] ? "text-destructive border-destructive" : "text-foreground border-border")}>Delivery Options</h3>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2" onClick={() => clrLErr('delivery')}>
-                    {renderCheckbox('Print', 'delivery.print')}
-                  </div>
-                  <div className="flex items-center gap-2" onClick={() => clrLErr('delivery')}>
-                    {renderCheckbox('Email', 'delivery.email')}
-                  </div>
-                  <div className="flex items-center gap-2" onClick={() => clrLErr('delivery')}>
-                    {renderCheckbox('SMS', 'delivery.sms')}
-                  </div>
-                </div>
-                {lenderErrors['delivery'] && <p className="text-[10px] text-destructive">{lenderErrors['delivery']}</p>}
-              </div>
-              <div className="pt-2 space-y-1">
-                <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-1">Send</h3>
-                {renderCheckbox('Payment Notification', 'send_pref.payment_notification')}
-                {renderCheckbox('Late Notice', 'send_pref.late_notice')}
-                {renderCheckbox('Borrower Statement', 'send_pref.borrower_statement')}
-                {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
-              </div>
-            </div>
-          </div>
-
-          {/* Vesting - full width at bottom */}
-          <div className="mt-4 space-y-1.5">
-            <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Vesting</h3>
-            <Textarea
-              value={form['vesting'] || ''}
-              onChange={(e) => set('vesting', e.target.value)}
-              rows={3}
-              maxLength={500}
-              className="resize-none w-full text-xs"
+            <LenderInfoForm
+              fields={[]}
+              values={lenderPrefixedValues}
+              onValueChange={(prefixedKey, val) => {
+                const k = prefixedKey.replace(/^lender\./, '');
+                set(k, val);
+                if (lenderErrors[k]) clrLErr(k);
+              }}
             />
-          </div>
           </div>
           </>
         )}

@@ -43,22 +43,28 @@ import type { ColumnConfig } from '@/components/deal/ColumnConfigPopover';
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'contact_id', label: 'Lender ID', visible: true },
+  { id: 'status', label: 'Status', visible: false },
   { id: 'type', label: 'Lender Type', visible: true },
-  { id: 'full_name', label: 'Full Name', visible: true },
+  { id: 'full_name', label: 'Full Name (If Entity)', visible: true },
   { id: 'first_name', label: 'First', visible: true },
   { id: 'middle_name', label: 'Middle', visible: false },
   { id: 'last_name', label: 'Last', visible: true },
-  
+  { id: 'capacity', label: 'Capacity', visible: false },
   { id: 'email', label: 'Email', visible: true },
   { id: 'dob', label: 'DOB', visible: false },
   { id: 'phone.home', label: 'Home Phone', visible: false },
   { id: 'phone.work', label: 'Work Phone', visible: false },
   { id: 'phone.cell', label: 'Cell Phone', visible: true },
   { id: 'phone.fax', label: 'Fax', visible: false },
+  { id: 'preferred.home', label: 'Preferred Home', visible: false },
+  { id: 'preferred.work', label: 'Preferred Work', visible: false },
+  { id: 'preferred.cell', label: 'Preferred Cell', visible: false },
+  { id: 'preferred.fax', label: 'Preferred Fax', visible: false },
   { id: 'primary_address.street', label: 'Street', visible: false },
   { id: 'primary_address.city', label: 'City', visible: true },
   { id: 'primary_address.state', label: 'State', visible: true },
   { id: 'primary_address.zip', label: 'ZIP', visible: false },
+  { id: 'mailing_same_as_primary', label: 'Mailing Same as Primary', visible: false },
   { id: 'mailing.street', label: 'Mailing Street', visible: false },
   { id: 'mailing.city', label: 'Mailing City', visible: false },
   { id: 'mailing.state', label: 'Mailing State', visible: false },
@@ -66,18 +72,31 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'tax_id_type', label: 'Tax ID Type', visible: false },
   { id: 'tax_id', label: 'TIN', visible: false },
   { id: 'tin_verified', label: 'TIN Verified', visible: false },
+  { id: 'issue_1099', label: 'Issue 1099', visible: false },
+  { id: 'taxed_as', label: 'Taxed As', visible: false },
   { id: 'ach', label: 'ACH', visible: false },
-  { id: 'servicing_agreement_on_file', label: 'Agreement', visible: false },
+  { id: 'servicing_agreement_on_file', label: 'Agreement on File', visible: false },
+  { id: 'servicing_agreement_on_file_date', label: 'Agreement Date', visible: false },
+  { id: 'investor_questionnaire_due', label: 'Investor Questionnaire on File', visible: false },
+  { id: 'investor_questionnaire_due_date', label: 'Investor Questionnaire Date', visible: false },
   { id: 'freeze_outgoing_disbursements', label: 'Frozen', visible: false },
+  { id: 'freeze_outgoing_disbursements_date', label: 'Frozen Date', visible: false },
   { id: 'vesting', label: 'Vesting', visible: false },
-  { id: 'delivery.print', label: 'Delivery Print', visible: false },
-  { id: 'delivery.email', label: 'Delivery Email', visible: false },
+  { id: 'delivery.online', label: 'Delivery Online', visible: false },
+  { id: 'delivery.mail', label: 'Delivery Mail', visible: false },
   { id: 'delivery.sms', label: 'Delivery SMS', visible: false },
   { id: 'send_pref.payment_notification', label: 'Send Payment Notif', visible: false },
   { id: 'send_pref.late_notice', label: 'Send Late Notice', visible: false },
   { id: 'send_pref.borrower_statement', label: 'Send Borrower Stmt', visible: false },
   { id: 'send_pref.maturity_notice', label: 'Send Maturity Notice', visible: false },
-  
+  { id: 'ford.1', label: 'FORD 1', visible: false },
+  { id: 'ford.2', label: 'FORD 2', visible: false },
+  { id: 'ford.3', label: 'FORD 3', visible: false },
+  { id: 'ford.4', label: 'FORD 4', visible: false },
+  { id: 'ford.5', label: 'FORD 5', visible: false },
+  { id: 'ford.6', label: 'FORD 6', visible: false },
+  { id: 'ford.7', label: 'FORD 7', visible: false },
+  { id: 'ford.8', label: 'FORD 8', visible: false },
 ];
 
 const LENDER_FILTER_OPTIONS: FilterOption[] = [
@@ -232,7 +251,7 @@ const ContactLendersPage: React.FC = () => {
         onCreateNew={() => setModalOpen(true)}
          onDeleteSelected={isReadOnly ? undefined : handleDeleteSelected}
         defaultColumns={DEFAULT_COLUMNS}
-        tableConfigKey="contact_lenders_v5"
+        tableConfigKey="contact_lenders_v6"
         addButtonLabel="Add Lender"
         breadcrumbLabel="Lenders"
         filterOptions={LENDER_FILTER_OPTIONS}
