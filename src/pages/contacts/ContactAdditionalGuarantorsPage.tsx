@@ -262,6 +262,8 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
         open={modalOpen}
         onOpenChange={setModalOpen}
         contactType="borrower"
+        borrowerSubtype="additional_guarantor"
+        title="Create New Additional Guarantor"
         onSubmit={handleCreate}
       />
     </>
