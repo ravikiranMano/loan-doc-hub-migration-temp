@@ -138,8 +138,8 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
             name: r.lenderName,
             currentBalance: formatCurrencyDisplay(String(r.principalBalance)),
             adjustment: '',
-            proRata: `${r.pctOwned.toFixed(2)}`,
-            lenderRate: `${r.lenderRate.toFixed(2)}`,
+            proRata: formatPercentDisplay(r.pctOwned, 4),
+            lenderRate: formatPercentDisplay(r.lenderRate, 3),
             payment: formatCurrencyDisplay(String(r.regularPayment)),
           }))
         );
