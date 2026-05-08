@@ -305,7 +305,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
-  const formatPercentage = (value: number) => `${value.toFixed(2)}%`;
+  const formatPercentage = (value: number, max = 2) => `${formatPercentDisplay(value, max)}%`;
 
   const handleRoundingChange = (recordId: string, checked: boolean) => {
     onUpdateRecord(recordId, { roundingError: checked });
