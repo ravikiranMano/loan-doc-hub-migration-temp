@@ -2852,7 +2852,7 @@ async function generateSingleDocument(
             if (lbl === "will remain" || lbl === "existing - remain" || lbl === "remain") return "remain";
             if (lbl === "remain - paydown" || lbl === "existing - paydown" || lbl === "paydown") return "paydown";
             // Boolean aliases (UI persistence path). Existing-* flags win over
-            // anticipated boolean to defeat stale data; payoff still hard-wins.
+            // anticipated boolean to defeat stale data.
             if (truthy2(get("existing_payoff")) || truthy2(get("existingPayoff"))) return "remain";
             if (truthy2(get("existing_paydown")) || truthy2(get("existingPaydown"))) return "paydown";
             if (truthy2(get("existing_remain")) || truthy2(get("existingRemain"))) return "remain";
