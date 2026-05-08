@@ -297,6 +297,23 @@ async function generateSingleDocument(
                 fieldValues.set(bridgedKey, { rawValue, dataType });
                 debugLog(`[generate-document] Bridged ${key} -> ${bridgedKey} = "${rawValue}"`);
               }
+              // Additional bridge: some dictionary entries hard-code their
+              // field_key under property1.* (e.g. property1.property_owner,
+              // property1.land_classification, property1.fire_zone,
+              // property1.net_monthly_income). When these dictionary IDs are
+              // re-used under composite keys for property2..N, the resolvedKey
+              // above collapses every property's value onto the same
+              // "property1.<suffix>" slot — so PROPERTY blocks 2..N render
+              // blank. Re-bridge by stripping the literal "property1." prefix
+              // from the dictionary's field_key and re-attaching the actual
+              // composite entityPrefix. Strictly scoped to the property{N}
+              // entity family; no cross-section bleed.
+              const fk = fieldDict.field_key || "";
+              if (fk.startsWith("property1.") && entityPrefix.toLowerCase() !== "property1") {
+                const reBridged = `${entityPrefix}.${fk.substring("property1.".length)}`;
+                fieldValues.set(reBridged, { rawValue, dataType });
+                debugLog(`[generate-document] Re-bridged ${key} -> ${reBridged} = "${rawValue}"`);
+              }
             }
             // RE851D: bridge propertytax{N}::uuid composite keys to propertytax{N}.<suffix>
             // Dictionary keys are propertytax.<suffix>; we strip the canonical prefix
@@ -1606,6 +1623,39 @@ async function generateSingleDocument(
           }
         }
       }
+      // Per-index pr_p_address_${idx} auto-compute from per-property components.
+      // The bare pr_p_address is auto-computed below from pr_p_street/city/state/zip,
+      // but RE851D PROPERTY blocks reference {{pr_p_address_N}} per-index. Without
+      // this loop, the publisher above only sets pr_p_address_${idx} when a
+      // dedicated `${prefix}.address` value exists in the dictionary, which it
+      // does not. Compose from per-property street/city/state/zip/country instead.
+      for (const idx of sortedPropIndices) {
+        const prefix = `property${idx}`;
+        if (fieldValues.has(`pr_p_address_${idx}`)) continue;
+        const street  = fieldValues.get(`${prefix}.street`)?.rawValue;
+        const city    = fieldValues.get(`${prefix}.city`)?.rawValue;
+        const state   = fieldValues.get(`${prefix}.state`)?.rawValue;
+        const zip     = fieldValues.get(`${prefix}.zip`)?.rawValue;
+        const country = fieldValues.get(`${prefix}.country`)?.rawValue;
+        const parts = [street, city, state, country, zip].filter(Boolean).map(String);
+        if (parts.length > 0) {
+          const fullAddress = parts.join(", ");
+          fieldValues.set(`pr_p_address_${idx}`, { rawValue: fullAddress, dataType: "text" });
+          debugLog(`[generate-document] RE851D auto-computed pr_p_address_${idx} = "${fullAddress}"`);
+        }
+      }
+      // Diagnostic snapshot: which per-index aliases each PROPERTY block will
+      // resolve. Helps pinpoint blank-block regressions before they hit the
+      // rewrite/shield passes.
+      try {
+        const probeKeys = ["pr_p_address", "pr_p_ownerName", "pr_p_appraiseValue",
+          "ln_p_remainingEncumbrance", "ln_p_expectedEncumbrance",
+          "ln_p_totalEncumbrance", "ln_p_totalWithLoan", "ln_p_loanToValueRatio"];
+        for (const idx of sortedPropIndices) {
+          const snap = probeKeys.map((k) => `${k}_${idx}=${JSON.stringify(fieldValues.get(`${k}_${idx}`)?.rawValue ?? null)}`).join(", ");
+          console.log(`[RE851D] publish-snapshot prop#${idx}: ${snap}`);
+        }
+      } catch (_e) { /* diagnostic only */ }
       debugLog(`[generate-document] RE851D multi-property: published indexed aliases for properties [${sortedPropIndices.join(", ")}]`);
 
       // ── RE851D anti-fallback shield ──
