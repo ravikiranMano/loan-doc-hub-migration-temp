@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatTIN, maskTIN, validateTIN, stripTINInput } from '@/lib/tinValidation';
+
 
 interface LenderTaxReportingProps {
   values: Record<string, string>;
@@ -26,9 +26,6 @@ interface LenderTaxReportingProps {
 const K = {
   designated: 'lender.tax_reporting.designated_recipient',
   issue1099: 'lender.tax_reporting.issue_1099',
-  tinNumber: 'lender.tax_reporting.tin_number',
-  tinType: 'lender.tax_reporting.tin_type',
-  tinVerified: 'lender.tax_reporting.tin_verified',
   altReporting: 'lender.tax_reporting.alternate_reporting',
   notes: 'lender.tax_reporting.notes',
   manualFlag: 'lender.tax_reporting.is_issue_1099_manually_modified',
@@ -59,9 +56,6 @@ const computeIssue1099 = (entityType: string, taxedAsCorp: boolean): string => {
 const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValueChange, disabled = false }) => {
   const designated = values[K.designated] === 'true';
   const issue1099Raw = values[K.issue1099] || '';
-  const tinNumber = values[K.tinNumber] || '';
-  const tinType = values[K.tinType] || '';
-  const tinVerified = values[K.tinVerified] === 'true';
   const altReporting = values[K.altReporting] || '';
   const notes = values[K.notes] || '';
   const manuallyModified = values[K.manualFlag] === 'true';
@@ -97,36 +91,6 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
     onValueChange(K.issue1099, val);
     onValueChange(K.manualFlag, 'true');
   };
-
-  // ===== TIN Validation (aligned with 1099 form: src/lib/tinValidation.ts) =====
-  // TIN Type codes here: '1' = EIN, '2' = SSN, '0'/'' = Unknown
-  // Map to the shared utility's 'SSN' | 'EIN' contract.
-  const mappedTinKind: 'SSN' | 'EIN' = tinType === '2' ? 'SSN' : 'EIN';
-
-  const [tinFocused, setTinFocused] = useState(false);
-  const [tinTouched, setTinTouched] = useState(false);
-
-  const tinError = useMemo(() => {
-    if (!tinTouched) return '';
-    const digits = (tinNumber || '').replace(/\D/g, '');
-    if (digits.length === 0) return '';
-    if (digits.length !== 9) return 'TIN must be exactly 9 digits';
-    if (!validateTIN(digits, mappedTinKind)) return 'Invalid TIN format based on selected TIN Type';
-    return '';
-  }, [tinTouched, tinNumber, mappedTinKind]);
-
-  const tinDisplay = useMemo(() => {
-    if (!tinNumber) return '';
-    if (tinFocused) return formatTIN(tinNumber, mappedTinKind);
-    return maskTIN(tinNumber, mappedTinKind);
-  }, [tinNumber, mappedTinKind, tinFocused]);
-
-  const handleTinChange = (raw: string) => {
-    // Strip non-digits, cap at 9 — store digits only (no hyphens)
-    const digits = stripTINInput(raw);
-    onValueChange(K.tinNumber, digits);
-  };
-
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -164,56 +128,6 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
           <p className="text-[11px] text-muted-foreground mt-1">
             Auto-populated from entity type. Editable — manual changes are preserved.
           </p>
-        </div>
-
-        {/* TIN Number + TIN Type */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>TIN Number</Label>
-            <Input
-              value={tinDisplay}
-              onFocus={() => setTinFocused(true)}
-              onBlur={() => { setTinFocused(false); setTinTouched(true); }}
-              onChange={(e) => handleTinChange(e.target.value)}
-              disabled={disabled}
-              maxLength={mappedTinKind === 'SSN' ? 11 : 10}
-              inputMode="numeric"
-              placeholder={mappedTinKind === 'SSN' ? 'XXX-XX-XXXX' : 'XX-XXXXXXX'}
-              aria-invalid={!!tinError}
-            />
-            {tinError && (
-              <p className="text-[11px] text-destructive mt-1">{tinError}</p>
-            )}
-          </div>
-          <div>
-            <Label>TIN Type</Label>
-            <Select
-              value={tinType || '__none__'}
-              onValueChange={(v) => onValueChange(K.tinType, v === '__none__' ? '' : v)}
-              disabled={disabled}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">— None —</SelectItem>
-                <SelectItem value="0">0 – Unknown</SelectItem>
-                <SelectItem value="1">1 – EIN</SelectItem>
-                <SelectItem value="2">2 – SSN</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* TIN Verified */}
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="lender-tax-tin-verified"
-            checked={tinVerified}
-            onCheckedChange={(v) => onValueChange(K.tinVerified, String(!!v))}
-            disabled={disabled}
-          />
-          <Label htmlFor="lender-tax-tin-verified">TIN Verified</Label>
         </div>
 
         {/* Alternate Reporting */}
