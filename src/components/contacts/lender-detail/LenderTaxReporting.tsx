@@ -92,36 +92,6 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
     onValueChange(K.manualFlag, 'true');
   };
 
-  // ===== TIN Validation (aligned with 1099 form: src/lib/tinValidation.ts) =====
-  // TIN Type codes here: '1' = EIN, '2' = SSN, '0'/'' = Unknown
-  // Map to the shared utility's 'SSN' | 'EIN' contract.
-  const mappedTinKind: 'SSN' | 'EIN' = tinType === '2' ? 'SSN' : 'EIN';
-
-  const [tinFocused, setTinFocused] = useState(false);
-  const [tinTouched, setTinTouched] = useState(false);
-
-  const tinError = useMemo(() => {
-    if (!tinTouched) return '';
-    const digits = (tinNumber || '').replace(/\D/g, '');
-    if (digits.length === 0) return '';
-    if (digits.length !== 9) return 'TIN must be exactly 9 digits';
-    if (!validateTIN(digits, mappedTinKind)) return 'Invalid TIN format based on selected TIN Type';
-    return '';
-  }, [tinTouched, tinNumber, mappedTinKind]);
-
-  const tinDisplay = useMemo(() => {
-    if (!tinNumber) return '';
-    if (tinFocused) return formatTIN(tinNumber, mappedTinKind);
-    return maskTIN(tinNumber, mappedTinKind);
-  }, [tinNumber, mappedTinKind, tinFocused]);
-
-  const handleTinChange = (raw: string) => {
-    // Strip non-digits, cap at 9 — store digits only (no hyphens)
-    const digits = stripTINInput(raw);
-    onValueChange(K.tinNumber, digits);
-  };
-
-
   return (
     <div className="space-y-6 max-w-2xl">
       <h4 className="text-lg font-semibold text-foreground">Tax Reporting</h4>
