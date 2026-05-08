@@ -5422,8 +5422,41 @@ async function generateSingleDocument(
               });
               touched = true;
             };
-            inlineForLabel(yXmlIdx, yesGlyph, !!yC);
-            inlineForLabel(nXmlIdx, noGlyph, !!nC);
+
+            // Combined-pair pass: when both YES and NO labels share ONE <w:t>
+            // (e.g. "☐ YES   ☐ NO" produced by a single resolved merge-tag
+            // paragraph), the per-label inlineForLabel above does a global
+            // regex replace that flips both glyphs to the same value. Detect
+            // this exact pattern in the run that contains the YES label and
+            // rewrite the two glyph chars positionally so YES gets yesGlyph
+            // and NO gets noGlyph.
+            const combinedPairForRun = (): boolean => {
+              if (yC || nC) return false;
+              const wtOpen = xml.lastIndexOf("<w:t", yXmlIdx);
+              if (wtOpen < 0) return false;
+              const openTagEnd = xml.indexOf(">", wtOpen);
+              if (openTagEnd === -1 || openTagEnd > yXmlIdx) return false;
+              const wtCloseTagStart = xml.indexOf("</w:t>", yXmlIdx);
+              if (wtCloseTagStart === -1) return false;
+              // Both YES and NO must live in the same <w:t>.
+              if (nXmlIdx <= openTagEnd || nXmlIdx >= wtCloseTagStart) return false;
+              const inner = xml.slice(openTagEnd + 1, wtCloseTagStart);
+              const m = inner.match(/^([☐☑])(\s*(?:Y\s*E\s*S|Yes)\s+)([☐☑])(\s*(?:N\s*O|No)\b)/);
+              if (!m) return false;
+              const newInner = `${yesGlyph}${m[2]}${noGlyph}${m[4]}${inner.slice(m[0].length)}`;
+              if (newInner === inner) return false;
+              if (overlaps(openTagEnd + 1, wtCloseTagStart)) return false;
+              inlineRewrites.push({
+                start: openTagEnd + 1,
+                end: wtCloseTagStart,
+                replacement: newInner,
+              });
+              touched = true;
+              return true;
+            };
+            const combinedHandled = combinedPairForRun();
+            inlineForLabel(yXmlIdx, yesGlyph, !!yC || combinedHandled);
+            inlineForLabel(nXmlIdx, noGlyph, !!nC || combinedHandled);
 
             console.log(
               `[generate-document] RE851D multi-properties post-render occ#${qi + 1}: propCount=${propCount} => YES=${yesGlyph} NO=${noGlyph} (yC=${yC ? yC.kind : "none"}, nC=${nC ? nC.kind : "none"}, inline=${inlineRewrites.length}, touched=${touched})`,
