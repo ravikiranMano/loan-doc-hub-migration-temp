@@ -157,11 +157,14 @@ const DistributionFields: React.FC<{
   const lendersClamped = clamp(lendersVal);
   const vendorClamped = clamp(vendorVal);
   const otherClamped = clamp(otherVal);
-  const remainder = Math.max(0, 100 - lendersClamped - vendorClamped - otherClamped);
+  // Use Decimal arithmetic for distribution remainder/total so 33.3333×3 = 99.9999 (no float drift).
+  const remainderDec = sumPercents([100, -lendersClamped, -vendorClamped, -otherClamped]);
+  const remainder = Math.max(0, remainderDec.toNumber());
   const companyDisplay = disabled
     ? '0.00'
-    : ((lendersRaw || vendorRaw || otherRaw) ? remainder.toFixed(2) : '');
-  const totalDisplay = (lendersClamped + vendorClamped + otherClamped + (parseFloat(companyDisplay) || 0)).toFixed(2);
+    : ((lendersRaw || vendorRaw || otherRaw) ? roundPctForStorage(remainder) : '');
+  const totalDec = sumPercents([lendersClamped, vendorClamped, otherClamped, parseFloat(companyDisplay) || 0]);
+  const totalDisplay = formatPercentDisplay(totalDec.toNumber(), 4);
 
   // Persist computed Company value
   const persistedCompany = values[`${prefix}.distribution.company`] || '';
