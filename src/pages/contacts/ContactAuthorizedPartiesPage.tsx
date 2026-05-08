@@ -189,11 +189,10 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     const cd = (contact.contact_data || {}) as Record<string, string>;
 
     if (columnId === 'preferred_phone') {
-      if (cd['preferred.home'] === 'true') return 'Home';
-      if (cd['preferred.home2'] === 'true') return 'Home 2';
-      if (cd['preferred.work'] === 'true') return 'Work';
-      if (cd['preferred.cell'] === 'true') return 'Cell';
-      if (cd['preferred.fax'] === 'true') return 'Fax';
+      if (cd[`${AP}preferred.home`] === 'true' || cd['preferred.home'] === 'true') return 'Home';
+      if (cd[`${AP}preferred.work`] === 'true' || cd['preferred.work'] === 'true') return 'Work';
+      if (cd[`${AP}preferred.cell`] === 'true' || cd['preferred.cell'] === 'true') return 'Cell';
+      if (cd[`${AP}preferred.fax`] === 'true' || cd['preferred.fax'] === 'true') return 'Fax';
       return '-';
     }
 
