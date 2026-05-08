@@ -273,7 +273,36 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   } = useGridSelection(filteredData);
 
   const parsePaymentAmount = (value?: string) => parseFloat((value || '').replace(/[$,]/g, '')) || 0;
+
+  // Per-lender payment computation using Decimal arithmetic.
+  // payment_i = originalAmount_i * lenderRate_i / 100 / 12  (interest-only monthly)
+  // Sum is rounded; any fractional-cent remainder is assigned to the single
+  // lender flagged with `roundingAdjustment`. Recomputes whenever the underlying
+  // funding records change (loan amount, rate, or any lender field edit).
+  const computedPayments = React.useMemo(() => {
+    const map = new Map<string, number>();
+    if (!fundingRecords.length) return map;
+    const exact = fundingRecords.map(r => {
+      const p = new Decimal(r.originalAmount || 0);
+      const rate = new Decimal(r.lenderRate || 0);
+      return p.mul(rate).div(100).div(12);
+    });
+    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
+    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
+    const diff = sumExact.minus(sumRounded);
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    if (adjIdx >= 0 && !diff.isZero()) {
+      rounded[adjIdx] = rounded[adjIdx].plus(diff);
+    }
+    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
+    return map;
+  }, [fundingRecords]);
+
   const getDisplayedPayment = (record: FundingRecord) => {
+    const computed = computedPayments.get(record.id);
+    if (computed !== undefined && computed > 0) return computed;
     if (record.regularPayment > 0) return record.regularPayment;
     return (record.payments || []).reduce((sum, payment) => sum + parsePaymentAmount(payment.amount), 0);
   };
