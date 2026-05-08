@@ -531,38 +531,6 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               </div>
               {lenderErrors['dob'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['dob']}</p>}
 
-              <div className="pt-2 space-y-1">
-                <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-1">Tax Info</h3>
-                <div className="flex items-center gap-2">
-                  <Label className="w-[100px] shrink-0 text-xs">Tax ID Type</Label>
-                  <Select value={form['tax_id_type'] || ''} onValueChange={(v) => { set('tax_id_type', v); clrLErr('tax_id_type'); set('tax_id', ''); }}>
-                    <SelectTrigger className={cn("h-7 text-xs flex-1", lenderErrors['tax_id_type'] && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent className="bg-background border border-border z-[200]">
-                      {TAX_ID_TYPE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {lenderErrors['tax_id_type'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['tax_id_type']}</p>}
-
-                {/* TIN with SSN/EIN formatting */}
-                <div className="flex items-center gap-2">
-                  <Label className="w-[100px] shrink-0 text-xs">TIN</Label>
-                  <Input
-                    value={fmtTIN(form['tax_id'] || '', form['tax_id_type'] || '')}
-                    onChange={(e) => { const digits = e.target.value.replace(/\D/g, '').slice(0, 9); set('tax_id', digits); clrLErr('tax_id'); }}
-                    onKeyDown={digitOnlyKD}
-                    onPaste={(e) => { e.preventDefault(); set('tax_id', e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 9)); }}
-                    onBlur={() => { const d = (form['tax_id'] || '').replace(/\D/g, ''); if (d && d.length !== 9) setLErr('tax_id', 'Enter valid TIN (9 digits)'); else clrLErr('tax_id'); }}
-                    maxLength={11}
-                    className={cn("h-7 text-xs flex-1", lenderErrors['tax_id'] && "border-destructive")}
-                  />
-                </div>
-                {lenderErrors['tax_id'] && <p className="text-[10px] text-destructive ml-[108px]">{lenderErrors['tax_id']}</p>}
-
-                {renderCheckbox('TIN Verified', 'tin_verified')}
-              </div>
             </div>
 
             {/* Column 2: Primary Address + Mailing + Options */}

@@ -1,78 +1,43 @@
-## Root Cause
+## Scope
+Remove the **Tax ID Type**, **TIN**, and **TIN Verified** fields from the Lender forms under CONTACTS and from the Add Lender modal. UI-only removal. No backend, no schema, no API changes — existing save/update flow continues unchanged (omitted fields simply stop being written; previously stored values remain in `contacts.contact_data` untouched).
 
-The RE885 template compares `origination_fees.re885_cash_at_closing_amount` (the **dollar amount** field) against the strings `"Payable to you"` / `"You Must Pay"`. That comparison can never match because:
+## Files & Exact Changes
 
-1. The label/option is stored in a **different field**: `origination_fees.re885_cash_at_closing_option`.
-2. That field stores **codes** (`payable_to_you`, `you_must_pay`), not the human labels (`Payable to you`, `You Must Pay`).
-3. The `_amount` field holds a currency string (e.g. `"$1,234.00"`), so `(eq amount "Payable to you")` is always false.
+### 1. `src/components/contacts/CreateContactModal.tsx` (Add Lender modal)
+Lines 534–565 — the entire "Tax Info" section in the lender column 1:
+- Remove the `<h3>Tax Info</h3>` header
+- Remove **Tax ID Type** label + Select + error line
+- Remove **TIN** label + Input (with SSN/EIN formatting) + error line
+- Remove **TIN Verified** checkbox (`renderCheckbox('TIN Verified', 'tin_verified')`)
 
-UI source of truth (confirmed in `src/components/deal/RE885ProposedLoanTerms.tsx`):
-```
-setValue('origination_fees.re885_cash_at_closing_option',
-  cashAtClosing >= 0 ? 'payable_to_you' : 'you_must_pay');
-```
+Result: the Tax Info subsection disappears completely; surrounding sections (DOB above, Primary Address column to the right) are unchanged.
 
-## Fix (edge function only — no UI / template / schema changes)
+### 2. `src/components/contacts/ContactLenderDetailForm.tsx` (Lender contact detail edit form)
+Lines 185–189 — in the "Financial / Compliance" section:
+- Remove the **TIN** label + Input grid cell
+- Remove the adjacent empty `<div />` spacer (since the grid no longer needs it)
 
-**File:** `supabase/functions/generate-document/index.ts` — extend the existing "Estimated Cash at Closing alias publisher" block (≈ lines 772–785).
+ACH / Send 1099 / Agreement on File checkboxes remain. (`Tax ID Type` and `TIN Verified` are already not present in this form.)
 
-Add three publications derived from `origination_fees.re885_cash_at_closing_option` (with safe fallbacks):
+### 3. `src/components/contacts/lender-detail/LenderTaxReporting.tsx` (Tax Reporting sub-tab)
+- Remove the **TIN Number + TIN Type** two-column block (lines 169–206)
+- Remove the **TIN Verified** checkbox block (lines 208–217)
+- Remove now-unused imports/helpers tied solely to those fields:
+  - `formatTIN`, `maskTIN`, `validateTIN`, `stripTINInput` from `@/lib/tinValidation`
+  - The `tinNumber`, `tinType`, `tinVerified`, `mappedTinKind`, `tinFocused`, `tinTouched`, `tinError`, `tinDisplay`, `handleTinChange` locals and related `useState`/`useMemo` hooks
+  - Remove `tinNumber`, `tinType`, `tinVerified` keys from the `K` constant
+- Keep: Designated Recipient, Issue 1099 (auto-populate logic intact), Alternate Reporting, Notes — and all entity-type / 1099 derivation logic.
 
-1. **Boolean flags** for the recommended robust template form:
-   - `re885_cash_payable_to_you` → `"true"` / `"false"`
-   - `re885_cash_you_must_pay` → `"true"` / `"false"`
-   - dataType: `boolean`
+## Out of Scope (left untouched per minimal-change policy)
+- `src/components/contacts/lender-detail/Lender1099.tsx` — the IRS 1099 form has its own legally-required TIN/TIN Type fields and is a separate feature ([1099 Reporting memory](mem://features/contacts/1099-reporting-system)). Not removed.
+- `src/components/deal/LenderTaxInfoForm.tsx` — deal-level (not under "Contacts > Lender").
+- `src/components/contacts/lender-detail/LenderDashboard.tsx` — read-only display panel, not a form. TIN value continues to display when present.
+- `src/pages/contacts/ContactLendersPage.tsx` grid columns (`tax_id_type`, `tax_id`, `tin_verified`) — already `visible: false`, no UI impact.
+- Database schema, save/update APIs, field_dictionary entries — all unchanged. Persisted values for these keys remain in JSONB but are no longer written or read by these forms.
 
-2. **Normalized canonical labels** so the existing `(eq … "Payable to you")` and `(eq … "You Must Pay")` template conditions also work without any template edit. Publish the canonical label string to **both**:
-   - `origination_fees.re885_cash_at_closing_option` (overwrite with normalized label)
-   - `origination_fees.re885_cash_at_closing_amount_label` (new sibling alias for templates that want to keep `_amount`-prefixed naming)
-
-   Mapping:
-   - `payable_to_you` / `payable to you` / `payabletoyou` → `"Payable to you"`
-   - `you_must_pay`   / `you must pay`   / `youmustpay`   → `"You Must Pay"`
-   - anything else → leave as-is (no overwrite)
-
-3. **Debug log line**: `[generate-document] RE885 CashAtClosingType raw="<raw>" canonical="<label>" payable=<bool> mustPay=<bool>`
-
-### Pseudocode (inserted right after the existing ECAC block)
-```ts
-const rawOpt = String(
-  fieldValues.get("origination_fees.re885_cash_at_closing_option")?.rawValue ?? ""
-).trim();
-const norm = rawOpt.toLowerCase().replace(/[\s_-]+/g, "");
-let canonical = "";
-if (norm === "payabletoyou")      canonical = "Payable to you";
-else if (norm === "youmustpay")   canonical = "You Must Pay";
-
-const isPayable = canonical === "Payable to you";
-const isMustPay = canonical === "You Must Pay";
-
-fieldValues.set("re885_cash_payable_to_you", { rawValue: isPayable ? "true" : "false", dataType: "boolean" });
-fieldValues.set("re885_cash_you_must_pay",   { rawValue: isMustPay ? "true" : "false", dataType: "boolean" });
-
-if (canonical) {
-  fieldValues.set("origination_fees.re885_cash_at_closing_option",      { rawValue: canonical, dataType: "text" });
-  fieldValues.set("origination_fees.re885_cash_at_closing_amount_label",{ rawValue: canonical, dataType: "text" });
-}
-console.log(`[generate-document] RE885 CashAtClosingType raw="${rawOpt}" canonical="${canonical}" payable=${isPayable} mustPay=${isMustPay}`);
-```
-
-## Template Recommendation (optional, for the doc author — NOT a code change)
-
-Switch the two checkbox tags from string-eq to boolean checks for robustness:
-```
-{{#if re885_cash_payable_to_you}}☑{{else}}☐{{/if}}
-{{#if re885_cash_you_must_pay}}☑{{else}}☐{{/if}}
-```
-The existing `(eq origination_fees.re885_cash_at_closing_amount …)` form will also start working because we now publish the canonical label into the option field and a new `_amount_label` sibling — but the eq path is using the wrong field name; templates should be updated to use either the new boolean flags **or** the option / `_amount_label` field.
-
-## Mutual Exclusivity & Edge Cases
-- Only one of `isPayable` / `isMustPay` can ever be true (driven by a single radio in the UI).
-- Empty / unknown selection → both booleans `"false"`, both checkboxes render `☐`.
-- Whitespace, casing, and underscore/space variants all normalize to the same canonical label.
-
-## Out of Scope
-- No UI changes.
-- No DOCX template layout changes (template author may optionally adopt the new boolean tags).
-- No DB schema / dictionary changes.
-- Backward compatible: existing `_amount` currency value is untouched; existing aliases continue to publish.
+## Validation
+- Add Lender modal opens with no Tax Info subsection.
+- Lender detail "Financial / Compliance" section shows only ACH / Send 1099 / Agreement on File.
+- Lender detail "Tax Reporting" sub-tab shows only Designated Recipient, Issue 1099, Alternate Reporting, Notes.
+- Saving a lender works without errors (no required-field regressions because none of the three were required at the API layer).
+- 1099 form continues to function unchanged.
