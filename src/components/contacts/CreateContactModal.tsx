@@ -36,6 +36,7 @@ interface CreateContactModalProps {
   contactType: 'lender' | 'broker' | 'borrower';
   onSubmit: (data: Record<string, string>) => void;
   title?: string;
+  borrowerSubtype?: 'additional_guarantor';
 }
 
 const LENDER_TYPE_OPTIONS = [
