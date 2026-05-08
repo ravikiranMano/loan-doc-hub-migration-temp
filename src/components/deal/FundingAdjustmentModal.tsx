@@ -227,8 +227,8 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
               currentBalance: fundingMatch
                 ? formatCurrencyDisplay(String(fundingMatch.principalBalance))
                 : l.currentBalance,
-              proRata: fundingMatch ? `${fundingMatch.pctOwned.toFixed(2)}` : l.proRata,
-              lenderRate: fundingMatch ? `${fundingMatch.lenderRate.toFixed(2)}` : l.lenderRate,
+              proRata: fundingMatch ? formatPercentDisplay(fundingMatch.pctOwned, 4) : l.proRata,
+              lenderRate: fundingMatch ? formatPercentDisplay(fundingMatch.lenderRate, 3) : l.lenderRate,
               payment: fundingMatch
                 ? formatCurrencyDisplay(String(fundingMatch.regularPayment))
                 : l.payment,
