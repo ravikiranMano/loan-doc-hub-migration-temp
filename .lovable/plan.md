@@ -1,34 +1,45 @@
-## Plan: Fix RE851D values still not populating
+## Plan: Fix remaining RE851D blanks — author-defect template normalization
 
-### Confirmed root cause from latest logs
-The latest generation is still failing before rendering:
+### Confirmed root cause (from latest generated doc)
+After the previous TDZ fix, the `_N` rewriter is now running successfully — the generated output contains **zero surviving** `{{...}}` tags (except one malformed case). However, Property blocks #1–#5 still render with blank values. Inspection of the template reveals authoring defects in many merge tags that prevent the rewriter and resolver from binding values:
 
-```text
-RE851D _N preprocessing failed: Cannot access '__xmlGet' before initialization
+```
+{{ pr_p_appraiseValue_ N }}        ← space before N
+{{pr_p_appraiseValue_ N }}         ← space before N
+{{pr_p_construcType_ N }}          ← space before N
+{{pr_p_squareFeet_ N }}            ← space before N
+{{property_type_sfr_owner _N}}     ← space before _N
+{{   propertytax.annual_payment_N }}     ← multiple spaces (ok-ish)
+{{   propertytax.delinquent_amount_N}}   ← multiple spaces (ok-ish)
+{{pr_li_sourceOfPayment_ N }       ← space + missing closing brace
+{{property_type_land_income_N}     ← missing closing brace (4 occurrences)
 ```
 
-That means the RE851D `_N` placeholder rewrite is skipped entirely. The document then reaches the renderer with literal `_N` tags, so property-indexed fields resolve blank even though the data exists.
+These tags fail the `_N` literal-substring rewriter because the inner whitespace breaks the match `pr_p_appraiseValue_N`. The merge-tag parser then trims outer whitespace only and looks up keys like `pr_p_appraiseValue_ N` (with internal space) which do not exist, so it prints empty strings.
 
-### Changes to implement
-1. **Fix helper initialization order only**
-   - Move or duplicate the lightweight XML decode/encode helpers used by RE851D `_N` preprocessing so they are defined before the preprocessing block runs.
-   - Keep the existing post-render cache helpers unchanged.
-   - No database changes, no UI changes, no schema changes.
+### Changes to implement (single file, single function)
 
-2. **Keep the existing RE851D mapping logic intact**
-   - Do not refactor the publisher, calculations, field dictionary, or document flow.
-   - Preserve the existing property-index rewrite logic and anti-fallback shield.
+**File:** `supabase/functions/generate-document/index.ts` — inside the existing RE851D `_N` preprocessing block (right after the `xml` variable is decoded, before the existing `parens/braces` normalizers around lines 3973–4051).
 
-3. **Verify with function logs**
-   - Regenerate RE851D for the current deal/template.
-   - Confirm the error log disappears.
-   - Confirm logs show `RE851D regions ... total=<nonzero>` and the existing `publish-snapshot` entries contain values.
+Add three small XML-level normalizers, strictly scoped to `{{ ... }}` merge-tag bodies so they cannot touch document prose:
 
-4. **If values still do not render after the preprocessing fix**
-   - Inspect the next logs only for the remaining binding gap.
-   - Apply the smallest follow-up fix, likely adding `pr_p_ownerName` to the anti-fallback/publisher alias set if that specific key is blanked.
+1. **Internal-whitespace collapse inside merge tags.** Inside any `{{ ... }}` token, collapse `_ N` → `_N` and ` _N` → `_N`. Restricted to known RE851D field-key prefixes (`pr_p_`, `pr_li_`, `ln_p_`, `property_type_`, `propertytax`) to avoid touching unrelated prose.
+
+2. **Fix missing closing brace** for `{{property_type_land_income_N}` → `{{property_type_land_income_N}}` (4 occurrences). Use a strict regex requiring a single trailing `}` not followed by another `}`.
+
+3. **Same brace fix** generalized to the same RE851D field-key prefixes, so any other future single-`}` defect inside this template family auto-heals.
+
+After these run, the existing `_N` rewriter (which runs immediately afterward inside the same try block) will see clean tag bodies and will rewrite every per-property tag correctly.
+
+### Verification
+- Deploy the edge function.
+- Regenerate RE851D for the current deal (`db7517e9-…`) and re-open the docx.
+- Confirm Property blocks #1–#5 now show: street address, owner, appraisal value/date, square feet, construction type, encumbrances, LTV, etc.
+- Confirm no surviving `{{...}` tokens remain in the rendered XML.
 
 ### Out of scope
-- No template upload unless malformed `{{property_type_land_income_N}` tags are still visibly surviving after generation.
-- No edits to unrelated templates or RE851A/RE885 logic.
-- No database schema or API changes.
+- No template upload (server-side normalization avoids touching the storage object).
+- No DB schema changes.
+- No UI / form / field-dictionary edits.
+- No changes to other templates or to RE851A/RE851B/RE885 logic.
+- No changes to publishers or anti-fallback shield (those are already correct — the bug is purely tag-body sanitization).
