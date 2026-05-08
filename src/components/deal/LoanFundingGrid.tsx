@@ -18,7 +18,7 @@ import { useTableColumnConfig } from '@/hooks/useTableColumnConfig';
 import { FilterOption } from './GridToolbar';
 import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
-import { formatPercentDisplay } from '@/lib/precisionFormat';
+import { formatPercentDisplay, Decimal } from '@/lib/precisionFormat';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
