@@ -153,7 +153,7 @@ export const LenderAuthorizedPartyForm: React.FC<LenderAuthorizedPartyFormProps>
             <DirtyFieldWrapper fieldKey={FIELD_KEYS.state}>
               <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground min-w-[50px]">State</Label>
-                <Select value={getValue('state')} onValueChange={(v) => handleChange('state', v)} disabled={disabled}>
+                <Select value={getValue('state')} onValueChange={(v) => handleChange('state', (v === '__select__' ? '' : v))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm flex-1 bg-background">
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>

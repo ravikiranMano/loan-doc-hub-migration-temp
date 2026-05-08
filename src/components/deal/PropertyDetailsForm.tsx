@@ -408,7 +408,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.state}>
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">State</Label>
-              <Select value={getFieldValue(FIELD_KEYS.state)} onValueChange={(val) => onValueChange(FIELD_KEYS.state, val)} disabled={disabled || isCopyBorrower}>
+              <Select value={getFieldValue(FIELD_KEYS.state)} onValueChange={(val) => onValueChange(FIELD_KEYS.state, (val === '__select__' ? '' : val))} disabled={disabled || isCopyBorrower}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50 max-h-60">
                   <SelectItem value="__select__">Select</SelectItem>

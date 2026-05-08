@@ -342,7 +342,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
       <DirtyFieldWrapper fieldKey={keys.state}>
         <div className="flex items-center gap-2">
           <Label className="w-[80px] text-sm shrink-0">State</Label>
-          <Select value={v(keys.state)} onValueChange={(val) => sv(keys.state, val)} disabled={disabled || extraDisabled}>
+          <Select value={v(keys.state)} onValueChange={(val) => sv(keys.state, (val === '__select__' ? '' : val))} disabled={disabled || extraDisabled}>
             <SelectTrigger className="h-7 text-sm">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>

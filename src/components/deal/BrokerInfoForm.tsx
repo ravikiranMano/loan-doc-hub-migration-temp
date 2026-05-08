@@ -167,7 +167,7 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.state}>
             <div className="flex items-center gap-2">
               <Label className="w-[100px] shrink-0 text-xs">State</Label>
-              <Select value={getValue('state') || ''} onValueChange={(val) => handleChange('state', val)} disabled={disabled}>
+              <Select value={getValue('state') || ''} onValueChange={(val) => handleChange('state', (val === '__select__' ? '' : val))} disabled={disabled}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__select__">Select</SelectItem>
@@ -222,7 +222,7 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.mailingState}>
             <div className="flex items-center gap-2">
               <Label className="w-[100px] shrink-0 text-xs">State</Label>
-              <Select value={getValue('mailingState') || ''} onValueChange={(val) => handleChange('mailingState', val)} disabled={disabled || isMailingSame}>
+              <Select value={getValue('mailingState') || ''} onValueChange={(val) => handleChange('mailingState', (val === '__select__' ? '' : val))} disabled={disabled || isMailingSame}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__select__">Select</SelectItem>

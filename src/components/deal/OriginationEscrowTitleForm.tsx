@@ -201,7 +201,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
               </div>
               <div className="flex items-center gap-2">
                 <Label className="w-[80px] text-sm shrink-0">State</Label>
-                <Select value={v(otherKeys.state)} onValueChange={(val) => sv(otherKeys.state, val)} disabled={disabled}>
+                <Select value={v(otherKeys.state)} onValueChange={(val) => sv(otherKeys.state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
@@ -246,7 +246,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
             <DirtyFieldWrapper fieldKey={FK.escrow_state}>
               <div className="flex items-center gap-2">
                 <Label className="w-[120px] text-sm shrink-0">State</Label>
-                <Select value={v(FK.escrow_state)} onValueChange={(val) => sv(FK.escrow_state, val)} disabled={disabled}>
+                <Select value={v(FK.escrow_state)} onValueChange={(val) => sv(FK.escrow_state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
@@ -293,7 +293,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
             <DirtyFieldWrapper fieldKey={FK.title_state}>
               <div className="flex items-center gap-2">
                 <Label className="w-[120px] text-sm shrink-0">State</Label>
-                <Select value={v(FK.title_state)} onValueChange={(val) => sv(FK.title_state, val)} disabled={disabled}>
+                <Select value={v(FK.title_state)} onValueChange={(val) => sv(FK.title_state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
@@ -362,7 +362,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
             <DirtyFieldWrapper fieldKey={FK.trustee_state}>
               <div className="flex items-center gap-2">
                 <Label className="w-[120px] text-sm shrink-0">State</Label>
-                <Select value={v(FK.trustee_state)} onValueChange={(val) => sv(FK.trustee_state, val)} disabled={disabled}>
+                <Select value={v(FK.trustee_state)} onValueChange={(val) => sv(FK.trustee_state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
