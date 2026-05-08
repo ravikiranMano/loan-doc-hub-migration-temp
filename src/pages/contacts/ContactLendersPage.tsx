@@ -69,9 +69,6 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'mailing.city', label: 'Mailing City', visible: false },
   { id: 'mailing.state', label: 'Mailing State', visible: false },
   { id: 'mailing.zip', label: 'Mailing ZIP', visible: false },
-  { id: 'tax_id_type', label: 'Tax ID Type', visible: false },
-  { id: 'tax_id', label: 'TIN', visible: false },
-  { id: 'tin_verified', label: 'TIN Verified', visible: false },
   { id: 'issue_1099', label: 'Issue 1099', visible: false },
   { id: 'taxed_as', label: 'Taxed As', visible: false },
   { id: 'ach', label: 'ACH', visible: false },
@@ -251,7 +248,7 @@ const ContactLendersPage: React.FC = () => {
         onCreateNew={() => setModalOpen(true)}
          onDeleteSelected={isReadOnly ? undefined : handleDeleteSelected}
         defaultColumns={DEFAULT_COLUMNS}
-        tableConfigKey="contact_lenders_v6"
+        tableConfigKey="contact_lenders_v7"
         addButtonLabel="Add Lender"
         breadcrumbLabel="Lenders"
         filterOptions={LENDER_FILTER_OPTIONS}
