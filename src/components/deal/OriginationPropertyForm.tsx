@@ -116,12 +116,13 @@ export const OriginationPropertyForm: React.FC<OriginationPropertyFormProps> = (
       <DirtyFieldWrapper fieldKey={FK.appraiser_state}>
         <div className="flex items-center gap-2">
           <Label className="w-[180px] text-sm shrink-0">State</Label>
-          <Select value={v(FK.appraiser_state)} onValueChange={(val) => sv(FK.appraiser_state, val)} disabled={disabled}>
+          <Select value={v(FK.appraiser_state)} onValueChange={(val) => sv(FK.appraiser_state, (val === '__select__' ? '' : val))} disabled={disabled}>
             <SelectTrigger className="h-7 text-sm flex-1">
               <SelectValue placeholder="Select state" />
             </SelectTrigger>
             <SelectContent>
-              {US_STATES.map(s => (
+              <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map(s => (
                 <SelectItem key={s} value={s} className="text-sm">{s}</SelectItem>
               ))}
             </SelectContent>

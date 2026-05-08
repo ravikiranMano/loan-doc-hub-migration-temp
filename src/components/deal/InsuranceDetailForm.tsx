@@ -246,9 +246,10 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
           <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.paymentMailingState}>
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">State</Label>
-              <Select value={insurance.paymentMailingState || undefined} onValueChange={(val) => onChange('paymentMailingState', val)} disabled={disabled}>
+              <Select value={insurance.paymentMailingState || undefined} onValueChange={(val) => onChange('paymentMailingState', (val === '__select__' ? '' : val))} disabled={disabled}>
                 <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -275,9 +276,10 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
           <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.businessAddressState}>
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">State</Label>
-              <Select value={insurance.businessAddressState || undefined} onValueChange={(val) => onChange('businessAddressState', val)} disabled={disabled}>
+              <Select value={insurance.businessAddressState || undefined} onValueChange={(val) => onChange('businessAddressState', (val === '__select__' ? '' : val))} disabled={disabled}>
                 <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>

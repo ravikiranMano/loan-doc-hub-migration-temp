@@ -422,9 +422,10 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             </div>)}
             {wrapField('primaryState', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[60px] text-left shrink-0">State</Label>
-              <Select value={getValue('primaryState') || ''} onValueChange={(val) => handleChange('primaryState', val)} disabled={disabled}>
+              <Select value={getValue('primaryState') || ''} onValueChange={(val) => handleChange('primaryState', (val === '__select__' ? '' : val))} disabled={disabled}>
                 <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -469,9 +470,10 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             </div>)}
             {wrapField('mailingState', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[60px] text-left shrink-0">State</Label>
-              <Select value={getValue('mailingState') || ''} onValueChange={(val) => handleChange('mailingState', val)} disabled={disabled || getBoolValue('mailingSameAsPrimary')}>
+              <Select value={getValue('mailingState') || ''} onValueChange={(val) => handleChange('mailingState', (val === '__select__' ? '' : val))} disabled={disabled || getBoolValue('mailingSameAsPrimary')}>
                 <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>

@@ -212,12 +212,13 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
       <DirtyFieldWrapper fieldKey={keys.state}>
         <div className="flex items-center gap-2">
           <Label className="w-[80px] text-sm shrink-0">State</Label>
-          <Select value={v(keys.state)} onValueChange={(val) => sv(keys.state, val)} disabled={disabled || extraDisabled}>
+          <Select value={v(keys.state)} onValueChange={(val) => sv(keys.state, (val === '__select__' ? '' : val))} disabled={disabled || extraDisabled}>
             <SelectTrigger className="h-7 text-sm">
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
             <SelectContent className="bg-popover z-50">
-              {US_STATES.map((st) => (
+              <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((st) => (
                 <SelectItem key={st} value={st}>{st}</SelectItem>
               ))}
             </SelectContent>

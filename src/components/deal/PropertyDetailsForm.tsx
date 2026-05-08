@@ -408,9 +408,10 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.state}>
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">State</Label>
-              <Select value={getFieldValue(FIELD_KEYS.state)} onValueChange={(val) => onValueChange(FIELD_KEYS.state, val)} disabled={disabled || isCopyBorrower}>
+              <Select value={getFieldValue(FIELD_KEYS.state)} onValueChange={(val) => onValueChange(FIELD_KEYS.state, (val === '__select__' ? '' : val))} disabled={disabled || isCopyBorrower}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50 max-h-60">
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -462,7 +463,18 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               {renderInlineField(FIELD_KEYS.thirdPartyFullName, 'Full Name')}
               {renderInlineField(FIELD_KEYS.thirdPartyStreet, 'Street')}
               {renderInlineField(FIELD_KEYS.thirdPartyCity, 'City')}
-              {renderInlineSelect(FIELD_KEYS.thirdPartyState, 'State', US_STATES, 'Select state')}
+              <DirtyFieldWrapper fieldKey={FIELD_KEYS.thirdPartyState}>
+                <div className="flex items-center gap-2">
+                  <Label className="w-[110px] shrink-0 text-xs text-foreground">State</Label>
+                  <Select value={getFieldValue(FIELD_KEYS.thirdPartyState)} onValueChange={(val) => onValueChange(FIELD_KEYS.thirdPartyState, (val === '__select__' ? '' : val))} disabled={disabled}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select state" /></SelectTrigger>
+                    <SelectContent className="bg-background border border-border z-50 max-h-60">
+                      <SelectItem value="__select__">Select</SelectItem>
+                      {US_STATES.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </DirtyFieldWrapper>
               <DirtyFieldWrapper fieldKey={FIELD_KEYS.thirdPartyZip}>
                 <div className="flex items-center gap-2">
                   <Label className="w-[110px] shrink-0 text-xs text-foreground">ZIP Code</Label>

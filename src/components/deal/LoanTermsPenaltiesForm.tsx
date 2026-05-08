@@ -185,13 +185,10 @@ const DistributionFields: React.FC<{
 
   const lendersIs100 = lendersClamped >= 100;
 
-  // Allocation error: Lenders < 100 and Origination Vendor empty.
-  // Shown after user blurs Lenders, or on tab-switch / save (showValidation).
+  // Allocation error UI removed per spec — keep state for compatibility but never show.
   const [lendersBlurred, setLendersBlurred] = useState(false);
-  const lendersHasValue = lendersRaw !== '' && !isNaN(parseFloat(lendersRaw));
-  const vendorEmpty = vendorRaw === '' || isNaN(parseFloat(vendorRaw));
-  const allocationIncomplete = lendersHasValue && lendersClamped < 100 && vendorEmpty;
-  const showError = allocationIncomplete && (lendersBlurred || !!showValidation);
+  void lendersBlurred; void showValidation;
+  const showError = false;
 
   // If Lenders hits 100, force Origination Vendor to 0 (Company auto = 0).
   useEffect(() => {
