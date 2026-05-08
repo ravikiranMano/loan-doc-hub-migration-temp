@@ -858,6 +858,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 {renderCurrencyInput('fundingAmount', '0.00')}
               </div>
               <div className="flex items-center gap-1">
+                <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Base Fee</Label>
+                {renderCurrencyInput('baseFee', 'Enter amount')}
+              </div>
+              <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Current Balance</Label>
                 {renderCurrencyInput('currentBalance', '0.00')}
               </div>
