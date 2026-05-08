@@ -56,12 +56,7 @@ const PENALTY_PREFIXES = [
 export function validatePenaltyDistributions(
   values: Record<string, string>
 ): AllocationValidationResult {
-  for (const prefix of PENALTY_PREFIXES) {
-    const lenders = parsePct(values[`${prefix}.distribution.lenders`]);
-    const vendor = parsePct(values[`${prefix}.distribution.origination_vendors`]);
-    if (lenders !== null && lenders < 100 && vendor === null) {
-      return { ok: false, firstPrefix: prefix };
-    }
-  }
+  // Split allocation error removed per spec — never block save.
+  void values;
   return { ok: true };
 }
