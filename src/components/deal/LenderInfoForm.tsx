@@ -223,7 +223,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 <SelectTrigger className="h-8">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
-                <SelectContent className="bg-background z-50">
+                <SelectContent className="bg-background z-[100]">
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="On Hold">On Hold</SelectItem>
                 </SelectContent>
@@ -300,7 +300,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 <SelectTrigger className="h-8">
                   <SelectValue placeholder="Select capacity" />
                 </SelectTrigger>
-                <SelectContent className="bg-background z-50">
+                <SelectContent className="bg-background z-[100]">
                   {[
                     'Trustee',
                     'Successor Trustee',
