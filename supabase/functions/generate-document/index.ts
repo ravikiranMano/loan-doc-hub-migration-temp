@@ -784,6 +784,36 @@ async function generateSingleDocument(
         }
       }
 
+      // RE885 Cash at Closing — derive boolean checkbox flags + canonical label
+      // from origination_fees.re885_cash_at_closing_option (UI stores codes:
+      // "payable_to_you" / "you_must_pay"). Publishes:
+      //   re885_cash_payable_to_you / re885_cash_you_must_pay (boolean)
+      //   origination_fees.re885_cash_at_closing_option (normalized label, overwrite)
+      //   origination_fees.re885_cash_at_closing_amount_label (alias)
+      {
+        const rawOpt = String(
+          fieldValues.get("origination_fees.re885_cash_at_closing_option")?.rawValue ?? ""
+        ).trim();
+        const norm = rawOpt.toLowerCase().replace(/[\s_-]+/g, "");
+        let canonical = "";
+        if (norm === "payabletoyou")    canonical = "Payable to you";
+        else if (norm === "youmustpay") canonical = "You Must Pay";
+
+        const isPayable = canonical === "Payable to you";
+        const isMustPay = canonical === "You Must Pay";
+
+        fieldValues.set("re885_cash_payable_to_you", { rawValue: isPayable ? "true" : "false", dataType: "boolean" });
+        fieldValues.set("re885_cash_you_must_pay",   { rawValue: isMustPay ? "true" : "false", dataType: "boolean" });
+
+        if (canonical) {
+          fieldValues.set("origination_fees.re885_cash_at_closing_option",       { rawValue: canonical, dataType: "text" });
+          fieldValues.set("origination_fees.re885_cash_at_closing_amount_label", { rawValue: canonical, dataType: "text" });
+        }
+        console.log(
+          `[generate-document] RE885 CashAtClosingType raw="${rawOpt}" canonical="${canonical}" payable=${isPayable} mustPay=${isMustPay}`
+        );
+      }
+
       console.log(
         `[generate-document] RE885 alias publisher: ` +
           `of_re_estimatedClosing="${fieldValues.get("of_re_estimatedClosing")?.rawValue ?? ""}" ` +
