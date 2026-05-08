@@ -1,45 +1,62 @@
-## Plan: Fix remaining RE851D blanks — author-defect template normalization
+## Annual Property Taxes — RE851D per-property population
 
-### Confirmed root cause (from latest generated doc)
-After the previous TDZ fix, the `_N` rewriter is now running successfully — the generated output contains **zero surviving** `{{...}}` tags (except one malformed case). However, Property blocks #1–#5 still render with blank values. Inspection of the template reveals authoring defects in many merge tags that prevent the rewriter and resolver from binding values:
+### Diagnosis
+
+The publishers already exist in `supabase/functions/generate-document/index.ts` (lines 1205–1229) and emit per-property values from CSR → Property → Property Tax:
+
+- `pr_pt_annualTaxes_{N}` ← `propertytax{N}.annual_payment` (currency)
+- `pr_pt_actual_{N}` / `pr_pt_actual_{N}_glyph` ← Confidence == "Actual"
+- `pr_pt_estimated_{N}` / `pr_pt_estimated_{N}_glyph` ← Confidence == "Estimated"
+
+The template `Re851d_v1(1)(2)(13)` already uses these tag literals:
+
+- `{{pr_pt_annualTaxes_N}}`
+- `{{pr_pt_actual_N_glyph}}`
+- `{{pr_pt_estimated_N_glyph}}`
+
+**Why they aren't populating:** these keys are **missing from the RE851D `_N` rewrite registration list** (around line 3585 in `index.ts`), so `_N` never gets rewritten to `_1`, `_2`, … per property. The publisher emits `pr_pt_annualTaxes_2`, but the document still contains literal `pr_pt_annualTaxes_N` and never matches.
+
+A second, smaller defect was found in the template XML: two occurrences of `{{pr_pt_estimated_N_glyph}}}}` carry an extra trailing `}}`. After the rewrite they will render as `☑}}` / `☐}}`. This is a template authoring issue, not a code issue.
+
+### Field keys to use in template
+
+These are the canonical keys (no admin/dictionary changes needed — they are runtime-published aliases):
+
+| Purpose | Tag to place in template |
+|---|---|
+| Annual tax amount (currency) | `{{pr_pt_annualTaxes_N}}` |
+| ACTUAL checkbox glyph | `{{pr_pt_actual_N_glyph}}` |
+| ESTIMATED checkbox glyph | `{{pr_pt_estimated_N_glyph}}` |
+
+`_N` is rewritten per property (Property #1 → `_1`, #2 → `_2`, …). Boolean variants `pr_pt_actual_N` / `pr_pt_estimated_N` are also published if `{{#if}}` blocks are preferred.
+
+### Code change (single file)
+
+**`supabase/functions/generate-document/index.ts`** — append to the RE851D `_N` rewrite key list near line 3585 (alongside `propertytax.annual_payment_N`, `propertytax.delinquent_N`, etc.):
 
 ```
-{{ pr_p_appraiseValue_ N }}        ← space before N
-{{pr_p_appraiseValue_ N }}         ← space before N
-{{pr_p_construcType_ N }}          ← space before N
-{{pr_p_squareFeet_ N }}            ← space before N
-{{property_type_sfr_owner _N}}     ← space before _N
-{{   propertytax.annual_payment_N }}     ← multiple spaces (ok-ish)
-{{   propertytax.delinquent_amount_N}}   ← multiple spaces (ok-ish)
-{{pr_li_sourceOfPayment_ N }       ← space + missing closing brace
-{{property_type_land_income_N}     ← missing closing brace (4 occurrences)
+"pr_pt_annualTaxes_N",
+"pr_pt_actual_N_glyph", "pr_pt_actual_N",
+"pr_pt_estimated_N_glyph", "pr_pt_estimated_N",
 ```
 
-These tags fail the `_N` literal-substring rewriter because the inner whitespace breaks the match `pr_p_appraiseValue_N`. The merge-tag parser then trims outer whitespace only and looks up keys like `pr_p_appraiseValue_ N` (with internal space) which do not exist, so it prints empty strings.
+Longest variants (`_glyph`) listed first so the longest-match scanner consumes them before the bare boolean key.
 
-### Changes to implement (single file, single function)
+### Validation behavior (already implemented in publisher)
 
-**File:** `supabase/functions/generate-document/index.ts` — inside the existing RE851D `_N` preprocessing block (right after the `xml` variable is decoded, before the existing `parens/braces` normalizers around lines 3973–4051).
-
-Add three small XML-level normalizers, strictly scoped to `{{ ... }}` merge-tag bodies so they cannot touch document prose:
-
-1. **Internal-whitespace collapse inside merge tags.** Inside any `{{ ... }}` token, collapse `_ N` → `_N` and ` _N` → `_N`. Restricted to known RE851D field-key prefixes (`pr_p_`, `pr_li_`, `ln_p_`, `property_type_`, `propertytax`) to avoid touching unrelated prose.
-
-2. **Fix missing closing brace** for `{{property_type_land_income_N}` → `{{property_type_land_income_N}}` (4 occurrences). Use a strict regex requiring a single trailing `}` not followed by another `}`.
-
-3. **Same brace fix** generalized to the same RE851D field-key prefixes, so any other future single-`}` defect inside this template family auto-heals.
-
-After these run, the existing `_N` rewriter (which runs immediately afterward inside the same try block) will see clean tag bodies and will rewrite every per-property tag correctly.
-
-### Verification
-- Deploy the edge function.
-- Regenerate RE851D for the current deal (`db7517e9-…`) and re-open the docx.
-- Confirm Property blocks #1–#5 now show: street address, owner, appraisal value/date, square feet, construction type, encumbrances, LTV, etc.
-- Confirm no surviving `{{...}` tokens remain in the rendered XML.
+- Only one of ACTUAL / ESTIMATED resolves to ☑; the other is ☐.
+- If Confidence is null/blank, both render as ☐.
+- If Annual Payment is blank, no `pr_pt_annualTaxes_{N}` is published → tag falls through anti-fallback shield (renders blank).
+- Currency formatting handled by existing `dataType: "currency"` pipeline.
 
 ### Out of scope
-- No template upload (server-side normalization avoids touching the storage object).
-- No DB schema changes.
-- No UI / form / field-dictionary edits.
-- No changes to other templates or to RE851A/RE851B/RE885 logic.
-- No changes to publishers or anti-fallback shield (those are already correct — the bug is purely tag-body sanitization).
+
+- No field-dictionary additions (publisher already exposes these as merge tags).
+- No template upload/edit (user owns the template; the trailing `}}}}` typo on the ESTIMATED tag should be corrected by the user in two places).
+- No DB schema, UI form, or other template changes.
+
+### Verification
+
+1. Deploy `generate-document`.
+2. Regenerate RE851D for deal `db7517e9-…` with multiple properties having Property Tax set.
+3. Confirm each property row in ANNUAL PROPERTY TAXES shows: `$amount` + correct ☑ next to ACTUAL or ESTIMATED, others ☐.
