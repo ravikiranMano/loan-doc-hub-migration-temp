@@ -909,12 +909,18 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 onValueChange={(value) => handleBorrowerPref(value, true)}
                 className="space-y-1.5"
               >
-                {[
+                {(isAG ? [
+                  { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home', hasPref: true },
+                  { label: 'Home', phoneKey: 'phone.home2', prefKey: 'preferred.home2', hasPref: true },
+                  { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work', hasPref: true },
+                  { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell', hasPref: true },
+                  { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax', hasPref: false },
+                ] : [
                   { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home', hasPref: true },
                   { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work', hasPref: true },
                   { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell', hasPref: true },
                   { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax', hasPref: false },
-                ].map((p, idx) => (
+                ]).map((p, idx) => (
                   <div key={`${p.phoneKey}-${idx}`} className="flex items-center gap-2">
                     <Label className="w-[40px] shrink-0 text-xs">{p.label}</Label>
                     <PhoneInput
