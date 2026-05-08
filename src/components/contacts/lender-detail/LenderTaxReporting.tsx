@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import Issue1099ReferenceTable from './Issue1099ReferenceTable';
 
 
 interface LenderTaxReportingProps {
@@ -93,7 +94,7 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-5xl">
       <h4 className="text-lg font-semibold text-foreground">Tax Reporting</h4>
 
       <div className="space-y-4">
@@ -108,26 +109,37 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
           <Label htmlFor="lender-tax-designated">Designated Recipient</Label>
         </div>
 
-        {/* Issue 1099 (auto-populated, editable) */}
-        <div>
-          <Label>Issue 1099</Label>
-          <Select
-            value={issue1099Raw || '__none__'}
-            onValueChange={(v) => setIssue1099Manual(v === '__none__' ? '' : v)}
-            disabled={disabled}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">— None —</SelectItem>
-              <SelectItem value="Yes">Yes</SelectItem>
-              <SelectItem value="No">No</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            Auto-populated from entity type. Editable — manual changes are preserved.
-          </p>
+        {/* Issue 1099 (auto-populated, editable) + reference lookup table */}
+        <div className="flex flex-col gap-4 md:flex-row md:items-start">
+          <div className="flex-1 min-w-0">
+            <Label>Issue 1099</Label>
+            <Select
+              value={issue1099Raw || '__none__'}
+              onValueChange={(v) => setIssue1099Manual(v === '__none__' ? '' : v)}
+              disabled={disabled}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— None —</SelectItem>
+                <SelectItem value="Yes">Yes</SelectItem>
+                <SelectItem value="No">No</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Auto-populated from entity type. Editable — manual changes are preserved.
+            </p>
+          </div>
+          <Issue1099ReferenceTable
+            typeLabel={
+              borrowerType
+                ? 'Borrower Type'
+                : coborrowerType
+                  ? 'Co-Borrower Type'
+                  : 'Lender Type'
+            }
+          />
         </div>
 
         {/* Alternate Reporting */}
