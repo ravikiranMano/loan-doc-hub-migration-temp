@@ -1270,7 +1270,9 @@ async function generateSingleDocument(
           fieldValues.set(`pr_pt_estimated_${idx}`,       { rawValue: isEstimated ? "true" : "false", dataType: "boolean" });
           fieldValues.set(`pr_pt_actual_${idx}_glyph`,    { rawValue: isActual    ? "☑" : "☐",        dataType: "text" });
           fieldValues.set(`pr_pt_estimated_${idx}_glyph`, { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
-          debugLog(`[generate-document] RE851D pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
+          // Always-on diagnostic so we can verify per-property tax state in logs
+          // even when DOC_GEN_DEBUG is off.
+          console.log(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
         // Delinquent payment count
         const delinqV =
@@ -4258,7 +4260,11 @@ async function generateSingleDocument(
                 // position handling the glyph tags stay literal and the YES/NO
                 // checkboxes never resolve.
                 const idxToken = indexNum > 5 ? `_overflow${indexNum}` : `_${indexNum}`;
-                const middleSuffixRe = /_N(_yes_glyph|_no_glyph|_yes|_no)$/;
+                // _N may sit in the middle when followed by a known suffix:
+                //   _yes_glyph / _no_glyph / _yes / _no  (lien questionnaires)
+                //   _glyph                                (pr_pt_actual_N_glyph,
+                //                                          pr_pt_estimated_N_glyph)
+                const middleSuffixRe = /_N(_yes_glyph|_no_glyph|_yes|_no|_glyph)$/;
                 if (middleSuffixRe.test(tag)) {
                   replacement = tag.replace(middleSuffixRe, `${idxToken}$1`);
                 } else {
@@ -4584,6 +4590,67 @@ async function generateSingleDocument(
             }
           }
 
+          // ── RE851D ANNUAL PROPERTY TAXES ACTUAL/ESTIMATED safety pass ──
+          // For each PROPERTY #K block, locate the "ANNUAL PROPERTY TAX(ES)"
+          // anchor and force the next two checkbox glyph runs (typically
+          // before the labels "ACTUAL" and "ESTIMATED") based on per-property
+          // tax confidence:
+          //   confidence === Actual    → ACTUAL ☑  ESTIMATED ☐
+          //   confidence === Estimated → ACTUAL ☐  ESTIMATED ☑
+          //   blank/other              → both ☐
+          // Bounded look-ahead (4 KB). Skips any glyph already overlapping a
+          // queued rewrite span so this never collides with the merge-tag
+          // publisher when the template uses {{pr_pt_actual_K_glyph}} /
+          // {{pr_pt_estimated_K_glyph}} directly.
+          if (regions.props.length > 0) {
+            const taxAnchorRe = /ANNUAL\s+PROPERTY\s+TAX/gi;
+            const taxGlyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([☐☑☒])(<\/w:t>\s*<\/w:r>)/g;
+            let tqm: RegExpExecArray | null;
+            while ((tqm = taxAnchorRe.exec(xml)) !== null) {
+              const qStart = tqm.index;
+              let pIdxT: number | null = null;
+              for (const p of regions.props) {
+                if (qStart >= p.range[0] && qStart < p.range[1]) { pIdxT = p.k; break; }
+              }
+              if (pIdxT === null) continue;
+              const windowEnd = Math.min(xml.length, qStart + 4096);
+              taxGlyphRunRe.lastIndex = qStart;
+              const tgms: RegExpExecArray[] = [];
+              let tgm: RegExpExecArray | null;
+              while ((tgm = taxGlyphRunRe.exec(xml)) !== null && tgm.index < windowEnd) {
+                tgms.push(tgm);
+                if (tgms.length >= 2) break;
+              }
+              if (tgms.length < 2) continue;
+              const overlapsT = (s: number, e: number) =>
+                rewrites.some((r) => s < r.end && e > r.start) ||
+                consumed.some(([cs, ce]) => s < ce && e > cs);
+              const aMt = tgms[0];
+              const eMt = tgms[1];
+              const aS = aMt.index, aE = aS + aMt[0].length;
+              const eS = eMt.index, eE = eS + eMt[0].length;
+              if (overlapsT(aS, aE) || overlapsT(eS, eE)) continue;
+              const truthyT = (raw: unknown): boolean => {
+                if (raw === null || raw === undefined) return false;
+                if (typeof raw === "boolean") return raw;
+                const s = String(raw).trim().toLowerCase();
+                return ["true", "yes", "y", "1", "checked", "on"].includes(s);
+              };
+              const isActualK = truthyT(fieldValues.get(`pr_pt_actual_${pIdxT}`)?.rawValue);
+              const isEstK = truthyT(fieldValues.get(`pr_pt_estimated_${pIdxT}`)?.rawValue);
+              const aGlyph = isActualK ? "☑" : "☐";
+              const eGlyph = isEstK ? "☑" : "☐";
+              rewrites.push({ start: aS, end: aE, replacement: `${aMt[1]}${aGlyph}${aMt[3]}` });
+              rewrites.push({ start: eS, end: eE, replacement: `${eMt[1]}${eGlyph}${eMt[3]}` });
+              consumed.push([aS, aE]);
+              consumed.push([eS, eE]);
+              totalRewrites += 2;
+              console.log(
+                `[RE851D] annual-tax glyph anchored: PROP#${pIdxT} actual=${isActualK} estimated=${isEstK}`
+              );
+            }
+          }
+
           // ── RE851D Owner-Occupied YES/NO safety pass ──
           // Anchor each glyph rewrite to the actual "Yes" / "No" label run that
           // follows the "OWNER OCCUPIED" question. We pick the checkbox glyph
@@ -4752,6 +4819,13 @@ async function generateSingleDocument(
         "propertytax_delinquent", "propertytax.delinquent",
         "propertytax_delinquent_amount", "propertytax.delinquent_amount",
         "propertytax_source_of_information", "propertytax.source_of_information",
+        // RE851D ANNUAL PROPERTY TAXES per-property publisher aliases. Without
+        // these, suffixed keys like pr_pt_annualTaxes_1 / pr_pt_actual_1_glyph
+        // miss the resolver's priority-1 direct match and fall back to the
+        // bare dictionary entry, blanking the value in the rendered DOCX.
+        "pr_pt_annualTaxes",
+        "pr_pt_actual", "pr_pt_actual_glyph",
+        "pr_pt_estimated", "pr_pt_estimated_glyph",
         // Lien-derived per-property aliases used by the questionnaire blocks.
         "pr_li_delinquencyPaidByLoan", "pr_li_delinquencyPaidByLoan_yes",
         "pr_li_delinquencyPaidByLoan_no", "pr_li_delinquencyPaidByLoan_yes_glyph",
