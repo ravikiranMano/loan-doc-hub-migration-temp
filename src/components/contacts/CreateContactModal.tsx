@@ -240,9 +240,6 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
           if (dobDate >= new Date()) errs['dob'] = 'Enter valid date of birth';
         }
       }
-      if (!form['tax_id_type']) errs['tax_id_type'] = 'Please select Tax ID Type';
-      const tinDigits = (form['tax_id'] || '').replace(/\D/g, '');
-      if (tinDigits && tinDigits.length !== 9) errs['tax_id'] = 'Enter valid TIN (9 digits)';
       if (!(form['primary_address.street'] || '').trim()) errs['primary_address.street'] = 'Street is required';
       if (!(form['primary_address.city'] || '').trim()) errs['primary_address.city'] = 'City is required';
       if (!form['primary_address.state']) errs['primary_address.state'] = 'State is required';
