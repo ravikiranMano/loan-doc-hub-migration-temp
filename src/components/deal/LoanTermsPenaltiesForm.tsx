@@ -233,7 +233,7 @@ const DistributionFields: React.FC<{
     const sanitized = sanitizePct(val);
     const newOther = parseFloat(sanitized) || 0;
     const capped = Math.min(newOther, Math.max(0, 100 - lendersClamped - vendorClamped));
-    const finalVal = capped === newOther ? sanitized : capped.toFixed(2);
+    const finalVal = capped === newOther ? sanitized : roundPctForStorage(capped);
     onValueChange(`${prefix}.distribution.other`, finalVal);
   };
 
