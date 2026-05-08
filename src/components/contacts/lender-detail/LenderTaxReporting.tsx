@@ -130,56 +130,6 @@ const LenderTaxReporting: React.FC<LenderTaxReportingProps> = ({ values, onValue
           </p>
         </div>
 
-        {/* TIN Number + TIN Type */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>TIN Number</Label>
-            <Input
-              value={tinDisplay}
-              onFocus={() => setTinFocused(true)}
-              onBlur={() => { setTinFocused(false); setTinTouched(true); }}
-              onChange={(e) => handleTinChange(e.target.value)}
-              disabled={disabled}
-              maxLength={mappedTinKind === 'SSN' ? 11 : 10}
-              inputMode="numeric"
-              placeholder={mappedTinKind === 'SSN' ? 'XXX-XX-XXXX' : 'XX-XXXXXXX'}
-              aria-invalid={!!tinError}
-            />
-            {tinError && (
-              <p className="text-[11px] text-destructive mt-1">{tinError}</p>
-            )}
-          </div>
-          <div>
-            <Label>TIN Type</Label>
-            <Select
-              value={tinType || '__none__'}
-              onValueChange={(v) => onValueChange(K.tinType, v === '__none__' ? '' : v)}
-              disabled={disabled}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">— None —</SelectItem>
-                <SelectItem value="0">0 – Unknown</SelectItem>
-                <SelectItem value="1">1 – EIN</SelectItem>
-                <SelectItem value="2">2 – SSN</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* TIN Verified */}
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="lender-tax-tin-verified"
-            checked={tinVerified}
-            onCheckedChange={(v) => onValueChange(K.tinVerified, String(!!v))}
-            disabled={disabled}
-          />
-          <Label htmlFor="lender-tax-tin-verified">TIN Verified</Label>
-        </div>
-
         {/* Alternate Reporting */}
         <div>
           <Label>Alternate Reporting</Label>
