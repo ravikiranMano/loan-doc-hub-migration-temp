@@ -93,6 +93,7 @@ export interface FundingFormData {
   lenderFullName: string;
   lenderRate: string;
   fundingAmount: string;
+  baseFee: string;
   fundingDate: string;
   interestFrom: string;
   notes: string;
@@ -183,7 +184,7 @@ export interface FundingFormData {
 
 const getDefaultFormData = (loanNumber: string, borrowerName: string, noteRate: string, soldRate: string): FundingFormData => ({
   loan: loanNumber, borrower: borrowerName, lenderId: '', lenderFullName: '',
-  lenderRate: '', fundingAmount: '', fundingDate: '', interestFrom: '', notes: '', brokerParticipates: false,
+  lenderRate: '', fundingAmount: '', baseFee: '', fundingDate: '', interestFrom: '', notes: '', brokerParticipates: false,
   percentOwned: '', regularPayment: '', lenderShare: '',
   rateSelection: 'note_rate', rateNoteValue: noteRate, rateSoldValue: soldRate, rateLenderValue: '',
   lenderRateOverride: false,
@@ -855,6 +856,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Original Funding</Label>
                 {renderCurrencyInput('fundingAmount', '0.00')}
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Base Fee</Label>
+                {renderCurrencyInput('baseFee', 'Enter amount')}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Current Balance</Label>

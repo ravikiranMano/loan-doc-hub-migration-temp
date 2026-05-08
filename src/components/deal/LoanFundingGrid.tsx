@@ -66,6 +66,7 @@ export interface FundingRecord {
   lenderRate: number;
   principalBalance: number;
   originalAmount: number;
+  baseFee?: number;
   currentBalance?: number;
   regularPayment: number;
   lenderShare: number;
@@ -348,6 +349,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       lenderFullName: record.lenderName,
       lenderRate: String(record.lenderRate),
       fundingAmount: formatCurrencyDisplay(String(record.originalAmount)),
+      baseFee: record.baseFee !== undefined && record.baseFee !== null ? formatCurrencyDisplay(String(record.baseFee)) : '',
       fundingDate: record.fundingDate || '',
       interestFrom: record.interestFrom || '',
       notes: '',

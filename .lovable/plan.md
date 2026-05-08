@@ -1,52 +1,47 @@
-## RE851D — Fix "Is there Additional Securing Property?" checkbox count
+## Goal
+Add a "Base Fee" currency field to the Add Funding modal (per funding record), persist it through the existing funding-records save path, and expose it as `{{ld_fd_baseFee}}` in document generation — without altering existing schema, layout, or APIs.
 
-### Current state
+## Scope (strictly limited)
 
-`supabase/functions/generate-document/index.ts` already publishes `pr_p_multipleProperties_yes/_no/_glyph` aliases (line ~1063) and runs a question-anchored safety pass (line ~4384). Both derive the count from `propertyIndices`, a `Set<number>` populated by scanning every `property{N}.*` key in `fieldValues` (line ~984).
+### 1. Field Dictionary entry (data-only)
+Insert one row into `field_dictionary` (no schema change):
+- `field_key` = `ld_fd_baseFee`
+- `label` = `Base Fee`
+- `section` = `lender`
+- `form_type` = `funding`
+- `data_type` = `currency`
+- `allowed_roles` = `{admin, csr}` (matches the other `ld_fd_*` rows)
 
-### Problem
+This mirrors the existing `ld_fd_fundingAmount` / `ld_fd_principaBalanc` entries.
 
-`propertyIndices` counts an index as soon as **any** `property{N}.<field>` key exists in `fieldValues` — even if every value for that property is empty/blank. Stale or never-populated property slots (common when a property record is removed from CSR but the section row leaves zeroed keys behind) inflate the count, so YES is checked when only one real property exists.
+### 2. UI — Add Funding modal (`src/components/deal/AddFundingModal.tsx`)
+- Add `baseFee: string` to the `FundingFormData` interface (default `''`).
+- Render a new currency input labeled **Base Fee** in the same header row as Funding Amount / Funding Date / Current Balance, using the existing `renderCurrencyInput('baseFee', '0.00')` helper so format ($, commas, 2dp on blur), spacing, and Label widths match the surrounding fields exactly.
+- No layout shifts: insert the cell adjacent to the other currency fields in the same flex row.
 
-Additionally, `propertyIndices.add(1)` (line 992) unconditionally seeds index 1, which is correct for address auto-compute but means the count is never below 1 — that's fine for the NO branch but should not affect multi-detection.
+### 3. Grid record shape (`src/components/deal/LoanFundingGrid.tsx`)
+- Add optional `baseFee?: number` to the `FundingRecord` interface so saved rows round-trip.
+- Map `baseFee` in the existing convert-to/from-record paths already used for `originalAmount` / `fundingAmount` (no new save call, no new column, no new grid column unless the user later asks).
 
-### Fix
+### 4. Persistence (no new APIs)
+Funding rows are already serialized as JSON under the dictionary key `loan_terms.funding_records` (see `LoanTermsFundingForm.tsx`). Because `baseFee` is just a new property on each record object inside that JSON array, it persists automatically through the existing save path — no new field-dictionary lookup, no new write code, no schema migration.
 
-Introduce a single derived `realPropertyCount` based on properties that have at least one non-empty meaningful identifier field, and use it for both the publisher and the safety pass.
+### 5. Document generation (`supabase/functions/generate-document/index.ts`)
+Extend the existing bridge block right next to the `ld_fd_fundingAmount` bridge (~line 1804) to also publish `ld_fd_baseFee`:
+- Read the matching funding record for the current lender context (same lookup the funding-amount bridge uses).
+- If a `baseFee` value exists and `ld_fd_baseFee` is not already set, `fieldValues.set("ld_fd_baseFee", { rawValue: String(baseFee), dataType: "currency" })`.
+- Add a `debugLog` line: `[generate-document] Auto-bridged ld_fd_baseFee = <value>`.
 
-1. After `propertyIndices` is built (around line 992), compute:
-   ```ts
-   const PROP_PRESENCE_FIELDS = ["address", "street", "city", "state", "zip", "county", "legal_description"];
-   const realPropertyIndices = [...propertyIndices].filter((idx) => {
-     const prefix = `property${idx}`;
-     return PROP_PRESENCE_FIELDS.some((f) => {
-       const v = fieldValues.get(`${prefix}.${f}`)?.rawValue;
-       return v !== undefined && v !== null && String(v).trim() !== "";
-     });
-   }).sort((a, b) => a - b);
-   const realPropertyCount = realPropertyIndices.length;
-   ```
+This gives `{{ld_fd_baseFee}}` correct currency formatting via the existing currency renderer — no template-engine changes.
 
-2. Update the publisher block (lines 1063–1071):
-   - `isMultiple = realPropertyCount > 1`
-   - `isSingle  = realPropertyCount <= 1` (covers both 0 and 1 → NO checked, per spec table "≤ 1 → NO ✅")
-   - Keep the same four alias keys and dataTypes so the template binding is unchanged.
+## Out of scope (will not touch)
+- No DB schema changes, no new tables/columns.
+- No changes to the LoanFundingGrid columns, FundingAdjustmentModal, LenderFundingForm placeholder, or any other Funding surface.
+- No changes to existing field keys, save APIs, or RLS.
+- No edits to `legacyKeyMap.ts` / `fieldKeyMap.ts` (the new key uses the canonical `ld_fd_` form directly).
 
-3. Update the safety pass (line ~4391):
-   - Replace `[...propertyIndices].sort(...).slice(0,5).length` with `realPropertyCount`.
-   - Keep all anchor regex / overlap guards unchanged.
-
-4. Add a single debug log line: `RE851D multipleProperties: realCount=<n> rawIndices=<list> realIndices=<list> → YES=<bool> NO=<bool>`.
-
-### Out of scope
-
-- No UI changes, no schema changes, no template edits.
-- `addressToPropIndex`, per-property publishers, lien/tax mappings, and all other RE851D logic remain untouched.
-- Mutual exclusivity is already guaranteed by deriving both flags from the same boolean.
-
-### Validation
-
-- 0 properties → YES ☐, NO ☑
-- 1 property  → YES ☐, NO ☑
-- 2+ properties → YES ☑, NO ☐
-- Stale empty `property2.*` keys with no address/street/etc. → counted as 1, NO ☑.
+## Validation
+1. Open Add Funding modal → Base Fee field renders inline with Funding Amount, accepts numeric input, formats as `$1,234.56` on blur.
+2. Save funding row → reopen for edit → Base Fee value reloaded.
+3. Generate any document containing `{{ld_fd_baseFee}}` → value renders in currency format; edge-function logs show the bridge line.
+4. Existing funding fields (Funding Amount, Funding Date, Current Balance, etc.) and totals are unchanged.
