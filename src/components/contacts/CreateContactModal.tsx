@@ -775,6 +775,17 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               </div>
               {borrowerErrors['email'] && <p className="text-[10px] text-destructive ml-[108px]">{borrowerErrors['email']}</p>}
 
+              {/* Date Authorized */}
+              <div className="flex items-center gap-2">
+                <Label className="w-[100px] shrink-0 text-xs">Date Authorized</Label>
+                <Input
+                  type="date"
+                  value={form['date_authorized'] || ''}
+                  onChange={(e) => set('date_authorized', e.target.value)}
+                  className="h-7 text-xs flex-1"
+                />
+              </div>
+
               {/* Delivery Options - placed below Email per Borrower form */}
               <div className="pt-2">
                 <h4 className="font-semibold text-xs text-foreground pb-1">Delivery Options</h4>
@@ -782,22 +793,6 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   {renderCheckbox('Print', 'delivery_print')}
                   {renderCheckbox('Email', 'delivery_email')}
                   {renderCheckbox('SMS', 'delivery_sms')}
-                </div>
-              </div>
-
-              <div className="pt-2 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={form['agreement_on_file'] === 'true'}
-                    onCheckedChange={(checked) => set('agreement_on_file', String(!!checked))}
-                  />
-                  <Label className="text-xs">Agreement on File</Label>
-                  <Input
-                    type="date"
-                    value={form['agreement_on_file_date'] || ''}
-                    onChange={(e) => set('agreement_on_file_date', e.target.value)}
-                    className="h-7 text-xs w-[140px]"
-                  />
                 </div>
               </div>
             </div>
@@ -878,7 +873,6 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               >
                 {[
                   { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home', hasPref: true },
-                  { label: 'Home', phoneKey: 'phone.home2', prefKey: 'preferred.home2', hasPref: true },
                   { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work', hasPref: true },
                   { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell', hasPref: true },
                   { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax', hasPref: false },
