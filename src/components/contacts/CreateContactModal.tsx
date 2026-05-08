@@ -450,7 +450,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
           : "max-w-[1400px] w-[95vw] max-h-[85vh] overflow-y-auto"
       )}>
         <DialogHeader className={contactType === 'lender' || contactType === 'borrower' ? "shrink-0" : undefined}>
-          <DialogTitle>Create New {typeLabel}</DialogTitle>
+          <DialogTitle>{title ?? `Create New ${typeLabel}`}</DialogTitle>
         </DialogHeader>
 
         {contactType === 'lender' && (
