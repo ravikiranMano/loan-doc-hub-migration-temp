@@ -78,7 +78,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     else if (data.rateSelection === 'sold_rate') rate = parseFloat(data.rateSoldValue || '') || 0;
     else if (data.rateSelection === 'lender_rate') rate = parseFloat(data.rateLenderValue || '') || 0;
 
-    const payment = la > 0 && rate > 0 ? (la * (rate / 100) / 12).toFixed(2) : '';
+    const payment = la > 0 && rate > 0 ? roundDollarForStorage(la * (rate / 100) / 12) : '';
     if (payment !== data.regularPayment) {
       onChange({ ...data, regularPayment: payment });
     }
