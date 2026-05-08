@@ -182,11 +182,6 @@ export const ContactLenderDetailForm: React.FC<Props> = ({ lender, onSave, onCan
         <h4 className="font-semibold text-base text-foreground mb-3">Financial / Compliance</h4>
         <Separator className="mb-4" />
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>TIN</Label>
-            <Input value={form.tin} onChange={(e) => set('tin', e.target.value)} />
-          </div>
-          <div />
           <div className="flex items-center gap-2">
             <Checkbox checked={form.ach} onCheckedChange={(v) => set('ach', !!v)} />
             <Label>ACH</Label>
