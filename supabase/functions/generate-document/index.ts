@@ -1813,6 +1813,37 @@ async function generateSingleDocument(
       }
     }
 
+    // Bridge ld_fd_baseFee from funding_records JSON (sum of baseFee across records)
+    const existingBaseFee = fieldValues.get("ld_fd_baseFee");
+    if (!existingBaseFee || !existingBaseFee.rawValue) {
+      const fundingRecordsRaw =
+        fieldValues.get("loan_terms.funding_records")?.rawValue ||
+        fieldValues.get("ln_p_fundingRecord")?.rawValue;
+      if (fundingRecordsRaw) {
+        try {
+          const arr = typeof fundingRecordsRaw === "string"
+            ? JSON.parse(fundingRecordsRaw)
+            : fundingRecordsRaw;
+          if (Array.isArray(arr)) {
+            let sum = 0;
+            let found = false;
+            for (const rec of arr) {
+              const v = rec?.baseFee;
+              if (v === undefined || v === null || v === "") continue;
+              const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+              if (!isNaN(n)) { sum += n; found = true; }
+            }
+            if (found) {
+              fieldValues.set("ld_fd_baseFee", { rawValue: sum.toFixed(2), dataType: "currency" });
+              debugLog(`[generate-document] Auto-bridged ld_fd_baseFee = ${sum.toFixed(2)}`);
+            }
+          }
+        } catch (e) {
+          debugLog(`[generate-document] ld_fd_baseFee bridge parse error: ${e}`);
+        }
+      }
+    }
+
     // Auto-compute ln_p_estimateBallooPaymen (Estimated Balloon Payment) if not already set.
     // Mirrors the read-only UI calculation in LoanTermsBalancesForm:
     //   estimatedBalloon = totalBalanceDue + (loanAmount * noteRate / 100) / 12
