@@ -937,26 +937,45 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 ))}
               </RadioGroup>
 
-              <div className="pt-2">
-                <h4 className="font-semibold text-xs text-foreground pb-1">Vesting</h4>
-                <Textarea value={form['vesting'] || ''} onChange={(e) => set('vesting', e.target.value)} className="text-xs min-h-[60px] resize-none" />
-              </div>
+              {!isAG && (
+                <div className="pt-2">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Vesting</h4>
+                  <Textarea value={form['vesting'] || ''} onChange={(e) => set('vesting', e.target.value)} className="text-xs min-h-[60px] resize-none" />
+                </div>
+              )}
+
+              {isAG && (
+                <div className="pt-2 space-y-1">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Send</h4>
+                  {renderCheckbox('Payment Notification', 'send_pref.payment_notification')}
+                  {renderCheckbox('Borrower Statement', 'send_pref.borrower_statement')}
+                  {renderCheckbox('Late Notice', 'send_pref.late_notice')}
+                  {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
+                </div>
+              )}
 
               <div className="pt-2">
                 <h4 className="font-semibold text-xs text-foreground pb-1">FORD</h4>
-                <div className="space-y-1">
-                  {([['ford.1', 'ford.2'], ['ford.3', 'ford.4'], ['ford.5', 'ford.6'], ['ford.7', 'ford.8']] as const).map(([dropdownKey, inputKey], idx) => (
-                    <div key={idx} className="grid grid-cols-2 gap-1">
-                      <Select value={form[dropdownKey] || ''} onValueChange={(v) => set(dropdownKey, v)}>
-                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent className="bg-background border border-border z-[200]">
-                          {BORROWER_FORD_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Input value={form[inputKey] || ''} onChange={(e) => set(inputKey, e.target.value)} className="h-7 text-xs" />
-                    </div>
-                  ))}
-                </div>
+                {isAG ? (
+                  <div className="grid grid-cols-2 gap-1">
+                    <Input value={form['ford.1'] || ''} onChange={(e) => set('ford.1', e.target.value)} className="h-7 text-xs" />
+                    <Input value={form['ford.2'] || ''} onChange={(e) => set('ford.2', e.target.value)} className="h-7 text-xs" />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {([['ford.1', 'ford.2'], ['ford.3', 'ford.4'], ['ford.5', 'ford.6'], ['ford.7', 'ford.8']] as const).map(([dropdownKey, inputKey], idx) => (
+                      <div key={idx} className="grid grid-cols-2 gap-1">
+                        <Select value={form[dropdownKey] || ''} onValueChange={(v) => set(dropdownKey, v)}>
+                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent className="bg-background border border-border z-[200]">
+                            {BORROWER_FORD_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Input value={form[inputKey] || ''} onChange={(e) => set(inputKey, e.target.value)} className="h-7 text-xs" />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
