@@ -1,85 +1,83 @@
-## Problem (verified against DL-2026-0248 data)
+# Platform-Wide Decimal Precision for Rates & Percentages
 
-The RE851D Part 1 LTV table is mis-routing liens because the database for this deal contains stale/mixed flags written by older lien-modal flows:
+## Goal
 
-| Lien | property | anticipated | existing_remain | existing_paydown | original_balance | current_balance | new_remaining_balance |
-|------|----------|-------------|-----------------|------------------|------------------|-----------------|------------------------|
-| lien1 | property1 | **true** | false | false | (empty) | 23,423 | 23,423 |
-| lien2 | property2 | **true** | (not saved) | (not saved) | 567 | 2,342 | 34 |
+Standardize how every percentage / rate field is **stored** (≥4 decimals) and **displayed** (min 2, max N, suppress trailing zeros beyond 2nd decimal) without changing any UI layout, schema, or save APIs.
 
-Acceptance criteria (per user):
-- Property 1 → Anticipated → Expected = `original_balance`, Remaining = 0.00
-- Property 2 → Remain - Paydown → Remaining = `current_balance`, Expected = 0.00
+## Display rule (single source of truth)
 
-Current generator behavior:
-- Both liens get `anticipated=true` from DB → both routed to Expected.
-- Property 1 still leaks 23,423.00 into Remaining via the per-slot publisher because that publisher reads `current_balance` regardless of bucket in some downstream label-anchor passes (and the in-render label-anchor fallback writes 34 / 68 for Property 2).
-- Numbers in the screenshot (23,423 in Rem P1, 34 / 68 in Rem/Total P2, "4289800.00%" LTV, etc.) are exactly what stale `anticipated=true` + `new_remaining_balance` reads produce.
+A new helper `formatPercentDisplay(value, maxDecimals)` will:
 
-The first lien was last edited via the older modal that doesn't reset `anticipated` when switching condition; the second lien's existing_* flags were never persisted.
+- Return `''` for empty/NaN
+- Always show **at least 2** decimals
+- Show **up to `maxDecimals`** decimals
+- Strip trailing zeros only **beyond the 2nd** decimal place
 
-## Root cause
+Examples (matches spec exactly):
 
-The classifier (`classify` at line 2780 and `classifyLocal` at line 2594) only looks at the lien-level Condition fields. When existing_* flags are absent and `anticipated=true` is stale, both liens fall into the Expected bucket and the per-slot pass for the Remaining column still publishes `current_balance` from the wrong lien through the label-anchor fallback (line ~6294 onward).
+```
+10        → 10.00
+10.5      → 10.50
+10.875    → 10.875
+10.8756   → 10.8756   (when max=4)
+10.8756   → 10.876    (when max=3, rounded)
+27.2727   → 27.2727   (when max=4)
+```
 
-## Fix
+## Per-field max display precision
 
-All changes confined to `supabase/functions/generate-document/index.ts`. No schema, UI, or template changes.
+| Field group                                         | Storage | Display max |
+|-----------------------------------------------------|--------:|------------:|
+| Interest rates (Note Rate, Default Rate, Sold Rate) | 4       | 3           |
+| Pro Rata / Funding distribution %                   | 4       | 4           |
+| LTV, CLTV, Protective Equity                        | 4       | 2           |
+| Late Charge %                                       | 4       | 3           |
+| Dollar amounts (unchanged)                          | 2       | 2           |
 
-### 1. Strengthen the classifier (used in two places)
+## Files to change
 
-Update `classify` (≈ line 2780) and `classifyLocal` (≈ line 2594) to:
+1. **New** `src/lib/precisionFormat.ts`
+   - `formatPercentDisplay(value, max)` – the smart-trim formatter above
+   - `roundPctForStorage(value)` – `Number(value).toFixed(4)` (string), used on blur/save
+   - `roundDollarForStorage(value)` – `toFixed(2)` (string)
+   - All math uses `decimal.js` (small, already-tree-shakable). Add via `bun add decimal.js`.
 
-1. Read Condition dropdown label first (already done — keep).
-2. Read explicit `existing_*` booleans next (already done — keep).
-3. Read `anticipated` boolean — but only treat it as authoritative when **at least one Condition-related field has been written**. Specifically: only honor `anticipated=true` when `original_balance` (or `anticipated_amount`) has a numeric value, OR when none of `current_balance`, `existing_paydown_amount`, `existing_payoff_amount`, `new_remaining_balance` have values.
-4. New tie-breaker — if `anticipated=true` but `original_balance` is empty AND `current_balance` (or `existing_paydown_amount`) is non-empty, treat the lien as `remain` (Remaining bucket). This recovers DL-2026-0248 lien2 correctly.
-5. Return `none` only when no signal at all is present.
+2. **`src/lib/fieldTransforms.ts`**
+   - `formatPercentage(value, decimals=2)` becomes a thin wrapper that calls `formatPercentDisplay(value, decimals)` and appends `%`. Default `decimals` raised to `3` so `applyTransform('percentage')` (used by document merge) emits the smart-trim form. Existing callers that pass an explicit number keep working.
+   - `formatForDisplay` `case 'percentage'` switches to `formatPercentDisplay(value, 4)` so generic inline UI shows up to 4 with trailing-zero suppression.
+   - `parseToCanonical` unchanged (still strips formatting).
 
-This is purely additive; liens that already classify cleanly are unaffected.
+3. **`src/lib/numericInputFilter.ts`**
+   - `formatPercentageDisplay(value)` switches to `formatPercentDisplay(value, 4)` (currently hard-coded `toFixed(2)`).
 
-### 2. Strict per-slot publisher hygiene (≈ line 2660)
+4. **`src/components/deal/DealFieldInput.tsx`**
+   - `handleBlur` `case 'percentage'`: store with `roundPctForStorage` (4dp) instead of `toFixed(2)`.
+   - Display path already routes through `formatForDisplay`, so it picks up new behavior automatically.
 
-In `publishSection`, never let a row in the ANT bucket emit a `principalBalance` (current_balance) value, and never let a row in the REM bucket emit an `originalAmount` (original_balance) value. Concretely:
+5. **Targeted per-field display caps** (only files that already inline `toFixed`/`formatPercentage` for these fields — no layout changes):
+   - `LoanTermsDetailsForm.tsx` – Note Rate, Default Rate → `formatPercentDisplay(v, 3)`
+   - `LoanTermsBalancesForm.tsx` – Sold Rate → `(v, 3)`
+   - `LoanTermsPenaltiesForm.tsx` – Late Charge % → `(v, 3)`; distribution % (Pro Rata) → `(v, 4)`
+   - `FundingDetailForm.tsx`, `LoanFundingGrid.tsx`, `LenderDisbursementModal.tsx`, `AddFundingModal.tsx`, `FundingAdjustmentModal.tsx` – Pro Rata → `(v, 4)`
+   - `PropertyDetailsForm.tsx` – LTV, CLTV, Protective Equity → `(v, 2)` (already 2dp; just route through helper so trailing-zero rule is consistent)
+   - `LienDetailForm.tsx`, `PropertiesTableView.tsx`, `LienSectionContent.tsx` – any percent column → `(v, 2)` unless it's an interest rate (then 3)
 
-- For the `pr_li_ant_*` tag family: force `principalBalance` to empty string regardless of source data.
-- For the `pr_li_rem_*` tag family: force `originalAmount` to empty string.
+6. **Distribution math** (`LoanTermsPenaltiesForm.tsx`, `FundingDetailForm.tsx`, allocation helpers in `loanAllocationValidation.ts`)
+   - Replace remaining `parseFloat(...) + parseFloat(...)` percent sums with `Decimal` arithmetic so 33.3333 × 3 = 99.9999 (not 99.99999999…). Final compare uses `Decimal.eq` / tolerance `1e-4`.
+   - Dollar distribution: keep computing from runtime dollar inputs (already does); ensure rounding only at final write with `roundDollarForStorage`.
 
-This eliminates the cross-column leakage in the per-slot label-anchored cells.
+7. **Document merge** (`supabase/functions/_shared/field-resolver.ts`, `formatting.ts`)
+   - Percentage formatter switches to the smart-trim algorithm with the same per-field max table. Stored value (already 4dp) is the source — never re-derive from displayed.
+   - No change to dollar formatting.
 
-### 3. Authoritative rollup unchanged in spirit, but uses the new classifier
+## Critical guarantees
 
-The late-pass rollup (≈ line 2754) already sums:
-- Anticipated → `original_balance`
-- Remain / Paydown → `current_balance`
+- **No** schema migration, no new tables, no new APIs.
+- Existing `setValue` / save paths untouched — only the value they receive changes (now `toFixed(4)` for percents).
+- All UI layouts, components, labels, and order untouched.
+- `decimal.js` is the only new dependency.
 
-It will automatically correct itself once the classifier returns the right bucket. Add one extra log line per lien dump showing the raw `anticipated`, `existing_*`, `original_balance`, `current_balance` so future debugging is easy.
+## Out of scope
 
-### 4. Label-anchor fallback pass (≈ line 6294)
-
-Audit the second 851d label-anchor pass to ensure that when it backfills cells from `pr_li_rem_*_N_S` / `pr_li_ant_*_N_S`, it only writes into the Remaining column from `*_rem_*` keys and into the Expected column from `*_ant_*` keys. After change #2 those keys are already strict, so this becomes a verification step (no logic change expected).
-
-### 5. Zero-fill remains as today
-
-Per-property accumulators initialize to 0 for every CSR-known property, so empty buckets render `0.00` (already implemented at line 2870). No change.
-
-## Expected output for DL-2026-0248 after fix
-
-- Property 1: Remaining = 0.00, Expected = 0.00 (original_balance is empty), Total = 0.00
-  - To get Expected = 567.00 the user would need to enter Original Balance on lien 1 in CSR.
-- Property 2: Remaining = 2,342.00 (current_balance), Expected = 0.00, Total = 2,342.00
-  - Lien 2 will reclassify to `remain` because `anticipated=true` is stale and `current_balance` is the only meaningful field present.
-
-If the user wants the exact target numbers in their original message (P1 Expected = 567, P2 Remaining = 23,423), they need to fix the data: enter `original_balance` for lien 1 and verify lien-2 amounts. The generator will then produce those numbers exactly.
-
-## Files
-
-- `supabase/functions/generate-document/index.ts` — edits at the two classifier blocks (≈ 2594, 2780), the per-slot publisher (≈ 2660), and a verification check at 6294.
-
-## Validation
-
-Re-run RE851D for DL-2026-0248 and confirm via edge logs:
-- `RE851D Part1 slot-bucket: lien1 prop=1 cond=anticipated → ANT`
-- `RE851D Part1 slot-bucket: lien2 prop=2 cond=remain → REM` (was previously ANT)
-- `RE851D final encumbrance state: expected=[1:0.00, 2:0.00, ...], remaining=[1:0.00, 2:2342.00, ...]`
-- Generated Part 1 table: P1 row all 0.00; P2 row Remaining=2,342.00, Expected=0.00, Total=2,342.00.
+- Changing field labels, ordering, locking behavior, or any non-percentage field.
+- Backfilling historical values stored at 2dp — they’ll simply continue to display correctly (2dp is a valid prefix of 4dp).
