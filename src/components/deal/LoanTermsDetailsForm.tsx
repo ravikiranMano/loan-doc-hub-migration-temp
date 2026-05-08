@@ -377,7 +377,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                     const loan = parseFloat(loanRaw.replace(/[,$]/g, ''));
                     const appraised = parseFloat(appraisedRaw.replace(/[,$]/g, ''));
                     if (isNaN(loan) || isNaN(appraised) || appraised === 0) return '';
-                    return ((loan / appraised) * 100).toFixed(2);
+                    return formatPercentDisplay((loan / appraised) * 100, 2);
                   })()}
                   disabled
                   className="h-8 text-xs flex-1 bg-muted pr-7"
