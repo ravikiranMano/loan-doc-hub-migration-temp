@@ -83,7 +83,8 @@ const PenaltyPercentInput: React.FC<{
             const num = parseFloat(value);
             if (!isNaN(num)) {
               const clamped = Math.min(100, Math.max(0, num));
-              onChange(clamped.toFixed(2));
+              // Store percent at 4 decimal places (platform-wide standard).
+              onChange(roundPctForStorage(clamped));
             }
           }
           onBlur?.();
