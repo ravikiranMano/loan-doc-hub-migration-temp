@@ -3,6 +3,8 @@
  * Blocks non-numeric characters while allowing navigation and editing keys.
  */
 
+import { formatPercentDisplay } from './precisionFormat';
+
 const ALLOWED_KEYS = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
 
 /**
