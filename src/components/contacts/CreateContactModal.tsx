@@ -873,7 +873,6 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               >
                 {[
                   { label: 'Home', phoneKey: 'phone.home', prefKey: 'preferred.home', hasPref: true },
-                  { label: 'Home', phoneKey: 'phone.home2', prefKey: 'preferred.home2', hasPref: true },
                   { label: 'Work', phoneKey: 'phone.work', prefKey: 'preferred.work', hasPref: true },
                   { label: 'Cell', phoneKey: 'phone.cell', prefKey: 'preferred.cell', hasPref: true },
                   { label: 'Fax', phoneKey: 'phone.fax', prefKey: 'preferred.fax', hasPref: false },
