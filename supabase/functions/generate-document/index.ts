@@ -2882,7 +2882,7 @@ async function generateSingleDocument(
             if (!pm) return;
             const pIdx = parseInt(pm[1], 10);
             const cond = classifyLocal(prefix);
-            // Strict spec: payoff/none excluded from both columns.
+            // Rows with no usable data are excluded; payoff rows render in REM.
             if (cond === "payoff" || cond === "none") {
               console.log(`[generate-document] RE851D Part1 slot-bucket: ${prefix} prop=${pIdx} cond=${cond} → EXCLUDED`);
               return;
