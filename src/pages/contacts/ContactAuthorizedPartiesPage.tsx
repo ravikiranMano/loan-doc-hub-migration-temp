@@ -86,6 +86,7 @@ const AuthorizedPartyDetail: React.FC<AuthorizedPartyDetailProps> = ({ contact, 
       initialSection="borrower"
       backLabel="Back to Authorized Parties"
       titlePrefix="Authorized Party"
+      borrowerSectionVariant="authorized_party"
     />
   );
 };
