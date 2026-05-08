@@ -1,82 +1,78 @@
-## Goal
-Populate the "ANNUAL PROPERTY TAXES" section in RE851D per-property (N-indexed), driven by CSR → Property → Property Tax (Annual Payment + Confidence). Add three new template field keys with strict per-property isolation.
+## Root Cause
 
-## New Field Keys (to add to Admin → Field Dictionary)
+The RE885 template compares `origination_fees.re885_cash_at_closing_amount` (the **dollar amount** field) against the strings `"Payable to you"` / `"You Must Pay"`. That comparison can never match because:
 
-| Field Key | Source | Type | Behavior |
-|---|---|---|---|
-| `pr_pt_annualTaxes_N` | `propertytax{K}.annual_payment` (matched to property{N}) | currency | Formatted currency (e.g. `$10,000.00`); blank if empty |
-| `pr_pt_actual_N_glyph` | `propertytax{K}.tax_confidence` | text | `☑` if Confidence == "Actual", else `☐` |
-| `pr_pt_estimated_N_glyph` | `propertytax{K}.tax_confidence` | text | `☑` if Confidence == "Estimated", else `☐` |
+1. The label/option is stored in a **different field**: `origination_fees.re885_cash_at_closing_option`.
+2. That field stores **codes** (`payable_to_you`, `you_must_pay`), not the human labels (`Payable to you`, `You Must Pay`).
+3. The `_amount` field holds a currency string (e.g. `"$1,234.00"`), so `(eq amount "Payable to you")` is always false.
 
-Also publish boolean siblings `pr_pt_actual_N` and `pr_pt_estimated_N` (`"true"`/`"false"`) for `{{#if}}` template use.
-
-`N` aligns with the property sequence already used by other RE851D pr_p_* aliases (1, 2, 3 …).
-
-## Implementation (single file)
-
-**File:** `supabase/functions/generate-document/index.ts`
-
-### Change 1 — Bridge `tax_confidence` along with existing tax fields
-In the existing RE851D propertytax address-keyed pre-bridge block (around line 1060), extend `TAX_FIELDS` to include `tax_confidence`:
-```ts
-const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information", "tax_confidence"];
+UI source of truth (confirmed in `src/components/deal/RE885ProposedLoanTerms.tsx`):
 ```
-This ensures `propertytax{srcIdx}.tax_confidence` is copied to `propertytax{destIdx}.tax_confidence` so per-property lookup by the property's index works.
+setValue('origination_fees.re885_cash_at_closing_option',
+  cashAtClosing >= 0 ? 'payable_to_you' : 'you_must_pay');
+```
 
-### Change 2 — Per-property publisher block
-Inside the existing `for (const idx of sortedPropIndices)` loop (right after the existing `propertytax_annual_payment_${idx}` publisher around line 1146), add a new isolated block:
+## Fix (edge function only — no UI / template / schema changes)
 
+**File:** `supabase/functions/generate-document/index.ts` — extend the existing "Estimated Cash at Closing alias publisher" block (≈ lines 772–785).
+
+Add three publications derived from `origination_fees.re885_cash_at_closing_option` (with safe fallbacks):
+
+1. **Boolean flags** for the recommended robust template form:
+   - `re885_cash_payable_to_you` → `"true"` / `"false"`
+   - `re885_cash_you_must_pay` → `"true"` / `"false"`
+   - dataType: `boolean`
+
+2. **Normalized canonical labels** so the existing `(eq … "Payable to you")` and `(eq … "You Must Pay")` template conditions also work without any template edit. Publish the canonical label string to **both**:
+   - `origination_fees.re885_cash_at_closing_option` (overwrite with normalized label)
+   - `origination_fees.re885_cash_at_closing_amount_label` (new sibling alias for templates that want to keep `_amount`-prefixed naming)
+
+   Mapping:
+   - `payable_to_you` / `payable to you` / `payabletoyou` → `"Payable to you"`
+   - `you_must_pay`   / `you must pay`   / `youmustpay`   → `"You Must Pay"`
+   - anything else → leave as-is (no overwrite)
+
+3. **Debug log line**: `[generate-document] RE885 CashAtClosingType raw="<raw>" canonical="<label>" payable=<bool> mustPay=<bool>`
+
+### Pseudocode (inserted right after the existing ECAC block)
 ```ts
-// RE851D ANNUAL PROPERTY TAXES — per-property publisher
-{
-  // Annual Payment → currency
-  const annual =
-    fieldValues.get(`propertytax${idx}.annual_payment`) ||
-    fieldValues.get(`${prefix}.annual_property_taxes`) ||
-    fieldValues.get(`${prefix}.annual_tax`);
-  if (annual?.rawValue !== undefined && annual.rawValue !== null && String(annual.rawValue) !== "") {
-    fieldValues.set(`pr_pt_annualTaxes_${idx}`, {
-      rawValue: annual.rawValue,
-      dataType: "currency",
-    });
-  }
+const rawOpt = String(
+  fieldValues.get("origination_fees.re885_cash_at_closing_option")?.rawValue ?? ""
+).trim();
+const norm = rawOpt.toLowerCase().replace(/[\s_-]+/g, "");
+let canonical = "";
+if (norm === "payabletoyou")      canonical = "Payable to you";
+else if (norm === "youmustpay")   canonical = "You Must Pay";
 
-  // Confidence → ACTUAL / ESTIMATED checkboxes
-  const conf = String(
-    fieldValues.get(`propertytax${idx}.tax_confidence`)?.rawValue ||
-    fieldValues.get(`${prefix}.tax_confidence`)?.rawValue ||
-    ""
-  ).trim().toLowerCase();
+const isPayable = canonical === "Payable to you";
+const isMustPay = canonical === "You Must Pay";
 
-  const isActual    = conf === "actual";
-  const isEstimated = conf === "estimated";
+fieldValues.set("re885_cash_payable_to_you", { rawValue: isPayable ? "true" : "false", dataType: "boolean" });
+fieldValues.set("re885_cash_you_must_pay",   { rawValue: isMustPay ? "true" : "false", dataType: "boolean" });
 
-  fieldValues.set(`pr_pt_actual_${idx}`,          { rawValue: isActual    ? "true" : "false", dataType: "boolean" });
-  fieldValues.set(`pr_pt_estimated_${idx}`,       { rawValue: isEstimated ? "true" : "false", dataType: "boolean" });
-  fieldValues.set(`pr_pt_actual_${idx}_glyph`,    { rawValue: isActual    ? "☑" : "☐",        dataType: "text" });
-  fieldValues.set(`pr_pt_estimated_${idx}_glyph`, { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
+if (canonical) {
+  fieldValues.set("origination_fees.re885_cash_at_closing_option",      { rawValue: canonical, dataType: "text" });
+  fieldValues.set("origination_fees.re885_cash_at_closing_amount_label",{ rawValue: canonical, dataType: "text" });
 }
+console.log(`[generate-document] RE885 CashAtClosingType raw="${rawOpt}" canonical="${canonical}" payable=${isPayable} mustPay=${isMustPay}`);
 ```
 
-### Change 3 — Anti-fallback shield
-Add `pr_pt_actual_`, `pr_pt_estimated_`, `pr_pt_annualTaxes_` to the existing RE851D anti-fallback shield list (the block that defaults unpublished `pr_*_N` glyphs to `☐` so empty per-index tags don't bleed from idx=1). For `_glyph` defaults publish `☐`; the boolean form defaults to `"false"`; `pr_pt_annualTaxes_N` stays empty (no fallback).
+## Template Recommendation (optional, for the doc author — NOT a code change)
 
-## Validation Rules (encoded in logic)
-- Confidence null/empty → both checkboxes `☐` (mutual exclusivity guaranteed since only one branch can match).
-- Annual Payment blank → `pr_pt_annualTaxes_N` not published (template renders blank).
-- Per-property isolation enforced by the existing address-keyed bridge — no cross-index bleed.
-- Currency formatted via the existing `dataType: "currency"` pipeline.
+Switch the two checkbox tags from string-eq to boolean checks for robustness:
+```
+{{#if re885_cash_payable_to_you}}☑{{else}}☐{{/if}}
+{{#if re885_cash_you_must_pay}}☑{{else}}☐{{/if}}
+```
+The existing `(eq origination_fees.re885_cash_at_closing_amount …)` form will also start working because we now publish the canonical label into the option field and a new `_amount_label` sibling — but the eq path is using the wrong field name; templates should be updated to use either the new boolean flags **or** the option / `_amount_label` field.
 
-## Template usage (for the Word template)
-```
-$ {{pr_pt_annualTaxes_1}}    {{pr_pt_actual_1_glyph}} ACTUAL    {{pr_pt_estimated_1_glyph}} ESTIMATED
-$ {{pr_pt_annualTaxes_2}}    {{pr_pt_actual_2_glyph}} ACTUAL    {{pr_pt_estimated_2_glyph}} ESTIMATED
-...
-```
+## Mutual Exclusivity & Edge Cases
+- Only one of `isPayable` / `isMustPay` can ever be true (driven by a single radio in the UI).
+- Empty / unknown selection → both booleans `"false"`, both checkboxes render `☐`.
+- Whitespace, casing, and underscore/space variants all normalize to the same canonical label.
 
 ## Out of Scope
 - No UI changes.
-- No DB schema / migration changes.
-- No changes to existing aliases (`propertytax_annual_payment_N` remains for backward compatibility).
-- No changes to other document templates.
+- No DOCX template layout changes (template author may optionally adopt the new boolean tags).
+- No DB schema / dictionary changes.
+- Backward compatible: existing `_amount` currency value is untouched; existing aliases continue to publish.
