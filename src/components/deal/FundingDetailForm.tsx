@@ -63,7 +63,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     const fa = safeParseFloat(data.fundingAmount);
     const la = safeParseFloat(loanAmount);
     if (la > 0 && fa > 0) {
-      const computed = (fa / la * 100).toFixed(2);
+      const computed = roundPctForStorage(fa / la * 100);
       if (computed !== data.percentOwned) {
         onChange({ ...data, percentOwned: computed });
       }
