@@ -490,10 +490,12 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
 
     // Mutual exclusivity for Rounding Adjustment: only ONE lender can hold it.
     // If the new record enables it, atomically clear it on every existing record in the same write.
+    // Mutual exclusivity for Rounding Adjustment: only ONE lender can hold it.
+    // If the new record enables it, atomically clear it on every existing record in the same write.
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = [...baseRecords, newRecord];
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord]);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
