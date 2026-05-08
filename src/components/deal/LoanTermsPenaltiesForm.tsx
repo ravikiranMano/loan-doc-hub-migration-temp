@@ -20,6 +20,7 @@ import {
   formatCurrencyDisplay, unformatCurrencyDisplay,
   formatPercentageDisplay
 } from '@/lib/numericInputFilter';
+import { roundPctForStorage, formatPercentDisplay, sumPercents, toDecimal } from '@/lib/precisionFormat';
 
 // --- Reusable typed input wrappers ---
 
