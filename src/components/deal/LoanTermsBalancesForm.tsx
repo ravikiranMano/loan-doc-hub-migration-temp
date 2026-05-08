@@ -220,10 +220,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
   const formatPercentDisplay = useCallback((val: string) => {
     if (!val) return "";
-    const stripped = val.replace(/,/g, '');
-    const num = parseFloat(stripped);
-    if (isNaN(num)) return val;
-    return num.toFixed(2);
+    // Smart-trim: min 2dp, max 3dp for interest/sold rates (per platform standard).
+    return smartPercentDisplay(val, 3);
   }, []);
 
   const renderPercentField = (key: string, label: string) => {
