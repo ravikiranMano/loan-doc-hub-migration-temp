@@ -66,6 +66,7 @@ export const ContactLenderModal: React.FC<ContactLenderModalProps> = ({
 }) => {
   const [form, setForm] = useState(emptyForm());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [dobOpen, setDobOpen] = useState(false);
 
   const set = (field: string, value: any) =>
     setForm((prev) => ({ ...prev, [field]: value }));
