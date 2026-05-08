@@ -297,6 +297,23 @@ async function generateSingleDocument(
                 fieldValues.set(bridgedKey, { rawValue, dataType });
                 debugLog(`[generate-document] Bridged ${key} -> ${bridgedKey} = "${rawValue}"`);
               }
+              // Additional bridge: some dictionary entries hard-code their
+              // field_key under property1.* (e.g. property1.property_owner,
+              // property1.land_classification, property1.fire_zone,
+              // property1.net_monthly_income). When these dictionary IDs are
+              // re-used under composite keys for property2..N, the resolvedKey
+              // above collapses every property's value onto the same
+              // "property1.<suffix>" slot — so PROPERTY blocks 2..N render
+              // blank. Re-bridge by stripping the literal "property1." prefix
+              // from the dictionary's field_key and re-attaching the actual
+              // composite entityPrefix. Strictly scoped to the property{N}
+              // entity family; no cross-section bleed.
+              const fk = fieldDict.field_key || "";
+              if (fk.startsWith("property1.") && entityPrefix.toLowerCase() !== "property1") {
+                const reBridged = `${entityPrefix}.${fk.substring("property1.".length)}`;
+                fieldValues.set(reBridged, { rawValue, dataType });
+                debugLog(`[generate-document] Re-bridged ${key} -> ${reBridged} = "${rawValue}"`);
+              }
             }
             // RE851D: bridge propertytax{N}::uuid composite keys to propertytax{N}.<suffix>
             // Dictionary keys are propertytax.<suffix>; we strip the canonical prefix
