@@ -1,62 +1,33 @@
-## Annual Property Taxes — RE851D per-property population
+## Scope
+CONTACTS → Lender. Two narrow UI changes only. No schema, no API, no business-logic changes.
 
-### Diagnosis
+## 1. Align DOB input in Lender Info
 
-The publishers already exist in `supabase/functions/generate-document/index.ts` (lines 1205–1229) and emit per-property values from CSR → Property → Property Tax:
+File: `src/components/deal/LenderInfoForm.tsx` (DOB block, ~line 332–359)
 
-- `pr_pt_annualTaxes_{N}` ← `propertytax{N}.annual_payment` (currency)
-- `pr_pt_actual_{N}` / `pr_pt_actual_{N}_glyph` ← Confidence == "Actual"
-- `pr_pt_estimated_{N}` / `pr_pt_estimated_{N}_glyph` ← Confidence == "Estimated"
+Today the DOB date-picker `Button` is wrapped directly in `<Popover><PopoverTrigger asChild>`, which does not pick up `flex-1` from the parent flex row. Email above it uses `EmailInput`, which internally renders `<div className="flex flex-col flex-1">`, so its input fills the column.
 
-The template `Re851d_v1(1)(2)(13)` already uses these tag literals:
+Change: wrap the DOB `Popover` in a `<div className="flex flex-col flex-1">` (same shape as `EmailInput`) so the date button stretches to match the Email field width and right-edge alignment under the 120px label. No other DOB behavior, validation, or value handling changes.
 
-- `{{pr_pt_annualTaxes_N}}`
-- `{{pr_pt_actual_N_glyph}}`
-- `{{pr_pt_estimated_N_glyph}}`
+## 2. Add DOB to "Add Lender" modal (Create New Contact Lender)
 
-**Why they aren't populating:** these keys are **missing from the RE851D `_N` rewrite registration list** (around line 3585 in `index.ts`), so `_N` never gets rewritten to `_1`, `_2`, … per property. The publisher emits `pr_pt_annualTaxes_2`, but the document still contains literal `pr_pt_annualTaxes_N` and never matches.
+File: `src/components/contacts/ContactLenderModal.tsx`
 
-A second, smaller defect was found in the template XML: two occurrences of `{{pr_pt_estimated_N_glyph}}}}` carry an extra trailing `}}`. After the rewrite they will render as `☑}}` / `☐}}`. This is a template authoring issue, not a code issue.
+Add a DOB field next to Email, matching the Lender Info pattern:
+- New `dob: ''` in `emptyForm()` and in the `ContactLender` form shape used by the modal (string, MM/DD/YYYY).
+- New row in the existing 2-column "Contact" grid: `Label "DOB"` + `Popover` + `EnhancedCalendar`, mirroring the Lender Info DOB control (same icon, same placeholder `mm/dd/yyyy`, same clear/today actions).
+- Future dates blocked (consistent with `CreateContactModal` DOB validation).
+- Persist via the existing `onSubmit` payload — no new endpoint, no schema work. The value flows through the same `ContactLender` save path used today; downstream consumers that already read `dob` (Lender Info form) will pick it up. No DB migration.
 
-### Field keys to use in template
+Type update:
+- File: `src/pages/contacts/ContactLendersPage.tsx` — add optional `dob?: string` to the `ContactLender` interface so the modal payload type-checks. No grid column changes (DOB column visibility already exists at line 53 and stays default-hidden).
 
-These are the canonical keys (no admin/dictionary changes needed — they are runtime-published aliases):
+## Out of scope
+- No changes to Lender Info layout, fields, or save APIs beyond the DOB wrapper div.
+- No mirroring of the full 4-column Lender Info form into the modal (Status, Capacity, Mailing, FORD, Vesting, 1099 etc. remain only in Lender Info).
+- No changes to `LenderDashboard`, sub-nav, or any other lender screens.
+- No DB schema, RLS, or edge function changes.
 
-| Purpose | Tag to place in template |
-|---|---|
-| Annual tax amount (currency) | `{{pr_pt_annualTaxes_N}}` |
-| ACTUAL checkbox glyph | `{{pr_pt_actual_N_glyph}}` |
-| ESTIMATED checkbox glyph | `{{pr_pt_estimated_N_glyph}}` |
-
-`_N` is rewritten per property (Property #1 → `_1`, #2 → `_2`, …). Boolean variants `pr_pt_actual_N` / `pr_pt_estimated_N` are also published if `{{#if}}` blocks are preferred.
-
-### Code change (single file)
-
-**`supabase/functions/generate-document/index.ts`** — append to the RE851D `_N` rewrite key list near line 3585 (alongside `propertytax.annual_payment_N`, `propertytax.delinquent_N`, etc.):
-
-```
-"pr_pt_annualTaxes_N",
-"pr_pt_actual_N_glyph", "pr_pt_actual_N",
-"pr_pt_estimated_N_glyph", "pr_pt_estimated_N",
-```
-
-Longest variants (`_glyph`) listed first so the longest-match scanner consumes them before the bare boolean key.
-
-### Validation behavior (already implemented in publisher)
-
-- Only one of ACTUAL / ESTIMATED resolves to ☑; the other is ☐.
-- If Confidence is null/blank, both render as ☐.
-- If Annual Payment is blank, no `pr_pt_annualTaxes_{N}` is published → tag falls through anti-fallback shield (renders blank).
-- Currency formatting handled by existing `dataType: "currency"` pipeline.
-
-### Out of scope
-
-- No field-dictionary additions (publisher already exposes these as merge tags).
-- No template upload/edit (user owns the template; the trailing `}}}}` typo on the ESTIMATED tag should be corrected by the user in two places).
-- No DB schema, UI form, or other template changes.
-
-### Verification
-
-1. Deploy `generate-document`.
-2. Regenerate RE851D for deal `db7517e9-…` with multiple properties having Property Tax set.
-3. Confirm each property row in ANNUAL PROPERTY TAXES shows: `$amount` + correct ☑ next to ACTUAL or ESTIMATED, others ☐.
+## Validation
+- Visually confirm in preview that the DOB picker right-edge aligns with the Email input under the same 120px label column in Lender Info.
+- Open Add Lender modal → set DOB → Create → reopen the new lender → DOB shows on Lender Info.

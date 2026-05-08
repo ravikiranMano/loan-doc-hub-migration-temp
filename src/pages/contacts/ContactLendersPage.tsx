@@ -32,6 +32,7 @@ export interface ContactLender {
   mailingState: string;
   mailingZip: string;
   sameAsPrimary: boolean;
+  dob?: string;
 }
 import { useContactsCrud, type ContactRecord } from '@/hooks/useContactsCrud';
 import { ContactsListView } from '@/components/contacts/ContactsListView';
