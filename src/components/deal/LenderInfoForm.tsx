@@ -331,31 +331,33 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
             {wrapField('dob', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">DOB</Label>
-              <Popover open={dobOpen} onOpenChange={setDobOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "h-8 w-full justify-start text-left font-normal",
-                      !getValue('dob') && "text-muted-foreground"
-                    )}
-                    disabled={disabled}
-                  >
-                    {safeFormatDate(getValue('dob'), 'MM/dd/yyyy') || <span>mm/dd/yyyy</span>}
-                    <CalendarIcon className="ml-auto h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseDateStr(getValue('dob'))}
-                    onSelect={(date) => { handleChange('dob', date ? format(date, 'yyyy-MM-dd') : ''); setDobOpen(false); }}
-                    onClear={() => { handleChange('dob', ''); setDobOpen(false); }}
-                    onToday={() => { handleChange('dob', format(new Date(), 'yyyy-MM-dd')); setDobOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="flex flex-col flex-1">
+                <Popover open={dobOpen} onOpenChange={setDobOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "h-8 w-full justify-start text-left font-normal",
+                        !getValue('dob') && "text-muted-foreground"
+                      )}
+                      disabled={disabled}
+                    >
+                      {safeFormatDate(getValue('dob'), 'MM/dd/yyyy') || <span>mm/dd/yyyy</span>}
+                      <CalendarIcon className="ml-auto h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                    <EnhancedCalendar
+                      mode="single"
+                      selected={safeParseDateStr(getValue('dob'))}
+                      onSelect={(date) => { handleChange('dob', date ? format(date, 'yyyy-MM-dd') : ''); setDobOpen(false); }}
+                      onClear={() => { handleChange('dob', ''); setDobOpen(false); }}
+                      onToday={() => { handleChange('dob', format(new Date(), 'yyyy-MM-dd')); setDobOpen(false); }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>)}
           </div>
 
