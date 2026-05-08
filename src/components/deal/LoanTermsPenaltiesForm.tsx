@@ -217,7 +217,7 @@ const DistributionFields: React.FC<{
     onValueChange(`${prefix}.distribution.lenders`, sanitized);
     if (newLenders + vendorClamped + otherClamped > 100) {
       const newVendor = Math.max(0, 100 - newLenders - otherClamped);
-      onValueChange(`${prefix}.distribution.origination_vendors`, newVendor.toFixed(2));
+      onValueChange(`${prefix}.distribution.origination_vendors`, roundPctForStorage(newVendor));
     }
   };
 
