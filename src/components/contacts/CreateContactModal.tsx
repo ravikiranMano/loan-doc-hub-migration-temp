@@ -877,14 +877,25 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   <ZipInput value={form['mailing.zip'] || ''} onValueChange={(val) => set('mailing.zip', val)} disabled={isSameAsPrimary} className="h-7 text-xs" />
                 </div>
               </div>
-              <div className="pt-2 space-y-1">
-                <h4 className="font-semibold text-xs text-foreground pb-1">Send</h4>
-                {renderCheckbox('Payment Confirmation', 'send_pref.payment_confirmation')}
-                {renderCheckbox('Coupon Book', 'send_pref.coupon_book')}
-                {renderCheckbox('Payment Statement', 'send_pref.payment_statement')}
-                {renderCheckbox('Late Notice', 'send_pref.late_notice')}
-                {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
-              </div>
+              {!isAG && (
+                <div className="pt-2 space-y-1">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Send</h4>
+                  {renderCheckbox('Payment Confirmation', 'send_pref.payment_confirmation')}
+                  {renderCheckbox('Coupon Book', 'send_pref.coupon_book')}
+                  {renderCheckbox('Payment Statement', 'send_pref.payment_statement')}
+                  {renderCheckbox('Late Notice', 'send_pref.late_notice')}
+                  {renderCheckbox('Maturity Notice', 'send_pref.maturity_notice')}
+                </div>
+              )}
+              {isAG && (
+                <div className="pt-2 space-y-1">
+                  <h4 className="font-semibold text-xs text-foreground pb-1">Delivery</h4>
+                  <div className="flex items-center gap-4">
+                    {renderCheckbox('Online', 'delivery_online')}
+                    {renderCheckbox('Mail', 'delivery_mail')}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Column 3: Phone (with second Home + Preferred) */}
