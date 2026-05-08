@@ -22,38 +22,55 @@ const hydrateAP = (c: ContactRecord): ContactRecord => ({
   ),
 });
 
+const AP = 'borrower.authorized_party.';
+
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'contact_id', label: 'Contact ID', visible: true },
-  { id: 'borrower_type', label: 'Type', visible: true },
-  { id: 'full_name', label: 'Entity Name', visible: true },
+  // Name
   { id: 'first_name', label: 'First', visible: true },
-  { id: 'middle_initial', label: 'Middle', visible: false },
+  { id: `${AP}middle_name`, label: 'Middle', visible: false },
   { id: 'last_name', label: 'Last', visible: true },
-  { id: 'capacity', label: 'Capacity', visible: false },
+  { id: `${AP}capacity`, label: 'Capacity', visible: true },
   { id: 'email', label: 'Email', visible: true },
-  { id: 'phone.home', label: 'Home Phone', visible: true },
-  { id: 'phone.home2', label: 'Home Phone 2', visible: false },
-  { id: 'phone.work', label: 'Work Phone', visible: false },
-  { id: 'phone.cell', label: 'Cell Phone', visible: true },
-  { id: 'phone.fax', label: 'Fax', visible: false },
-  { id: 'preferred_phone', label: 'Preferred Phone', visible: false },
-  { id: 'address.street', label: 'Address Street', visible: false },
-  { id: 'address.city', label: 'Address City', visible: false },
-  { id: 'address.state', label: 'Address State', visible: false },
-  { id: 'address.zip', label: 'Address Zip', visible: false },
-  { id: 'mailing.street', label: 'Mailing Street', visible: false },
-  { id: 'mailing.city', label: 'Mailing City', visible: false },
-  { id: 'mailing.state', label: 'Mailing State', visible: false },
-  { id: 'mailing.zip', label: 'Mailing Zip', visible: false },
-  { id: 'city', label: 'City', visible: true },
-  { id: 'state', label: 'State', visible: true },
-  { id: 'delivery_print', label: 'Delivery Print', visible: false },
-  { id: 'delivery_email', label: 'Delivery Email', visible: false },
-  { id: 'delivery_sms', label: 'Delivery SMS', visible: false },
-  { id: 'agreement_on_file', label: 'Agreement on File', visible: false },
+  { id: `${AP}date_authorized`, label: 'Date Authorized', visible: false },
+  // Address
+  { id: `${AP}address.street`, label: 'Street', visible: false },
+  { id: `${AP}address.city`, label: 'City', visible: true },
+  { id: `${AP}address.state`, label: 'State', visible: true },
+  { id: `${AP}address.zip`, label: 'ZIP', visible: false },
+  // Phone
+  { id: `${AP}phone.home`, label: 'Home', visible: true },
+  { id: `${AP}phone.work`, label: 'Work', visible: false },
+  { id: `${AP}phone.cell`, label: 'Cell', visible: true },
+  { id: `${AP}phone.fax`, label: 'Fax', visible: false },
+  { id: 'preferred_phone', label: 'Preferred', visible: false },
+  // Delivery Options
+  { id: `${AP}delivery.online`, label: 'Delivery Online', visible: false },
+  { id: `${AP}delivery.mail`, label: 'Delivery Mail', visible: false },
+  { id: `${AP}delivery.sms`, label: 'Delivery SMS', visible: false },
+  // Send
+  { id: `${AP}send_pref.payment_confirmation`, label: 'Send Payment Confirmation', visible: false },
+  { id: `${AP}send_pref.coupon_book`, label: 'Send Coupon Book', visible: false },
+  { id: `${AP}send_pref.payment_statement`, label: 'Send Payment Statement', visible: false },
+  { id: `${AP}send_pref.late_notice`, label: 'Send Late Notice', visible: false },
+  { id: `${AP}send_pref.maturity_notice`, label: 'Send Maturity Notice', visible: false },
+  // Details
+  { id: `${AP}details`, label: 'Details', visible: false },
+  // FORD
+  { id: `${AP}ford_1`, label: 'FORD 1', visible: false },
+  { id: `${AP}ford_2`, label: 'FORD 2', visible: false },
+  { id: `${AP}ford_3`, label: 'FORD 3', visible: false },
+  { id: `${AP}ford_4`, label: 'FORD 4', visible: false },
+  { id: `${AP}ford_5`, label: 'FORD 5', visible: false },
+  { id: `${AP}ford_6`, label: 'FORD 6', visible: false },
 ];
 
-const BOOLEAN_COLUMNS = new Set<string>(['delivery_print', 'delivery_email', 'delivery_sms', 'agreement_on_file']);
+const BOOLEAN_COLUMNS = new Set<string>([
+  `${AP}delivery.online`, `${AP}delivery.mail`, `${AP}delivery.sms`,
+  `${AP}send_pref.payment_confirmation`, `${AP}send_pref.coupon_book`,
+  `${AP}send_pref.payment_statement`, `${AP}send_pref.late_notice`,
+  `${AP}send_pref.maturity_notice`,
+]);
 
 const FILTER_OPTIONS: FilterOption[] = [
   {
@@ -172,11 +189,10 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     const cd = (contact.contact_data || {}) as Record<string, string>;
 
     if (columnId === 'preferred_phone') {
-      if (cd['preferred.home'] === 'true') return 'Home';
-      if (cd['preferred.home2'] === 'true') return 'Home 2';
-      if (cd['preferred.work'] === 'true') return 'Work';
-      if (cd['preferred.cell'] === 'true') return 'Cell';
-      if (cd['preferred.fax'] === 'true') return 'Fax';
+      if (cd[`${AP}preferred.home`] === 'true' || cd['preferred.home'] === 'true') return 'Home';
+      if (cd[`${AP}preferred.work`] === 'true' || cd['preferred.work'] === 'true') return 'Work';
+      if (cd[`${AP}preferred.cell`] === 'true' || cd['preferred.cell'] === 'true') return 'Cell';
+      if (cd[`${AP}preferred.fax`] === 'true' || cd['preferred.fax'] === 'true') return 'Fax';
       return '-';
     }
 
