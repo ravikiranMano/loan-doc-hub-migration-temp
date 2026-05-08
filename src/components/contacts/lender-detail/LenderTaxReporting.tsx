@@ -26,9 +26,6 @@ interface LenderTaxReportingProps {
 const K = {
   designated: 'lender.tax_reporting.designated_recipient',
   issue1099: 'lender.tax_reporting.issue_1099',
-  tinNumber: 'lender.tax_reporting.tin_number',
-  tinType: 'lender.tax_reporting.tin_type',
-  tinVerified: 'lender.tax_reporting.tin_verified',
   altReporting: 'lender.tax_reporting.alternate_reporting',
   notes: 'lender.tax_reporting.notes',
   manualFlag: 'lender.tax_reporting.is_issue_1099_manually_modified',
