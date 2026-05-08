@@ -25,10 +25,11 @@ Deno.serve(async (req) => {
     const sectionRe = /ENCUMBRANCE\(S\)\s+(REMAINING|EXPECTED\s+OR\s+ANTICIPATED)/gi;
     let m: RegExpExecArray | null;
     while ((m = sectionRe.exec(xml)) !== null) {
-      const after = xml.slice(m.index, m.index + 12000);
+      if (out.length >= 2) continue;
+      const after = xml.slice(m.index, m.index + 80000);
       const ballIdx = after.search(/BALLOON\s+PAYMENT/i);
-      const ballRaw = ballIdx >= 0 ? xml.slice(m.index + ballIdx, m.index + ballIdx + 3500) : "";
-      out.push({ at: m.index, kind: m[1], vis: after.replace(/<[^>]+>/g, "|").replace(/\|+/g, "|").slice(0, 1500), ballRaw });
+      const ballRaw = ballIdx >= 0 ? xml.slice(m.index + ballIdx, m.index + ballIdx + 6000) : "(none)";
+      out.push({ at: m.index, kind: m[1], ballOffset: ballIdx, ballRaw });
     }
     return new Response(JSON.stringify({ count: out.length, sections: out }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
