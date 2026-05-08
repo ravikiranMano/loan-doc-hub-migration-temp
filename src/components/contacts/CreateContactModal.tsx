@@ -252,7 +252,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
       if (!(form['primary_address.city'] || '').trim()) errs['primary_address.city'] = 'City is required';
       if (!form['primary_address.state']) errs['primary_address.state'] = 'State is required';
       if (!(form['primary_address.zip'] || '').trim()) errs['primary_address.zip'] = 'ZIP is required';
-      if (form['delivery.print'] !== 'true' && form['delivery.email'] !== 'true' && form['delivery.sms'] !== 'true') {
+      if (form['delivery.online'] !== 'true' && form['delivery.mail'] !== 'true' && form['delivery.sms'] !== 'true') {
         errs['delivery'] = 'Select at least one delivery option';
       }
       if (Object.keys(errs).length > 0) {
