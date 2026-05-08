@@ -439,6 +439,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       lenderRate,
       principalBalance: safeParseFloat(data.principalBalance || data.fundingAmount),
       originalAmount: safeParseFloat(data.fundingAmount),
+      baseFee: data.baseFee !== undefined && data.baseFee !== '' ? safeParseFloat(data.baseFee) : undefined,
       currentBalance: data.currentBalance !== undefined && data.currentBalance !== ''
         ? safeParseFloat(data.currentBalance)
         : safeParseFloat(data.fundingAmount),
