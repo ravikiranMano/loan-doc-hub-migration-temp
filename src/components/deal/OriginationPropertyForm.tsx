@@ -121,7 +121,8 @@ export const OriginationPropertyForm: React.FC<OriginationPropertyFormProps> = (
               <SelectValue placeholder="Select state" />
             </SelectTrigger>
             <SelectContent>
-              {US_STATES.map(s => (
+              <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map(s => (
                 <SelectItem key={s} value={s} className="text-sm">{s}</SelectItem>
               ))}
             </SelectContent>

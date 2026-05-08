@@ -411,6 +411,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Select value={getFieldValue(FIELD_KEYS.state)} onValueChange={(val) => onValueChange(FIELD_KEYS.state, val)} disabled={disabled || isCopyBorrower}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50 max-h-60">
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
                 </SelectContent>
               </Select>

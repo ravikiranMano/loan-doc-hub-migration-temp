@@ -425,6 +425,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               <Select value={getValue('primaryState') || ''} onValueChange={(val) => handleChange('primaryState', val)} disabled={disabled}>
                 <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -472,6 +473,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
               <Select value={getValue('mailingState') || ''} onValueChange={(val) => handleChange('mailingState', val)} disabled={disabled || getBoolValue('mailingSameAsPrimary')}>
                 <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>

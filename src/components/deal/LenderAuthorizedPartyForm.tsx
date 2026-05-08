@@ -158,7 +158,8 @@ export const LenderAuthorizedPartyForm: React.FC<LenderAuthorizedPartyFormProps>
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
-                    {US_STATES.map(s => (
+                    <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map(s => (
                       <SelectItem key={s} value={s} className="text-sm">{s}</SelectItem>
                     ))}
                   </SelectContent>

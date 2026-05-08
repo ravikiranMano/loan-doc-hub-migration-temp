@@ -206,7 +206,8 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {US_STATES.map((st) => (
+                    <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((st) => (
                       <SelectItem key={st} value={st}>{st}</SelectItem>
                     ))}
                   </SelectContent>
@@ -250,7 +251,8 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {US_STATES.map((st) => (
+                    <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((st) => (
                       <SelectItem key={st} value={st}>{st}</SelectItem>
                     ))}
                   </SelectContent>
@@ -296,7 +298,8 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {US_STATES.map((st) => (
+                    <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((st) => (
                       <SelectItem key={st} value={st}>{st}</SelectItem>
                     ))}
                   </SelectContent>
@@ -364,7 +367,8 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
-                    {US_STATES.map((st) => (
+                    <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((st) => (
                       <SelectItem key={st} value={st}>{st}</SelectItem>
                     ))}
                   </SelectContent>

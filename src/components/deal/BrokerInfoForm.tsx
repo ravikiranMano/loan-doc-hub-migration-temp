@@ -170,6 +170,7 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               <Select value={getValue('state') || ''} onValueChange={(val) => handleChange('state', val)} disabled={disabled}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>
@@ -224,6 +225,7 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               <Select value={getValue('mailingState') || ''} onValueChange={(val) => handleChange('mailingState', val)} disabled={disabled || isMailingSame}>
                 <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>

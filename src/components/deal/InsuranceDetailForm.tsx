@@ -249,6 +249,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
               <Select value={insurance.paymentMailingState || undefined} onValueChange={(val) => onChange('paymentMailingState', val)} disabled={disabled}>
                 <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -278,6 +279,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
               <Select value={insurance.businessAddressState || undefined} onValueChange={(val) => onChange('businessAddressState', val)} disabled={disabled}>
                 <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
