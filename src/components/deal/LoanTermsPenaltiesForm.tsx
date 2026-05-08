@@ -20,6 +20,7 @@ import {
   formatCurrencyDisplay, unformatCurrencyDisplay,
   formatPercentageDisplay
 } from '@/lib/numericInputFilter';
+import { roundPctForStorage, formatPercentDisplay, sumPercents, toDecimal } from '@/lib/precisionFormat';
 
 // --- Reusable typed input wrappers ---
 
@@ -82,7 +83,8 @@ const PenaltyPercentInput: React.FC<{
             const num = parseFloat(value);
             if (!isNaN(num)) {
               const clamped = Math.min(100, Math.max(0, num));
-              onChange(clamped.toFixed(2));
+              // Store percent at 4 decimal places (platform-wide standard).
+              onChange(roundPctForStorage(clamped));
             }
           }
           onBlur?.();
@@ -155,11 +157,14 @@ const DistributionFields: React.FC<{
   const lendersClamped = clamp(lendersVal);
   const vendorClamped = clamp(vendorVal);
   const otherClamped = clamp(otherVal);
-  const remainder = Math.max(0, 100 - lendersClamped - vendorClamped - otherClamped);
+  // Use Decimal arithmetic for distribution remainder/total so 33.3333×3 = 99.9999 (no float drift).
+  const remainderDec = sumPercents([100, -lendersClamped, -vendorClamped, -otherClamped]);
+  const remainder = Math.max(0, remainderDec.toNumber());
   const companyDisplay = disabled
     ? '0.00'
-    : ((lendersRaw || vendorRaw || otherRaw) ? remainder.toFixed(2) : '');
-  const totalDisplay = (lendersClamped + vendorClamped + otherClamped + (parseFloat(companyDisplay) || 0)).toFixed(2);
+    : ((lendersRaw || vendorRaw || otherRaw) ? roundPctForStorage(remainder) : '');
+  const totalDec = sumPercents([lendersClamped, vendorClamped, otherClamped, parseFloat(companyDisplay) || 0]);
+  const totalDisplay = formatPercentDisplay(totalDec.toNumber(), 4);
 
   // Persist computed Company value
   const persistedCompany = values[`${prefix}.distribution.company`] || '';
@@ -191,7 +196,7 @@ const DistributionFields: React.FC<{
   // If Lenders hits 100, force Origination Vendor to 0 (Company auto = 0).
   useEffect(() => {
     if (lendersIs100 && vendorRaw !== '' && vendorClamped !== 0) {
-      onValueChange(`${prefix}.distribution.origination_vendors`, '0.00');
+      onValueChange(`${prefix}.distribution.origination_vendors`, '0.0000');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lendersIs100]);
@@ -212,7 +217,7 @@ const DistributionFields: React.FC<{
     onValueChange(`${prefix}.distribution.lenders`, sanitized);
     if (newLenders + vendorClamped + otherClamped > 100) {
       const newVendor = Math.max(0, 100 - newLenders - otherClamped);
-      onValueChange(`${prefix}.distribution.origination_vendors`, newVendor.toFixed(2));
+      onValueChange(`${prefix}.distribution.origination_vendors`, roundPctForStorage(newVendor));
     }
   };
 
@@ -220,7 +225,7 @@ const DistributionFields: React.FC<{
     const sanitized = sanitizePct(val);
     const newVendor = parseFloat(sanitized) || 0;
     const capped = Math.min(newVendor, Math.max(0, 100 - lendersClamped - otherClamped));
-    const finalVal = capped === newVendor ? sanitized : capped.toFixed(2);
+    const finalVal = capped === newVendor ? sanitized : roundPctForStorage(capped);
     onValueChange(`${prefix}.distribution.origination_vendors`, finalVal);
   };
 
@@ -228,7 +233,7 @@ const DistributionFields: React.FC<{
     const sanitized = sanitizePct(val);
     const newOther = parseFloat(sanitized) || 0;
     const capped = Math.min(newOther, Math.max(0, 100 - lendersClamped - vendorClamped));
-    const finalVal = capped === newOther ? sanitized : capped.toFixed(2);
+    const finalVal = capped === newOther ? sanitized : roundPctForStorage(capped);
     onValueChange(`${prefix}.distribution.other`, finalVal);
   };
 

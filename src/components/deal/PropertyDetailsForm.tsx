@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
+import { roundPctForStorage, roundDollarForStorage } from '@/lib/precisionFormat';
 import { US_STATES } from '@/lib/usStates';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Input } from '@/components/ui/input';
@@ -94,26 +95,26 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     const propertyValue = parseFloat(propertyValueRaw.replace(/[,$]/g, ''));
     const purchasePrice = parseFloat(purchasePriceRaw.replace(/[,$]/g, ''));
 
-    // LTV = (Loan Amount / Property Value) × 100
+    // LTV = (Loan Amount / Property Value) × 100  — store at 4dp (display caps at 2)
     if (!isNaN(loanAmount) && !isNaN(propertyValue) && propertyValue > 0) {
-      const ltv = ((loanAmount / propertyValue) * 100).toFixed(2);
+      const ltv = roundPctForStorage((loanAmount / propertyValue) * 100);
       if (getFieldValue(FIELD_KEYS.ltv) !== ltv) {
         onValueChange(FIELD_KEYS.ltv, ltv);
       }
     }
 
 
-    // Protective Equity = Purchase Price − (Existing Liens + Loan Amount)
+    // Protective Equity (dollars) — store at 2dp
     if (!isNaN(purchasePrice) && !isNaN(loanAmount)) {
-      const protEq = (purchasePrice - (existingLiensTotal + loanAmount)).toFixed(2);
+      const protEq = roundDollarForStorage(purchasePrice - (existingLiensTotal + loanAmount));
       if (getFieldValue(FIELD_KEYS.protectiveEquity) !== protEq) {
         onValueChange(FIELD_KEYS.protectiveEquity, protEq);
       }
     }
 
-    // CLTV = (Existing Liens + Loan Amount) / Purchase Price × 100
+    // CLTV = (Existing Liens + Loan Amount) / Purchase Price × 100  — store at 4dp
     if (!isNaN(loanAmount) && !isNaN(purchasePrice) && purchasePrice > 0) {
-      const cltv = (((existingLiensTotal + loanAmount) / purchasePrice) * 100).toFixed(2);
+      const cltv = roundPctForStorage(((existingLiensTotal + loanAmount) / purchasePrice) * 100);
       if (getFieldValue(FIELD_KEYS.cltv) !== cltv) {
         onValueChange(FIELD_KEYS.cltv, cltv);
       }

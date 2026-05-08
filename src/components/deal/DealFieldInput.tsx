@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { AlertCircle, Lock, Calculator, Asterisk, CheckCircle2, CalendarIcon } from 'lucide-react';
 import { format, parseISO, isValid } from 'date-fns';
 import { parseToCanonical, formatForDisplay } from '@/lib/fieldTransforms';
+import { roundPctForStorage } from '@/lib/precisionFormat';
 import { isNegativeValue, INTEREST_NEGATIVE_MESSAGE } from '@/lib/interestValidation';
 import { useDirtyFields } from '@/contexts/DirtyFieldsContext';
 import type { FieldDefinition } from '@/hooks/useDealFields';
@@ -104,10 +105,9 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
         }
         break;
       case 'percentage': {
-        const pctNum = parseFloat(value);
-        if (!isNaN(pctNum)) {
-          formattedValue = pctNum.toFixed(2);
-        }
+        // Store percent/rate at 4 decimals (platform-wide standard).
+        const stored = roundPctForStorage(value);
+        if (stored !== '') formattedValue = stored;
         break;
       }
       case 'number':

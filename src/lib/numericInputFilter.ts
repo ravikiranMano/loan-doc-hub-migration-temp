@@ -3,6 +3,8 @@
  * Blocks non-numeric characters while allowing navigation and editing keys.
  */
 
+import { formatPercentDisplay } from './precisionFormat';
+
 const ALLOWED_KEYS = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
 
 /**
@@ -85,9 +87,8 @@ export const unformatCurrencyDisplay = (value: string): string => {
  */
 export const formatPercentageDisplay = (value: string): string => {
   if (!value) return '';
-  const num = parseFloat(value.replace(/,/g, ''));
-  if (isNaN(num)) return '';
-  return num.toFixed(2);
+  // Platform-wide smart-trim formatter (min 2dp, max 4dp, suppresses trailing zeros beyond 2nd).
+  return formatPercentDisplay(value, 4);
 };
 
 /**

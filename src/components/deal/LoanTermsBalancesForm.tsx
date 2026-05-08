@@ -28,6 +28,7 @@ interface LoanTermsBalancesFormProps {
 }
 
 import { LOAN_TERMS_BALANCES_KEYS } from "@/lib/fieldKeyMap";
+import { formatPercentDisplay as smartPercentDisplay, roundPctForStorage } from "@/lib/precisionFormat";
 
 // Use central field key map
 const FIELD_KEYS = LOAN_TERMS_BALANCES_KEYS;
@@ -219,10 +220,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
   const formatPercentDisplay = useCallback((val: string) => {
     if (!val) return "";
-    const stripped = val.replace(/,/g, '');
-    const num = parseFloat(stripped);
-    if (isNaN(num)) return val;
-    return num.toFixed(2);
+    // Smart-trim: min 2dp, max 3dp for interest/sold rates (per platform standard).
+    return smartPercentDisplay(val, 3);
   }, []);
 
   const renderPercentField = (key: string, label: string) => {
@@ -241,8 +240,9 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               onFocus={() => setFocusedPercentField(key)}
               onBlur={() => {
                 setFocusedPercentField(null);
-                const v = normalizeInterestOnBlur(getValue(key), 2);
-                if (v !== getValue(key)) setValue(key, v);
+                // Store rates at 4 decimal places (platform-wide standard).
+                const stored = roundPctForStorage(getValue(key));
+                if (stored !== getValue(key) && stored !== '') setValue(key, stored);
               }}
               disabled={disabled}
               className="h-8 text-sm pr-7"
@@ -697,7 +697,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                       const num = parseFloat(v);
                       if (!isNaN(num)) {
                         const clamped = Math.min(Math.max(num, 0), 100);
-                        setValue(FIELD_KEYS.salesTaxPercent, clamped.toFixed(2));
+                        setValue(FIELD_KEYS.salesTaxPercent, roundPctForStorage(clamped));
                       }
                     }}
                     disabled={disabled}

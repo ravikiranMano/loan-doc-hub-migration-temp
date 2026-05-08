@@ -18,6 +18,7 @@ import { useTableColumnConfig } from '@/hooks/useTableColumnConfig';
 import { FilterOption } from './GridToolbar';
 import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
+import { formatPercentDisplay } from '@/lib/precisionFormat';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -204,7 +205,7 @@ const buildFundingFilterOptions = (records: FundingRecord[]): FilterOption[] => 
     {
       id: 'lenderRate',
       label: 'Lender Rate',
-      options: uniqueRates.map(r => ({ value: String(r), label: `${r.toFixed(2)}%` })),
+      options: uniqueRates.map(r => ({ value: String(r), label: `${formatPercentDisplay(r, 3)}%` })),
     },
   ];
 };
@@ -304,7 +305,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
-  const formatPercentage = (value: number) => `${value.toFixed(2)}%`;
+  const formatPercentage = (value: number, max = 2) => `${formatPercentDisplay(value, max)}%`;
 
   const handleRoundingChange = (recordId: string, checked: boolean) => {
     onUpdateRecord(recordId, { roundingError: checked });
@@ -422,15 +423,15 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'currentBalance':
         return <span>{formatCurrency(computeCurrentBalance(record))}</span>;
       case 'pctOwned':
-        return <span>{formatPercentage(record.pctOwned)}</span>;
+        return <span>{formatPercentage(record.pctOwned, 4)}</span>;
       case 'fundingDate':
         return formatDate(record.fundingDate) || '-';
       case 'interestFrom':
         return formatDate(record.interestFrom) || '-';
       case 'noteRate':
-        return <span>{record.rateNoteValue ? `${parseFloat(record.rateNoteValue).toFixed(2)}%` : (noteRate ? `${parseFloat(noteRate).toFixed(2)}%` : '-')}</span>;
+        return <span>{record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : (noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : '-')}</span>;
       case 'lenderRate':
-        return <span>{formatPercentage(record.lenderRate)}</span>;
+        return <span>{formatPercentage(record.lenderRate, 3)}</span>;
       case 'regularPayment':
         return <span>{formatCurrency(getDisplayedPayment(record))}</span>;
       case 'disbursements':
@@ -489,7 +490,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         return <span className="font-semibold">{formatCurrency(totalCurrentBalance)}</span>;
       case 'pctOwned': {
         const totalPctOwned = filteredData.reduce((sum, r) => sum + (Number(r.pctOwned) || 0), 0);
-        return <span className="font-semibold">{formatPercentage(totalPctOwned)}</span>;
+        return <span className="font-semibold">{formatPercentage(totalPctOwned, 4)}</span>;
       }
       case 'regularPayment':
         return <span className="font-semibold">{formatCurrency(totalPaymentSum)}</span>;

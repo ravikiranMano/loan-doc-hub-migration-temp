@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { roundPctForStorage, formatPercentDisplay } from '@/lib/precisionFormat';
 
 interface LoanTermsDetailsFormProps {
   fields: FieldDefinition[];
@@ -314,7 +315,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             }}
             onBlur={() => {
               const val = getValue(fieldKey);
-              if (val) { const num = parseFloat(val); if (!isNaN(num)) setValue(fieldKey, num.toFixed(2)); }
+              if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(fieldKey, stored); }
             }}
             disabled={disabled}
             className="h-8 text-xs pr-5"
@@ -376,7 +377,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                     const loan = parseFloat(loanRaw.replace(/[,$]/g, ''));
                     const appraised = parseFloat(appraisedRaw.replace(/[,$]/g, ''));
                     if (isNaN(loan) || isNaN(appraised) || appraised === 0) return '';
-                    return ((loan / appraised) * 100).toFixed(2);
+                    return formatPercentDisplay((loan / appraised) * 100, 2);
                   })()}
                   disabled
                   className="h-8 text-xs flex-1 bg-muted pr-7"
@@ -497,7 +498,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                     }}
                     onBlur={() => {
                       const val = getValue(FIELD_KEYS.adjRateIncreasePercent);
-                      if (val) { const num = parseFloat(val); if (!isNaN(num)) setValue(FIELD_KEYS.adjRateIncreasePercent, num.toFixed(2)); }
+                      if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(FIELD_KEYS.adjRateIncreasePercent, stored); }
                     }}
                     disabled={disabled}
                     className="h-8 text-xs pr-5"
@@ -540,7 +541,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                     }}
                     onBlur={() => {
                       const val = getValue(FIELD_KEYS.adjPaymentOptionsEndPercent);
-                      if (val) { const num = parseFloat(val); if (!isNaN(num)) setValue(FIELD_KEYS.adjPaymentOptionsEndPercent, num.toFixed(2)); }
+                      if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(FIELD_KEYS.adjPaymentOptionsEndPercent, stored); }
                     }}
                     disabled={disabled}
                     className="h-8 text-xs pr-5"

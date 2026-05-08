@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { numericKeyDown, numericPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
+import { roundPctForStorage, roundDollarForStorage } from '@/lib/precisionFormat';
 
 /** Strip commas/$ before parseFloat so formatted values parse correctly */
 const safeParseFloat = (v: string | undefined): number => {
@@ -62,7 +63,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     const fa = safeParseFloat(data.fundingAmount);
     const la = safeParseFloat(loanAmount);
     if (la > 0 && fa > 0) {
-      const computed = (fa / la * 100).toFixed(2);
+      const computed = roundPctForStorage(fa / la * 100);
       if (computed !== data.percentOwned) {
         onChange({ ...data, percentOwned: computed });
       }
@@ -77,7 +78,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     else if (data.rateSelection === 'sold_rate') rate = parseFloat(data.rateSoldValue || '') || 0;
     else if (data.rateSelection === 'lender_rate') rate = parseFloat(data.rateLenderValue || '') || 0;
 
-    const payment = la > 0 && rate > 0 ? (la * (rate / 100) / 12).toFixed(2) : '';
+    const payment = la > 0 && rate > 0 ? roundDollarForStorage(la * (rate / 100) / 12) : '';
     if (payment !== data.regularPayment) {
       onChange({ ...data, regularPayment: payment });
     }

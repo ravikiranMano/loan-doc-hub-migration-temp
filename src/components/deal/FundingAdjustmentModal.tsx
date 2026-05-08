@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, X } from 'lucide-react';
+import { formatPercentDisplay } from '@/lib/precisionFormat';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
@@ -137,8 +138,8 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
             name: r.lenderName,
             currentBalance: formatCurrencyDisplay(String(r.principalBalance)),
             adjustment: '',
-            proRata: `${r.pctOwned.toFixed(2)}`,
-            lenderRate: `${r.lenderRate.toFixed(2)}`,
+            proRata: formatPercentDisplay(r.pctOwned, 4),
+            lenderRate: formatPercentDisplay(r.lenderRate, 3),
             payment: formatCurrencyDisplay(String(r.regularPayment)),
           }))
         );
@@ -226,8 +227,8 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
               currentBalance: fundingMatch
                 ? formatCurrencyDisplay(String(fundingMatch.principalBalance))
                 : l.currentBalance,
-              proRata: fundingMatch ? `${fundingMatch.pctOwned.toFixed(2)}` : l.proRata,
-              lenderRate: fundingMatch ? `${fundingMatch.lenderRate.toFixed(2)}` : l.lenderRate,
+              proRata: fundingMatch ? formatPercentDisplay(fundingMatch.pctOwned, 4) : l.proRata,
+              lenderRate: fundingMatch ? formatPercentDisplay(fundingMatch.lenderRate, 3) : l.lenderRate,
               payment: fundingMatch
                 ? formatCurrencyDisplay(String(fundingMatch.regularPayment))
                 : l.payment,
