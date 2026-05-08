@@ -423,15 +423,15 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'currentBalance':
         return <span>{formatCurrency(computeCurrentBalance(record))}</span>;
       case 'pctOwned':
-        return <span>{formatPercentage(record.pctOwned)}</span>;
+        return <span>{formatPercentage(record.pctOwned, 4)}</span>;
       case 'fundingDate':
         return formatDate(record.fundingDate) || '-';
       case 'interestFrom':
         return formatDate(record.interestFrom) || '-';
       case 'noteRate':
-        return <span>{record.rateNoteValue ? `${parseFloat(record.rateNoteValue).toFixed(2)}%` : (noteRate ? `${parseFloat(noteRate).toFixed(2)}%` : '-')}</span>;
+        return <span>{record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : (noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : '-')}</span>;
       case 'lenderRate':
-        return <span>{formatPercentage(record.lenderRate)}</span>;
+        return <span>{formatPercentage(record.lenderRate, 3)}</span>;
       case 'regularPayment':
         return <span>{formatCurrency(getDisplayedPayment(record))}</span>;
       case 'disbursements':
