@@ -66,6 +66,7 @@ export interface FundingRecord {
   lenderRate: number;
   principalBalance: number;
   originalAmount: number;
+  baseFee?: number;
   currentBalance?: number;
   regularPayment: number;
   lenderShare: number;
