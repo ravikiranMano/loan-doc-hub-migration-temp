@@ -179,11 +179,9 @@ export function formatLowercase(value: string | null): string {
  * @param value - Raw numeric value (e.g., 8.25)
  * @returns Formatted string (e.g., "8.250%")
  */
-export function formatPercentage(value: string | number | null, decimals = 2): string {
-  if (value === null || value === undefined || value === '') return '';
-  const num = typeof value === 'string' ? parseFloat(value) : value;
-  if (isNaN(num)) return '';
-  return `${num.toFixed(decimals)}%`;
+export function formatPercentage(value: string | number | null, decimals = 3): string {
+  const formatted = formatPercentDisplay(value, decimals);
+  return formatted === '' ? '' : `${formatted}%`;
 }
 
 /**
