@@ -817,19 +817,23 @@ async function generateSingleDocument(
       for (const { out, sources, dataType } of re885ShortAliasMap) {
         let src: any = undefined;
         for (const s of sources) {
-          const v = fieldValues.get(s);
-          if (v && v.rawValue !== null && v.rawValue !== undefined && v.rawValue !== "") {
-            src = v;
+          const resolved = getFieldData(s, fieldValues)?.data;
+          if (resolved && resolved.rawValue !== null && resolved.rawValue !== undefined && resolved.rawValue !== "") {
+            src = resolved;
             break;
           }
         }
+
+        const existingOut = getFieldData(out, fieldValues)?.data;
+        const hasUsableOut = !!existingOut && existingOut.rawValue !== null && existingOut.rawValue !== undefined && existingOut.rawValue !== "";
+
         if (src) {
-          if (!fieldValues.has(out)) {
+          if (!hasUsableOut) {
             fieldValues.set(out, { rawValue: src.rawValue, dataType: src.dataType || dataType });
           }
           re885ShortAliasResolved[out] = fieldValues.get(out)?.rawValue ?? "";
         } else {
-          re885ShortAliasResolved[out] = "";
+          re885ShortAliasResolved[out] = existingOut?.rawValue ?? "";
         }
       }
       console.log(
