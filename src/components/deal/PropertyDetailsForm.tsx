@@ -98,7 +98,8 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     // Current LTV = (Loan Amount / Property Value) × 100  — store at 4dp (display caps at 2)
     if (!isNaN(loanAmount) && !isNaN(propertyValue) && propertyValue > 0) {
       const ltv = roundPctForStorage((loanAmount / propertyValue) * 100);
-      if (getFieldValue(FIELD_KEYS.ltv) !== ltv) {
+      const existingLtv = getFieldValue(FIELD_KEYS.ltv);
+      if (!existingLtv || existingLtv.trim() === '') {
         onValueChange(FIELD_KEYS.ltv, ltv);
       }
       // Origination LTV is captured ONCE at initial creation and is then immutable
@@ -110,18 +111,20 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     }
 
 
-    // Protective Equity (dollars) — store at 2dp
+    // Protective Equity (dollars) — store at 2dp; seed once, then user-editable
     if (!isNaN(purchasePrice) && !isNaN(loanAmount)) {
       const protEq = roundDollarForStorage(purchasePrice - (existingLiensTotal + loanAmount));
-      if (getFieldValue(FIELD_KEYS.protectiveEquity) !== protEq) {
+      const existingProtEq = getFieldValue(FIELD_KEYS.protectiveEquity);
+      if (!existingProtEq || existingProtEq.trim() === '') {
         onValueChange(FIELD_KEYS.protectiveEquity, protEq);
       }
     }
 
-    // CLTV = (Existing Liens + Loan Amount) / Purchase Price × 100  — store at 4dp
+    // CLTV — seed once, then user-editable
     if (!isNaN(loanAmount) && !isNaN(purchasePrice) && purchasePrice > 0) {
       const cltv = roundPctForStorage(((existingLiensTotal + loanAmount) / purchasePrice) * 100);
-      if (getFieldValue(FIELD_KEYS.cltv) !== cltv) {
+      const existingCltv = getFieldValue(FIELD_KEYS.cltv);
+      if (!existingCltv || existingCltv.trim() === '') {
         onValueChange(FIELD_KEYS.cltv, cltv);
       }
     }
@@ -508,7 +511,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Protective Equity</Label>
               <div className="relative flex-1">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">$</span>
-                <Input value={getFieldValue(FIELD_KEYS.protectiveEquity)} disabled className="h-7 text-xs pl-6 bg-muted" readOnly />
+                <Input
+                  value={getFieldValue(FIELD_KEYS.protectiveEquity)}
+                  onChange={(e) => onValueChange(FIELD_KEYS.protectiveEquity, unformatCurrencyDisplay(e.target.value))}
+                  onBlur={() => { const raw = getFieldValue(FIELD_KEYS.protectiveEquity); if (raw) onValueChange(FIELD_KEYS.protectiveEquity, formatCurrencyDisplay(raw)); }}
+                  onFocus={() => { const raw = getFieldValue(FIELD_KEYS.protectiveEquity); if (raw) onValueChange(FIELD_KEYS.protectiveEquity, unformatCurrencyDisplay(raw)); }}
+                  onKeyDown={numericKeyDown}
+                  onPaste={(e) => numericPaste(e, (val) => onValueChange(FIELD_KEYS.protectiveEquity, val))}
+                  disabled={disabled}
+                  className="h-7 text-xs pl-6"
+                />
               </div>
             </div>
           </DirtyFieldWrapper>
@@ -530,7 +542,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Current LTV</Label>
               <div className="relative flex-1">
-                <Input value={getFieldValue(FIELD_KEYS.ltv)} disabled className="h-7 text-xs pr-6 bg-muted" readOnly />
+                <Input
+                  value={getFieldValue(FIELD_KEYS.ltv)}
+                  onChange={(e) => handlePercentageChange(FIELD_KEYS.ltv, e.target.value)}
+                  disabled={disabled}
+                  className="h-7 text-xs pr-6"
+                  inputMode="decimal"
+                />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
@@ -539,7 +557,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">CLTV (If a Junior Lien)</Label>
               <div className="relative flex-1">
-                <Input value={getFieldValue(FIELD_KEYS.cltv)} disabled className="h-7 text-xs pr-6 bg-muted" readOnly />
+                <Input
+                  value={getFieldValue(FIELD_KEYS.cltv)}
+                  onChange={(e) => handlePercentageChange(FIELD_KEYS.cltv, e.target.value)}
+                  disabled={disabled}
+                  className="h-7 text-xs pr-6"
+                  inputMode="decimal"
+                />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
