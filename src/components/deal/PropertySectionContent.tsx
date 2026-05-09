@@ -531,13 +531,17 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
 
   // ── Property Tax multi-entity ──
   // Scope tax records to the currently-selected property so taxes added under Property A
-  // never appear under Property B/C, etc. Each tax record stores its associated property id
-  // (e.g., 'property1') in `tax.property`.
+  // never appear under Property B/C, etc. The PropertyTax modal stores the property dropdown
+  // value as the property *label* (e.g., "123 Main St, City, ST"), so we filter and force-bind
+  // by label to keep the UI display intact.
+  const selectedPropertyLabel = useMemo(() => {
+    return propertyOptions.find(p => p.id === selectedPropertyPrefix)?.label || '';
+  }, [propertyOptions, selectedPropertyPrefix]);
   const allPropertyTaxesRaw = extractPropertyTaxesFromValues(values);
   const allPropertyTaxes = useMemo(() => {
-    if (!selectedPropertyPrefix) return allPropertyTaxesRaw;
-    return allPropertyTaxesRaw.filter(t => t.property === selectedPropertyPrefix);
-  }, [allPropertyTaxesRaw, selectedPropertyPrefix]);
+    if (!selectedPropertyLabel) return allPropertyTaxesRaw;
+    return allPropertyTaxesRaw.filter(t => t.property === selectedPropertyLabel);
+  }, [allPropertyTaxesRaw, selectedPropertyLabel]);
   const totalTaxes = allPropertyTaxes.length;
   const taxTotalPages = Math.max(1, Math.ceil(totalTaxes / PAGE_SIZE));
   const taxSafePage = Math.min(taxCurrentPage, taxTotalPages);
