@@ -61,6 +61,7 @@ const extractPropertiesFromValues = (values: Record<string, string>): PropertyDa
       appraisedValue: values[`${prefix}.appraised_value`] || '',
       appraisedDate: values[`${prefix}.appraised_date`] || '',
       ltv: values[`${prefix}.ltv`] || '',
+      originationLtv: values[`${prefix}.origination_ltv`] || '',
       apn: values[`${prefix}.apn`] || '',
       loanPriority: values[`${prefix}.priority`] || '',
       floodZone: values[`${prefix}.flood_zone`] || '',
@@ -446,6 +447,16 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     onValueChange(`${prefix}.appraised_value`, propertyData.appraisedValue);
     onValueChange(`${prefix}.appraised_date`, propertyData.appraisedDate);
     onValueChange(`${prefix}.ltv`, propertyData.ltv);
+    // Persist Origination LTV only if explicitly provided AND there is no existing
+    // origination value already saved for this property (immutable after creation
+    // unless edited directly in the detail form).
+    {
+      const existingOrig = values[`${prefix}.origination_ltv`];
+      const incomingOrig = (propertyData as any).originationLtv;
+      if ((!existingOrig || existingOrig.trim() === '') && incomingOrig) {
+        onValueChange(`${prefix}.origination_ltv`, incomingOrig);
+      }
+    }
     onValueChange(`${prefix}.apn`, propertyData.apn);
     onValueChange(`${prefix}.priority`, propertyData.loanPriority);
     onValueChange(`${prefix}.flood_zone`, propertyData.floodZone || '');
