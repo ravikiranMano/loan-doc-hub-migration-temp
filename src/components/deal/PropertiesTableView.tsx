@@ -27,7 +27,8 @@ export interface PropertyData {
   occupancy: string;
   appraisedValue: string;
   appraisedDate: string;
-  ltv: string;
+ ltv: string;
+ originationLtv?: string;
   apn: string;
   loanPriority: string;
   floodZone?: string;

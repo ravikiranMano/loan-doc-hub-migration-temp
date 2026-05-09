@@ -539,6 +539,7 @@ export const PROPERTY_DETAILS_KEYS = {
   propertyType: 'property1.appraisal_property_type',
   occupancy: 'property1.appraisal_occupancy',
   ltv: 'property1.ltv',
+  originationLtv: 'property1.origination_ltv',
   zoning: 'property1.zoning',
   appraisedValue: 'property1.appraised_value',
   pledgedEquity: 'property1.pledged_equity',
