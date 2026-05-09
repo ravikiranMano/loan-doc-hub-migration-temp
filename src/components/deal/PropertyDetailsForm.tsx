@@ -539,7 +539,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Current LTV</Label>
               <div className="relative flex-1">
-                <Input value={getFieldValue(FIELD_KEYS.ltv)} disabled className="h-7 text-xs pr-6 bg-muted" readOnly />
+                <Input
+                  value={getFieldValue(FIELD_KEYS.ltv)}
+                  onChange={(e) => handlePercentageChange(FIELD_KEYS.ltv, e.target.value)}
+                  disabled={disabled}
+                  className="h-7 text-xs pr-6"
+                  inputMode="decimal"
+                />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
