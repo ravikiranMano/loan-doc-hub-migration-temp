@@ -201,10 +201,10 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           </Select>
         </div>
 
-        {/* TIN Number */}
+        {/* TIN number */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-tin-number`} className="text-sm">
-            TIN Number
+            TIN number
           </Label>
           <Input
             id={`${idPrefix}-tin-number`}
@@ -212,13 +212,14 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
             onChange={(e) => set(F.tinNumber, e.target.value)}
             disabled={disabled}
             maxLength={20}
+            placeholder="XX-XXXXXXXX"
             className="h-9 max-w-[260px]"
           />
         </div>
 
-        {/* TIN Type */}
+        {/* TIN type */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
-          <Label className="text-sm">TIN Type</Label>
+          <Label className="text-sm">TIN type</Label>
           <Select
             value={get(F.tinType) || '__none__'}
             onValueChange={(v) => set(F.tinType, v === '__none__' ? '' : v)}
@@ -236,28 +237,23 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           </Select>
         </div>
 
-        {/* W-9 on File */}
+        {/* W-9 on file */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-w9`} className="text-sm">
-            W-9 on File
+            W-9 on file
           </Label>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id={`${idPrefix}-w9`}
-              checked={get(F.w9OnFile) === 'true'}
-              onCheckedChange={(v) => set(F.w9OnFile, String(!!v))}
-              disabled={disabled}
-            />
-            <Label htmlFor={`${idPrefix}-w9`} className="text-sm text-muted-foreground">
-              X&nbsp;&nbsp;W-9 on File
-            </Label>
-          </div>
+          <Checkbox
+            id={`${idPrefix}-w9`}
+            checked={get(F.w9OnFile) === 'true'}
+            onCheckedChange={(v) => set(F.w9OnFile, String(!!v))}
+            disabled={disabled}
+          />
         </div>
 
-        {/* TIN Verified */}
+        {/* TIN verified */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-tin-verified`} className="text-sm">
-            TIN Verified
+            TIN verified
           </Label>
           <Input
             id={`${idPrefix}-tin-verified`}
@@ -269,10 +265,10 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           />
         </div>
 
-        {/* Alternate Reporting */}
+        {/* Alternate reporting */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-alt`} className="text-sm">
-            Alternate Reporting
+            Alternate reporting
           </Label>
           <Input
             id={`${idPrefix}-alt`}
