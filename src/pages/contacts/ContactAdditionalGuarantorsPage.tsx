@@ -57,7 +57,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'ford.2', label: 'FORD 2', visible: false },
 ];
 
-const BOOLEAN_COLUMNS = new Set<string>(['issue_1098', 'delivery_online', 'delivery_mail', 'send_pref.payment_notification', 'send_pref.borrower_statement', 'send_pref.late_notice', 'send_pref.maturity_notice']);
+const BOOLEAN_COLUMNS = new Set<string>(['delivery_online', 'delivery_mail', 'send_pref.payment_notification', 'send_pref.borrower_statement', 'send_pref.late_notice', 'send_pref.maturity_notice']);
 
 const FILTER_OPTIONS: FilterOption[] = [
   {
