@@ -172,7 +172,9 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
       case 'tax-reporting':
         return (
           <div className="p-6">
-            <LenderTaxReporting
+            <TaxReportingCard
+              partyType="lender"
+              prefix="lender."
               values={values}
               onValueChange={handleValueChange}
               disabled={isReadOnly}
