@@ -565,8 +565,8 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     const prefix = editingTax ? editingTax.id : getNextPropertyTaxPrefix(values);
     // Force-bind to the currently-selected property so records cannot leak across properties
     // even if the property field was left blank in the modal.
-    if (selectedPropertyPrefix) {
-      taxData = { ...taxData, property: selectedPropertyPrefix };
+    if (selectedPropertyLabel) {
+      taxData = { ...taxData, property: selectedPropertyLabel };
     }
     const fieldEntries: { key: keyof PropertyTaxData; dbField: string }[] = [
       { key: 'property', dbField: 'property' },
