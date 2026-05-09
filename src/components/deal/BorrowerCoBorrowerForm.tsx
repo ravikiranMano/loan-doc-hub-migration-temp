@@ -57,6 +57,7 @@ export const BorrowerCoBorrowerForm: React.FC<BorrowerCoBorrowerFormProps> = ({
       showValidation={showValidation}
       disabled={disabled}
       calculationResults={calculationResults}
+      borrowerIdLookup
     />
   );
 };
