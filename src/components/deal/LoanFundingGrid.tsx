@@ -653,6 +653,16 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow className="bg-muted/50">
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={isAllSelected}
+                      ref={(el) => {
+                        if (el) (el as any).indeterminate = isSomeSelected;
+                      }}
+                      onCheckedChange={toggleAll}
+                      disabled={disabled || filteredData.length === 0}
+                    />
+                  </TableHead>
                   {visibleColumns.map((col) => (
                     col.id === 'roundingError' ? (
                       <TableHead key={col.id} className="text-center text-xs">{col.label}</TableHead>
@@ -667,14 +677,12 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
                       />
                     )
                   ))}
-                  <TableHead className="w-[40px] text-center text-xs">Edit</TableHead>
-                  <TableHead className="w-[50px] text-center text-xs">Delete</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={visibleColumns.length + 2} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={visibleColumns.length + 1} className="text-center text-muted-foreground py-8">
                       {fundingRecords.length === 0 ? 'No funding records found. Click "Add Funding" to add a new funding record.' : 'No funding records match your search.'}
                     </TableCell>
                   </TableRow>
@@ -685,46 +693,28 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
                       className={cn(!disabled && 'cursor-pointer hover:bg-muted/30', selectedRecord?.id === record.id && 'bg-primary/10')}
                       onClick={() => !disabled && handleRowClick(record)}
                     >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.has(record.id)}
+                          onCheckedChange={() => toggleOne(record.id)}
+                          disabled={disabled}
+                        />
+                      </TableCell>
                       {visibleColumns.map((col) => (
                         <TableCell key={col.id} className="text-left text-xs py-1.5">{renderCellValue(record, col.id)}</TableCell>
                       ))}
-                      <TableCell className="text-center px-1" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5"
-                          onClick={(e) => handleEditClick(e, record)}
-                          disabled={disabled}
-                          title="Edit"
-                        >
-                          <Pencil className="h-3 w-3 text-muted-foreground" />
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-center px-1" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 text-destructive hover:text-destructive"
-                          onClick={(e) => handleDeleteRowClick(e, record)}
-                          disabled={disabled}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   ))
                 )}
 
                 {fundingRecords.length > 0 && (
                   <TableRow className="bg-muted/30 font-semibold border-t-2">
+                    <TableCell />
                     {visibleColumns.map((col) => (
                       <TableCell key={col.id} className="text-left text-xs py-1.5">
                         {renderTotalCell(col.id)}
                       </TableCell>
                     ))}
-                    <TableCell />
-                    <TableCell />
                   </TableRow>
                 )}
               </TableBody>
