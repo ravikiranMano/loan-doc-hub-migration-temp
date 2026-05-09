@@ -1,28 +1,28 @@
 ## Goal
+Align the existing **Tax Reporting** card (used across Lender, Borrower, Co-borrower, Broker 1099 left-nav screens) with the attached screenshot — same UI and functionality everywhere.
 
-In **CONTACTS → Authorized Party**, when a row is opened, the **Borrower** sidebar tab currently renders `BorrowerPrimaryForm` (full borrower profile). Replace it (only in the Authorized Parties context) with the existing `BorrowerAuthorizedPartyForm`, whose 4-column layout (Name / Address / Phone / Preferred + Delivery / Send / Details / FORD) already matches the attached screenshot 1:1.
+## Scope
+File: `src/components/contacts/shared/TaxReportingCard.tsx` (single reusable component already wired to all 4 screens — no layout files need changes).
 
-No schema, API, sidebar, navigation, or other tab is changed. Persistence continues to use the existing `borrower.authorized_party.*` keys via the same `onSave` flow already wired in `ContactAuthorizedPartiesPage` (which already mirrors prefixed keys to canonical via `mirrorPrefixedToCanonical`).
+## UI changes to match screenshot
 
-## Changes (minimal, scoped)
+1. **Header** → rename `Tax Reporting` to `Tax reporting`.
+2. **Add entity-type dropdown** as the first row inside the card:
+   - Label is party-aware: `Lender type` / `Borrower type` / `Co-borrower type` / `Broker type`.
+   - Bound to the existing `{prefix}type` field (same source already used for Issue 1099 auto-population) — read/write via `onValueChange`, no new keys, no schema changes.
+   - Options: existing entity-type list (`Individual`, `Joint`, `Family Trust`, `LLC`, `Investment Fund`, `C Corp / S Corp`, `IRA / ERISA`, `401K`, `Foreign Holder W-8`, `Non-profit`).
+   - Editing this field continues to drive the Issue 1099 auto-default (already implemented).
+3. **Field labels** → lowercase second word per screenshot: `Designated recipient`, `Issue 1099`, `TIN number`, `TIN type`, `W-9 on file`, `TIN verified`, `Alternate reporting`, `Notes`.
+4. **TIN number input** → add placeholder `XX-XXXXXXXX`.
+5. **W-9 on file row** → remove the duplicated `X  W-9 on File` secondary label next to the checkbox (screenshot shows just checkbox + single label on the left).
+6. **Layout** → keep the existing label-left / input-right two-column grid, full-width Notes textarea at the bottom, bordered Card container (already matches).
 
-### 1. `src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx`
-- Add a new optional prop `borrowerSectionVariant?: 'primary' | 'authorized_party'` (default `'primary'`).
-- In `renderContent()` `case 'borrower':`, if `borrowerSectionVariant === 'authorized_party'`, render `<BorrowerAuthorizedPartyForm … />` (already imported at line 10) using the existing `values` / `handleValueChange` / `isReadOnly` props. Otherwise keep current `BorrowerPrimaryForm`.
-- No other case, save logic, dirty tracking, or sidebar entry is touched.
+## Functionality (unchanged)
+- Same persistence keys `{prefix}tax_info.*` via existing save/update API.
+- Issue 1099 auto-population + manual-override flag preserved exactly.
+- No new tables, no schema changes, no new APIs.
+- All 4 screens (Lender / Borrower / Co-borrower / Broker) automatically inherit the updated UI because they already render `TaxReportingCard`.
 
-### 2. `src/pages/contacts/ContactAuthorizedPartiesPage.tsx`
-- In `<ContactBorrowerDetailLayout … />` (line 82), pass `borrowerSectionVariant="authorized_party"`.
-- Nothing else changes — `handleSave` already hydrates + mirrors `borrower.authorized_party.*` keys, so persistence keeps working through the existing update API.
-
-## What is NOT changed
-- `BorrowerAuthorizedPartyForm` itself — already matches the screenshot.
-- Field keys / `BORROWER_AUTHORIZED_PARTY_KEYS` / `fieldKeyMap.ts`.
-- `useContactsCrud`, `updateContact`, `mirrorPrefixedToCanonical`, `hydratePrefixedFromCanonical`.
-- Sidebar items, sub-nav, routing, grid columns, filters, RLS, DB schema.
-- Borrowers page, Co-Borrowers page, Additional Guarantors page (they continue to use `BorrowerPrimaryForm` on the Borrower tab).
-
-## Verification
-1. Open CONTACTS → Authorized Parties → click a row → "Borrower" tab now shows the screenshot layout (Name/Address/Phone/Preferred header row + Delivery Options/Send/Details/FORD bottom row).
-2. Edit Capacity, First/Middle/Last, Address, Phones, Preferred radio, Delivery checkboxes, Send checkboxes, Details textarea, and the 6 FORD inputs → click Save → reload row → values persist (stored under `borrower.authorized_party.*` and mirrored to canonical top-level fields for the grid).
-3. Borrowers page and Additional Guarantors page Borrower tab unchanged.
+## Out of scope
+- No changes to layouts, sidebars, save/load logic, or any other component.
+- No changes to deal-side `LenderTaxInfoForm` (different module).
