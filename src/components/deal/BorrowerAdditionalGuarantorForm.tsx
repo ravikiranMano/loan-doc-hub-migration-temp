@@ -181,6 +181,7 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
             <EmailInput value={getValue('email')} onValueChange={(v) => handleChange('email', v)} disabled={disabled} className="h-7 text-sm" />
           </InlineField>
 
+        </div>
 
         {/* Column 2 - Primary Address + Mailing Address + Delivery */}
         <div className="space-y-2">
