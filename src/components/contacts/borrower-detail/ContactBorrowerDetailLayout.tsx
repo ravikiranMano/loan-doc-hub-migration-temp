@@ -10,7 +10,7 @@ import { BorrowerAdditionalGuarantorForm } from '@/components/deal/BorrowerAddit
 import { BorrowerAuthorizedPartyForm } from '@/components/deal/BorrowerAuthorizedPartyForm';
 import { BorrowerBankingForm } from '@/components/deal/BorrowerBankingForm';
 import { BorrowerTaxDetailForm } from '@/components/deal/BorrowerTaxDetailForm';
-import { BorrowerTaxInfoForm } from '@/components/deal/BorrowerTaxInfoForm';
+import TaxReportingCard, { type TaxPartyType } from '@/components/contacts/shared/TaxReportingCard';
 import BorrowerTrustLedger from './BorrowerTrustLedger';
 import BorrowerDashboard from './BorrowerDashboard';
 import BorrowerPortfolio from './BorrowerPortfolio';
