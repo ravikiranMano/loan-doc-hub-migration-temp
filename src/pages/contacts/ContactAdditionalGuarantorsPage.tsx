@@ -31,9 +31,6 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'last_name', label: 'Last', visible: true },
   { id: 'capacity', label: 'Capacity', visible: false },
   { id: 'email', label: 'Email', visible: true },
-  { id: 'tax_id_type', label: 'Tax ID Type', visible: false },
-  { id: 'tin', label: 'TIN', visible: false },
-  { id: 'issue_1098', label: 'Issue 1098', visible: false },
   { id: 'address.street', label: 'Address Street', visible: false },
   { id: 'address.city', label: 'Address City', visible: false },
   { id: 'address.state', label: 'Address State', visible: false },
@@ -60,7 +57,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'ford.2', label: 'FORD 2', visible: false },
 ];
 
-const BOOLEAN_COLUMNS = new Set<string>(['issue_1098', 'delivery_online', 'delivery_mail', 'send_pref.payment_notification', 'send_pref.borrower_statement', 'send_pref.late_notice', 'send_pref.maturity_notice']);
+const BOOLEAN_COLUMNS = new Set<string>(['delivery_online', 'delivery_mail', 'send_pref.payment_notification', 'send_pref.borrower_statement', 'send_pref.late_notice', 'send_pref.maturity_notice']);
 
 const FILTER_OPTIONS: FilterOption[] = [
   {
