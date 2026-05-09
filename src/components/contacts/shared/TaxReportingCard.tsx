@@ -65,12 +65,14 @@ const TYPE_TO_1099: Record<string, 'Yes' | 'No' | 'blank'> = {
 const computeIssue1099Default = (
   partyType: TaxPartyType,
   entityType: string,
-  _taxedAsCorp: boolean,
+  taxedAsCorp: boolean,
 ): string => {
   if (partyType === 'broker') return 'Yes'; // Always 1099-NEC
   if (!entityType) return '';
   const rule = TYPE_TO_1099[entityType];
-  if (rule === undefined || rule === 'blank') return '';
+  if (rule === undefined) return '';
+  // Situational: LLC and Investment Fund — Taxed as Corp → No, otherwise → Yes
+  if (rule === 'blank') return taxedAsCorp ? 'No' : 'Yes';
   return rule;
 };
 
