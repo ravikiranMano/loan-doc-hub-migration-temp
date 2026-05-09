@@ -16,6 +16,9 @@ interface InsuranceSectionContentProps {
   onPersist?: () => Promise<boolean>;
   disabled?: boolean;
   propertyOptions?: { id: string; label: string }[];
+  /** Currently-selected property prefix (e.g., 'property1'). When provided, insurance records are
+   *  scoped to this property: only matching records are shown, and new records default to it. */
+  currentPropertyId?: string;
   onBack?: () => void;
   onRefresh?: () => void;
 }
