@@ -591,6 +591,17 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setExportOpen(true)} disabled={disabled}>
             <Download className="h-3.5 w-3.5" /> Export
           </Button>
+          {selectedCount > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={disabled}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete ({selectedCount})
+            </Button>
+          )}
           <ColumnConfigPopover columns={columns} onColumnsChange={setColumns} onResetColumns={resetColumns} />
         </div>
 
