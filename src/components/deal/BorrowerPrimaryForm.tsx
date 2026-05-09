@@ -72,6 +72,8 @@ interface BorrowerPrimaryFormProps {
   showValidation?: boolean;
   disabled?: boolean;
   calculationResults?: Record<string, CalculationResult>;
+  /** When true, render Borrower ID as a contact lookup that pulls existing borrower data on select. */
+  borrowerIdLookup?: boolean;
 }
 
 const InlineField = ({ label, children, labelWidth = 'min-w-[140px]', fieldKey }: { label: string; children: React.ReactNode; labelWidth?: string; fieldKey?: string }) => {
