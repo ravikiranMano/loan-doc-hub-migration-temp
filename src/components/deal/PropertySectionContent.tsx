@@ -331,27 +331,11 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     });
   }, [allProperties]);
 
-  // Borrower options + primary borrower address — sourced from deal_participants
-  // (Participant Type = 'Borrower'). Falls back to in-form values if no participants.
+  // Borrower options + primary borrower address — sourced strictly from
+  // deal_participants (Participant Type = 'Borrower'). No fallback to contacts.
   const borrowerOptions = useMemo(() => {
-    if (borrowerParticipants.length > 0) {
-      return Array.from(new Set(borrowerParticipants.map(b => b.name).filter(Boolean)));
-    }
-    const prefixes = new Set<string>();
-    Object.keys(values).forEach(key => {
-      const m = key.match(/^(borrower\d*)\./);
-      if (m) prefixes.add(m[1]);
-    });
-    const names: string[] = [];
-    Array.from(prefixes).sort().forEach(p => {
-      const full = (values[`${p}.full_name`] || '').trim();
-      const first = (values[`${p}.first_name`] || '').trim();
-      const last = (values[`${p}.last_name`] || '').trim();
-      const composed = full || [first, last].filter(Boolean).join(' ').trim();
-      if (composed && !names.includes(composed)) names.push(composed);
-    });
-    return names;
-  }, [values, borrowerParticipants]);
+    return Array.from(new Set(borrowerParticipants.map(b => b.name).filter(Boolean)));
+  }, [borrowerParticipants]);
 
   // Address for "Copy Borrower's Address": prefer the selected Property Owner
   // (looked up among Borrower participants); fall back to the first borrower
