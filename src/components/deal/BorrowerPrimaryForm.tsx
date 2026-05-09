@@ -95,6 +95,7 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
   onValueChange,
   showValidation = false,
   disabled = false,
+  borrowerIdLookup = false,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => {
     return values[FIELD_KEYS[key]] || '';
