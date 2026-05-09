@@ -204,7 +204,19 @@ export const BrokerBankingForm: React.FC<BrokerBankingFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">Same as Mailing</Label>
               <div className="w-[160px] 3xl:w-[200px] flex items-center">
-                <Checkbox id="checkSameAsMailing" checked={getBoolValue('checkSameAsMailing')} onCheckedChange={(checked) => handleChange('checkSameAsMailing', !!checked)} disabled={disabled || !byCheckEnabled} />
+                <Checkbox id="checkSameAsMailing" checked={getBoolValue('checkSameAsMailing')} onCheckedChange={(checked) => {
+                  const isChecked = !!checked;
+                  handleChange('checkSameAsMailing', isChecked);
+                  if (isChecked) {
+                    handleChange('checkAddress', values['broker.mailing.street'] || '');
+                    handleChange('checkCity', values['broker.mailing.city'] || '');
+                    handleChange('checkZip', values['broker.mailing.zip'] || '');
+                  } else {
+                    handleChange('checkAddress', '');
+                    handleChange('checkCity', '');
+                    handleChange('checkZip', '');
+                  }
+                }} disabled={disabled || !byCheckEnabled} />
               </div>
             </div>
           </DirtyFieldWrapper>
