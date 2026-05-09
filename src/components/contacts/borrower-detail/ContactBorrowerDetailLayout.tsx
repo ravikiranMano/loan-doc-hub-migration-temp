@@ -32,6 +32,10 @@ interface ContactBorrowerDetailLayoutProps {
   backLabel?: string;
   titlePrefix?: string;
   borrowerSectionVariant?: 'primary' | 'authorized_party' | 'additional_guarantor';
+  /** Drives Tax Info card party context (defaults to 'borrower'). */
+  taxPartyType?: TaxPartyType;
+  /** Prefix used to read/write the Tax Info card values (defaults to 'borrower.'). */
+  taxPrefix?: string;
 }
 
 const NON_BORROWER_PREFIXES = ['ach.', 'coborrower.', 'borrower.guarantor.', 'borrower.authorized_party.', 'borrower.1098.'];
