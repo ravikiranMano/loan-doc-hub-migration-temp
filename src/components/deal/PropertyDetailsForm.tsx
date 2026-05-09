@@ -98,7 +98,8 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     // Current LTV = (Loan Amount / Property Value) × 100  — store at 4dp (display caps at 2)
     if (!isNaN(loanAmount) && !isNaN(propertyValue) && propertyValue > 0) {
       const ltv = roundPctForStorage((loanAmount / propertyValue) * 100);
-      if (getFieldValue(FIELD_KEYS.ltv) !== ltv) {
+      const existingLtv = getFieldValue(FIELD_KEYS.ltv);
+      if (!existingLtv || existingLtv.trim() === '') {
         onValueChange(FIELD_KEYS.ltv, ltv);
       }
       // Origination LTV is captured ONCE at initial creation and is then immutable
@@ -110,18 +111,20 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     }
 
 
-    // Protective Equity (dollars) — store at 2dp
+    // Protective Equity (dollars) — store at 2dp; seed once, then user-editable
     if (!isNaN(purchasePrice) && !isNaN(loanAmount)) {
       const protEq = roundDollarForStorage(purchasePrice - (existingLiensTotal + loanAmount));
-      if (getFieldValue(FIELD_KEYS.protectiveEquity) !== protEq) {
+      const existingProtEq = getFieldValue(FIELD_KEYS.protectiveEquity);
+      if (!existingProtEq || existingProtEq.trim() === '') {
         onValueChange(FIELD_KEYS.protectiveEquity, protEq);
       }
     }
 
-    // CLTV = (Existing Liens + Loan Amount) / Purchase Price × 100  — store at 4dp
+    // CLTV — seed once, then user-editable
     if (!isNaN(loanAmount) && !isNaN(purchasePrice) && purchasePrice > 0) {
       const cltv = roundPctForStorage(((existingLiensTotal + loanAmount) / purchasePrice) * 100);
-      if (getFieldValue(FIELD_KEYS.cltv) !== cltv) {
+      const existingCltv = getFieldValue(FIELD_KEYS.cltv);
+      if (!existingCltv || existingCltv.trim() === '') {
         onValueChange(FIELD_KEYS.cltv, cltv);
       }
     }
