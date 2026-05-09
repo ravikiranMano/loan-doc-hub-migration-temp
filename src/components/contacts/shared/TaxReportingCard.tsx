@@ -88,16 +88,15 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
   const set = (f: string, v: string) => onValueChange(k(f), v);
 
   // --- Resolve entity type for auto-population ---
-  // Look at the canonical type field on the parent record. We deliberately
-  // read from the parent prefix only to avoid cross-party leakage.
+  // Bind to the canonical entity-type field used elsewhere in the app so
+  // values round-trip via the existing contact save/update API and re-populate
+  // after reload.
   const entityTypeKey =
     partyType === 'lender'
       ? `${prefix}type`
       : partyType === 'broker'
-        ? `${prefix}type`
-        : partyType === 'coborrower'
-          ? `${prefix}type`
-          : `${prefix}type`;
+        ? `${prefix}tax_info.broker_type`
+        : `${prefix}borrower_type`; // borrower & coborrower
 
   const entityType = values[entityTypeKey] || '';
   const taxedAsCorp = (values[`${prefix}taxed_as_corp`] || '') === 'true';
