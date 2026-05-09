@@ -598,7 +598,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     });
     setTaxModalOpen(false);
     if (onPersist) setTimeout(() => { onPersist(); }, 50);
-  }, [editingTax, values, onValueChange, onPersist]);
+  }, [editingTax, values, onValueChange, onPersist, selectedPropertyPrefix]);
 
   const handleDeleteTax = useCallback((tax: PropertyTaxData) => {
     if (onRemoveValuesByPrefix) {
