@@ -15,7 +15,7 @@ const SECTIONS: { key: ContactBorrowerSubSection; label: string }[] = [
   { key: 'authorized_party', label: 'Authorized Party' },
   { key: 'trust_ledger', label: 'Trust Ledger' },
   { key: 'banking', label: 'Banking' },
-  { key: 'tax_detail', label: '1098' },
+  { key: 'tax_detail', label: '1099' },
 ];
 
 export const ContactBorrowerSubNav: React.FC<ContactBorrowerSubNavProps> = ({
