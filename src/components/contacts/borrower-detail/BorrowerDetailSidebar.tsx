@@ -17,7 +17,7 @@ const SECTIONS: { id: BorrowerSection; label: string; icon: React.ElementType }[
   { id: 'charges', label: 'Charges', icon: DollarSign },
   { id: 'banking', label: 'Banking', icon: Building2 },
   { id: 'trust-ledger', label: 'Trust Ledger', icon: BookOpen },
-  { id: 'tax-info', label: '1098', icon: Receipt },
+  { id: 'tax-info', label: '1099', icon: Receipt },
   { id: 'conversation-log', label: 'Conversation Log', icon: MessageSquare },
   { id: 'attachments', label: 'Attachments', icon: Paperclip },
   { id: 'events-journal', label: 'Events Journal', icon: ScrollText },
