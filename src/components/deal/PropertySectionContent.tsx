@@ -530,7 +530,14 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
   }, [values, onValueChange, onRemoveValuesByPrefix, onPersist]);
 
   // ── Property Tax multi-entity ──
-  const allPropertyTaxes = extractPropertyTaxesFromValues(values);
+  // Scope tax records to the currently-selected property so taxes added under Property A
+  // never appear under Property B/C, etc. Each tax record stores its associated property id
+  // (e.g., 'property1') in `tax.property`.
+  const allPropertyTaxesRaw = extractPropertyTaxesFromValues(values);
+  const allPropertyTaxes = useMemo(() => {
+    if (!selectedPropertyPrefix) return allPropertyTaxesRaw;
+    return allPropertyTaxesRaw.filter(t => t.property === selectedPropertyPrefix);
+  }, [allPropertyTaxesRaw, selectedPropertyPrefix]);
   const totalTaxes = allPropertyTaxes.length;
   const taxTotalPages = Math.max(1, Math.ceil(totalTaxes / PAGE_SIZE));
   const taxSafePage = Math.min(taxCurrentPage, taxTotalPages);
@@ -552,6 +559,11 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
 
   const handleSaveTax = useCallback((taxData: PropertyTaxData) => {
     const prefix = editingTax ? editingTax.id : getNextPropertyTaxPrefix(values);
+    // Force-bind to the currently-selected property so records cannot leak across properties
+    // even if the property field was left blank in the modal.
+    if (selectedPropertyPrefix) {
+      taxData = { ...taxData, property: selectedPropertyPrefix };
+    }
     const fieldEntries: { key: keyof PropertyTaxData; dbField: string }[] = [
       { key: 'property', dbField: 'property' },
       { key: 'authority', dbField: 'authority' },
@@ -586,7 +598,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     });
     setTaxModalOpen(false);
     if (onPersist) setTimeout(() => { onPersist(); }, 50);
-  }, [editingTax, values, onValueChange, onPersist]);
+  }, [editingTax, values, onValueChange, onPersist, selectedPropertyPrefix]);
 
   const handleDeleteTax = useCallback((tax: PropertyTaxData) => {
     if (onRemoveValuesByPrefix) {
