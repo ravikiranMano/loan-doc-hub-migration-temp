@@ -181,28 +181,6 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
             <EmailInput value={getValue('email')} onValueChange={(v) => handleChange('email', v)} disabled={disabled} className="h-7 text-sm" />
           </InlineField>
 
-          <InlineField label="Tax ID Type" fieldKey={FIELD_KEYS.taxIdType}>
-            <Select value={getValue('taxIdType')} onValueChange={(v) => handleChange('taxIdType', v)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{TAX_ID_TYPE_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>))}</SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField label="TIN" fieldKey={FIELD_KEYS.tin}>
-            <Input value={getValue('tin')} onChange={(e) => handleChange('tin', e.target.value)} disabled={disabled} className="h-7 text-sm" />
-          </InlineField>
-
-          <DirtyFieldWrapper fieldKey={FIELD_KEYS.issue1098}>
-            <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Issue 1098</Label>
-              <Checkbox
-                checked={getBoolValue('issue1098')}
-                onCheckedChange={(checked) => handleChange('issue1098', !!checked)}
-                disabled={disabled}
-              />
-            </div>
-          </DirtyFieldWrapper>
-        </div>
 
         {/* Column 2 - Primary Address + Mailing Address + Delivery */}
         <div className="space-y-2">
