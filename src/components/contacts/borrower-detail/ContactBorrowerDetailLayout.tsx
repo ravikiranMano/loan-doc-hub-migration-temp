@@ -231,8 +231,9 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
         );
       case 'tax-info':
         return (
-          <BorrowerTaxInfoForm
-            fields={emptyFields}
+          <TaxReportingCard
+            partyType={taxPartyType}
+            prefix={taxPrefix}
             values={values}
             onValueChange={handleValueChange}
             disabled={isReadOnly}
