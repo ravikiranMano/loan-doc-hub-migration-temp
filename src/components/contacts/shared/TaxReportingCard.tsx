@@ -170,29 +170,31 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           </Select>
         </div>
 
-        {/* Taxed as Corp? — Yes/No dropdown, always visible */}
-        <div className="grid grid-cols-[180px_1fr] items-center gap-3">
-          <Label className="text-sm">Taxed as Corp?</Label>
-          <Select
-            value={taxedAsCorp ? 'Yes' : (values[`${prefix}taxed_as_corp`] === 'false' ? 'No' : '__none__')}
-            onValueChange={(v) => {
-              const next = v === 'Yes' ? 'true' : v === 'No' ? 'false' : '';
-              onValueChange(`${prefix}taxed_as_corp`, next);
-              // Re-enable auto so the new rule takes effect immediately
-              set(F.manualFlag, 'false');
-            }}
-            disabled={disabled}
-          >
-            <SelectTrigger className="h-9 max-w-[260px]">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent className="bg-background z-50">
-              <SelectItem value="__none__">— None —</SelectItem>
-              <SelectItem value="Yes">Yes</SelectItem>
-              <SelectItem value="No">No</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Taxed as Corp? — only shown for situational types (LLC / Investment Fund) */}
+        {(entityType === 'LLC' || entityType === 'Investment Fund') && (
+          <div className="grid grid-cols-[180px_1fr] items-center gap-3">
+            <Label className="text-sm">Taxed as Corp?</Label>
+            <Select
+              value={taxedAsCorp ? 'Yes' : (values[`${prefix}taxed_as_corp`] === 'false' ? 'No' : '__none__')}
+              onValueChange={(v) => {
+                const next = v === 'Yes' ? 'true' : v === 'No' ? 'false' : '';
+                onValueChange(`${prefix}taxed_as_corp`, next);
+                // Re-enable auto so the new rule takes effect immediately
+                set(F.manualFlag, 'false');
+              }}
+              disabled={disabled}
+            >
+              <SelectTrigger className="h-9 max-w-[260px]">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="__none__">— None —</SelectItem>
+                <SelectItem value="Yes">Yes</SelectItem>
+                <SelectItem value="No">No</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Designated recipient */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
