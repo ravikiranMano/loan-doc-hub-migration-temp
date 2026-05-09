@@ -14,7 +14,7 @@ import BrokerCharges from './BrokerCharges';
 import BrokerTrustLedger from './BrokerTrustLedger';
 import BrokerConversationLog from './BrokerConversationLog';
 import Broker1099 from './Broker1099';
-import BrokerTaxInfo from './BrokerTaxInfo';
+import TaxReportingCard from '@/components/contacts/shared/TaxReportingCard';
 import BrokerAuthorizedParty from './BrokerAuthorizedParty';
 import BrokerAttachments from './BrokerAttachments';
 import BrokerEventsJournal from './BrokerEventsJournal';
