@@ -117,6 +117,7 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
   onPersist,
   disabled = false,
   propertyOptions = [],
+  currentPropertyId,
   onBack,
   onRefresh,
 }) => {
@@ -146,7 +147,13 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
   const isDetailView = activeSubSection === 'insurance_details';
   
   // Extract allInsurances from values
-  const allInsurances = extractInsurancesFromValues(values);
+  const extractedInsurances = extractInsurancesFromValues(values);
+  // Scope to the currently-selected property when provided. Each insurance record stores its
+  // associated property id (e.g., 'property1') in `insurance.property`.
+  const allInsurances = useMemo(() => {
+    if (!currentPropertyId) return extractedInsurances;
+    return extractedInsurances.filter(i => i.property === currentPropertyId);
+  }, [extractedInsurances, currentPropertyId]);
   const totalInsurances = allInsurances.length;
   const totalPages = Math.max(1, Math.ceil(totalInsurances / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
