@@ -233,6 +233,11 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
 
   // Handle saving insurance from modal
   const handleSaveInsurance = useCallback((insuranceData: InsuranceData) => {
+    // Force-bind the record to the currently-selected property when scoped, so insurance
+    // records cannot leak across properties even if the property field was left blank.
+    if (currentPropertyId) {
+      insuranceData = { ...insuranceData, property: currentPropertyId };
+    }
     const prefix = editingInsurance ? editingInsurance.id : getNextInsurancePrefix(values);
     const isEdit = !!editingInsurance;
     
