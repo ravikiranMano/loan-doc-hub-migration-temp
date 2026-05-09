@@ -160,7 +160,29 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
           <h4 className="font-semibold text-sm text-foreground pb-1">Borrower Details</h4>
 
           <InlineField label="Borrower ID" fieldKey={FIELD_KEYS.borrowerId}>
-            <Input value={getValue('borrowerId')} onChange={(e) => handleChange('borrowerId', e.target.value)} disabled={disabled} className="h-7 text-sm" />
+            {borrowerIdLookup ? (
+              <BorrowerIdSearch
+                value={getValue('borrowerId')}
+                disabled={disabled}
+                className="h-7 text-sm"
+                onChange={(borrowerId, fullName, contactData) => {
+                  handleChange('borrowerId', borrowerId);
+                  if (contactData && Object.keys(contactData).length > 0) {
+                    // Pull existing client data into the form via existing onValueChange API.
+                    Object.entries(contactData).forEach(([k, v]) => {
+                      if (k.startsWith('borrower.') && k !== FIELD_KEYS.borrowerId) {
+                        onValueChange(k, v == null ? '' : String(v));
+                      }
+                    });
+                    if (fullName && !contactData['borrower.full_name']) {
+                      handleChange('fullName', fullName);
+                    }
+                  }
+                }}
+              />
+            ) : (
+              <Input value={getValue('borrowerId')} onChange={(e) => handleChange('borrowerId', e.target.value)} disabled={disabled} className="h-7 text-sm" />
+            )}
           </InlineField>
 
           <InlineField label="Borrower Type" fieldKey={FIELD_KEYS.borrowerType}>
