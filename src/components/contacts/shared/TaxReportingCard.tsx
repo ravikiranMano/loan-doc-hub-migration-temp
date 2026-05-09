@@ -46,12 +46,14 @@ const F = {
 };
 
 // Lender / Borrower / Co-borrower type → Issue 1099 default
-const TYPE_TO_1099: Record<string, 'Yes' | 'No' | 'conditional'> = {
+// Per spec: LLC and Investment Fund are situational — leave blank, let the
+// user choose (still editable). All others have a fixed default.
+const TYPE_TO_1099: Record<string, 'Yes' | 'No' | 'blank'> = {
   Individual: 'Yes',
   Joint: 'Yes',
-  'Family Trust': 'conditional',
-  LLC: 'conditional',
-  'Investment Fund': 'conditional',
+  'Family Trust': 'Yes',
+  LLC: 'blank',
+  'Investment Fund': 'blank',
   'C Corp / S Corp': 'No',
   'IRA / ERISA': 'No',
   '401K': 'No',
@@ -63,13 +65,12 @@ const TYPE_TO_1099: Record<string, 'Yes' | 'No' | 'conditional'> = {
 const computeIssue1099Default = (
   partyType: TaxPartyType,
   entityType: string,
-  taxedAsCorp: boolean,
+  _taxedAsCorp: boolean,
 ): string => {
   if (partyType === 'broker') return 'Yes'; // Always 1099-NEC
   if (!entityType) return '';
   const rule = TYPE_TO_1099[entityType];
-  if (rule === undefined) return '';
-  if (rule === 'conditional') return taxedAsCorp ? 'No' : 'Yes';
+  if (rule === undefined || rule === 'blank') return '';
   return rule;
 };
 
