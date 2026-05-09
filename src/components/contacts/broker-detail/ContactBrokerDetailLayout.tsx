@@ -202,7 +202,9 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
       case 'tax-info':
         return (
           <div className="p-6">
-            <BrokerTaxInfo
+            <TaxReportingCard
+              partyType="broker"
+              prefix="broker."
               values={values}
               onValueChange={handleValueChange}
               disabled={isReadOnly}
