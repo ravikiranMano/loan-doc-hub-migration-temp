@@ -221,7 +221,19 @@ export const LenderBankingForm: React.FC<LenderBankingFormProps> = ({
 
             {wrapField('checkSameAsMailing', <div className="grid grid-cols-2 gap-2 items-center">
               <Label className="text-sm text-muted-foreground">Same as Mailing</Label>
-              <Checkbox checked={getBoolValue('checkSameAsMailing')} onCheckedChange={(checked) => handleChange('checkSameAsMailing', !!checked)} disabled={disabled || !byCheckEnabled} />
+              <Checkbox checked={getBoolValue('checkSameAsMailing')} onCheckedChange={(checked) => {
+                const isChecked = !!checked;
+                handleChange('checkSameAsMailing', isChecked);
+                if (isChecked) {
+                  handleChange('checkAddress', values['lender.mailing.street'] || '');
+                  handleChange('checkCity', values['lender.mailing.city'] || '');
+                  handleChange('checkZip', values['lender.mailing.zip'] || '');
+                } else {
+                  handleChange('checkAddress', '');
+                  handleChange('checkCity', '');
+                  handleChange('checkZip', '');
+                }
+              }} disabled={disabled || !byCheckEnabled} />
             </div>)}
 
             {wrapField('checkOther', <div className="grid grid-cols-2 gap-2 items-center">
