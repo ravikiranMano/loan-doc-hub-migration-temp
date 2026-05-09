@@ -16,6 +16,9 @@ interface InsuranceSectionContentProps {
   onPersist?: () => Promise<boolean>;
   disabled?: boolean;
   propertyOptions?: { id: string; label: string }[];
+  /** Currently-selected property prefix (e.g., 'property1'). When provided, insurance records are
+   *  scoped to this property: only matching records are shown, and new records default to it. */
+  currentPropertyId?: string;
   onBack?: () => void;
   onRefresh?: () => void;
 }
@@ -114,6 +117,7 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
   onPersist,
   disabled = false,
   propertyOptions = [],
+  currentPropertyId,
   onBack,
   onRefresh,
 }) => {
@@ -143,7 +147,13 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
   const isDetailView = activeSubSection === 'insurance_details';
   
   // Extract allInsurances from values
-  const allInsurances = extractInsurancesFromValues(values);
+  const extractedInsurances = extractInsurancesFromValues(values);
+  // Scope to the currently-selected property when provided. Each insurance record stores its
+  // associated property id (e.g., 'property1') in `insurance.property`.
+  const allInsurances = useMemo(() => {
+    if (!currentPropertyId) return extractedInsurances;
+    return extractedInsurances.filter(i => i.property === currentPropertyId);
+  }, [extractedInsurances, currentPropertyId]);
   const totalInsurances = allInsurances.length;
   const totalPages = Math.max(1, Math.ceil(totalInsurances / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
@@ -223,6 +233,11 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
 
   // Handle saving insurance from modal
   const handleSaveInsurance = useCallback((insuranceData: InsuranceData) => {
+    // Force-bind the record to the currently-selected property when scoped, so insurance
+    // records cannot leak across properties even if the property field was left blank.
+    if (currentPropertyId) {
+      insuranceData = { ...insuranceData, property: currentPropertyId };
+    }
     const prefix = editingInsurance ? editingInsurance.id : getNextInsurancePrefix(values);
     const isEdit = !!editingInsurance;
     
@@ -272,7 +287,7 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
     if (onPersist) {
       setTimeout(() => { onPersist(); }, 50);
     }
-  }, [editingInsurance, values, onValueChange, onPersist]);
+  }, [editingInsurance, values, onValueChange, onPersist, currentPropertyId]);
 
   const handleDeleteInsurance = useCallback((insurance: InsuranceData) => {
     if (onRemoveValuesByPrefix) {

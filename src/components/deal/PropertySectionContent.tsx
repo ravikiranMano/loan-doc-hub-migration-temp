@@ -700,6 +700,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
                   onPersist={onPersist}
                   disabled={disabled}
                   propertyOptions={propertyOptions}
+                  currentPropertyId={selectedPropertyPrefix}
                   onBack={handleBackToTable}
                 />
               </DirtyFieldsProvider>
