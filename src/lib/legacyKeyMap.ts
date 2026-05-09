@@ -535,6 +535,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'property1.appraisal_property_type': 'pr_p_propertyType',
   'property1.appraisal_occupancy': 'pr_p_occupanc',
   'property1.ltv': 'pr_p_ltv',
+  'property1.origination_ltv': 'pr_p_origination_ltv',
   'property1.zoning': 'pr_p_zoning',
   'property1.appraised_value': 'pr_p_appraiseValue',
   'property1.pledged_equity': 'pr_p_pledgedEquity',
