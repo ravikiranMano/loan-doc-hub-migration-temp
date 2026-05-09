@@ -120,15 +120,57 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
 
   const idPrefix = `tax-card-${partyType}`;
 
+  const typeLabel =
+    partyType === 'lender'
+      ? 'Lender type'
+      : partyType === 'broker'
+        ? 'Broker type'
+        : partyType === 'coborrower'
+          ? 'Co-borrower type'
+          : 'Borrower type';
+
+  const ENTITY_TYPE_OPTIONS = [
+    'Individual',
+    'Joint',
+    'Family Trust',
+    'LLC',
+    'Investment Fund',
+    'C Corp / S Corp',
+    'IRA / ERISA',
+    '401K',
+    'Foreign Holder W-8',
+    'Non-profit',
+  ];
+
   return (
     <Card className="p-6 max-w-2xl">
-      <h4 className="text-lg font-semibold text-foreground mb-4">Tax Reporting</h4>
+      <h4 className="text-lg font-semibold text-foreground mb-4">Tax reporting</h4>
 
       <div className="space-y-4">
-        {/* Designated Recipient */}
+        {/* Entity type */}
+        <div className="grid grid-cols-[180px_1fr] items-center gap-3">
+          <Label className="text-sm">{typeLabel}</Label>
+          <Select
+            value={entityType || '__none__'}
+            onValueChange={(v) => onValueChange(entityTypeKey, v === '__none__' ? '' : v)}
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-9 max-w-[260px]">
+              <SelectValue placeholder="Select" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="__none__">— None —</SelectItem>
+              {ENTITY_TYPE_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Designated recipient */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-designated`} className="text-sm">
-            Designated Recipient
+            Designated recipient
           </Label>
           <div>
             <Checkbox
@@ -159,10 +201,10 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           </Select>
         </div>
 
-        {/* TIN Number */}
+        {/* TIN number */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-tin-number`} className="text-sm">
-            TIN Number
+            TIN number
           </Label>
           <Input
             id={`${idPrefix}-tin-number`}
@@ -170,13 +212,14 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
             onChange={(e) => set(F.tinNumber, e.target.value)}
             disabled={disabled}
             maxLength={20}
+            placeholder="XX-XXXXXXXX"
             className="h-9 max-w-[260px]"
           />
         </div>
 
-        {/* TIN Type */}
+        {/* TIN type */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
-          <Label className="text-sm">TIN Type</Label>
+          <Label className="text-sm">TIN type</Label>
           <Select
             value={get(F.tinType) || '__none__'}
             onValueChange={(v) => set(F.tinType, v === '__none__' ? '' : v)}
@@ -194,28 +237,23 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           </Select>
         </div>
 
-        {/* W-9 on File */}
+        {/* W-9 on file */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-w9`} className="text-sm">
-            W-9 on File
+            W-9 on file
           </Label>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id={`${idPrefix}-w9`}
-              checked={get(F.w9OnFile) === 'true'}
-              onCheckedChange={(v) => set(F.w9OnFile, String(!!v))}
-              disabled={disabled}
-            />
-            <Label htmlFor={`${idPrefix}-w9`} className="text-sm text-muted-foreground">
-              X&nbsp;&nbsp;W-9 on File
-            </Label>
-          </div>
+          <Checkbox
+            id={`${idPrefix}-w9`}
+            checked={get(F.w9OnFile) === 'true'}
+            onCheckedChange={(v) => set(F.w9OnFile, String(!!v))}
+            disabled={disabled}
+          />
         </div>
 
-        {/* TIN Verified */}
+        {/* TIN verified */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-tin-verified`} className="text-sm">
-            TIN Verified
+            TIN verified
           </Label>
           <Input
             id={`${idPrefix}-tin-verified`}
@@ -227,10 +265,10 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           />
         </div>
 
-        {/* Alternate Reporting */}
+        {/* Alternate reporting */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-alt`} className="text-sm">
-            Alternate Reporting
+            Alternate reporting
           </Label>
           <Input
             id={`${idPrefix}-alt`}
