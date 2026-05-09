@@ -224,6 +224,11 @@ export const LenderBankingForm: React.FC<LenderBankingFormProps> = ({
               <Checkbox checked={getBoolValue('checkSameAsMailing')} onCheckedChange={(checked) => handleChange('checkSameAsMailing', !!checked)} disabled={disabled || !byCheckEnabled} />
             </div>)}
 
+            {wrapField('checkOther', <div className="grid grid-cols-2 gap-2 items-center">
+              <Label className="text-sm text-muted-foreground">Other</Label>
+              <Input value={getValue('checkOther')} onChange={(e) => handleChange('checkOther', e.target.value)} disabled={disabled || !byCheckEnabled} className="h-8" placeholder="Enter other" />
+            </div>)}
+
             {wrapField('checkAddress', <div className="flex flex-col">
               <div className="grid grid-cols-2 gap-2 items-center">
                 <Label className="text-sm text-muted-foreground">Address</Label>
@@ -246,20 +251,6 @@ export const LenderBankingForm: React.FC<LenderBankingFormProps> = ({
             </div>)}
           </div>
 
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-foreground border-b pb-2 pt-2">ACH Notification</h3>
-            {wrapField('achEmail', <div className="grid grid-cols-2 gap-2 items-center">
-              <Label className="text-sm text-muted-foreground">ACH Email</Label>
-              <EmailInput value={getValue('achEmail')} onValueChange={(v) => handleChange('achEmail', v)} disabled={disabled} className="h-8" placeholder="Enter email" />
-            </div>)}
-            {wrapField('achEmail2', <div className="flex flex-col">
-              <div className="grid grid-cols-2 gap-2 items-center">
-                <Label className="text-sm text-muted-foreground">ACH Email 2</Label>
-                <EmailInput value={getValue('achEmail2')} onValueChange={(v) => { handleChange('achEmail2', v); markTouched('achEmail2'); }} disabled={disabled} className="h-8" placeholder="Enter email" />
-              </div>
-              {errorText('achEmail2')}
-            </div>)}
-          </div>
         </div>
 
         {/* Credit Card Section */}
@@ -268,7 +259,7 @@ export const LenderBankingForm: React.FC<LenderBankingFormProps> = ({
           <div className="space-y-3">
             {wrapField('ccName', <div className="flex flex-col">
               <div className="grid grid-cols-2 gap-2 items-center">
-                <Label className="text-sm text-muted-foreground">Name</Label>
+                <Label className="text-sm text-muted-foreground">Cardholder Name</Label>
                 <Input value={getValue('ccName')} onChange={(e) => { const v = e.target.value; if (!v || validateAlphaOnly(v)) handleChange('ccName', v); }} onBlur={() => markTouched('ccName')} disabled={disabled} className="h-8" placeholder="Enter name" />
               </div>
               {errorText('ccName')}

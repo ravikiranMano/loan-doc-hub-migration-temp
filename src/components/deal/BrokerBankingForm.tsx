@@ -209,6 +209,13 @@ export const BrokerBankingForm: React.FC<BrokerBankingFormProps> = ({
             </div>
           </DirtyFieldWrapper>
 
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.checkOther}>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">Other</Label>
+              <Input value={getValue('checkOther')} onChange={(e) => handleChange('checkOther', e.target.value)} disabled={disabled || !byCheckEnabled} className="h-8 text-sm w-[160px] 3xl:w-[200px]" placeholder="Enter other" />
+            </div>
+          </DirtyFieldWrapper>
+
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.checkAddress}>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
@@ -238,13 +245,6 @@ export const BrokerBankingForm: React.FC<BrokerBankingFormProps> = ({
             </div>
           </DirtyFieldWrapper>
 
-          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2 pt-2">ACH Notification</h3>
-          <DirtyFieldWrapper fieldKey={FIELD_KEYS.achEmail}>
-            <div className="flex items-center gap-2">
-              <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">ACH Email</Label>
-              <EmailInput value={getValue('achEmail')} onValueChange={(v) => handleChange('achEmail', v)} disabled={disabled} className="h-8" placeholder="Enter email" />
-            </div>
-          </DirtyFieldWrapper>
         </div>
 
         {/* Column 3 - Credit Card Section */}
@@ -253,7 +253,7 @@ export const BrokerBankingForm: React.FC<BrokerBankingFormProps> = ({
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.ccName}>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">Name</Label>
+                <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">Cardholder Name</Label>
                 <Input value={getValue('ccName')} onChange={(e) => { const v = e.target.value; if (!v || validateAlphaOnly(v)) handleChange('ccName', v); }} onBlur={() => markTouched('ccName')} disabled={disabled} className="h-8 text-sm w-[160px] 3xl:w-[200px]" placeholder="Enter name" />
               </div>
               {errorText('ccName')}
