@@ -104,6 +104,8 @@ const CoBorrowerDetail: React.FC<CoBorrowerDetailProps> = ({ contact, onBack, on
       initialSection="co-borrower"
       backLabel="Back to Co-borrowers"
       titlePrefix="Co-borrower"
+      taxPartyType="coborrower"
+      taxPrefix="coborrower."
     />
   );
 };

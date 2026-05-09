@@ -10,7 +10,7 @@ import { BorrowerAdditionalGuarantorForm } from '@/components/deal/BorrowerAddit
 import { BorrowerAuthorizedPartyForm } from '@/components/deal/BorrowerAuthorizedPartyForm';
 import { BorrowerBankingForm } from '@/components/deal/BorrowerBankingForm';
 import { BorrowerTaxDetailForm } from '@/components/deal/BorrowerTaxDetailForm';
-import { BorrowerTaxInfoForm } from '@/components/deal/BorrowerTaxInfoForm';
+import TaxReportingCard, { type TaxPartyType } from '@/components/contacts/shared/TaxReportingCard';
 import BorrowerTrustLedger from './BorrowerTrustLedger';
 import BorrowerDashboard from './BorrowerDashboard';
 import BorrowerPortfolio from './BorrowerPortfolio';
@@ -32,6 +32,10 @@ interface ContactBorrowerDetailLayoutProps {
   backLabel?: string;
   titlePrefix?: string;
   borrowerSectionVariant?: 'primary' | 'authorized_party' | 'additional_guarantor';
+  /** Drives Tax Info card party context (defaults to 'borrower'). */
+  taxPartyType?: TaxPartyType;
+  /** Prefix used to read/write the Tax Info card values (defaults to 'borrower.'). */
+  taxPrefix?: string;
 }
 
 const NON_BORROWER_PREFIXES = ['ach.', 'coborrower.', 'borrower.guarantor.', 'borrower.authorized_party.', 'borrower.1098.'];
@@ -51,6 +55,8 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
   backLabel = 'Back to Borrowers',
   titlePrefix = 'Borrower',
   borrowerSectionVariant = 'primary',
+  taxPartyType = 'borrower',
+  taxPrefix = 'borrower.',
 }) => {
   const { loading: permissionsLoading, isFormViewOnly } = useFormPermissions();
   const [activeSection, setActiveSection] = useState<BorrowerSection>(initialSection);
@@ -225,8 +231,9 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
         );
       case 'tax-info':
         return (
-          <BorrowerTaxInfoForm
-            fields={emptyFields}
+          <TaxReportingCard
+            partyType={taxPartyType}
+            prefix={taxPrefix}
             values={values}
             onValueChange={handleValueChange}
             disabled={isReadOnly}

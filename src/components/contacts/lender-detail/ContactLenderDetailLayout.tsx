@@ -9,7 +9,7 @@ import { LenderInfoForm } from '@/components/deal/LenderInfoForm';
 import { LenderAuthorizedPartyForm } from '@/components/deal/LenderAuthorizedPartyForm';
 import { LenderBankingForm } from '@/components/deal/LenderBankingForm';
 import Lender1099 from './Lender1099';
-import LenderTaxReporting from './LenderTaxReporting';
+import TaxReportingCard from '@/components/contacts/shared/TaxReportingCard';
 import LenderDashboard from './LenderDashboard';
 import LenderPortfolio from './LenderPortfolio';
 import LenderHistory from './LenderHistory';
@@ -172,7 +172,9 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
       case 'tax-reporting':
         return (
           <div className="p-6">
-            <LenderTaxReporting
+            <TaxReportingCard
+              partyType="lender"
+              prefix="lender."
               values={values}
               onValueChange={handleValueChange}
               disabled={isReadOnly}
