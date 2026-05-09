@@ -95,11 +95,17 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     const propertyValue = parseFloat(propertyValueRaw.replace(/[,$]/g, ''));
     const purchasePrice = parseFloat(purchasePriceRaw.replace(/[,$]/g, ''));
 
-    // LTV = (Loan Amount / Property Value) × 100  — store at 4dp (display caps at 2)
+    // Current LTV = (Loan Amount / Property Value) × 100  — store at 4dp (display caps at 2)
     if (!isNaN(loanAmount) && !isNaN(propertyValue) && propertyValue > 0) {
       const ltv = roundPctForStorage((loanAmount / propertyValue) * 100);
       if (getFieldValue(FIELD_KEYS.ltv) !== ltv) {
         onValueChange(FIELD_KEYS.ltv, ltv);
+      }
+      // Origination LTV is captured ONCE at initial creation and is then immutable
+      // against further auto-recalculation. It only seeds when no value exists.
+      const existingOrig = getFieldValue(FIELD_KEYS.originationLtv);
+      if (!existingOrig || existingOrig.trim() === '') {
+        onValueChange(FIELD_KEYS.originationLtv, ltv);
       }
     }
 
@@ -506,9 +512,23 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               </div>
             </div>
           </DirtyFieldWrapper>
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.originationLtv}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[110px] shrink-0 text-xs text-foreground">Origination LTV</Label>
+              <div className="relative flex-1">
+                <Input
+                  value={getFieldValue(FIELD_KEYS.originationLtv)}
+                  onChange={(e) => handlePercentageChange(FIELD_KEYS.originationLtv, e.target.value)}
+                  disabled={disabled}
+                  className="h-7 text-xs pr-6"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
+              </div>
+            </div>
+          </DirtyFieldWrapper>
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.ltv}>
             <div className="flex items-center gap-2">
-              <Label className="w-[110px] shrink-0 text-xs text-foreground">Loan To Value</Label>
+              <Label className="w-[110px] shrink-0 text-xs text-foreground">Current LTV</Label>
               <div className="relative flex-1">
                 <Input value={getFieldValue(FIELD_KEYS.ltv)} disabled className="h-7 text-xs pr-6 bg-muted" readOnly />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
