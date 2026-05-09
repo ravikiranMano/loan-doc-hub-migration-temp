@@ -65,12 +65,14 @@ const TYPE_TO_1099: Record<string, 'Yes' | 'No' | 'blank'> = {
 const computeIssue1099Default = (
   partyType: TaxPartyType,
   entityType: string,
-  _taxedAsCorp: boolean,
+  taxedAsCorp: boolean,
 ): string => {
   if (partyType === 'broker') return 'Yes'; // Always 1099-NEC
   if (!entityType) return '';
   const rule = TYPE_TO_1099[entityType];
-  if (rule === undefined || rule === 'blank') return '';
+  if (rule === undefined) return '';
+  // Situational: LLC and Investment Fund — Taxed as Corp → No, otherwise → Yes
+  if (rule === 'blank') return taxedAsCorp ? 'No' : 'Yes';
   return rule;
 };
 
@@ -167,6 +169,25 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
             </SelectContent>
           </Select>
         </div>
+
+        {/* Taxed as Corp — only relevant for LLC / Investment Fund */}
+        {(entityType === 'LLC' || entityType === 'Investment Fund') && (
+          <div className="grid grid-cols-[180px_1fr] items-center gap-3">
+            <Label htmlFor={`${idPrefix}-taxed-corp`} className="text-sm">
+              Taxed as Corp
+            </Label>
+            <Checkbox
+              id={`${idPrefix}-taxed-corp`}
+              checked={taxedAsCorp}
+              onCheckedChange={(v) => {
+                onValueChange(`${prefix}taxed_as_corp`, String(!!v));
+                // Re-enable auto so the new rule takes effect immediately
+                set(F.manualFlag, 'false');
+              }}
+              disabled={disabled}
+            />
+          </div>
+        )}
 
         {/* Designated recipient */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
