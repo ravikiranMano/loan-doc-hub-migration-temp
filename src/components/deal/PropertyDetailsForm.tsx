@@ -155,25 +155,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   }, [values]);
 
   // Build a deduplicated, ordered list of borrower full names for the
-  // searchable Property Owner picker. Includes both numbered (borrower1.*)
-  // and base (borrower.*) records, plus any co-borrower entries.
+  // searchable Property Owner picker. Sourced strictly from loan participants
+  // (deal_participants) via the borrowerOptionsProp; no fallback to contacts.
   const borrowerOptions = React.useMemo(() => {
-    if (borrowerOptionsProp && borrowerOptionsProp.length > 0) return borrowerOptionsProp;
-    const prefixes = new Set<string>();
-    Object.keys(values).forEach(key => {
-      const m = key.match(/^(borrower\d*)\./);
-      if (m) prefixes.add(m[1]);
-    });
-    const names: string[] = [];
-    Array.from(prefixes).sort().forEach(p => {
-      const full = (values[`${p}.full_name`] || '').trim();
-      const first = (values[`${p}.first_name`] || '').trim();
-      const last = (values[`${p}.last_name`] || '').trim();
-      const composed = full || [first, last].filter(Boolean).join(' ').trim();
-      if (composed && !names.includes(composed)) names.push(composed);
-    });
-    return names;
-  }, [values, borrowerOptionsProp]);
+    return borrowerOptionsProp || [];
+  }, [borrowerOptionsProp]);
   const [ownerPickerOpen, setOwnerPickerOpen] = React.useState(false);
 
   const borrowerStreet = borrowerAddressProp?.street ?? (primaryBorrowerPrefix ? (values[`${primaryBorrowerPrefix}.address.street`] || '') : '');
