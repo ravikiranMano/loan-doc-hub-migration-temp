@@ -287,7 +287,7 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
     if (onPersist) {
       setTimeout(() => { onPersist(); }, 50);
     }
-  }, [editingInsurance, values, onValueChange, onPersist]);
+  }, [editingInsurance, values, onValueChange, onPersist, currentPropertyId]);
 
   const handleDeleteInsurance = useCallback((insurance: InsuranceData) => {
     if (onRemoveValuesByPrefix) {
