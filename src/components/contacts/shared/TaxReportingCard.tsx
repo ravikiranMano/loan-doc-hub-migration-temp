@@ -120,15 +120,57 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
 
   const idPrefix = `tax-card-${partyType}`;
 
+  const typeLabel =
+    partyType === 'lender'
+      ? 'Lender type'
+      : partyType === 'broker'
+        ? 'Broker type'
+        : partyType === 'coborrower'
+          ? 'Co-borrower type'
+          : 'Borrower type';
+
+  const ENTITY_TYPE_OPTIONS = [
+    'Individual',
+    'Joint',
+    'Family Trust',
+    'LLC',
+    'Investment Fund',
+    'C Corp / S Corp',
+    'IRA / ERISA',
+    '401K',
+    'Foreign Holder W-8',
+    'Non-profit',
+  ];
+
   return (
     <Card className="p-6 max-w-2xl">
-      <h4 className="text-lg font-semibold text-foreground mb-4">Tax Reporting</h4>
+      <h4 className="text-lg font-semibold text-foreground mb-4">Tax reporting</h4>
 
       <div className="space-y-4">
-        {/* Designated Recipient */}
+        {/* Entity type */}
+        <div className="grid grid-cols-[180px_1fr] items-center gap-3">
+          <Label className="text-sm">{typeLabel}</Label>
+          <Select
+            value={entityType || '__none__'}
+            onValueChange={(v) => onValueChange(entityTypeKey, v === '__none__' ? '' : v)}
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-9 max-w-[260px]">
+              <SelectValue placeholder="Select" />
+            </SelectTrigger>
+            <SelectContent className="bg-background z-50">
+              <SelectItem value="__none__">— None —</SelectItem>
+              {ENTITY_TYPE_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Designated recipient */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-designated`} className="text-sm">
-            Designated Recipient
+            Designated recipient
           </Label>
           <div>
             <Checkbox
