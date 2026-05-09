@@ -530,7 +530,14 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
   }, [values, onValueChange, onRemoveValuesByPrefix, onPersist]);
 
   // ── Property Tax multi-entity ──
-  const allPropertyTaxes = extractPropertyTaxesFromValues(values);
+  // Scope tax records to the currently-selected property so taxes added under Property A
+  // never appear under Property B/C, etc. Each tax record stores its associated property id
+  // (e.g., 'property1') in `tax.property`.
+  const allPropertyTaxesRaw = extractPropertyTaxesFromValues(values);
+  const allPropertyTaxes = useMemo(() => {
+    if (!selectedPropertyPrefix) return allPropertyTaxesRaw;
+    return allPropertyTaxesRaw.filter(t => t.property === selectedPropertyPrefix);
+  }, [allPropertyTaxesRaw, selectedPropertyPrefix]);
   const totalTaxes = allPropertyTaxes.length;
   const taxTotalPages = Math.max(1, Math.ceil(totalTaxes / PAGE_SIZE));
   const taxSafePage = Math.min(taxCurrentPage, taxTotalPages);
