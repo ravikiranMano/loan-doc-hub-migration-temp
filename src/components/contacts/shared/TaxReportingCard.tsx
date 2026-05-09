@@ -170,6 +170,25 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
           </Select>
         </div>
 
+        {/* Taxed as Corp — only relevant for LLC / Investment Fund */}
+        {(entityType === 'LLC' || entityType === 'Investment Fund') && (
+          <div className="grid grid-cols-[180px_1fr] items-center gap-3">
+            <Label htmlFor={`${idPrefix}-taxed-corp`} className="text-sm">
+              Taxed as Corp
+            </Label>
+            <Checkbox
+              id={`${idPrefix}-taxed-corp`}
+              checked={taxedAsCorp}
+              onCheckedChange={(v) => {
+                onValueChange(`${prefix}taxed_as_corp`, String(!!v));
+                // Re-enable auto so the new rule takes effect immediately
+                set(F.manualFlag, 'false');
+              }}
+              disabled={disabled}
+            />
+          </div>
+        )}
+
         {/* Designated recipient */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
           <Label htmlFor={`${idPrefix}-designated`} className="text-sm">
