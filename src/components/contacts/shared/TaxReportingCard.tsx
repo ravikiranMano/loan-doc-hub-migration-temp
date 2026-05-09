@@ -116,6 +116,17 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partyType, entityType, taxedAsCorp, manuallyModified]);
 
+  // Auto-default Taxed as Corp? to "No" when the situational types are
+  // chosen and the field is still unset.
+  useEffect(() => {
+    const isSituational = entityType === 'LLC' || entityType === 'Investment Fund';
+    const raw = values[`${prefix}taxed_as_corp`];
+    if (isSituational && (raw === undefined || raw === '')) {
+      onValueChange(`${prefix}taxed_as_corp`, 'false');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityType]);
+
   const setIssue1099Manual = (v: string) => {
     set(F.issue1099, v);
     set(F.manualFlag, 'true');
