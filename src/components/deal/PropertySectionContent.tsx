@@ -559,6 +559,11 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
 
   const handleSaveTax = useCallback((taxData: PropertyTaxData) => {
     const prefix = editingTax ? editingTax.id : getNextPropertyTaxPrefix(values);
+    // Force-bind to the currently-selected property so records cannot leak across properties
+    // even if the property field was left blank in the modal.
+    if (selectedPropertyPrefix) {
+      taxData = { ...taxData, property: selectedPropertyPrefix };
+    }
     const fieldEntries: { key: keyof PropertyTaxData; dbField: string }[] = [
       { key: 'property', dbField: 'property' },
       { key: 'authority', dbField: 'authority' },
