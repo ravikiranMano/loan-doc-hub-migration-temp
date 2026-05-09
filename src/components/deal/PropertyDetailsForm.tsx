@@ -508,7 +508,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Protective Equity</Label>
               <div className="relative flex-1">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">$</span>
-                <Input value={getFieldValue(FIELD_KEYS.protectiveEquity)} disabled className="h-7 text-xs pl-6 bg-muted" readOnly />
+                <Input
+                  value={getFieldValue(FIELD_KEYS.protectiveEquity)}
+                  onChange={(e) => onValueChange(FIELD_KEYS.protectiveEquity, unformatCurrencyDisplay(e.target.value))}
+                  onBlur={() => { const raw = getFieldValue(FIELD_KEYS.protectiveEquity); if (raw) onValueChange(FIELD_KEYS.protectiveEquity, formatCurrencyDisplay(raw)); }}
+                  onFocus={() => { const raw = getFieldValue(FIELD_KEYS.protectiveEquity); if (raw) onValueChange(FIELD_KEYS.protectiveEquity, unformatCurrencyDisplay(raw)); }}
+                  onKeyDown={numericKeyDown}
+                  onPaste={(e) => numericPaste(e, (val) => onValueChange(FIELD_KEYS.protectiveEquity, val))}
+                  disabled={disabled}
+                  className="h-7 text-xs pl-6"
+                />
               </div>
             </div>
           </DirtyFieldWrapper>
