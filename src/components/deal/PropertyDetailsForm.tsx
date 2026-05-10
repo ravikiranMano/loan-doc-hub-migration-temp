@@ -320,7 +320,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <span className="font-semibold text-xs text-primary">Property Details</span>
           </div>
           {renderInlineSelect(FIELD_KEYS.informationProvidedBy, 'Information Provided By', INFO_PROVIDED_BY_OPTIONS, 'Select...')}
-          {renderCheckboxField(FIELD_KEYS.primaryCollateral, 'Primary Property')}
+          {renderCheckboxField(FIELD_KEYS.primaryCollateral, 'Primary Collateral')}
           {renderInlineField(FIELD_KEYS.description, 'Description (Nickname)')}
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.propertyOwner}>
             <div className="flex items-center gap-2">
