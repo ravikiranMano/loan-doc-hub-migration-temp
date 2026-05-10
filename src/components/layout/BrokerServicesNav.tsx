@@ -59,7 +59,7 @@ const brokerServicesData: ChildSection[] = [
     label: 'Loan Documents Processing',
     items: [
       { label: 'Department Dashboard', path: '/broker-services/documents/dashboard' },
-      { label: 'All Loan Files', path: '/deals' },
+      { label: 'All Loan Document Files', path: '/deals' },
       { label: 'Loan Documents', path: '/broker-services/documents/loan-documents' },
       { label: 'Document Packets', path: '/broker-services/documents/packets' },
       { label: 'Activity Journal', path: '/broker-services/documents/activity' },
@@ -69,7 +69,7 @@ const brokerServicesData: ChildSection[] = [
     label: 'New Account Intake',
     items: [
       { label: 'Department Dashboard', path: '/broker-services/intake/dashboard' },
-      { label: 'All Loan Files', path: '/deals' },
+      { label: 'All Loan Servicing Files', path: '/deals' },
       { label: 'Messages', path: '/broker-services/intake/messages' },
       { label: 'Activity Journal', path: '/broker-services/intake/activity' },
     ],
