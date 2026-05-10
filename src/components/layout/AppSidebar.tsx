@@ -346,7 +346,7 @@ export const AppSidebar: React.FC = () => {
                   { label: 'Management Dashboard', path: '/broker-services/servicing/management' },
                   { label: 'Department Alerts', path: '/broker-services/servicing/alerts' },
                   { label: 'Department Dashboard', path: '/broker-services/servicing/dashboard' },
-                  { label: 'All Loan Files', path: '/deals' },
+                  { label: 'All Loan Servicing Files', path: '/deals' },
                   { label: 'Custom Views', path: '/broker-services/servicing/custom-views' },
                   { label: 'Activity Journal', path: '/broker-services/servicing/activity' },
                 ]}
@@ -354,27 +354,6 @@ export const AppSidebar: React.FC = () => {
                 searchQuery={searchQuery}
                 isOpen={activeSection === 'loan-servicing'}
                 onOpenChange={handleSectionToggle('loan-servicing')}
-              />
-            )}
-
-            {/* Default Services (promoted from Broker Services) - CSR only */}
-            {role === 'csr' && (
-              <PromotedNavSection
-                label="Default Services"
-                icon={AlertTriangle}
-                items={[
-                  { label: 'Management Dashboard', path: '/broker-services/default/management' },
-                  { label: 'Department Alerts', path: '/broker-services/default/alerts' },
-                  { label: 'Department Dashboard', path: '/broker-services/default/dashboard' },
-                  { label: 'Mod & Forbearance Wizard', path: '/broker-services/default/mod-forbearance' },
-                  { label: 'Foreclosure Processing', path: '/broker-services/default/foreclosure' },
-                  { label: 'Bankruptcy Monitoring', path: '/broker-services/default/bankruptcy' },
-                  { label: 'Activity Journal', path: '/broker-services/default/activity' },
-                ]}
-                isCollapsed={isCollapsed}
-                searchQuery={searchQuery}
-                isOpen={activeSection === 'default-services'}
-                onOpenChange={handleSectionToggle('default-services')}
               />
             )}
 
@@ -398,6 +377,27 @@ export const AppSidebar: React.FC = () => {
                 searchQuery={searchQuery}
                 isOpen={activeSection === 'operations'}
                 onOpenChange={handleSectionToggle('operations')}
+              />
+            )}
+
+            {/* Default Services (promoted from Broker Services) - CSR only */}
+            {role === 'csr' && (
+              <PromotedNavSection
+                label="Default Services"
+                icon={AlertTriangle}
+                items={[
+                  { label: 'Management Dashboard', path: '/broker-services/default/management' },
+                  { label: 'Department Alerts', path: '/broker-services/default/alerts' },
+                  { label: 'Department Dashboard', path: '/broker-services/default/dashboard' },
+                  { label: 'Mod & Forbearance Wizard', path: '/broker-services/default/mod-forbearance' },
+                  { label: 'Foreclosure Processing', path: '/broker-services/default/foreclosure' },
+                  { label: 'Bankruptcy Monitoring', path: '/broker-services/default/bankruptcy' },
+                  { label: 'Activity Journal', path: '/broker-services/default/activity' },
+                ]}
+                isCollapsed={isCollapsed}
+                searchQuery={searchQuery}
+                isOpen={activeSection === 'default-services'}
+                onOpenChange={handleSectionToggle('default-services')}
               />
             )}
 
@@ -444,17 +444,7 @@ export const AppSidebar: React.FC = () => {
               />
             )}
 
-            {/* Documents Vault - CSR only */}
-            {role === 'csr' && (
-              <PromotedNavSection
-                label="Documents Vault"
-                icon={FolderLock}
-                items={[]}
-                directPath="/documents"
-                isCollapsed={isCollapsed}
-                searchQuery={searchQuery}
-              />
-            )}
+            {/* Documents Vault moved below Statements & Reports */}
 
             {/* Event Journal - CSR and Admin */}
             {(role === 'csr' || role === 'admin') && (
@@ -484,6 +474,18 @@ export const AppSidebar: React.FC = () => {
                 label="Statements & Reports"
                 icon={BarChart3}
                 items={[]}
+                isCollapsed={isCollapsed}
+                searchQuery={searchQuery}
+              />
+            )}
+
+            {/* Documents Vault - CSR only (moved under Statements & Reports) */}
+            {role === 'csr' && (
+              <PromotedNavSection
+                label="Documents Vault"
+                icon={FolderLock}
+                items={[]}
+                directPath="/documents"
                 isCollapsed={isCollapsed}
                 searchQuery={searchQuery}
               />
