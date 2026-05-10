@@ -253,7 +253,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
                   <span className="font-semibold text-xs text-primary">Property Details</span>
                 </div>
                 {renderInlineSelect('informationProvidedBy', 'Information Provided By', INFO_PROVIDED_BY_OPTIONS, 'Select...')}
-                {renderCheckboxField('primaryCollateral', 'Primary Property')}
+                {renderCheckboxField('primaryCollateral', 'Primary Collateral')}
                 {renderInlineField('description', 'Description (Nickname)')}
                 <div className="flex items-center gap-2">
                   <Label className="w-[110px] shrink-0 text-xs text-foreground">Property Owner</Label>

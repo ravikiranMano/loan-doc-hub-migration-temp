@@ -99,7 +99,7 @@ export const PropertyLiensForm: React.FC<PropertyLiensFormProps> = ({
               <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Unassigned" /></SelectTrigger>
               <SelectContent className="bg-background border border-border z-50">
                 <SelectItem value="unassigned">Unassigned</SelectItem>
-                <SelectItem value="primary">Primary Property</SelectItem>
+                <SelectItem value="primary">Primary Collateral</SelectItem>
                 <SelectItem value="secondary">Secondary Property</SelectItem>
               </SelectContent>
             </Select>
