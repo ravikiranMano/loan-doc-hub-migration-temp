@@ -479,6 +479,18 @@ export const AppSidebar: React.FC = () => {
               />
             )}
 
+            {/* Documents Vault - CSR only (moved under Statements & Reports) */}
+            {role === 'csr' && (
+              <PromotedNavSection
+                label="Documents Vault"
+                icon={FolderLock}
+                items={[]}
+                directPath="/documents"
+                isCollapsed={isCollapsed}
+                searchQuery={searchQuery}
+              />
+            )}
+
             {/* System Administration Section - CSR only */}
             {role === 'csr' && (
               <SystemAdminNav isCollapsed={isCollapsed} searchQuery={searchQuery} isOpen={activeSection === 'sysadmin'} onOpenChange={handleSectionToggle('sysadmin')} />
