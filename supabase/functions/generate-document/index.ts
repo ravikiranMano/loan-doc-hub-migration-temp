@@ -3890,6 +3890,7 @@ async function generateSingleDocument(
           "ln_p_expectedEncumbrance_N",
           "ln_p_totalEncumbrance_N",
           "ln_p_totalWithLoan_N",
+          "ln_p_amountOfEquity_N",
           "property_type_sfr_owner_N_glyph", "property_type_sfr_owner_N",
           "property_type_sfr_non_owner_N_glyph", "property_type_sfr_non_owner_N",
           "property_type_sfr_zoned_N_glyph", "property_type_sfr_zoned_N",
