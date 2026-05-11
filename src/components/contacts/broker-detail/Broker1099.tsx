@@ -197,7 +197,7 @@ const Broker1099: React.FC<Broker1099Props> = ({ values, onValueChange, onSave, 
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__select__">Select</SelectItem>
+                <SelectItem value="__select__" className="sticky top-0 bg-popover z-10 font-medium">Select</SelectItem>
                 {US_STATES.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
               </SelectContent>
             </Select>

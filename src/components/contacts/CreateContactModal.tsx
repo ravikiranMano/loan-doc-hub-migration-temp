@@ -587,7 +587,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 <Select value={form['address.state'] || '__select__'} onValueChange={(v) => { set('address.state', v === '__select__' ? '' : v); clrKErr('address.state'); }}>
                   <SelectTrigger className={cn("h-7 text-xs flex-1", brokerErrors['address.state'] && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent className="bg-background border border-border z-[200]">
-                    <SelectItem value="__select__">Select</SelectItem>
+                    <SelectItem value="__select__" className="sticky top-0 bg-popover z-10 font-medium">Select</SelectItem>
                     {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                   </SelectContent>
                 </Select>
@@ -622,7 +622,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 <Select value={form['mailing.state'] || '__select__'} onValueChange={(v) => set('mailing.state', v === '__select__' ? '' : v)} disabled={form['mailing_same_as_primary'] === 'true'}>
                   <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent className="bg-background border border-border z-[200]">
-                    <SelectItem value="__select__">Select</SelectItem>
+                    <SelectItem value="__select__" className="sticky top-0 bg-popover z-10 font-medium">Select</SelectItem>
                     {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                   </SelectContent>
                 </Select>
@@ -825,7 +825,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 <Select value={form['address.state'] || '__select__'} onValueChange={(v) => { set('address.state', v === '__select__' ? '' : v); clrBErr('address.state'); }}>
                   <SelectTrigger className={cn("h-7 text-xs flex-1", borrowerErrors['address.state'] && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent className="bg-background border border-border z-[200]">
-                    <SelectItem value="__select__">Select</SelectItem>
+                    <SelectItem value="__select__" className="sticky top-0 bg-popover z-10 font-medium">Select</SelectItem>
                     {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                   </SelectContent>
                 </Select>
@@ -852,7 +852,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   <Select value={form['mailing.state'] || '__select__'} onValueChange={(v) => set('mailing.state', v === '__select__' ? '' : v)} disabled={isSameAsPrimary}>
                     <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent className="bg-background border border-border z-[200]">
-                      <SelectItem value="__select__">Select</SelectItem>
+                      <SelectItem value="__select__" className="sticky top-0 bg-popover z-10 font-medium">Select</SelectItem>
                       {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                     </SelectContent>
                   </Select>
