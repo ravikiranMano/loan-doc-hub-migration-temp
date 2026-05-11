@@ -228,9 +228,9 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
           </InlineField>
 
           <InlineField label="State" labelWidth="min-w-[60px]" fieldKey={FIELD_KEYS.mailingState}>
-            <Select value={getValue('mailingState')} onValueChange={(value) => handleChange('mailingState', value)} disabled={disabled || isSameAsPrimary}>
+            <Select value={getValue('mailingState') || '__select__'} onValueChange={(value) => handleChange('mailingState', value === '__select__' ? '' : value)} disabled={disabled || isSameAsPrimary}>
               <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{STATE_OPTIONS.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent>
+              <SelectContent><SelectItem value="__select__">Select</SelectItem>{STATE_OPTIONS.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent>
             </Select>
           </InlineField>
 
