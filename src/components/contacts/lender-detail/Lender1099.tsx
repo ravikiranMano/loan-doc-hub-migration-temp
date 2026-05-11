@@ -182,7 +182,7 @@ const Lender1099: React.FC<Lender1099Props> = ({ values, onValueChange, onSave, 
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__select__" className="sticky top-0 bg-popover z-10 font-medium">Select</SelectItem>
+                <SelectItem value="__select__">Select</SelectItem>
                 {US_STATES.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
               </SelectContent>
             </Select>
