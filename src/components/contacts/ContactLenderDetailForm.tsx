@@ -213,9 +213,10 @@ export const ContactLenderDetailForm: React.FC<Props> = ({ lender, onSave, onCan
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>State</Label>
-              <Select value={form.state} onValueChange={(v) => set('state', v)}>
+              <Select value={form.state || '__select__'} onValueChange={(v) => set('state', v === '__select__' ? '' : v)}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>
