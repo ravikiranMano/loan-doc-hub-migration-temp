@@ -158,6 +158,7 @@ interface LoanFundingGridProps {
   loanNumber?: string;
   borrowerName?: string;
   fundingRecords: FundingRecord[];
+  totalRecordCount?: number;
   historyRecords?: any[];
   onAddFunding: (data: any) => void;
   onDeleteRecord?: (record: FundingRecord) => void;
