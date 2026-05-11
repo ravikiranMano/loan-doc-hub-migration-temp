@@ -1015,6 +1015,18 @@ async function generateSingleDocument(
       if (finalTotalExp) {
         fieldValues.set("oo_totalExpenses", { rawValue: finalTotalExp.rawValue, dataType: "currency" });
       }
+      // Backend-only alias: {{oo_netAnnualIncome}} = (oo_totalIncome * 12) - oo_totalExpenses
+      {
+        const toNum = (v: any) => {
+          const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, ""));
+          return isNaN(n) ? 0 : n;
+        };
+        const inc = toNum(fieldValues.get("oo_totalIncome")?.rawValue);
+        const exp = toNum(fieldValues.get("oo_totalExpenses")?.rawValue);
+        const net = (inc * 12) - exp;
+        fieldValues.set("oo_netAnnualIncome", { rawValue: net, dataType: "currency" });
+        debugLog(`[generate-document] Computed oo_netAnnualIncome = ${inc}*12 - ${exp} = ${net}`);
+      }
     }
 
     // Auto-compute borrower.borrower_description if not already set
