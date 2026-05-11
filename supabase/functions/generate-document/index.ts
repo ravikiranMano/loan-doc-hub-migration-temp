@@ -3763,6 +3763,15 @@ async function generateSingleDocument(
           // aliases so PROPERTY #K blocks rewrite _N → _K and each property
           // renders its own appraisal_performed_by value.
           "pr_p_performedBy_N", "pr_p_performeBy_N",
+          // RE851D "Is there Additional Securing Property?" per-property
+          // checkbox tags. Some templates author these as `_N` literals inside
+          // each PROPERTY #K block; without these in the allowlist the literal
+          // tags survive into the rendered document for properties whose
+          // post-render glyph-flip safety pass cannot anchor a glyph run
+          // (typically PROP#1 and PROP#5). _glyph variants listed first so the
+          // longest-first matcher consumes them before the bare booleans.
+          "pr_p_multipleProperties_yes_glyph_N", "pr_p_multipleProperties_no_glyph_N",
+          "pr_p_multipleProperties_yes_N", "pr_p_multipleProperties_no_N",
         ];
         // Tags that appear in the repeating PART 1 / PART 2 row blocks.
         // PART 1 (LOAN TO VALUE RATIO table) and PART 2 (SECURING PROPERTIES
