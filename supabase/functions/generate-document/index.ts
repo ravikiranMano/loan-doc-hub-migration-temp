@@ -5648,6 +5648,22 @@ async function generateSingleDocument(
           }
           let xml = __xmlGet(filename, bytes);
 
+          // Cheap cached-lowercase pre-filter: skip the entire pass for parts
+          // whose XML can't possibly contain the question text. This avoids
+          // building the multi-MB visible-text projection on header/footer
+          // files (and on document.xml when the prompt isn't in the template),
+          // which was a major contributor to "CPU Time exceeded" on RE851D.
+          {
+            const xmlLowerMP = __xmlGetLower(filename, xml);
+            if (
+              xmlLowerMP.indexOf("multiple properties") === -1 &&
+              xmlLowerMP.indexOf("additional securing property") === -1
+            ) {
+              rezip3[filename] = [bytes, { level: 0 }];
+              continue;
+            }
+          }
+
           // Build a visible-text projection with an offset map back into xml.
           // This handles Word splitting visible text across multiple <w:t>
           // runs and intervening tags.
@@ -6820,6 +6836,22 @@ async function generateSingleDocument(
             continue;
           }
           let xml = __xmlGet(filename, bytes);
+          // Cheap cached-lowercase pre-filter: skip parts (typically every
+          // header/footer and most documents) whose XML cannot contain the
+          // anchor text OR an addendum insertion site. Avoids building the
+          // multi-MB visible-text projection + its lowercase copy on every
+          // content part — a major CPU sink on 5-property RE851D documents.
+          {
+            const xmlLowerAEA = __xmlGetLower(filename, xml);
+            const couldHaveAnchor =
+              xmlLowerAEA.indexOf("set forth in an attachment") !== -1;
+            const couldNeedAddendum =
+              filename === "word/document.xml" && yesPropIdx.size > 0;
+            if (!couldHaveAnchor && !couldNeedAddendum) {
+              rezip[filename] = [bytes, { level: 0 }];
+              continue;
+            }
+          }
           // Use the visible-text projection so anchor + Yes/No label matching
           // works even when Word fragments the phrase across multiple
           // <w:r><w:t>…</w:t></w:r> runs (the prior raw-XML scan silently
