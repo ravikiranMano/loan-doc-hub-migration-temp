@@ -3782,6 +3782,8 @@ async function generateSingleDocument(
           // aliases so PROPERTY #K blocks rewrite _N → _K and each property
           // renders its own appraisal_performed_by value.
           "pr_p_performedBy_N", "pr_p_performeBy_N",
+          // RE851D per-property income (Yes/No text + annual numeric).
+          "pr_p_netMonthlyIncome_N", "pr_p_incomeGenerating_N", "pr_p_grossAnnualIncome_N",
           // RE851D "Is there Additional Securing Property?" per-property
           // checkbox tags. Some templates author these as `_N` literals inside
           // each PROPERTY #K block; without these in the allowlist the literal
