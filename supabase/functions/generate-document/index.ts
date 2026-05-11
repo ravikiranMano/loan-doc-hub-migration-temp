@@ -2921,6 +2921,9 @@ async function generateSingleDocument(
             fieldValues.set(`pr_li_sourceInfoOther_${pIdx}`, { rawValue: isOther ? "true" : "", dataType: "boolean" });
             fieldValues.set(`pr_li_sourceInfoOther_${pIdx}_glyph`, { rawValue: isOther ? "☑" : "☐", dataType: "text" });
             fieldValues.set(`pr_li_sourceInfoOtherText_${pIdx}`, { rawValue: isOther ? siRaw : "", dataType: "text" });
+            // Plain text alias for "SOURCE OF INFORMATION" label (per spec):
+            // Prefer lien priority_after === "1st"; else first non-empty value.
+            fieldValues.set(`pr_li_sourceOfInformation_${pIdx}`, { rawValue: b.sourceOfInfoText || "", dataType: "text" });
           }
 
           if (pIdx === 1) {
