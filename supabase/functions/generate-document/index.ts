@@ -1838,6 +1838,11 @@ async function generateSingleDocument(
           "pr_li_delinquencyPaidByLoan_yes_glyph", "pr_li_delinquencyPaidByLoan_no_glyph",
           "pr_li_delinquHowMany",
           "pr_li_sourceOfPayment",
+          // Source of Information checkboxes (per-property): default to ☐ (blank) when no data
+          "pr_li_sourceInfoBroker", "pr_li_sourceInfoBroker_glyph",
+          "pr_li_sourceInfoBorrower", "pr_li_sourceInfoBorrower_glyph",
+          "pr_li_sourceInfoOther", "pr_li_sourceInfoOther_glyph",
+          "pr_li_sourceInfoOtherText",
         ];
         // Default-fill: per RE851D spec mutual exclusivity, when no lien data exists
         // for a property the four YES/NO questions render NO checked. Apply this to
@@ -1852,10 +1857,13 @@ async function generateSingleDocument(
           "pr_li_currentDelinqu_no_glyph":       "☑",
           "pr_li_delinquencyPaidByLoan_yes_glyph":"☐",
           "pr_li_delinquencyPaidByLoan_no_glyph": "☑",
+          "pr_li_sourceInfoBroker_glyph":   "☐",
+          "pr_li_sourceInfoBorrower_glyph": "☐",
+          "pr_li_sourceInfoOther_glyph":    "☐",
         };
         // Suffixes that take the property index in the MIDDLE
         // (e.g. pr_li_currentDelinqu_<N>_yes_glyph), not at the end.
-        const MIDDLE_INDEX_SUFFIXES = ["_yes_glyph", "_no_glyph", "_yes", "_no"];
+        const MIDDLE_INDEX_SUFFIXES = ["_yes_glyph", "_no_glyph", "_glyph", "_yes", "_no"];
         const blanked: number[] = [];
         for (let idx = 1; idx <= MAX_PROPERTIES; idx++) {
           let blankedThisIdx = false;
@@ -2707,6 +2715,8 @@ async function generateSingleDocument(
           hasLien: boolean;
           allPaidOff: boolean;
           anyPaidOff: boolean;
+          sourceInfoFirst: string;
+          sourceInfoFirstLienIdx: number | null;
         }> = {};
 
         const truthy = (v: unknown) => {
@@ -2784,13 +2794,27 @@ async function generateSingleDocument(
             "number");
           setText(`pr_li_sourceOfPayment_${lienIdx}`, source);
 
+          // ── Source of Information checkboxes (Broker / Borrower / Other) ──
+          const sourceInfoRaw = getLienVal(prefix, "source_of_information", "sourceOfInformation").trim();
+          const siLower = sourceInfoRaw.toLowerCase();
+          const isBroker = siLower === "broker";
+          const isBorrower = siLower === "borrower";
+          const isOther = sourceInfoRaw !== "" && !isBroker && !isBorrower;
+          setBool(`pr_li_sourceInfoBroker_${lienIdx}`, isBroker);
+          setText(`pr_li_sourceInfoBroker_${lienIdx}_glyph`, isBroker ? "☑" : "☐");
+          setBool(`pr_li_sourceInfoBorrower_${lienIdx}`, isBorrower);
+          setText(`pr_li_sourceInfoBorrower_${lienIdx}_glyph`, isBorrower ? "☑" : "☐");
+          setBool(`pr_li_sourceInfoOther_${lienIdx}`, isOther);
+          setText(`pr_li_sourceInfoOther_${lienIdx}_glyph`, isOther ? "☑" : "☐");
+          setText(`pr_li_sourceInfoOtherText_${lienIdx}`, isOther ? sourceInfoRaw : "");
+
           // Aggregate into the property the lien belongs to
           const propRaw = String(fieldValues.get(`${prefix}.property`)?.rawValue ?? "").trim();
           const pm = propRaw.match(/^property(\d+)$/);
           if (pm) {
             const pIdx = parseInt(pm[1], 10);
             if (!perProp[pIdx]) {
-              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false };
+              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null };
             }
             const b = perProp[pIdx];
             b.hasLien = true;
@@ -2801,6 +2825,10 @@ async function generateSingleDocument(
             if (currentDelinq) b.currentDelinq = true;
             if (Number.isFinite(howManyNum) && howManyNum > 0) b.howMany += howManyNum;
             if (source) b.source.push(source);
+            if (b.sourceInfoFirstLienIdx === null) {
+              b.sourceInfoFirst = sourceInfoRaw;
+              b.sourceInfoFirstLienIdx = lienIdx;
+            }
           }
         });
 
@@ -2865,6 +2893,22 @@ async function generateSingleDocument(
           mirrorPP("paidByLoan", b.paidByLoan);
           fieldValues.set(`pr_p_sourceOfPaymen_${pIdx}`, { rawValue: b.source.join("\n"), dataType: "text" });
           fieldValues.set(`pr_p_sourceOfPayment_${pIdx}`, { rawValue: b.source.join("\n"), dataType: "text" });
+
+          // ── Per-property Source of Information checkboxes (Broker / Borrower / Other) ──
+          {
+            const siRaw = (b.sourceInfoFirst || "").trim();
+            const siLower = siRaw.toLowerCase();
+            const isBroker = siLower === "broker";
+            const isBorrower = siLower === "borrower";
+            const isOther = siRaw !== "" && !isBroker && !isBorrower;
+            fieldValues.set(`pr_li_sourceInfoBroker_${pIdx}`, { rawValue: isBroker ? "true" : "", dataType: "boolean" });
+            fieldValues.set(`pr_li_sourceInfoBroker_${pIdx}_glyph`, { rawValue: isBroker ? "☑" : "☐", dataType: "text" });
+            fieldValues.set(`pr_li_sourceInfoBorrower_${pIdx}`, { rawValue: isBorrower ? "true" : "", dataType: "boolean" });
+            fieldValues.set(`pr_li_sourceInfoBorrower_${pIdx}_glyph`, { rawValue: isBorrower ? "☑" : "☐", dataType: "text" });
+            fieldValues.set(`pr_li_sourceInfoOther_${pIdx}`, { rawValue: isOther ? "true" : "", dataType: "boolean" });
+            fieldValues.set(`pr_li_sourceInfoOther_${pIdx}_glyph`, { rawValue: isOther ? "☑" : "☐", dataType: "text" });
+            fieldValues.set(`pr_li_sourceInfoOtherText_${pIdx}`, { rawValue: isOther ? siRaw : "", dataType: "text" });
+          }
 
           if (pIdx === 1) {
             // Bare aliases for templates referencing keys without _N
@@ -3700,6 +3744,12 @@ async function generateSingleDocument(
           "pr_li_currentDelinqu_N",
           "pr_li_sourceOfPayment_N",
           "pr_li_delinquHowMany_N",
+          // Source of Information checkboxes (per-property). _glyph listed first
+          // so longest-match wins over the bare boolean key.
+          "pr_li_sourceInfoBroker_N_glyph", "pr_li_sourceInfoBroker_N",
+          "pr_li_sourceInfoBorrower_N_glyph", "pr_li_sourceInfoBorrower_N",
+          "pr_li_sourceInfoOther_N_glyph", "pr_li_sourceInfoOther_N",
+          "pr_li_sourceInfoOtherText_N",
           "pr_li_encumbranceOfRecord_N",
           "pr_li_encumbranceOfRecord_N_yes", "pr_li_encumbranceOfRecord_N_no",
           "pr_li_encumbranceOfRecord_N_yes_glyph", "pr_li_encumbranceOfRecord_N_no_glyph",
