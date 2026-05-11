@@ -2717,6 +2717,8 @@ async function generateSingleDocument(
           anyPaidOff: boolean;
           sourceInfoFirst: string;
           sourceInfoFirstLienIdx: number | null;
+          sourceOfInfoText: string;
+          sourceOfInfoPriorityFound: boolean;
         }> = {};
 
         const truthy = (v: unknown) => {
