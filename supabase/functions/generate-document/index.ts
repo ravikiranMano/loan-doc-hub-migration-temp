@@ -2068,6 +2068,38 @@ async function generateSingleDocument(
       }
     }
 
+    // ── Auto-compute Monthly Payment (P&I) — ln_monthlyPayment_PI ──
+    // Standard US amortization: P * r / (1 - (1+r)^-n) where r = annualRate/12/100, n = term months.
+    // Edge cases: zero rate → P/n; zero term → 0. Null inputs treated as 0.
+    {
+      const numFromKeysMP = (...keys: string[]): number => {
+        for (const k of keys) {
+          const raw = fieldValues.get(k)?.rawValue;
+          if (raw === undefined || raw === null || raw === "") continue;
+          const n = parseFloat(String(raw).replace(/[^0-9.-]/g, ""));
+          if (!isNaN(n)) return n;
+        }
+        return 0;
+      };
+      const principalP = numFromKeysMP("ln_p_loanAmount", "loan_terms.loan_amount");
+      const annualRate = numFromKeysMP("ln_p_noteRate", "loan_terms.note_rate");
+      const termMonths = numFromKeysMP("ln_p_loanTermMonths", "ln_p_termMonths", "loan_terms.term_months");
+      const monthlyRate = annualRate / 12 / 100;
+      let monthlyPI = 0;
+      if (termMonths > 0) {
+        if (monthlyRate === 0) {
+          monthlyPI = principalP / termMonths;
+        } else {
+          const denom = 1 - Math.pow(1 + monthlyRate, -termMonths);
+          if (denom !== 0) monthlyPI = (principalP * monthlyRate) / denom;
+        }
+      }
+      const monthlyPIStr = monthlyPI.toFixed(2);
+      fieldValues.set("ln_monthlyPayment_PI", { rawValue: monthlyPIStr, dataType: "currency" });
+      fieldValues.set("loan_terms.monthly_payment_pi", { rawValue: monthlyPIStr, dataType: "currency" });
+      debugLog(`[generate-document] Auto-computed ln_monthlyPayment_PI = ${monthlyPIStr} (P=${principalP}, annualRate=${annualRate}%, n=${termMonths}, monthlyRate=${monthlyRate})`);
+    }
+
     // ── Dropdown-to-Checkbox derivation for Re851a ──
     // Amortization dropdown → boolean checkbox keys (CHECK ONE — mutually exclusive)
     const amortVal = (fieldValues.get("ln_p_amortiza")?.rawValue || fieldValues.get("loan_terms.amortization")?.rawValue || "").toString().trim().toLowerCase();
