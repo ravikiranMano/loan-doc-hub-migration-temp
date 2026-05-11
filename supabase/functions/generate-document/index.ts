@@ -2886,6 +2886,22 @@ async function generateSingleDocument(
           fieldValues.set(`pr_p_sourceOfPaymen_${pIdx}`, { rawValue: b.source.join("\n"), dataType: "text" });
           fieldValues.set(`pr_p_sourceOfPayment_${pIdx}`, { rawValue: b.source.join("\n"), dataType: "text" });
 
+          // ── Per-property Source of Information checkboxes (Broker / Borrower / Other) ──
+          {
+            const siRaw = (b.sourceInfoFirst || "").trim();
+            const siLower = siRaw.toLowerCase();
+            const isBroker = siLower === "broker";
+            const isBorrower = siLower === "borrower";
+            const isOther = siRaw !== "" && !isBroker && !isBorrower;
+            fieldValues.set(`pr_li_sourceInfoBroker_${pIdx}`, { rawValue: isBroker ? "true" : "", dataType: "boolean" });
+            fieldValues.set(`pr_li_sourceInfoBroker_${pIdx}_glyph`, { rawValue: isBroker ? "☑" : "☐", dataType: "text" });
+            fieldValues.set(`pr_li_sourceInfoBorrower_${pIdx}`, { rawValue: isBorrower ? "true" : "", dataType: "boolean" });
+            fieldValues.set(`pr_li_sourceInfoBorrower_${pIdx}_glyph`, { rawValue: isBorrower ? "☑" : "☐", dataType: "text" });
+            fieldValues.set(`pr_li_sourceInfoOther_${pIdx}`, { rawValue: isOther ? "true" : "", dataType: "boolean" });
+            fieldValues.set(`pr_li_sourceInfoOther_${pIdx}_glyph`, { rawValue: isOther ? "☑" : "☐", dataType: "text" });
+            fieldValues.set(`pr_li_sourceInfoOtherText_${pIdx}`, { rawValue: isOther ? siRaw : "", dataType: "text" });
+          }
+
           if (pIdx === 1) {
             // Bare aliases for templates referencing keys without _N
             fieldValues.set("pr_li_delinquencyPaidByLoan", { rawValue: b.paidByLoan ? "true" : "", dataType: "boolean" });
