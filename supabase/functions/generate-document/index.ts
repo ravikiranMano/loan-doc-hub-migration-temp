@@ -5182,13 +5182,22 @@ async function generateSingleDocument(
     // Mark a content part as mutated and update the cached string. Returns
     // a placeholder Uint8Array so callers can keep their existing rezip
     // shape; the final flush re-encodes dirty strings exactly once.
+    //
+    // Optimization: post-render safety passes overwhelmingly perform
+    // length-preserving glyph swaps (☐ ↔ ☑/☒, etc.) or hex w14:val toggles
+    // bounded inside SDT blocks. When the new XML has the same length AND
+    // the visible-text anchors ("PROPERTY INFORMATION") have not shifted,
+    // the cached visible-text projection and lowercase index remain valid —
+    // reusing them avoids 4.8 MB worth of re-segmentation per pass, which
+    // was the dominant residual CPU sink on 5-property RE851D documents.
     const __xmlSet = (filename: string, xml: string): Uint8Array => {
+      const prev = __xmlStrCache[filename];
       __xmlStrCache[filename] = xml;
       __xmlDirty.add(filename);
-      // Drop any cached visible-text projection for this part — pass N+1
-      // must rebuild from the freshly mutated XML.
-      delete __visProjCache[filename];
-      delete __xmlLowerCache[filename];
+      if (prev === undefined || prev.length !== xml.length) {
+        delete __visProjCache[filename];
+        delete __xmlLowerCache[filename];
+      }
       // Return existing bytes (or empty); the value is discarded by the
       // final flush, which uses the cached string instead.
       return (__re851dPassCache && __re851dPassCache[filename]) || new Uint8Array(0);
