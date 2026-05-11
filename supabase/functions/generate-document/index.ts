@@ -976,6 +976,11 @@ async function generateSingleDocument(
         fieldValues.set(totalIncomeKey, { rawValue: total, dataType: "currency" });
         debugLog(`[generate-document] Computed ${totalIncomeKey} = ${total}`);
       }
+      // Backend-only alias for document mapping: {{oo_totalIncome}}
+      const finalTotal = fieldValues.get(totalIncomeKey);
+      if (finalTotal) {
+        fieldValues.set("oo_totalIncome", { rawValue: finalTotal.rawValue, dataType: "currency" });
+      }
     }
 
     // Auto-compute borrower.borrower_description if not already set
