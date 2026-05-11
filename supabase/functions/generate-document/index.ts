@@ -2784,13 +2784,27 @@ async function generateSingleDocument(
             "number");
           setText(`pr_li_sourceOfPayment_${lienIdx}`, source);
 
+          // ── Source of Information checkboxes (Broker / Borrower / Other) ──
+          const sourceInfoRaw = getLienVal(prefix, "source_of_information", "sourceOfInformation").trim();
+          const siLower = sourceInfoRaw.toLowerCase();
+          const isBroker = siLower === "broker";
+          const isBorrower = siLower === "borrower";
+          const isOther = sourceInfoRaw !== "" && !isBroker && !isBorrower;
+          setBool(`pr_li_sourceInfoBroker_${lienIdx}`, isBroker);
+          setText(`pr_li_sourceInfoBroker_${lienIdx}_glyph`, isBroker ? "☑" : "☐");
+          setBool(`pr_li_sourceInfoBorrower_${lienIdx}`, isBorrower);
+          setText(`pr_li_sourceInfoBorrower_${lienIdx}_glyph`, isBorrower ? "☑" : "☐");
+          setBool(`pr_li_sourceInfoOther_${lienIdx}`, isOther);
+          setText(`pr_li_sourceInfoOther_${lienIdx}_glyph`, isOther ? "☑" : "☐");
+          setText(`pr_li_sourceInfoOtherText_${lienIdx}`, isOther ? sourceInfoRaw : "");
+
           // Aggregate into the property the lien belongs to
           const propRaw = String(fieldValues.get(`${prefix}.property`)?.rawValue ?? "").trim();
           const pm = propRaw.match(/^property(\d+)$/);
           if (pm) {
             const pIdx = parseInt(pm[1], 10);
             if (!perProp[pIdx]) {
-              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false };
+              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null };
             }
             const b = perProp[pIdx];
             b.hasLien = true;
@@ -2801,6 +2815,10 @@ async function generateSingleDocument(
             if (currentDelinq) b.currentDelinq = true;
             if (Number.isFinite(howManyNum) && howManyNum > 0) b.howMany += howManyNum;
             if (source) b.source.push(source);
+            if (b.sourceInfoFirstLienIdx === null) {
+              b.sourceInfoFirst = sourceInfoRaw;
+              b.sourceInfoFirstLienIdx = lienIdx;
+            }
           }
         });
 
