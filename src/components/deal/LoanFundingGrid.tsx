@@ -420,7 +420,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       currentBalance: record.currentBalance !== undefined && record.currentBalance !== null
         ? formatCurrencyDisplay(String(record.currentBalance))
         : '',
-      noteRateDisplay: record.noteRateDisplay || noteRate,
+      noteRateDisplay: noteRate || record.noteRateDisplay || '',
       overrideServicing: record.overrideServicing ?? record.overrideServicingFees ?? false,
       companyBaseFee: record.companyBaseFee || record.companyServicingFee || '',
       companyBaseFeePct: record.companyBaseFeePct || record.companyServicingFeePct || '',
