@@ -3324,9 +3324,22 @@ async function generateSingleDocument(
             // Additional Part-1 column aliases some template variants use.
             fieldValues.set(`pr_p_remainingEncumbrance_${pi}`, remVal);
             fieldValues.set(`pr_p_expectedEncumbrance_${pi}`, expVal);
+            // Amount of Equity = Market Value − Remaining Senior Encumbrances.
+            // Source market value is the per-property appraise/estimate value.
+            // Skip emission when market value is missing so the cell renders blank.
+            const mvRaw =
+              fieldValues.get(`pr_p_appraiseValue_${pi}`)?.rawValue ??
+              fieldValues.get(`property${pi}.appraise_value`)?.rawValue;
+            let equityStr = "";
+            if (mvRaw !== null && mvRaw !== undefined && String(mvRaw).trim() !== "") {
+              const mv = parseAmt2(mvRaw);
+              const equity = mv - rem;
+              equityStr = equity.toFixed(2);
+              fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
+            }
             console.log(
               `[generate-document] RE851D Part1 rollup property${pi}: liens=[${matchedLog[pi].join(",")}], ` +
-              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}`
+              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, equity=${equityStr || "∅"}`
             );
           }
 
