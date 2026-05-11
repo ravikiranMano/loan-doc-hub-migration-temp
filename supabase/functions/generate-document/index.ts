@@ -2700,6 +2700,58 @@ async function generateSingleDocument(
       }
       debugLog(`[generate-document] Lien field bridging complete`);
 
+      // ── Calculated field: pr_netPropertyValue ──
+      // Net Property Value = Estimate Value − Loan Amount − Sum(Current Lien Balance) − Sum(Anticipated Lien Amount)
+      // Backend-only field (not surfaced in UI), available for document mapping as {{pr_netPropertyValue}}.
+      {
+        const toNum = (v: unknown): number => {
+          if (v === null || v === undefined || v === "") return 0;
+          const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
+          return Number.isFinite(n) ? n : 0;
+        };
+        const readFirst = (...keys: string[]): unknown => {
+          for (const k of keys) {
+            const v = fieldValues.get(k)?.rawValue;
+            if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+          }
+          return undefined;
+        };
+
+        const estimateRaw = readFirst("pr_pd_estimateValue", "pr_p_appraiseValue", "property1.appraise_value");
+        const loanAmtRaw = readFirst("ln_p_loanAmount", "loan_terms.loan_amount");
+
+        // Sum across all liens (lien1.current_balance, lien2.current_balance, …)
+        let lienBalSum = 0;
+        let antAmtSum = 0;
+        let lienBalCount = 0;
+        let antAmtCount = 0;
+        for (const [key, val] of fieldValues.entries()) {
+          const m = key.match(/^lien(\d*)\.(.+)$/);
+          if (!m) continue;
+          const field = m[2];
+          if (field === "current_balance") {
+            lienBalSum += toNum(val.rawValue);
+            lienBalCount++;
+          } else if (field === "anticipated_amount") {
+            antAmtSum += toNum(val.rawValue);
+            antAmtCount++;
+          }
+        }
+
+        const estimateNum = toNum(estimateRaw);
+        const loanAmtNum = toNum(loanAmtRaw);
+        const netVal = estimateNum - loanAmtNum - lienBalSum - antAmtSum;
+
+        fieldValues.set("pr_netPropertyValue", { rawValue: netVal.toFixed(2), dataType: "currency" });
+
+        debugLog(`[generate-document] pr_netPropertyValue calc:`);
+        debugLog(`  pr_pd_estimateValue: ${estimateRaw ?? "(null)"} -> ${estimateNum}`);
+        debugLog(`  ln_p_loanAmount: ${loanAmtRaw ?? "(null)"} -> ${loanAmtNum}`);
+        debugLog(`  pr_li_lienCurrenBalanc (sum of ${lienBalCount} liens): ${lienBalSum}`);
+        debugLog(`  li_lt_anticipatedAmount (sum of ${antAmtCount} liens): ${antAmtSum}`);
+        debugLog(`  pr_netPropertyValue: ${netVal.toFixed(2)}`);
+      }
+
       // ── RE851D Delinquency mapping: publish pr_li_*_N aliases per lien index
       // AND per-property index (aggregated when multiple liens belong to one property).
       // Source UI fields live on each lienK.* record; template uses _N expansion.
