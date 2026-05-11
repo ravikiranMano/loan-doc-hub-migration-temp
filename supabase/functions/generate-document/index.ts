@@ -3796,6 +3796,10 @@ async function generateSingleDocument(
           "property_type_land_income_N_glyph", "property_type_land_income_N",
           "property_type_other_N_glyph", "property_type_other_N",
           "property_type_other_text_N",
+          // "Is there Additional Securing Property?" — appears in PART 1 region
+          // before the first PROPERTY INFORMATION anchor for some templates.
+          "pr_p_multipleProperties_yes_glyph_N", "pr_p_multipleProperties_no_glyph_N",
+          "pr_p_multipleProperties_yes_N", "pr_p_multipleProperties_no_N",
         ];
         const PART2_TAGS = [
           "property_number_N",
