@@ -400,7 +400,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       regularPayment: String(record.regularPayment),
       lenderShare: String(record.lenderShare || ''),
       rateSelection: record.rateSelection || 'note_rate',
-      rateNoteValue: record.rateNoteValue || noteRate,
+      rateNoteValue: noteRate || record.rateNoteValue || '',
       rateSoldValue: soldRate || record.rateSoldValue || '',
       rateLenderValue: record.rateLenderValue || '',
       lenderRateOverride: record.lenderRateOverride || false,
@@ -420,7 +420,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       currentBalance: record.currentBalance !== undefined && record.currentBalance !== null
         ? formatCurrencyDisplay(String(record.currentBalance))
         : '',
-      noteRateDisplay: record.noteRateDisplay || noteRate,
+      noteRateDisplay: noteRate || record.noteRateDisplay || '',
       overrideServicing: record.overrideServicing ?? record.overrideServicingFees ?? false,
       companyBaseFee: record.companyBaseFee || record.companyServicingFee || '',
       companyBaseFeePct: record.companyBaseFeePct || record.companyServicingFeePct || '',
@@ -502,7 +502,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'interestFrom':
         return formatDate(record.interestFrom) || '-';
       case 'noteRate':
-        return <span>{record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : (noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : '-')}</span>;
+        // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
+        return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
       case 'lenderRate':
         return <span>{formatPercentage(record.lenderRate, 3)}</span>;
       case 'regularPayment':
