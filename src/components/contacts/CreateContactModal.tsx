@@ -849,9 +849,10 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <Label className="w-[100px] shrink-0 text-xs">State</Label>
-                  <Select value={form['mailing.state'] || ''} onValueChange={(v) => set('mailing.state', v)} disabled={isSameAsPrimary}>
+                  <Select value={form['mailing.state'] || '__select__'} onValueChange={(v) => set('mailing.state', v === '__select__' ? '' : v)} disabled={isSameAsPrimary}>
                     <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent className="bg-background border border-border z-[200]">
+                      <SelectItem value="__select__">Select</SelectItem>
                       {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                     </SelectContent>
                   </Select>
