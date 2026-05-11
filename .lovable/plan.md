@@ -1,37 +1,43 @@
-## RE851D — Per-property "Multiple Properties" YES/NO glyphs
+## Backend-only calculated field: `oo_netAnnualIncome`
 
-### Current state
-The publisher at `supabase/functions/generate-document/index.ts` lines 1116–1138 already computes a global "multiple properties" decision and writes four global aliases:
-- `pr_p_multipleProperties_yes` / `_no` (booleans)
-- `pr_p_multipleProperties_yes_glyph` / `_no_glyph` (☑ / ☐)
+Mirrors the existing `oo_totalIncome` / `oo_totalExpenses` pattern — backend-only, hidden from UI, available to templates as `{{oo_netAnnualIncome}}`.
 
-It uses `realPropertyCount = realPropertyIndices.length` (only counts properties with at least one non-empty identifier field — exactly what the requirement calls "CSR Property collection, no hidden/empty rows").
+### Formula
+```
+oo_netAnnualIncome = ((oo_totalIncome || 0) * 12) - (oo_totalExpenses || 0)
+```
+Null/empty inputs are treated as 0; output is currency-formatted.
 
-What's missing: the **`_{N}`-suffixed** variants the template expects:
-- `{{pr_p_multipleProperties_yes_glyph_1}}`, `_2`, `_3`, …
-- `{{pr_p_multipleProperties_no_glyph_1}}`, `_2`, …
+### Changes
 
-### Change (additive, single block)
-Inside the same `{ ... }` block (≈ lines 1129–1138), after the four global aliases are set, loop over `sortedPropIndices` and publish the same four values per index:
+1. **Migration** — `field_dictionary` insert
+   - `field_key`: `oo_netAnnualIncome`
+   - `label`: "Net Annual Income"
+   - `section`: `origination_fees`
+   - `data_type`: `currency`
+   - `is_calculated`: `true`
+   - `allowed_roles`: `{}` (hidden from UI, same as the other two)
+   - `calculation_dependencies`: `{oo_totalIncome, oo_totalExpenses}`
+   - `calculation_formula`: `((oo_totalIncome || 0) * 12) - (oo_totalExpenses || 0)`
+   - Plus matching `merge_tag_aliases` row so `{{oo_netAnnualIncome}}` resolves.
 
-- `pr_p_multipleProperties_yes_${idx}`        → boolean
-- `pr_p_multipleProperties_no_${idx}`         → boolean
-- `pr_p_multipleProperties_yes_glyph_${idx}`  → "☑" / "☐"
-- `pr_p_multipleProperties_no_glyph_${idx}`   → "☑" / "☐"
+2. **`supabase/functions/generate-document/index.ts`**
+   Immediately after the existing `oo_totalIncome` and `oo_totalExpenses` injection blocks, add a third block that:
+   - Reads the just-published numeric values for `oo_totalIncome` and `oo_totalExpenses` from `fieldValues` (defaulting missing/non-numeric to 0).
+   - Computes `net = (income * 12) - expenses`.
+   - Sets `fieldValues.set("oo_netAnnualIncome", { rawValue: net, dataType: "currency" })`.
+   - Logs `[generate-document] Computed oo_netAnnualIncome = income*12 − expenses = …`.
+   - Then redeploy the edge function.
 
-Every index gets the **same** value (driven by the global `isMultiple` flag), so all property sections render YES when count > 1 and NO when count ≤ 1, matching the requirement table.
-
-Also publish a global `total_property_count` numeric so templates can use `{{#if (gt total_property_count 1)}}…{{/if}}` if preferred.
-
-### Files touched
-- `supabase/functions/generate-document/index.ts` — extend the existing `pr_p_multipleProperties` block only. No template, dictionary, schema, UI, or other doc-gen changes.
+### Constraints honored
+- No UI surface (no form, list, or admin screen touched).
+- No change to existing income/expense calculations or any other field.
+- No schema changes beyond the additive dictionary + alias row.
+- Backward compatible — purely additive.
 
 ### Validation
-After deploy, regenerate RE851D for deals with 1, 2, and 3 properties:
-- 1 property → property #1 shows ☐ YES / ☑ NO
-- 2 properties → both #1 and #2 show ☑ YES / ☐ NO
-- 3 properties → all three show ☑ YES / ☐ NO
-- Edge logs still print the existing `[RE851D] multipleProperties: realCount=…` line; no extra noise.
-
-### Note on template
-You don't need to change the template. The existing `{{pr_p_multipleProperties_yes_glyph_{N}}}` / `_no_glyph_{N}` tags will resolve once the per-index values are published. If you want to consolidate to a single conditional, `{{#if (gt total_property_count 1)}}` will also work after this change.
+Regenerate any document containing `{{oo_netAnnualIncome}}`:
+- Both totals empty → `$0.00`
+- Income only (e.g. 1,000) → `$12,000.00`
+- Income + expenses (e.g. 1,000 / 500) → `$11,500.00`
+- Edge logs show the computed line.
