@@ -3796,6 +3796,10 @@ async function generateSingleDocument(
           "property_type_land_income_N_glyph", "property_type_land_income_N",
           "property_type_other_N_glyph", "property_type_other_N",
           "property_type_other_text_N",
+          // "Is there Additional Securing Property?" — appears in PART 1 region
+          // before the first PROPERTY INFORMATION anchor for some templates.
+          "pr_p_multipleProperties_yes_glyph_N", "pr_p_multipleProperties_no_glyph_N",
+          "pr_p_multipleProperties_yes_N", "pr_p_multipleProperties_no_N",
         ];
         const PART2_TAGS = [
           "property_number_N",
@@ -3815,6 +3819,11 @@ async function generateSingleDocument(
           "property_type_land_income_N_glyph", "property_type_land_income_N",
           "property_type_other_N_glyph", "property_type_other_N",
           "property_type_other_text_N",
+          // "Is there Additional Securing Property?" — appears in PART 2 region
+          // (between the SECURING PROPERTIES heading and the first PROPERTY
+          // INFORMATION anchor) for templates that show it once per property.
+          "pr_p_multipleProperties_yes_glyph_N", "pr_p_multipleProperties_no_glyph_N",
+          "pr_p_multipleProperties_yes_N", "pr_p_multipleProperties_no_N",
         ];
 
         const decoder = new TextDecoder("utf-8");
@@ -5685,6 +5694,79 @@ async function generateSingleDocument(
       }
     }
 
+    // ── RE851D POST-RENDER literal-tag fallback for pr_p_multipleProperties_* ──
+    // Final safety net: if any `{{pr_p_multipleProperties_(yes|no)(_glyph)?(_N|_1..5)?}}`
+    // literal survived all earlier passes (e.g. region-allowlist mismatch,
+    // unanticipated _N rewrite skip, fragmented run that normalization missed),
+    // resolve it directly here using the global property-count decision so
+    // the document never shows raw merge tags.
+    if (/851d/i.test(template.name || "")) {
+      try {
+        const PRESENCE = ["address", "street", "city", "state", "zip", "county", "legal_description"];
+        const propIdxSet = new Set<number>();
+        for (const [k] of fieldValues.entries()) {
+          const m = k.match(/^property(\d+)\./i);
+          if (m) propIdxSet.add(parseInt(m[1], 10));
+        }
+        const realCount = [...propIdxSet]
+          .filter((idx) => PRESENCE.some((f) => {
+            const v = fieldValues.get(`property${idx}.${f}`)?.rawValue;
+            return v !== undefined && v !== null && String(v).trim() !== "";
+          })).length;
+        const isMulti = realCount > 1;
+        const yesGlyph = isMulti ? "\u2611" : "\u2610";
+        const noGlyph = isMulti ? "\u2610" : "\u2611";
+        const yesBool = isMulti ? "true" : "false";
+        const noBool = isMulti ? "false" : "true";
+
+        const unzippedFB = __passUnzip(processedDocx);
+        const rezipFB: fflate.Zippable = {};
+        let mutatedFB = false;
+        const tagRe = /\{\{\s*pr_p_multipleProperties_(yes|no)(_glyph)?(?:_(?:N|[1-5]))?\s*\}\}/gi;
+
+        for (const [filename, bytes] of Object.entries(unzippedFB)) {
+          const isContent =
+            filename === "word/document.xml" ||
+            filename.startsWith("word/header") ||
+            filename.startsWith("word/footer");
+          if (!isContent) {
+            rezipFB[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let xml = __xmlGet(filename, bytes);
+          if (!tagRe.test(xml)) {
+            rezipFB[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          tagRe.lastIndex = 0;
+          let hits = 0;
+          xml = xml.replace(tagRe, (_m, side: string, glyphSuffix?: string) => {
+            hits++;
+            const isYes = side.toLowerCase() === "yes";
+            if (glyphSuffix) return isYes ? yesGlyph : noGlyph;
+            return isYes ? yesBool : noBool;
+          });
+          if (hits > 0) {
+            rezipFB[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            mutatedFB = true;
+            console.log(
+              `[generate-document] RE851D literal-tag fallback: replaced ${hits} pr_p_multipleProperties_* literal(s) in ${filename} (isMulti=${isMulti}, realCount=${realCount})`
+            );
+          } else {
+            rezipFB[filename] = [bytes, { level: 0 }];
+          }
+        }
+
+        if (mutatedFB) {
+          processedDocx = __passZip(rezipFB);
+        }
+      } catch (fbErr) {
+        console.error(
+          `[generate-document] RE851D literal-tag fallback failed (continuing):`,
+          fbErr instanceof Error ? fbErr.message : String(fbErr)
+        );
+      }
+    }
     // ── RE851D POST-RENDER "Remain Unpaid" YES/NO safety pass ──
     // Mirrors the Owner-Occupied post-render pass. After processDocx wraps
     // standalone glyphs in <w:sdt> blocks with intrinsic <w14:checked> state,
