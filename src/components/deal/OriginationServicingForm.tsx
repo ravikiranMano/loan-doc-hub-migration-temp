@@ -21,6 +21,7 @@ interface OriginationServicingFormProps {
 
 const FK = {
   servicing_agent: 'origination_svc.servicing_agent',
+  servicing_agent_name: 'oo_sa_servicingAgentName',
   // 3rd Party
   tp_name: 'origination_svc.third_party.name',
   tp_street: 'origination_svc.third_party.street',
@@ -251,21 +252,35 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
       {/* Servicing Agent */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Servicing Agent</h3>
-        <DirtyFieldWrapper fieldKey={FK.servicing_agent}>
-          <div className="flex items-center gap-2 max-w-xs">
-            <Label className="w-[120px] text-sm shrink-0">Servicing Agent</Label>
-            <Select value={v(FK.servicing_agent)} onValueChange={(val) => sv(FK.servicing_agent, val)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm">
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent className="bg-popover z-50">
-                {AGENT_OPTIONS.map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </DirtyFieldWrapper>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl">
+          <DirtyFieldWrapper fieldKey={FK.servicing_agent}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[120px] text-sm shrink-0">Servicing Agent</Label>
+              <Select value={v(FK.servicing_agent)} onValueChange={(val) => sv(FK.servicing_agent, val)} disabled={disabled}>
+                <SelectTrigger className="h-7 text-sm">
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  {AGENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </DirtyFieldWrapper>
+          <DirtyFieldWrapper fieldKey={FK.servicing_agent_name}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[160px] text-sm shrink-0">Servicing Agent Name</Label>
+              <Input
+                value={v(FK.servicing_agent_name)}
+                onChange={(e) => sv(FK.servicing_agent_name, e.target.value)}
+                placeholder="Enter Servicing Agent Name"
+                disabled={disabled}
+                className="h-7 text-sm"
+              />
+            </div>
+          </DirtyFieldWrapper>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-6">
