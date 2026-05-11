@@ -759,6 +759,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       loanNumber={loanNumber}
       borrowerName={borrowerName}
       fundingRecords={paginatedRecords}
+      totalRecordCount={fundingRecords.length}
       historyRecords={historyRecords}
       onAddFunding={handleAddFunding}
       onDeleteRecord={handleDeleteRecord}
