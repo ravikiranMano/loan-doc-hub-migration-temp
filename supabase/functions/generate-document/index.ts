@@ -259,7 +259,7 @@ async function generateSingleDocument(
     };
 
     if (isTemplate885) {
-      console.log(`[RE885] Data Fetch: ${Math.round(performance.now() - tDataFetchStart)} ms (sections=${(sectionValues || []).length}, fields=${allFieldDictEntries.length})`);
+      debugLog(`[RE885] Data Fetch: ${Math.round(performance.now() - tDataFetchStart)} ms (sections=${(sectionValues || []).length}, fields=${allFieldDictEntries.length})`);
     }
     const tDataProcessingStart = performance.now();
 
@@ -471,11 +471,11 @@ async function generateSingleDocument(
       }) || borrowerParticipants[0];
 
       // Select additional guarantor BEFORE co-borrower to prevent fallback collision
-      console.log(`[generate-document] Borrower participants: ${borrowerParticipants.length}, primary: ${primaryBorrower?.name || 'none'}`);
+      debugLog(`[generate-document] Borrower participants: ${borrowerParticipants.length}, primary: ${primaryBorrower?.name || 'none'}`);
       for (const bp of borrowerParticipants) {
         const bpc = bp.contact_id ? contactRowsByUuid.get(bp.contact_id) : null;
         const bpCap = bpc?.contact_data?.capacity;
-        console.log(`[generate-document]   participant: name=${bp.name}, contact_id=${bp.contact_id}, capacity=${bpCap}, isPrimary=${bp === primaryBorrower}`);
+        debugLog(`[generate-document]   participant: name=${bp.name}, contact_id=${bp.contact_id}, capacity=${bpCap}, isPrimary=${bp === primaryBorrower}`);
       }
       const guarantorParticipant = borrowerParticipants.find((p: any) => {
         if (!p.contact_id) return false;
@@ -493,7 +493,7 @@ async function generateSingleDocument(
           && !capLower.includes("co-trustee") && !capLower.includes("trustee");
       });
 
-      console.log(`[generate-document] Guarantor selected: ${guarantorParticipant?.name || 'NONE'}, contact_id=${guarantorParticipant?.contact_id || 'NONE'}`);
+      debugLog(`[generate-document] Guarantor selected: ${guarantorParticipant?.name || 'NONE'}, contact_id=${guarantorParticipant?.contact_id || 'NONE'}`);
 
       // Select co-borrower (check contact_data.capacity, or fall back to second borrower excluding guarantor)
       const coBorrower = borrowerParticipants.find((p: any) => {
@@ -533,7 +533,7 @@ async function generateSingleDocument(
           const email = cd.email || gc.email || "";
           const phone = cd["phone.cell"] || cd["phone.work"] || cd["phone.home"] || gc.phone || "";
 
-          console.log(`[generate-document] Guarantor injection: fullName="${fullName}", firstName="${firstName}", lastName="${lastName}"`);
+          debugLog(`[generate-document] Guarantor injection: fullName="${fullName}", firstName="${firstName}", lastName="${lastName}"`);
 
           setIfEmpty("br_p_guarantoFullName", fullName);
           setIfEmpty("br_p_guarantoFirstName", firstName);
@@ -545,11 +545,11 @@ async function generateSingleDocument(
           setIfEmpty("br_ag_email", email);
           setIfEmpty("br_ag_phone", phone);
 
-          console.log(`[generate-document] After setIfEmpty, br_ag_fullName = "${fieldValues.get("br_ag_fullName")?.rawValue}"`);
+          debugLog(`[generate-document] After setIfEmpty, br_ag_fullName = "${fieldValues.get("br_ag_fullName")?.rawValue}"`);
           debugLog(`[generate-document] Injected guarantor contact fields from participant (contact ${gc.contact_id})`);
         }
       } else {
-        console.log(`[generate-document] WARNING: No guarantor participant found!`);
+        debugLog(`[generate-document] WARNING: No guarantor participant found!`);
       }
 
       // Inject lender
@@ -719,15 +719,15 @@ async function generateSingleDocument(
       }
     }
 
-    console.log(`[generate-document] Resolved ${fieldValues.size} field values for ${template.name}`);
+    debugLog(`[generate-document] Resolved ${fieldValues.size} field values for ${template.name}`);
     // Log a sample of field values for debugging
     const sampleKeys = [...fieldValues.keys()].slice(0, 30);
-    console.log(`[generate-document] Sample field keys: ${sampleKeys.join(", ")}`);
+    debugLog(`[generate-document] Sample field keys: ${sampleKeys.join(", ")}`);
     // Log specific fields we expect to find
     const debugFields = ["ln_p_loanAmount", "of_fe_801LenderLoanOrigin", "pr_p_street", "br_p_fullName", "of_re_interestRate", "of_re_impoundHazardIns", "of_re_subtotalDeductions", "origination_esc.estimated_closing", "of_re_estimatedClosing"];
     for (const df of debugFields) {
       const val = fieldValues.get(df);
-      console.log(`[generate-document] Field "${df}" = ${val ? JSON.stringify(val) : "NOT FOUND"}`);
+      debugLog(`[generate-document] Field "${df}" = ${val ? JSON.stringify(val) : "NOT FOUND"}`);
     }
 
     // RE885 alias publisher: ensure newly added dictionary keys are exposed under the
@@ -826,12 +826,12 @@ async function generateSingleDocument(
           fieldValues.set("origination_fees.re885_cash_at_closing_option",       { rawValue: canonical, dataType: "text" });
           fieldValues.set("origination_fees.re885_cash_at_closing_amount_label", { rawValue: canonical, dataType: "text" });
         }
-        console.log(
+        debugLog(
           `[generate-document] RE885 CashAtClosingType raw="${rawOpt}" canonical="${canonical}" payable=${isPayable} mustPay=${isMustPay}`
         );
       }
 
-      console.log(
+      debugLog(
         `[generate-document] RE885 alias publisher: ` +
           `of_re_estimatedClosing="${fieldValues.get("of_re_estimatedClosing")?.rawValue ?? ""}" ` +
           `origination_esc.estimated_closing="${fieldValues.get("origination_esc.estimated_closing")?.rawValue ?? ""}" ` +
@@ -883,7 +883,7 @@ async function generateSingleDocument(
           re885ShortAliasResolved[out] = existingOut?.rawValue ?? "";
         }
       }
-      console.log(
+      debugLog(
         `[generate-document] RE885 short-alias publisher: ${JSON.stringify(re885ShortAliasResolved)}`
       );
 
@@ -900,7 +900,7 @@ async function generateSingleDocument(
       const isMonths = unit === "months" || unit === "month" || unit === "m";
       fieldValues.set("of_re_proposedLoanTerm.years", { rawValue: isYears ? "true" : "false", dataType: "boolean" });
       fieldValues.set("of_re_proposedLoanTerm.months", { rawValue: isMonths ? "true" : "false", dataType: "boolean" });
-      console.log(`[generate-document] RE885 loan term checkboxes: unit="${unit}" years=${isYears} months=${isMonths}`);
+      debugLog(`[generate-document] RE885 loan term checkboxes: unit="${unit}" years=${isYears} months=${isMonths}`);
 
       // RE885 Interest Rate Fixed/Adjustable -> mutually exclusive boolean checkboxes.
       // UI persists `origination_fees.re885_rate_type_fixed` / `_adjustable` (boolean).
@@ -921,7 +921,7 @@ async function generateSingleDocument(
       const isAdjustable = toBool(adjRaw);
       fieldValues.set("of_re_interestRate.fixed", { rawValue: isFixed ? "true" : "false", dataType: "boolean" });
       fieldValues.set("of_re_interestRate.adjustable", { rawValue: isAdjustable ? "true" : "false", dataType: "boolean" });
-      console.log(`[generate-document] RE885 interest rate checkboxes: fixed=${isFixed} adjustable=${isAdjustable} (raw fixed="${fixedRaw}" adjustable="${adjRaw}")`);
+      debugLog(`[generate-document] RE885 interest rate checkboxes: fixed=${isFixed} adjustable=${isAdjustable} (raw fixed="${fixedRaw}" adjustable="${adjRaw}")`);
 
       // RE885 Prepayment Penalty enabled -> boolean checkbox.
       // UI persists `loan_terms.penalties.prepayment.enabled` as 'true'/'false' string.
@@ -931,7 +931,7 @@ async function generateSingleDocument(
         fieldValues.get("loan_terms.prepayment_penalty_enabled")?.rawValue;
       const isPP = toBool(ppRaw);
       fieldValues.set("ln_pn_prepaymePenalt", { rawValue: isPP ? "true" : "false", dataType: "boolean" });
-      console.log(`[generate-document] RE885 prepayment penalty checkbox: enabled=${isPP} (raw="${ppRaw}")`);
+      debugLog(`[generate-document] RE885 prepayment penalty checkbox: enabled=${isPP} (raw="${ppRaw}")`);
 
       // RE885 Interest Guarantee enabled -> boolean checkbox.
       // UI persists `loan_terms.penalties.interest_guarantee.enabled` as 'true'/'false' string.
@@ -941,7 +941,7 @@ async function generateSingleDocument(
       const isIG = toBool(igRaw);
       fieldValues.set("loan_terms.penalties.interest_guarantee.enabled", { rawValue: isIG ? "true" : "false", dataType: "boolean" });
       fieldValues.set("loan_terms_penalties_interest_guarantee_enabled", { rawValue: isIG ? "true" : "false", dataType: "boolean" });
-      console.log(`[generate-document] RE885 interest guarantee checkbox: enabled=${isIG} (raw="${igRaw}")`);
+      debugLog(`[generate-document] RE885 interest guarantee checkbox: enabled=${isIG} (raw="${igRaw}")`);
     }
 
     // Inject systemDate so only templates using {{systemDate}} get the current date
@@ -1155,7 +1155,7 @@ async function generateSingleDocument(
           fieldValues.set(`${base}_no_glyph_${idx}`,  { rawValue: isSingle   ? "☑" : "☐",       dataType: "text" });
         }
         fieldValues.set("total_property_count", { rawValue: String(realPropertyCount), dataType: "number" });
-        console.log(`[RE851D] multipleProperties: realCount=${realPropertyCount} rawIndices=[${sortedPropIndices.join(",")}] realIndices=[${realPropertyIndices.join(",")}] → YES=${isMultiple} NO=${isSingle} (per-index published for [${sortedPropIndices.join(",")}])`);
+        debugLog(`[RE851D] multipleProperties: realCount=${realPropertyCount} rawIndices=[${sortedPropIndices.join(",")}] realIndices=[${realPropertyIndices.join(",")}] → YES=${isMultiple} NO=${isSingle} (per-index published for [${sortedPropIndices.join(",")}])`);
       }
 
       // ── RE851D: Build property-address → property-index map ──
@@ -1332,7 +1332,7 @@ async function generateSingleDocument(
           fieldValues.set(`pr_pt_estimated_${idx}_glyph`, { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
           // Always-on diagnostic so we can verify per-property tax state in logs
           // even when DOC_GEN_DEBUG is off.
-          console.log(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
+          debugLog(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
         // Delinquent payment count
         const delinqV =
@@ -1745,7 +1745,7 @@ async function generateSingleDocument(
         fieldValues.set(`pr_p_netMonthlyIncome_${idx}`, { rawValue: String(net), dataType: "number" });
         fieldValues.set(`pr_p_incomeGenerating_${idx}`, { rawValue: incomeYesNo, dataType: "text" });
         fieldValues.set(`pr_p_grossAnnualIncome_${idx}`, { rawValue: String(annual), dataType: "number" });
-        console.log(`[RE851D] income prop#${idx}: netMonthly=${raw ?? ""} → incomeGenerating=${incomeYesNo} grossAnnual=${annual}`);
+        debugLog(`[RE851D] income prop#${idx}: netMonthly=${raw ?? ""} → incomeGenerating=${incomeYesNo} grossAnnual=${annual}`);
       }
 
       // Per-index pr_p_address_${idx} auto-compute from per-property components.
@@ -1778,7 +1778,7 @@ async function generateSingleDocument(
           "ln_p_totalEncumbrance", "ln_p_totalWithLoan", "ln_p_loanToValueRatio"];
         for (const idx of sortedPropIndices) {
           const snap = probeKeys.map((k) => `${k}_${idx}=${JSON.stringify(fieldValues.get(`${k}_${idx}`)?.rawValue ?? null)}`).join(", ");
-          console.log(`[RE851D] publish-snapshot prop#${idx}: ${snap}`);
+          debugLog(`[RE851D] publish-snapshot prop#${idx}: ${snap}`);
         }
       } catch (_e) { /* diagnostic only */ }
       debugLog(`[generate-document] RE851D multi-property: published indexed aliases for properties [${sortedPropIndices.join(", ")}]`);
@@ -2145,7 +2145,7 @@ async function generateSingleDocument(
     const subordinationTrue = ["true", "yes", "y", "1", "checked", "on"].includes(subordinationRaw);
     fieldValues.set("ln_p_subordinationProvision", { rawValue: subordinationTrue ? "true" : "false", dataType: "boolean" });
     fieldValues.set("loan_terms.subordination_provision", { rawValue: subordinationTrue ? "true" : "false", dataType: "boolean" });
-    console.log(`[generate-document] Derived ln_p_subordinationProvision from "${subordinationRaw}" (rawType=${typeof subordinationRaw}): normalized=${subordinationTrue}`);
+    debugLog(`[generate-document] Derived ln_p_subordinationProvision from "${subordinationRaw}" (rawType=${typeof subordinationRaw}): normalized=${subordinationTrue}`);
 
     // Broker Capacity in Transaction (RE851A Part 2) → boolean checkbox keys
     // Derived from "Is Broker Also a Borrower?" UI checkbox. The UI persists this
@@ -2168,7 +2168,7 @@ async function generateSingleDocument(
     // direct A/B glyph merge tags resolve correctly without altering layout.
     fieldValues.set("or_p_brkCapacityAgentGlyph", { rawValue: brkBorrowerTrue ? "☐" : "☑", dataType: "text" });
     fieldValues.set("or_p_brkCapacityPrincipalGlyph", { rawValue: brkBorrowerTrue ? "☑" : "☐", dataType: "text" });
-    console.log(`[generate-document] Derived broker capacity checkboxes from "${brkBorrowerRaw}": agent=${!brkBorrowerTrue}, principal=${brkBorrowerTrue}, isBrkBorrower=${brkBorrowerTrue}`);
+    debugLog(`[generate-document] Derived broker capacity checkboxes from "${brkBorrowerRaw}": agent=${!brkBorrowerTrue}, principal=${brkBorrowerTrue}, isBrkBorrower=${brkBorrowerTrue}`);
 
     // Servicing Agent (RE851A Servicing section) → boolean checkbox keys.
     // CSR persists the dropdown under origination_svc.servicing_agent. The
@@ -2224,7 +2224,7 @@ async function generateSingleDocument(
     // Also publish under the oo_svc_* prefix (Other Origination → Servicing) used
     // by newer RE851A template revisions: {{#if (eq oo_svc_servicingAgent "Broker")}}.
     fieldValues.set("oo_svc_servicingAgent", { rawValue: canonicalServicingAgent, dataType: "text" });
-    console.log(`[generate-document] Derived servicing-agent checkboxes from "${servicingAgentRaw}": lender=${isLenderServicing}, broker=${isBrokerServicing}, other=${isOtherServicing}, sv_p_servicingAgent="${canonicalServicingAgent}", oo_svc_servicingAgent="${canonicalServicingAgent}"`);
+    debugLog(`[generate-document] Derived servicing-agent checkboxes from "${servicingAgentRaw}": lender=${isLenderServicing}, broker=${isBrokerServicing}, other=${isOtherServicing}, sv_p_servicingAgent="${canonicalServicingAgent}", oo_svc_servicingAgent="${canonicalServicingAgent}"`);
 
     // Loan -> Servicing Details -> Payable (Monthly / Quarterly / Annually).
     // CSR persists the dropdown under loan_terms.servicing.payable (and the
@@ -2260,7 +2260,7 @@ async function generateSingleDocument(
       setGlyph("sv_p_payableMonthlyGlyph", isPayableMonthly);
       setGlyph("sv_p_payableAnnuallyGlyph", isPayableAnnually);
     }
-    console.log(`[generate-document] Derived payable-frequency checkboxes from "${payableRaw}": monthly=${isPayableMonthly}, annually=${isPayableAnnually}, canonical="${canonicalPayable}"`);
+    debugLog(`[generate-document] Derived payable-frequency checkboxes from "${payableRaw}": monthly=${isPayableMonthly}, annually=${isPayableAnnually}, canonical="${canonicalPayable}"`);
 
 
     // Build all_properties_list and multi-property pr_p_address
@@ -3084,13 +3084,13 @@ async function generateSingleDocument(
             const cond = classifyLocal(prefix);
             // Rows with no usable data are excluded; payoff rows render in REM.
             if (cond === "payoff" || cond === "none") {
-              console.log(`[generate-document] RE851D Part1 slot-bucket: ${prefix} prop=${pIdx} cond=${cond} → EXCLUDED`);
+              debugLog(`[generate-document] RE851D Part1 slot-bucket: ${prefix} prop=${pIdx} cond=${cond} → EXCLUDED`);
               return;
             }
             const bucket = cond === "anticipated" ? perPropAnt : perPropRem;
             if (!bucket[pIdx]) bucket[pIdx] = [];
             bucket[pIdx].push({ prefix });
-            console.log(`[generate-document] RE851D Part1 slot-bucket: ${prefix} prop=${pIdx} cond=${cond} → ${cond === "anticipated" ? "ANT" : "REM"}`);
+            debugLog(`[generate-document] RE851D Part1 slot-bucket: ${prefix} prop=${pIdx} cond=${cond} → ${cond === "anticipated" ? "ANT" : "REM"}`);
           });
 
           const setVal = (k: string, v: string, dt: string) =>
@@ -3209,7 +3209,7 @@ async function generateSingleDocument(
               set(`pr_p_additionalEncumbrance_${pIdx}_no`,        isYes ? "false" : "true", "boolean");
               set(`pr_p_additionalEncumbrance_${pIdx}_yes_glyph`, isYes ? "☑" : "☐", "text");
               set(`pr_p_additionalEncumbrance_${pIdx}_no_glyph`,  isYes ? "☐" : "☑", "text");
-              console.log(`[generate-document] RE851D additional-encumbrance PROP#${pIdx}: rem=${remN} ant=${antN} → ${isYes ? "YES" : "NO"}`);
+              debugLog(`[generate-document] RE851D additional-encumbrance PROP#${pIdx}: rem=${remN} ant=${antN} → ${isYes ? "YES" : "NO"}`);
             }
           }
         }
@@ -3323,7 +3323,7 @@ async function generateSingleDocument(
             const dbgER = fieldValues.get(`${lp}.existing_remain`)?.rawValue ?? "";
             const dbgEPd = fieldValues.get(`${lp}.existing_paydown`)?.rawValue ?? "";
             const dbgEPo = fieldValues.get(`${lp}.existing_payoff`)?.rawValue ?? "";
-            console.log(`[generate-document] RE851D rollup-classify ${lp} → prop=${pIdx} cond=${cond} | anticipated=${dbgAnt} remain=${dbgER} paydown=${dbgEPd} payoff=${dbgEPo} orig=${dbgOrig} cur=${dbgCur}`);
+            debugLog(`[generate-document] RE851D rollup-classify ${lp} → prop=${pIdx} cond=${cond} | anticipated=${dbgAnt} remain=${dbgER} paydown=${dbgEPd} payoff=${dbgEPo} orig=${dbgOrig} cur=${dbgCur}`);
             if (cond === "payoff" || cond === "none") {
               matchedLog[pIdx].push(`${li}:${cond}`);
               continue;
@@ -3397,7 +3397,7 @@ async function generateSingleDocument(
               equityStr = equity.toFixed(2);
               fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
             }
-            console.log(
+            debugLog(
               `[generate-document] RE851D Part1 rollup property${pi}: liens=[${matchedLog[pi].join(",")}], ` +
               `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, equity=${equityStr || "∅"}`
             );
@@ -3417,7 +3417,7 @@ async function generateSingleDocument(
             const expL = [1, 2, 3, 4, 5].map(i => `${i}:${fmt(`ln_p_expectedEncumbrance_${i}`)}`).join(", ");
             const remL = [1, 2, 3, 4, 5].map(i => `${i}:${fmt(`ln_p_remainingEncumbrance_${i}`)}`).join(", ");
             const totL = [1, 2, 3, 4, 5].map(i => `${i}:${fmt(`ln_p_totalEncumbrance_${i}`)}`).join(", ");
-            console.log(`[generate-document] RE851D final encumbrance state: expected=[${expL}], remaining=[${remL}], total=[${totL}]`);
+            debugLog(`[generate-document] RE851D final encumbrance state: expected=[${expL}], remaining=[${remL}], total=[${totL}]`);
           }
         }
       }
@@ -3479,7 +3479,7 @@ async function generateSingleDocument(
           const formattedTotal = seniorLienTotal.toFixed(2);
           fieldValues.set("li_bp_balanceAfter", { rawValue: formattedTotal, dataType: "currency" });
           debugLog(`[generate-document] Auto-computed li_bp_balanceAfter (senior lien balance) = ${formattedTotal} from ${lienPriorityMap.size} liens`);
-          console.log(`[generate-document] li_bp_balanceAfter = ${formattedTotal} (currentPriority=${currentPriority}, liens with priority data: ${lienPriorityMap.size})`);
+          debugLog(`[generate-document] li_bp_balanceAfter = ${formattedTotal} (currentPriority=${currentPriority}, liens with priority data: ${lienPriorityMap.size})`);
         } else {
           debugLog(`[generate-document] Could not determine current loan priority for li_bp_balanceAfter calculation`);
         }
@@ -3586,7 +3586,7 @@ async function generateSingleDocument(
       fieldValues.set('of_fe_subtotalOthers', { rawValue: totalOthers.toFixed(2), dataType: 'currency' });
       fieldValues.set('of_fe_subtotalJ', { rawValue: totalBroker.toFixed(2), dataType: 'currency' });
       fieldValues.set('of_fe_totalJ', { rawValue: grandTotal.toFixed(2), dataType: 'currency' });
-      console.log(`[generate-document] Auto-computed HUD totals: Others=${totalOthers.toFixed(2)} (${dynamicOthersKeys.size} keys), Broker=${totalBroker.toFixed(2)} (${dynamicBrokerKeys.size} keys), Grand=${grandTotal.toFixed(2)}`);
+      debugLog(`[generate-document] Auto-computed HUD totals: Others=${totalOthers.toFixed(2)} (${dynamicOthersKeys.size} keys), Broker=${totalBroker.toFixed(2)} (${dynamicBrokerKeys.size} keys), Grand=${grandTotal.toFixed(2)}`);
     }
 
     // ── Investor Questionnaire field aliases ──
@@ -3631,7 +3631,7 @@ async function generateSingleDocument(
     // Build set of all valid field keys once and reuse it across invocations.
     const validFieldKeys = await getValidFieldKeys(supabase);
     if (isTemplate885) {
-      console.log(`[RE885] Data Processing: ${Math.round(performance.now() - tDataProcessingStart)} ms (fieldValues=${fieldValues.size})`);
+      debugLog(`[RE885] Data Processing: ${Math.round(performance.now() - tDataProcessingStart)} ms (fieldValues=${fieldValues.size})`);
     }
 
     // 4. Download template DOCX from storage
@@ -3675,7 +3675,7 @@ async function generateSingleDocument(
       return result;
     }
     if (isTemplate885) {
-      console.log(`[RE885] Template Compile: ${Math.round(performance.now() - tTemplateLoadStart)} ms`);
+      debugLog(`[RE885] Template Compile: ${Math.round(performance.now() - tTemplateLoadStart)} ms`);
     }
 
     // 5. Fetch merge tag mappings AND field key migration maps, then process the DOCX
@@ -4896,7 +4896,7 @@ async function generateSingleDocument(
               consumed.push([aS, aE]);
               consumed.push([eS, eE]);
               totalRewrites += 2;
-              console.log(
+              debugLog(
                 `[RE851D] annual-tax glyph anchored: PROP#${pIdxT} actual=${isActualK} estimated=${isEstK}`
               );
             }
@@ -5019,7 +5019,7 @@ async function generateSingleDocument(
 
         if (totalRewrites > 0) {
           templateBuffer = new Uint8Array(fflate.zipSync(out, { level: 0 }));
-          console.log(
+          debugLog(
             `[generate-document] RE851D regions: ${regionLog.join(" | ")}; ` +
             `rewrites per region: ${
               Object.entries(regionRewriteCounts).map(([k, v]) => `${k}=${v}`).join(", ")
@@ -5134,7 +5134,7 @@ async function generateSingleDocument(
       throw err;
     }
     if (isTemplate885) {
-      console.log(`[RE885] DOCX Render: ${Math.round(performance.now() - tRenderStart)} ms (output=${processedDocx.length} bytes)`);
+      debugLog(`[RE885] DOCX Render: ${Math.round(performance.now() - tRenderStart)} ms (output=${processedDocx.length} bytes)`);
     }
 
     // ── RE851D post-render unzip/zip cache ──
@@ -5536,7 +5536,7 @@ async function generateSingleDocument(
 
             rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
             rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
-            console.log(
+            debugLog(
               `[generate-document] RE851D owner-occupied PROP#${regionK} (occ#${ownerOccurrence}) occ="${occByIdx[regionK]}" => YES=${yesChecked ? "☑" : "☐"} NO=${noChecked ? "☑" : "☐"}`,
             );
           }
@@ -5548,7 +5548,7 @@ async function generateSingleDocument(
             }
             rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
             didMutate = true;
-            console.log(
+            debugLog(
               `[generate-document] RE851D post-render owner-occupied safety pass: ${rewrites.length / 2} pairs forced in ${filename}`
             );
           } else {
@@ -5706,7 +5706,7 @@ async function generateSingleDocument(
             const yMtxt = yesLabelReTxt.exec(winText);
             const nMtxt = noLabelReTxt.exec(winText);
             if (!yMtxt || !nMtxt) {
-              console.log(
+              debugLog(
                 `[generate-document] RE851D multi-properties post-render: question occ#${qi + 1} found but YES/NO labels not located in window`,
               );
               continue;
@@ -5856,12 +5856,12 @@ async function generateSingleDocument(
             if (!touched) {
               const dbg = wtBoundsFor(yXmlIdx);
               const snippet = dbg ? dbg.inner.slice(0, 80).replace(/\s+/g, " ") : "(no <w:t> bounds)";
-              console.log(
+              debugLog(
                 `[generate-document] RE851D multi-properties post-render occ#${qi + 1}: NO HANDLER MATCHED — innerSnippet="${snippet}"`,
               );
             }
 
-            console.log(
+            debugLog(
               `[generate-document] RE851D multi-properties post-render occ#${qi + 1}: propCount=${propCount} => YES=${yesGlyph} NO=${noGlyph} (yC=${yC ? yC.kind : "none"}, nC=${nC ? nC.kind : "none"}, combined=${combinedHandled}, inline=${inlineRewrites.length}, touched=${touched})`,
             );
           }
@@ -5946,7 +5946,7 @@ async function generateSingleDocument(
           if (hits > 0) {
             rezipFB[filename] = [__xmlSet(filename, xml), { level: 0 }];
             mutatedFB = true;
-            console.log(
+            debugLog(
               `[generate-document] RE851D literal-tag fallback: replaced ${hits} pr_p_multipleProperties_* literal(s) in ${filename} (isMulti=${isMulti}, realCount=${realCount})`
             );
           } else {
@@ -6105,19 +6105,19 @@ async function generateSingleDocument(
             scanned++;
             const qStart = qm.index;
             const region = propRanges.find((p) => qStart >= p.start && qStart < p.end);
-            if (!region) { console.log(`[generate-document] RE851D remain-unpaid: anchor@${qStart} not in any property region`); continue; }
+            if (!region) { debugLog(`[generate-document] RE851D remain-unpaid: anchor@${qStart} not in any property region`); continue; }
             const winEnd = Math.min(region.end, qStart + 4096);
 
             yesLabelRe.lastIndex = qStart;
             noLabelRe.lastIndex = qStart;
             const yL = yesLabelRe.exec(xml);
             const nL = noLabelRe.exec(xml);
-            if (!yL || !nL) { console.log(`[generate-document] RE851D remain-unpaid PROP#${region.k}: no Y/N labels (yL=${!!yL}, nL=${!!nL})`); continue; }
-            if (yL.index >= winEnd || nL.index >= winEnd) { console.log(`[generate-document] RE851D remain-unpaid PROP#${region.k}: Y/N labels outside window`); continue; }
+            if (!yL || !nL) { debugLog(`[generate-document] RE851D remain-unpaid PROP#${region.k}: no Y/N labels (yL=${!!yL}, nL=${!!nL})`); continue; }
+            if (yL.index >= winEnd || nL.index >= winEnd) { debugLog(`[generate-document] RE851D remain-unpaid PROP#${region.k}: Y/N labels outside window`); continue; }
 
             const yC = findControlNear(yL.index, yL.index + yL[0].length, qStart, winEnd);
             const nC = findControlNear(nL.index, nL.index + nL[0].length, qStart, winEnd);
-            if (!yC || !nC || yC.idx === nC.idx) { console.log(`[generate-document] RE851D remain-unpaid PROP#${region.k}: missing/duplicate controls (yC=${yC?.kind || "none"}, nC=${nC?.kind || "none"})`); continue; }
+            if (!yC || !nC || yC.idx === nC.idx) { debugLog(`[generate-document] RE851D remain-unpaid PROP#${region.k}: missing/duplicate controls (yC=${yC?.kind || "none"}, nC=${nC?.kind || "none"})`); continue; }
 
             const isYes = unpaidByIdx[region.k] === true;
             const yesChecked = isYes;
@@ -6125,7 +6125,7 @@ async function generateSingleDocument(
 
             const overlaps = (s: number, e: number) =>
               rewrites.some((r) => s < r.end && e > r.start);
-            if (overlaps(yC.idx, yC.end) || overlaps(nC.idx, nC.end)) { console.log(`[generate-document] RE851D remain-unpaid PROP#${region.k}: overlap, skipping`); continue; }
+            if (overlaps(yC.idx, yC.end) || overlaps(nC.idx, nC.end)) { debugLog(`[generate-document] RE851D remain-unpaid PROP#${region.k}: overlap, skipping`); continue; }
 
             const yesReplacement =
               yC.kind === "sdt"
@@ -6138,9 +6138,9 @@ async function generateSingleDocument(
 
             rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
             rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
-            console.log(`[generate-document] RE851D remain-unpaid PROP#${region.k}: forced isYes=${isYes} (yC=${yC.kind}, nC=${nC.kind})`);
+            debugLog(`[generate-document] RE851D remain-unpaid PROP#${region.k}: forced isYes=${isYes} (yC=${yC.kind}, nC=${nC.kind})`);
           }
-          console.log(`[generate-document] RE851D remain-unpaid: scanned ${scanned} anchor(s)`);
+          debugLog(`[generate-document] RE851D remain-unpaid: scanned ${scanned} anchor(s)`);
 
           if (rewrites.length > 0) {
             rewrites.sort((a, b) => b.start - a.start);
@@ -6149,7 +6149,7 @@ async function generateSingleDocument(
             }
             rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
             didMutate = true;
-            console.log(
+            debugLog(
               `[generate-document] RE851D post-render remain-unpaid safety pass: ${rewrites.length / 2} pairs forced in ${filename}`
             );
           } else {
@@ -6294,19 +6294,19 @@ async function generateSingleDocument(
             scanned++;
             const qStart = qm.index;
             const region = propRanges.find((p) => qStart >= p.start && qStart < p.end);
-            if (!region) { console.log(`[generate-document] RE851D cure-delinq: anchor@${qStart} not in any property region`); continue; }
+            if (!region) { debugLog(`[generate-document] RE851D cure-delinq: anchor@${qStart} not in any property region`); continue; }
             const winEnd = Math.min(region.end, qStart + 4096);
 
             yesLabelRe.lastIndex = qStart;
             noLabelRe.lastIndex = qStart;
             const yL = yesLabelRe.exec(xml);
             const nL = noLabelRe.exec(xml);
-            if (!yL || !nL) { console.log(`[generate-document] RE851D cure-delinq PROP#${region.k}: no Y/N labels (yL=${!!yL}, nL=${!!nL})`); continue; }
-            if (yL.index >= winEnd || nL.index >= winEnd) { console.log(`[generate-document] RE851D cure-delinq PROP#${region.k}: Y/N labels outside window`); continue; }
+            if (!yL || !nL) { debugLog(`[generate-document] RE851D cure-delinq PROP#${region.k}: no Y/N labels (yL=${!!yL}, nL=${!!nL})`); continue; }
+            if (yL.index >= winEnd || nL.index >= winEnd) { debugLog(`[generate-document] RE851D cure-delinq PROP#${region.k}: Y/N labels outside window`); continue; }
 
             const yC = findControlNear(yL.index, yL.index + yL[0].length, qStart, winEnd);
             const nC = findControlNear(nL.index, nL.index + nL[0].length, qStart, winEnd);
-            if (!yC || !nC || yC.idx === nC.idx) { console.log(`[generate-document] RE851D cure-delinq PROP#${region.k}: missing/duplicate controls (yC=${yC?.kind || "none"}, nC=${nC?.kind || "none"})`); continue; }
+            if (!yC || !nC || yC.idx === nC.idx) { debugLog(`[generate-document] RE851D cure-delinq PROP#${region.k}: missing/duplicate controls (yC=${yC?.kind || "none"}, nC=${nC?.kind || "none"})`); continue; }
 
             const isYes = cureByIdx[region.k] === true;
             const yesChecked = isYes;
@@ -6314,7 +6314,7 @@ async function generateSingleDocument(
 
             const overlaps = (s: number, e: number) =>
               rewrites.some((r) => s < r.end && e > r.start);
-            if (overlaps(yC.idx, yC.end) || overlaps(nC.idx, nC.end)) { console.log(`[generate-document] RE851D cure-delinq PROP#${region.k}: overlap, skipping`); continue; }
+            if (overlaps(yC.idx, yC.end) || overlaps(nC.idx, nC.end)) { debugLog(`[generate-document] RE851D cure-delinq PROP#${region.k}: overlap, skipping`); continue; }
 
             const yesReplacement =
               yC.kind === "sdt"
@@ -6327,9 +6327,9 @@ async function generateSingleDocument(
 
             rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
             rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
-            console.log(`[generate-document] RE851D cure-delinq PROP#${region.k}: forced isYes=${isYes} (yC=${yC.kind}, nC=${nC.kind})`);
+            debugLog(`[generate-document] RE851D cure-delinq PROP#${region.k}: forced isYes=${isYes} (yC=${yC.kind}, nC=${nC.kind})`);
           }
-          console.log(`[generate-document] RE851D cure-delinq: scanned ${scanned} anchor(s)`);
+          debugLog(`[generate-document] RE851D cure-delinq: scanned ${scanned} anchor(s)`);
 
           if (rewrites.length > 0) {
             rewrites.sort((a, b) => b.start - a.start);
@@ -6338,7 +6338,7 @@ async function generateSingleDocument(
             }
             rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
             didMutate = true;
-            console.log(
+            debugLog(
               `[generate-document] RE851D post-render cure-delinquency safety pass: ${rewrites.length / 2} pairs forced in ${filename}`
             );
           } else {
@@ -6481,19 +6481,19 @@ async function generateSingleDocument(
             scanned++;
             const qStart = qm.index;
             const region = propRanges.find((p) => qStart >= p.start && qStart < p.end);
-            if (!region) { console.log(`[generate-document] RE851D 60-day: anchor@${qStart} not in any property region`); continue; }
+            if (!region) { debugLog(`[generate-document] RE851D 60-day: anchor@${qStart} not in any property region`); continue; }
             const winEnd = Math.min(region.end, qStart + 4096);
 
             yesLabelRe.lastIndex = qStart;
             noLabelRe.lastIndex = qStart;
             const yL = yesLabelRe.exec(xml);
             const nL = noLabelRe.exec(xml);
-            if (!yL || !nL) { console.log(`[generate-document] RE851D 60-day PROP#${region.k}: no Y/N labels`); continue; }
+            if (!yL || !nL) { debugLog(`[generate-document] RE851D 60-day PROP#${region.k}: no Y/N labels`); continue; }
             if (yL.index >= winEnd || nL.index >= winEnd) continue;
 
             const yC = findControlNear(yL.index, yL.index + yL[0].length, qStart, winEnd);
             const nC = findControlNear(nL.index, nL.index + nL[0].length, qStart, winEnd);
-            if (!yC || !nC || yC.idx === nC.idx) { console.log(`[generate-document] RE851D 60-day PROP#${region.k}: missing/duplicate controls`); continue; }
+            if (!yC || !nC || yC.idx === nC.idx) { debugLog(`[generate-document] RE851D 60-day PROP#${region.k}: missing/duplicate controls`); continue; }
 
             const isYes = sixtyByIdx[region.k] === true;
             const yesChecked = isYes;
@@ -6514,9 +6514,9 @@ async function generateSingleDocument(
 
             rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
             rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
-            console.log(`[generate-document] RE851D 60-day PROP#${region.k}: forced isYes=${isYes}`);
+            debugLog(`[generate-document] RE851D 60-day PROP#${region.k}: forced isYes=${isYes}`);
           }
-          console.log(`[generate-document] RE851D 60-day: scanned ${scanned} anchor(s)`);
+          debugLog(`[generate-document] RE851D 60-day: scanned ${scanned} anchor(s)`);
 
           if (rewrites.length > 0) {
             rewrites.sort((a, b) => b.start - a.start);
@@ -6525,7 +6525,7 @@ async function generateSingleDocument(
             }
             rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
             didMutate = true;
-            console.log(
+            debugLog(
               `[generate-document] RE851D post-render 60-day safety pass: ${rewrites.length / 2} pairs forced in ${filename}`
             );
           } else {
@@ -6668,19 +6668,19 @@ async function generateSingleDocument(
             scanned++;
             const qStart = qm.index;
             const region = propRanges.find((p) => qStart >= p.start && qStart < p.end);
-            if (!region) { console.log(`[generate-document] RE851D enc-of-record: anchor@${qStart} not in any property region`); continue; }
+            if (!region) { debugLog(`[generate-document] RE851D enc-of-record: anchor@${qStart} not in any property region`); continue; }
             const winEnd = Math.min(region.end, qStart + 4096);
 
             yesLabelRe.lastIndex = qStart;
             noLabelRe.lastIndex = qStart;
             const yL = yesLabelRe.exec(xml);
             const nL = noLabelRe.exec(xml);
-            if (!yL || !nL) { console.log(`[generate-document] RE851D enc-of-record PROP#${region.k}: no Y/N labels (yL=${!!yL}, nL=${!!nL})`); continue; }
-            if (yL.index >= winEnd || nL.index >= winEnd) { console.log(`[generate-document] RE851D enc-of-record PROP#${region.k}: Y/N labels outside window`); continue; }
+            if (!yL || !nL) { debugLog(`[generate-document] RE851D enc-of-record PROP#${region.k}: no Y/N labels (yL=${!!yL}, nL=${!!nL})`); continue; }
+            if (yL.index >= winEnd || nL.index >= winEnd) { debugLog(`[generate-document] RE851D enc-of-record PROP#${region.k}: Y/N labels outside window`); continue; }
 
             const yC = findControlNear(yL.index, yL.index + yL[0].length, qStart, winEnd);
             const nC = findControlNear(nL.index, nL.index + nL[0].length, qStart, winEnd);
-            if (!yC || !nC || yC.idx === nC.idx) { console.log(`[generate-document] RE851D enc-of-record PROP#${region.k}: missing/duplicate controls (yC=${yC?.kind || "none"}, nC=${nC?.kind || "none"})`); continue; }
+            if (!yC || !nC || yC.idx === nC.idx) { debugLog(`[generate-document] RE851D enc-of-record PROP#${region.k}: missing/duplicate controls (yC=${yC?.kind || "none"}, nC=${nC?.kind || "none"})`); continue; }
 
             const isYes = encByIdx[region.k] === true;
             const yesChecked = isYes;
@@ -6688,7 +6688,7 @@ async function generateSingleDocument(
 
             const overlaps = (s: number, e: number) =>
               rewrites.some((r) => s < r.end && e > r.start);
-            if (overlaps(yC.idx, yC.end) || overlaps(nC.idx, nC.end)) { console.log(`[generate-document] RE851D enc-of-record PROP#${region.k}: overlap, skipping`); continue; }
+            if (overlaps(yC.idx, yC.end) || overlaps(nC.idx, nC.end)) { debugLog(`[generate-document] RE851D enc-of-record PROP#${region.k}: overlap, skipping`); continue; }
 
             const yesReplacement =
               yC.kind === "sdt"
@@ -6701,9 +6701,9 @@ async function generateSingleDocument(
 
             rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
             rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
-            console.log(`[generate-document] RE851D enc-of-record PROP#${region.k}: forced isYes=${isYes} (yC=${yC.kind}, nC=${nC.kind})`);
+            debugLog(`[generate-document] RE851D enc-of-record PROP#${region.k}: forced isYes=${isYes} (yC=${yC.kind}, nC=${nC.kind})`);
           }
-          console.log(`[generate-document] RE851D enc-of-record: scanned ${scanned} anchor(s)`);
+          debugLog(`[generate-document] RE851D enc-of-record: scanned ${scanned} anchor(s)`);
 
           if (rewrites.length > 0) {
             rewrites.sort((a, b) => b.start - a.start);
@@ -6712,7 +6712,7 @@ async function generateSingleDocument(
             }
             rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
             didMutate = true;
-            console.log(
+            debugLog(
               `[generate-document] RE851D post-render encumbrance-of-record safety pass: ${rewrites.length / 2} pairs forced in ${filename}`
             );
           } else {
@@ -6928,9 +6928,9 @@ async function generateSingleDocument(
               rewrites.push({ start: yC.idx, end: yC.end, replacement: yesReplacement });
               rewrites.push({ start: nC.idx, end: nC.end, replacement: noReplacement });
               forcedProps.push(propK);
-              console.log(`[generate-document] RE851D additional-encumbrance PROP#${propK}: forced ${isYes ? "YES" : "NO"}`);
+              debugLog(`[generate-document] RE851D additional-encumbrance PROP#${propK}: forced ${isYes ? "YES" : "NO"}`);
             }
-            console.log(
+            debugLog(
               `[generate-document] RE851D AEA Pass A: anchors=${scanned} rewrites=${rewrites.length} ` +
               `yesProps=[${[...yesPropIdx].sort((a,b)=>a-b).join(",")}] forcedProps=[${forcedProps.join(",")}] in ${filename}`
             );
@@ -7012,7 +7012,7 @@ async function generateSingleDocument(
             }
             if (sections.length > 2) {
               addendumXml = sections.join("");
-              console.log(`[generate-document] RE851D addendum: appending ${sortedYes.length} property section(s) (rem-overflow=${totalRemOver}, ant-overflow=${totalAntOver})`);
+              debugLog(`[generate-document] RE851D addendum: appending ${sortedYes.length} property section(s) (rem-overflow=${totalRemOver}, ant-overflow=${totalAntOver})`);
             }
           }
 
@@ -7381,7 +7381,7 @@ async function generateSingleDocument(
           }
           rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
           didMutate = true;
-          console.log(
+          debugLog(
             `[generate-document] RE851D post-render encumbrance pass: ${pureInserts.length} value cells filled, ${replacements.length} balloon glyphs forced in ${filename}`,
           );
         }
@@ -7451,8 +7451,8 @@ async function generateSingleDocument(
       return result;
     }
     if (isTemplate885) {
-      console.log(`[RE885] File Export: ${Math.round(performance.now() - tFileExportStart)} ms`);
-      console.log(`[RE885] Total CPU Time: ${Math.round(performance.now() - t885Total)} ms`);
+      debugLog(`[RE885] File Export: ${Math.round(performance.now() - tFileExportStart)} ms`);
+      debugLog(`[RE885] Total CPU Time: ${Math.round(performance.now() - t885Total)} ms`);
     }
 
     debugLog(`[generate-document] Uploaded to generated-docs: ${outputFileName}`);
