@@ -1857,6 +1857,9 @@ async function generateSingleDocument(
           "pr_li_currentDelinqu_no_glyph":       "☑",
           "pr_li_delinquencyPaidByLoan_yes_glyph":"☐",
           "pr_li_delinquencyPaidByLoan_no_glyph": "☑",
+          "pr_li_sourceInfoBroker_glyph":   "☐",
+          "pr_li_sourceInfoBorrower_glyph": "☐",
+          "pr_li_sourceInfoOther_glyph":    "☐",
         };
         // Suffixes that take the property index in the MIDDLE
         // (e.g. pr_li_currentDelinqu_<N>_yes_glyph), not at the end.
