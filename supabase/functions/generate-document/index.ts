@@ -7458,7 +7458,7 @@ async function generateSingleDocument(
                   const before = xml.slice(0, rawSecStart);
                   const after = xml.slice(rawSecEnd);
                   let mid = xml.slice(rawSecStart, rawSecEnd);
-                  const balloonTokenRe = /pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown|Amount)(?:_(?:\(?[A-Za-z0-9]+\)?))*+/g;
+                  const balloonTokenRe = /pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown|Amount)(?:_(?:\(?[A-Za-z0-9]+\)?))*/g;
                   mid = mid.replace(
                     /(<w:t(?:\s[^>]*)?>)([^<]*?)(<\/w:t>)/g,
                     (m, openTag, text, closeTag) => {
