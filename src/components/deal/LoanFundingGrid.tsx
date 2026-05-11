@@ -496,7 +496,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'currentBalance':
         return <span>{formatCurrency(computeCurrentBalance(record))}</span>;
       case 'pctOwned':
-        return <span>{formatPercentage(record.pctOwned, 4)}</span>;
+        return <span>{formatPercentage(getDisplayedPctOwned(record), 4)}</span>;
       case 'fundingDate':
         return formatDate(record.fundingDate) || '-';
       case 'interestFrom':
