@@ -136,7 +136,15 @@ export const ContactBorrowerDetailForm: React.FC<Props> = ({ borrower, onSave, o
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2"><Label>Street</Label><Input value={form.street} onChange={(e) => set('street', e.target.value)} /></div>
           <div><Label>City</Label><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
-          <div><Label>State</Label><Input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
+          <div><Label>State</Label>
+            <Select value={form.state || '__select__'} onValueChange={(v) => set('state', v === '__select__' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent className="bg-background border border-border z-[200] max-h-60">
+                <SelectItem value="__select__">Select</SelectItem>
+                {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
           <div><Label>ZIP</Label><ZipInput value={form.zip} onValueChange={(v) => set('zip', v)} /></div>
         </div>
       </Section>
