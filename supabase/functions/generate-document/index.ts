@@ -3324,9 +3324,22 @@ async function generateSingleDocument(
             // Additional Part-1 column aliases some template variants use.
             fieldValues.set(`pr_p_remainingEncumbrance_${pi}`, remVal);
             fieldValues.set(`pr_p_expectedEncumbrance_${pi}`, expVal);
+            // Amount of Equity = Market Value − Remaining Senior Encumbrances.
+            // Source market value is the per-property appraise/estimate value.
+            // Skip emission when market value is missing so the cell renders blank.
+            const mvRaw =
+              fieldValues.get(`pr_p_appraiseValue_${pi}`)?.rawValue ??
+              fieldValues.get(`property${pi}.appraise_value`)?.rawValue;
+            let equityStr = "";
+            if (mvRaw !== null && mvRaw !== undefined && String(mvRaw).trim() !== "") {
+              const mv = parseAmt2(mvRaw);
+              const equity = mv - rem;
+              equityStr = equity.toFixed(2);
+              fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
+            }
             console.log(
               `[generate-document] RE851D Part1 rollup property${pi}: liens=[${matchedLog[pi].join(",")}], ` +
-              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}`
+              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, equity=${equityStr || "∅"}`
             );
           }
 
@@ -3744,7 +3757,7 @@ async function generateSingleDocument(
           "pr_p_occupanc_N", "pr_p_remainingSenior_N", "pr_p_expectedSenior_N",
           "ln_p_expectedEncumbrance_N", "ln_p_remainingEncumbrance_N",
           "pr_p_totalSenior_N", "pr_p_totalEncumbrance_N", "pr_p_totalSeniorPlusLoan_N",
-          "ln_p_totalEncumbrance_N", "ln_p_totalWithLoan_N", "property_number_N",
+          "ln_p_totalEncumbrance_N", "ln_p_totalWithLoan_N", "ln_p_amountOfEquity_N", "property_number_N",
           "pr_p_construcType_N", "pr_p_purchasePrice_N", "pr_p_downPayme_N",
           "pr_p_protectiveEquity_N", "pr_p_descript_N", "pr_p_ltv_N", "pr_p_cltv_N",
           "pr_p_zoning_N", "pr_p_floodZone_N", "pr_p_pledgedEquity_N",
@@ -3877,6 +3890,7 @@ async function generateSingleDocument(
           "ln_p_expectedEncumbrance_N",
           "ln_p_totalEncumbrance_N",
           "ln_p_totalWithLoan_N",
+          "ln_p_amountOfEquity_N",
           "property_type_sfr_owner_N_glyph", "property_type_sfr_owner_N",
           "property_type_sfr_non_owner_N_glyph", "property_type_sfr_non_owner_N",
           "property_type_sfr_zoned_N_glyph", "property_type_sfr_zoned_N",
@@ -3900,6 +3914,7 @@ async function generateSingleDocument(
           "ln_p_expectedEncumbrance_N",
           "ln_p_totalEncumbrance_N",
           "ln_p_totalWithLoan_N",
+          "ln_p_amountOfEquity_N",
           "property_type_sfr_owner_N_glyph", "property_type_sfr_owner_N",
           "property_type_sfr_non_owner_N_glyph", "property_type_sfr_non_owner_N",
           "property_type_sfr_zoned_N_glyph", "property_type_sfr_zoned_N",
@@ -4973,7 +4988,7 @@ async function generateSingleDocument(
         "ln_p_expectedEncumbrance", "ln_p_remainingEncumbrance",
         "pr_p_expectedSenior", "pr_p_remainingSenior",
         "pr_p_totalEncumbrance", "pr_p_totalSenior", "pr_p_totalSeniorPlusLoan",
-        "ln_p_totalEncumbrance", "ln_p_totalWithLoan", "ln_p_loanToValueRatio",
+        "ln_p_totalEncumbrance", "ln_p_totalWithLoan", "ln_p_amountOfEquity", "ln_p_loanToValueRatio",
         "property_number",
         // Per-property "Performed By" — both canonical and legacy-misspelled
         // aliases so the conditional resolver does an exact direct match per
