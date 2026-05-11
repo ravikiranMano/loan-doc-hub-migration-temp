@@ -1,48 +1,31 @@
-Implement a focused backend optimization for `generate-document` without changing UI behavior or document field logic.
+Current finding: the latest deployed run still dies with `CPU Time exceeded` after the main DOCX render finishes. The logged render itself is ~400ms; the function is being killed in the remaining RE851D-only work after `processDocx`, before upload/job completion. One job is still `running`, confirming the failure path never reaches the catch/update block.
 
-1. Template-aware RE851D preprocessing
-   - Inspect the uploaded/generated DOCX XML before running RE851D `_N` expansion.
-   - Run the RE851D `_N` rewrite only when the template content actually contains indexed placeholders such as `_N`, `_N_S`, `_(N)`, or `_{N}`.
-   - Pre-filter the RE851D indexed tag list once per XML part and avoid repeated set construction inside region resolution.
+Plan:
 
-2. Remove redundant field-dictionary work for RE851D
-   - Stop loading the full `field_dictionary` via `getValidFieldKeys()` for RE851D.
-   - Build `effectiveValidFieldKeys` from only:
-     - template field-map keys,
-     - field keys already present in the deal payload,
-     - RE851D computed aliases (`ln_p_remainingEncumbrance_N`, `ln_p_expectedEncumbrance_N`, `ln_p_totalEncumbrance_N`, `ln_p_amountOfEquity_N`, `pr_netPropertyValue`, etc.).
-   - Keep the existing full dictionary path for non-RE851D templates.
+1. **Stop repeated RE851D post-render scans**
+   - Replace the separate RE851D post-render safety passes with a single combined pass over `word/document.xml`.
+   - Build visible text/property-region anchors once.
+   - Collect all intended checkbox/value/addendum mutations first, then apply them once in reverse-offset order.
+   - Avoid calling `__xmlSet()` between sub-passes so the projection/lowercase caches are not invalidated repeatedly.
 
-3. Single-pass lightweight DOCX rendering for large RE851D templates
-   - Add a RE851D-specific processing option in the shared DOCX/tag parser path to skip nonessential post-render validation loops for large `word/document.xml`.
-   - Keep the main merge-tag/conditional render pass intact.
-   - Avoid duplicate normalization of `word/document.xml` after RE851D `_N` preprocessing when it was already normalized.
+2. **Remove duplicated pre-render XML normalization**
+   - For RE851D `_N` expansion, avoid normalizing the full 4.8 MB XML before the main render unless unresolved `_N` placeholders are actually present.
+   - Keep the existing `_N → _1.._5` behavior, but make it a cheap targeted rewrite path and let the main render own normalization.
 
-4. Consolidate RE851D post-render checkbox safety work
-   - Replace the many separate RE851D post-render full-document passes with one shared pass over cached `word/document.xml`/content XML.
-   - Build visible-text/property anchors once per XML version.
-   - Gate each safety operation by cached anchor presence before doing regex/control scans.
-   - Preserve existing checkbox outcomes for:
-     - owner occupied,
-     - multiple/additional securing property,
-     - remain unpaid,
-     - cure delinquency / paid by loan,
-     - 60-day delinquency,
-     - encumbrance of record,
-     - additional encumbrance addendum,
-     - encumbrance grid inserts.
+3. **Keep required RE851D calculations intact**
+   - Preserve existing publishers for `li_lt_anticipatedAmount`, `ln_p_amountOfEquity_N`, and `pr_netPropertyValue`.
+   - Cache property/lien totals once and reuse them across generated aliases.
+   - Do not alter document output mappings except where needed to avoid CPU-heavy duplicate work.
 
-5. Keep calculation logic but avoid repeated loops
-   - Reuse one collected property/lien index model for RE851D calculations.
-   - Compute and publish `ln_p_remainingEncumbrance_N`, `ln_p_expectedEncumbrance_N`, `ln_p_totalEncumbrance_N`, `ln_p_amountOfEquity_N`, `li_lt_anticipatedAmount`, and `pr_netPropertyValue` once.
-   - Skip empty property/lien records early.
+4. **Make stuck-job cleanup deterministic**
+   - Add a lightweight cleanup on document-page load / job refresh that marks stale `running` RE851D jobs as `failed` after the timeout window, so the UI no longer stays stuck until another generation is attempted.
+   - Keep the current realtime/polling behavior unchanged.
 
-6. Job handling hardening
-   - Keep the existing duplicate running-job guard.
-   - Tighten stale-job cleanup for the same deal + template so CPU-killed jobs are marked `failed` and the UI does not stay on `Running`.
-   - Return the existing in-flight job instead of starting duplicates.
+5. **Validate against the reported case**
+   - Deploy `generate-document` after the code change.
+   - Test with deal `db7517e9-f124-4031-98c8-3e0f33caf889` and template `43492f94-60ad-44c3-a8c2-24dabf36eac7`.
+   - Confirm: no new `CPU Time exceeded`, job reaches `success` or explicit `failed`, and the generated document record appears.
 
-7. Validation
-   - Deploy the updated `generate-document` backend function.
-   - Check backend logs for the provided deal/template and confirm no `CPU Time exceeded`/`Memory limit exceeded` entry for the new run.
-   - Verify generated output succeeds and key fields resolve: `li_lt_anticipatedAmount`, `ln_p_amountOfEquity_N`, and `pr_netPropertyValue`.
+<lov-actions>
+<lov-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</lov-link>
+</lov-actions>
