@@ -7733,6 +7733,60 @@ serve(async (req) => {
       );
     }
 
+    // Pre-insert stale-job sweep: mark any prior "running" jobs for this deal
+    // older than 120 seconds as failed. Required so a CPU-killed prior run
+    // (which never reached its own status update) does not leave the UI
+    // stuck on "Running" forever.
+    const staleThreshold = new Date(Date.now() - 120_000).toISOString();
+    await supabase
+      .from("generation_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: "Generation timed out (CPU limit exceeded)",
+      })
+      .eq("deal_id", dealId)
+      .eq("status", "running")
+      .lt("started_at", staleThreshold);
+
+    // Concurrent-job guard: if a non-stale "running" job already exists for the
+    // same deal+template (or deal+packet), reuse it instead of starting another.
+    // Prevents duplicate triggers from racing on the same RE851D template.
+    const concurrencyQuery = supabase
+      .from("generation_jobs")
+      .select("id, started_at, request_type")
+      .eq("deal_id", dealId)
+      .eq("status", "running")
+      .gte("started_at", staleThreshold)
+      .order("started_at", { ascending: false })
+      .limit(1);
+
+    if (templateId) {
+      concurrencyQuery.eq("template_id", templateId);
+    } else if (packetId || deal.packet_id) {
+      concurrencyQuery.eq("packet_id", packetId || deal.packet_id);
+    }
+
+    const { data: existingRunning } = await concurrencyQuery;
+    if (existingRunning && existingRunning.length > 0) {
+      const existing = existingRunning[0];
+      debugLog(`[generate-document] Reusing in-flight job ${existing.id}, refusing duplicate trigger`);
+      const reuseResponse: JobResult = {
+        jobId: existing.id,
+        dealId,
+        requestType,
+        status: "running",
+        results: [],
+        successCount: 0,
+        failCount: 0,
+        startedAt: (existing as any).started_at,
+      };
+      return new Response(JSON.stringify(reuseResponse), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Create GenerationJob record
     const { data: job, error: jobError } = await supabase
       .from("generation_jobs")
@@ -7758,20 +7812,6 @@ serve(async (req) => {
     }
 
     debugLog(`[generate-document] Created job: ${job.id}`);
-
-    // Clean up stale jobs: mark any "running" jobs older than 120 seconds as "failed"
-    const staleThreshold = new Date(Date.now() - 120_000).toISOString();
-    await supabase
-      .from("generation_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: "Generation timed out (CPU limit exceeded)",
-      })
-      .eq("deal_id", dealId)
-      .eq("status", "running")
-      .lt("started_at", staleThreshold)
-      .neq("id", job.id);
 
     // Return immediately with "running" status — process in background
     const immediateResponse: JobResult = {
