@@ -7491,6 +7491,7 @@ async function generateSingleDocument(
                   if (mid !== xml.slice(rawSecStart, rawSecEnd)) {
                     xml = before + mid + after;
                     didMutate = true;
+                    xmlScrubMutated = true;
                     debugLog(
                       `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"}: scrubbed unresolved balloon-token literals`,
                     );
