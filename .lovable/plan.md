@@ -1,47 +1,51 @@
 ## Goal
 
-Publish a per-property text alias `pr_li_sourceOfInformation_N` for RE851D, sourced from the property's lien `source_of_information`, with proper lien selection and N-property support.
+Publish per-property `ln_p_amountOfEquity_N` for RE851D Part 1 → "LOAN TO VALUE RATIO", computed as Market Value − Remaining Senior Encumbrances.
 
-## Field key
+## Formula
 
-- `pr_li_sourceOfInformation_N` — raw text (Broker / Borrower / Lender / Title / Prelim / Public Record / etc.)
+```
+ln_p_amountOfEquity_N = pr_p_appraiseValue_N − ln_p_remainingEncumbrance_N
+```
 
-Note: distinct from the existing `pr_li_sourceInfoBroker/Borrower/Other_N` checkbox aliases (already implemented). This new tag is the plain text label rendered next to "SOURCE OF INFORMATION" in the document.
+Both inputs are already published per property by the existing pipeline:
+- `pr_p_appraiseValue_N` — from Property → Valuation → Estimate of Value (publisher around line 1351).
+- `ln_p_remainingEncumbrance_N` — sum of senior liens with condition Will Remain / Remain‑Paydown, excluding payoffs (publisher at line 3298). Anticipated and junior contributions are NOT included here, satisfying the exclusion rules.
 
-## Source data
+## Edge cases
 
-`lienK.source_of_information` where `lienK.property === "propertyN"`.
+- No senior liens → remaining is `0.00` → equity = market value.
+- Missing market value → leave `ln_p_amountOfEquity_N` blank (do not emit a `0` that would mask a data gap).
+- Negative equity (remaining > market) → emit the negative number as-is.
 
-## Lien selection (per property)
+## Implementation (single file, minimal change)
 
-1. Filter liens to those bound to `propertyN`.
-2. Prefer lien with `lien_priority_after === "1st"` (string ordinal stored by `lienCalculationEngine.formatOrdinal`).
-3. Else first valid lien (lowest `lienK` index) with non-empty `source_of_information`.
-4. Else first lien for the property regardless of value.
-5. If no lien: write empty string (template renders blank). No "N/A" fallback unless user prefers it.
+`supabase/functions/generate-document/index.ts` — extend the existing per-property publish loop only. Do not refactor.
 
-## Implementation (single file)
+1. **Inside the existing `for (const pi of propIdxSet)` loop (lines 3290–3331)**, after the `pr_p_remainingEncumbrance_${pi}` set:
 
-`supabase/functions/generate-document/index.ts` — extend the existing RE851D lien block (around lines 2785–2890 where `sourceInfoFirst` aggregation already exists). Do not refactor.
+   - Read raw market value: `const mvRaw = fieldValues.get(\`pr_p_appraiseValue_${pi}\`)?.rawValue ?? fieldValues.get(\`property${pi}.appraise_value\`)?.rawValue;`
+   - Parse with the existing `parseAmt2` helper already in scope.
+   - If `mvRaw` is null/empty/undefined → do NOT set `ln_p_amountOfEquity_${pi}` (leave blank; SHIELD will default to empty).
+   - Else compute `equity = mv − rem` and `fieldValues.set(\`ln_p_amountOfEquity_${pi}\`, { rawValue: equity.toFixed(2), dataType: "currency" })`.
+   - Append to the existing console log line to include `equity=${...}`.
 
-1. **Extend `perProp` aggregation buckets**: add `sourceOfInfoText: string` and `sourceOfInfoPriorityFound: boolean`.
-   - On each `lienK` for the property: if `lien_priority_after === "1st"` and not yet set, store `source_of_information` as `sourceOfInfoText` and mark `sourceOfInfoPriorityFound = true`.
-   - Else if not priority-found and `sourceOfInfoText` empty and `source_of_information` non-empty, store it (first-valid fallback).
+2. **Add to `SHIELD_BASES`** (around line 4973 group): `"ln_p_amountOfEquity"` (currency, no `_glyph`) so unmatched indices render blank instead of leaking the merge tag.
 
-2. **In the per-property publish loop**: emit `setText(`pr_li_sourceOfInformation_${pIdx}`, b.sourceOfInfoText || "")`.
+3. **Add to `RE851D_INDEXED_TAGS`** (the `_N` whitelist around lines 3874/3897/3738 — wherever the canonical RE851D indexed tag list lives; verify and add to all three lists where the sibling encumbrance keys appear): `"ln_p_amountOfEquity_N"`.
 
-3. **Add to `SHIELD_BASES`**: `pr_li_sourceOfInformation` (text, no `_glyph`).
-
-4. **Add to `RE851D_INDEXED_TAGS`**: `pr_li_sourceOfInformation_N`.
-
-5. Deploy `generate-document` edge function.
+4. **Deploy** the `generate-document` edge function.
 
 ## Out of scope
 
-- No UI, DB, field_dictionary, template `.docx` changes.
-- Existing checkbox publisher (`pr_li_sourceInfoBroker/Borrower/Other_N`) untouched.
-- No Property Tax source involvement.
+- No UI, DB, `field_dictionary`, or `.docx` template changes.
+- No change to how `pr_p_appraiseValue_N` or `ln_p_remainingEncumbrance_N` are computed.
+- Junior liens, expected/anticipated, and total encumbrances are intentionally not used.
 
 ## Validation
 
-Generate RE851D with: P1 lien priority 1st = "Broker"; P2 two liens (1st="Borrower", 2nd="Lender") → expect "Borrower"; P3 only non-1st liens with "Title / Prelim" → expect "Title / Prelim"; P4 no liens → expect blank.
+Generate RE851D for a deal with:
+- P1: market 100,000, one senior lien remain 30,000 → equity 70,000.00
+- P2: market 200,000, no senior liens → equity 200,000.00
+- P3: market 50,000, senior remain 80,000 → equity −30,000.00
+- P4: market blank, senior remain 10,000 → equity blank
