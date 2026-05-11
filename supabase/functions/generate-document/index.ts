@@ -7431,6 +7431,68 @@ async function generateSingleDocument(
                   `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"} labelsInjected=${labelsInjected}`,
                 );
               }
+
+              // ── Defensive scrub: unresolved balloon-token literals ──
+              // Some authored RE851D templates leave the BALLOON PAYMENT?
+              // Handlebars conditionals (e.g.
+              //   {{#if pr_li_ant_balloonYes_(N)_(S)}}☒{{else}}☐{{/if}}
+              // ) split across <w:r> runs in shapes that defeat both the
+              // parenthesized-index normalize and the main rewriter, so the
+              // raw token text and {{#if .. }} / {{else}} / {{/if}} markers
+              // survive into the rendered document. The glyph-forcing pass
+              // above has already set the correct ☒/☐ checkbox state from
+              // the published booleans, so here we simply strip the literal
+              // noise from <w:t> bodies inside the section window. Strictly
+              // scoped to this section's raw range and to <w:t> text content,
+              // and only touches Handlebars fragments that reference a
+              // pr_li_(rem|ant)_balloon* identifier OR bare balloon token
+              // text — never general prose.
+              {
+                const rawSecStart = map[sm.index] ?? -1;
+                const rawSecEnd = map[Math.min(winEnd, map.length - 1)] ?? region.end;
+                if (rawSecStart >= 0 && rawSecEnd > rawSecStart) {
+                  const before = xml.slice(0, rawSecStart);
+                  const after = xml.slice(rawSecEnd);
+                  let mid = xml.slice(rawSecStart, rawSecEnd);
+                  const balloonTokenRe = /pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown|Amount)(?:_(?:\(?[A-Za-z0-9]+\)?))*+/g;
+                  mid = mid.replace(
+                    /(<w:t(?:\s[^>]*)?>)([^<]*?)(<\/w:t>)/g,
+                    (m, openTag, text, closeTag) => {
+                      if (!/pr_li_(?:rem|ant)_balloon/i.test(text) &&
+                          !/\{\{\s*(?:#if|else|\/if)\b[^{}]*?balloon/i.test(text)) {
+                        return m;
+                      }
+                      let cleaned = text;
+                      // Strip complete Handlebars fragments referencing balloon ids.
+                      cleaned = cleaned.replace(
+                        /\{\{[^{}]*?pr_li_(?:rem|ant)_balloon[^{}]*?\}\}/g,
+                        "",
+                      );
+                      // Strip orphan {{else}} / {{/if}} markers that flanked
+                      // those fragments (only when balloon residue triggered
+                      // this branch — confined to this <w:t>).
+                      cleaned = cleaned.replace(/\{\{\s*else\s*\}\}/g, "");
+                      cleaned = cleaned.replace(/\{\{\s*\/if\s*\}\}/g, "");
+                      // Strip bare token text variants:
+                      //   pr_li_ant_balloonYes_(N)_(S)
+                      //   pr_li_ant_balloonNo_2_1
+                      //   pr_li_rem_balloonUnknown_N
+                      cleaned = cleaned.replace(balloonTokenRe, "");
+                      // Collapse residual whitespace/punctuation noise.
+                      cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
+                      if (cleaned === text) return m;
+                      return `${openTag}${cleaned}${closeTag}`;
+                    },
+                  );
+                  if (mid !== xml.slice(rawSecStart, rawSecEnd)) {
+                    xml = before + mid + after;
+                    didMutate = true;
+                    debugLog(
+                      `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"}: scrubbed unresolved balloon-token literals`,
+                    );
+                  }
+                }
+              }
             }
           }
 
