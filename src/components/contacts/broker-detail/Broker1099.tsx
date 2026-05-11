@@ -192,11 +192,12 @@ const Broker1099: React.FC<Broker1099Props> = ({ values, onValueChange, onSave, 
           </div>
           <div>
             <Label>State <span className="text-destructive">*</span></Label>
-            <Select value={state} onValueChange={v => { setState(v); sync('state', v); markTouched('state'); }} disabled={disabled}>
+            <Select value={state || '__select__'} onValueChange={v => { const nv = v === '__select__' ? '' : v; setState(nv); sync('state', nv); markTouched('state'); }} disabled={disabled}>
               <SelectTrigger className={errors.state ? 'border-destructive' : ''}>
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__select__">Select</SelectItem>
                 {US_STATES.map(s => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
               </SelectContent>
             </Select>
