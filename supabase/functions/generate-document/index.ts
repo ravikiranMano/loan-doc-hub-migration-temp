@@ -1843,6 +1843,7 @@ async function generateSingleDocument(
           "pr_li_sourceInfoBorrower", "pr_li_sourceInfoBorrower_glyph",
           "pr_li_sourceInfoOther", "pr_li_sourceInfoOther_glyph",
           "pr_li_sourceInfoOtherText",
+          "pr_li_sourceOfInformation",
         ];
         // Default-fill: per RE851D spec mutual exclusivity, when no lien data exists
         // for a property the four YES/NO questions render NO checked. Apply this to
@@ -2717,6 +2718,8 @@ async function generateSingleDocument(
           anyPaidOff: boolean;
           sourceInfoFirst: string;
           sourceInfoFirstLienIdx: number | null;
+          sourceOfInfoText: string;
+          sourceOfInfoPriorityFound: boolean;
         }> = {};
 
         const truthy = (v: unknown) => {
@@ -2814,7 +2817,7 @@ async function generateSingleDocument(
           if (pm) {
             const pIdx = parseInt(pm[1], 10);
             if (!perProp[pIdx]) {
-              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null };
+              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null, sourceOfInfoText: "", sourceOfInfoPriorityFound: false };
             }
             const b = perProp[pIdx];
             b.hasLien = true;
@@ -2828,6 +2831,17 @@ async function generateSingleDocument(
             if (b.sourceInfoFirstLienIdx === null) {
               b.sourceInfoFirst = sourceInfoRaw;
               b.sourceInfoFirstLienIdx = lienIdx;
+            }
+            // Source of Information text alias selection: prefer lien with
+            // lien_priority_after === "1st"; else first non-empty value.
+            const priorityAfter = getLienVal(prefix, "lien_priority_after", "lienPriorityAfter").trim().toLowerCase();
+            if (!b.sourceOfInfoPriorityFound) {
+              if (priorityAfter === "1st") {
+                b.sourceOfInfoText = sourceInfoRaw;
+                b.sourceOfInfoPriorityFound = true;
+              } else if (!b.sourceOfInfoText && sourceInfoRaw) {
+                b.sourceOfInfoText = sourceInfoRaw;
+              }
             }
           }
         });
@@ -2908,6 +2922,9 @@ async function generateSingleDocument(
             fieldValues.set(`pr_li_sourceInfoOther_${pIdx}`, { rawValue: isOther ? "true" : "", dataType: "boolean" });
             fieldValues.set(`pr_li_sourceInfoOther_${pIdx}_glyph`, { rawValue: isOther ? "☑" : "☐", dataType: "text" });
             fieldValues.set(`pr_li_sourceInfoOtherText_${pIdx}`, { rawValue: isOther ? siRaw : "", dataType: "text" });
+            // Plain text alias for "SOURCE OF INFORMATION" label (per spec):
+            // Prefer lien priority_after === "1st"; else first non-empty value.
+            fieldValues.set(`pr_li_sourceOfInformation_${pIdx}`, { rawValue: b.sourceOfInfoText || "", dataType: "text" });
           }
 
           if (pIdx === 1) {
@@ -3750,6 +3767,7 @@ async function generateSingleDocument(
           "pr_li_sourceInfoBorrower_N_glyph", "pr_li_sourceInfoBorrower_N",
           "pr_li_sourceInfoOther_N_glyph", "pr_li_sourceInfoOther_N",
           "pr_li_sourceInfoOtherText_N",
+          "pr_li_sourceOfInformation_N",
           "pr_li_encumbranceOfRecord_N",
           "pr_li_encumbranceOfRecord_N_yes", "pr_li_encumbranceOfRecord_N_no",
           "pr_li_encumbranceOfRecord_N_yes_glyph", "pr_li_encumbranceOfRecord_N_no_glyph",
