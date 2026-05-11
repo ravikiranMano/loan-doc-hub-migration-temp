@@ -73,17 +73,19 @@ async function resolveFieldDictId(fieldKey: string, cache: Map<string, string>):
 
   const candidateKeys = Array.from(new Set([fieldKey, resolveLegacyKey(fieldKey)]));
 
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from('field_dictionary')
     .select('id, field_key')
-    .in('field_key', candidateKeys)
-    .limit(1)
-    .maybeSingle();
+    .in('field_key', candidateKeys);
 
-  if (error || !data) {
+  if (error || !rows?.length) {
     console.warn(`[LoanTermsFundingForm] Could not resolve field_dictionary id for "${fieldKey}"`, error);
     return null;
   }
+
+  const data = rows.find((row) => row.field_key === fieldKey)
+    || rows.find((row) => row.field_key === resolveLegacyKey(fieldKey))
+    || rows[0];
 
   cache.set(fieldKey, data.id);
   if (data.field_key !== fieldKey) {

@@ -572,7 +572,18 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
                   const legacyFieldKey = resolveDbKeyToLegacy(fieldMeta.field_key);
                   keyToUse = legacyFieldKey; // Will be the same as field_key if no mapping exists
                 }
-                valuesMap[keyToUse] = value;
+                const existingValue = valuesMap[keyToUse];
+                if (keyToUse === 'loan_terms.funding_records' && existingValue) {
+                  try {
+                    const existingCount = Array.isArray(JSON.parse(existingValue)) ? JSON.parse(existingValue).length : 0;
+                    const nextCount = Array.isArray(JSON.parse(value)) ? JSON.parse(value).length : 0;
+                    if (nextCount >= existingCount) valuesMap[keyToUse] = value;
+                  } catch {
+                    valuesMap[keyToUse] = value;
+                  }
+                } else {
+                  valuesMap[keyToUse] = value;
+                }
               }
             }
           });
