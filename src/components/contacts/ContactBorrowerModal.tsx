@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { US_STATES } from '@/lib/usStates';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } from '@/lib/contactFormValidation';
