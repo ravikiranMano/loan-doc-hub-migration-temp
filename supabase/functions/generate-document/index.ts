@@ -1838,6 +1838,11 @@ async function generateSingleDocument(
           "pr_li_delinquencyPaidByLoan_yes_glyph", "pr_li_delinquencyPaidByLoan_no_glyph",
           "pr_li_delinquHowMany",
           "pr_li_sourceOfPayment",
+          // Source of Information checkboxes (per-property): default to ☐ (blank) when no data
+          "pr_li_sourceInfoBroker", "pr_li_sourceInfoBroker_glyph",
+          "pr_li_sourceInfoBorrower", "pr_li_sourceInfoBorrower_glyph",
+          "pr_li_sourceInfoOther", "pr_li_sourceInfoOther_glyph",
+          "pr_li_sourceInfoOtherText",
         ];
         // Default-fill: per RE851D spec mutual exclusivity, when no lien data exists
         // for a property the four YES/NO questions render NO checked. Apply this to
