@@ -7170,6 +7170,32 @@ async function generateSingleDocument(
                   const value = fmtVal(lookupKey);
                   if (!value) continue;
                   if (cellAlreadyPopulated(tc.open, tc.close, rx)) continue;
+                  // Also check the enclosing <w:tr> row: if a sibling cell in
+                  // the same row already renders the value (because the
+                  // template carries its own merge tag for it in an adjacent
+                  // value cell, e.g. "IF YES, AMOUNT" label cell + separate
+                  // value cell), skip to avoid double-printing.
+                  {
+                    const trOpen = xml.lastIndexOf("<w:tr>", tc.open);
+                    const trOpenAttr = xml.lastIndexOf("<w:tr ", tc.open);
+                    const trStart = Math.max(trOpen, trOpenAttr);
+                    const trEnd = xml.indexOf("</w:tr>", tc.close);
+                    if (trStart >= 0 && trEnd > trStart) {
+                      const rowXml = xml.slice(trStart, trEnd);
+                      // Strip the label cell's contribution then look for the
+                      // formatted value (or its digit-only signature) elsewhere
+                      // in the row.
+                      const rowVisible = rowXml.replace(/<[^>]+>/g, "");
+                      const rowStripped = rowVisible.replace(rx, "");
+                      const valueDigits = value.replace(/[^0-9A-Za-z]/g, "");
+                      if (
+                        valueDigits.length > 0 &&
+                        rowStripped.replace(/[^0-9A-Za-z]/g, "").includes(valueDigits)
+                      ) {
+                        continue;
+                      }
+                    }
+                  }
                   // Append a new <w:p> just before </w:tc>.
                   const para =
                     `<w:p><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
