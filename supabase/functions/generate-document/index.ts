@@ -4262,12 +4262,27 @@ async function generateSingleDocument(
           // those occurrences. Running normalizeWordXml first joins the runs so
           // every `_N` placeholder becomes a contiguous string. This is idempotent
           // — the later processDocx() call will re-normalize as a no-op fast-path.
-          try {
-            xml = normalizeWordXml(xml, template.name || "");
-          } catch (_normErr) {
-            // If normalization fails for any reason, fall back to the raw XML
-            // (preserves previous behavior — partial rewrites are still better
-            // than failing the whole document).
+          //
+          // CPU guard: only invoke normalize when there is evidence of
+          // fragmentation (Word field-code structures or split delimiters).
+          // For multi-property RE851D documents document.xml can exceed 4 MB,
+          // and even the fast-path normalize pays a sizable preCheck cost on
+          // every byte. Skipping it when the template is already flat is safe
+          // because the post-render passes also re-normalize on demand.
+          const needsNormalize =
+            xml.includes("w:fldChar") ||
+            xml.includes("w:fldSimple") ||
+            xml.includes("w:instrText") ||
+            /\{(?:\s|<[^>]+>)+\{/.test(xml) ||
+            /\}(?:\s|<[^>]+>)+\}/.test(xml);
+          if (needsNormalize) {
+            try {
+              xml = normalizeWordXml(xml, template.name || "");
+            } catch (_normErr) {
+              // If normalization fails for any reason, fall back to the raw XML
+              // (preserves previous behavior — partial rewrites are still better
+              // than failing the whole document).
+            }
           }
           // Normalize parenthesized index syntax used by some authored RE851D
           // templates: pr_li_(rem|ant)_<field>_(N)_(S) -> _N_S, _(N) -> _N.
