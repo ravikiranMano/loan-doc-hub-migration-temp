@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { US_STATES } from '@/lib/usStates';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -135,7 +136,15 @@ export const ContactBorrowerDetailForm: React.FC<Props> = ({ borrower, onSave, o
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2"><Label>Street</Label><Input value={form.street} onChange={(e) => set('street', e.target.value)} /></div>
           <div><Label>City</Label><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
-          <div><Label>State</Label><Input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
+          <div><Label>State</Label>
+            <Select value={form.state || '__select__'} onValueChange={(v) => set('state', v === '__select__' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent className="bg-background border border-border z-[200] max-h-60">
+                <SelectItem value="__select__">Select</SelectItem>
+                {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
           <div><Label>ZIP</Label><ZipInput value={form.zip} onValueChange={(v) => set('zip', v)} /></div>
         </div>
       </Section>
@@ -148,7 +157,19 @@ export const ContactBorrowerDetailForm: React.FC<Props> = ({ borrower, onSave, o
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2"><Label>Mailing Street</Label><Input value={form.mailingStreet} onChange={(e) => set('mailingStreet', e.target.value)} readOnly={form.sameAsPrimary} className={form.sameAsPrimary ? 'bg-muted' : ''} /></div>
           <div><Label>Mailing City</Label><Input value={form.mailingCity} onChange={(e) => set('mailingCity', e.target.value)} readOnly={form.sameAsPrimary} className={form.sameAsPrimary ? 'bg-muted' : ''} /></div>
-          <div><Label>Mailing State</Label><Input value={form.mailingState} onChange={(e) => set('mailingState', e.target.value)} readOnly={form.sameAsPrimary} className={form.sameAsPrimary ? 'bg-muted' : ''} /></div>
+          <div><Label>Mailing State</Label>
+            {form.sameAsPrimary ? (
+              <Input value={form.mailingState} readOnly className="bg-muted" />
+            ) : (
+              <Select value={form.mailingState || '__select__'} onValueChange={(v) => set('mailingState', v === '__select__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent className="bg-background border border-border z-[200] max-h-60">
+                  <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <div><Label>Mailing ZIP</Label><ZipInput value={form.mailingZip} onValueChange={(v) => set('mailingZip', v)} readOnly={form.sameAsPrimary} className={form.sameAsPrimary ? 'bg-muted' : ''} /></div>
         </div>
       </Section>

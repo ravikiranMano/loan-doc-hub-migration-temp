@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { US_STATES } from '@/lib/usStates';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } from '@/lib/contactFormValidation';
@@ -121,7 +122,15 @@ export const ContactBorrowerModal: React.FC<ContactBorrowerModalProps> = ({ open
               </RadioGroup>
             </div>
             <div><Label>City</Label><Input value={form.city} onChange={(e) => set('city', e.target.value)} /></div>
-            <div><Label>State</Label><Input value={form.state} onChange={(e) => set('state', e.target.value)} /></div>
+            <div><Label>State</Label>
+              <Select value={form.state || '__select__'} onValueChange={(v) => set('state', v === '__select__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent className="bg-background border border-border z-[200] max-h-60">
+                  <SelectItem value="__select__">Select</SelectItem>
+                  {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2"><Checkbox checked={form.hold} onCheckedChange={(v) => set('hold', !!v)} /><Label>Hold</Label></div>
               <div className="flex items-center gap-2"><Checkbox checked={form.ach} onCheckedChange={(v) => set('ach', !!v)} /><Label>ACH</Label></div>
