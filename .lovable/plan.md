@@ -1,31 +1,28 @@
-Current finding: the latest deployed run still dies with `CPU Time exceeded` after the main DOCX render finishes. The logged render itself is ~400ms; the function is being killed in the remaining RE851D-only work after `processDocx`, before upload/job completion. One job is still `running`, confirming the failure path never reaches the catch/update block.
+## Goal
+Make the "Select" placeholder option always available in every State dropdown so users can re-select it to clear the value, consistent with the existing pattern already used in PropertyDetailsForm, LenderInfoForm, BrokerInfoForm, etc.
 
-Plan:
+## Current state
+Most State dropdowns already render a leading `<SelectItem value="__select__">Select</SelectItem>` and translate `"__select__"` back to empty string on change (see `PropertyDetailsForm.tsx`, `LenderInfoForm.tsx`, `BrokerInfoForm.tsx`, `InsuranceDetailForm.tsx`, `OriginationEscrowTitleForm.tsx`, `OriginationServicingForm.tsx`, `OriginationPropertyForm.tsx`, `LoanTermsServicingForm.tsx`, `BrokerModal.tsx`, `InsuranceModal.tsx`, `LenderAuthorizedPartyForm.tsx`).
 
-1. **Stop repeated RE851D post-render scans**
-   - Replace the separate RE851D post-render safety passes with a single combined pass over `word/document.xml`.
-   - Build visible text/property-region anchors once.
-   - Collect all intended checkbox/value/addendum mutations first, then apply them once in reverse-offset order.
-   - Avoid calling `__xmlSet()` between sub-passes so the projection/lowercase caches are not invalidated repeatedly.
+The dropdowns missing this pattern (where "Select" disappears once a state is chosen) are:
 
-2. **Remove duplicated pre-render XML normalization**
-   - For RE851D `_N` expansion, avoid normalizing the full 4.8 MB XML before the main render unless unresolved `_N` placeholders are actually present.
-   - Keep the existing `_N → _1.._5` behavior, but make it a cheap targeted rewrite path and let the main render own normalization.
+1. `src/components/contacts/CreateContactModal.tsx` — 4 State Selects (lines ~590, ~624, ~826, ~852)
+2. `src/components/contacts/ContactLenderDetailForm.tsx` — 2 State Selects (lines ~219, ~269)
+3. `src/components/contacts/lender-detail/Lender1099.tsx` — 1 State Select (line ~185)
+4. `src/components/contacts/broker-detail/Broker1099.tsx` — 1 State Select (line ~200)
 
-3. **Keep required RE851D calculations intact**
-   - Preserve existing publishers for `li_lt_anticipatedAmount`, `ln_p_amountOfEquity_N`, and `pr_netPropertyValue`.
-   - Cache property/lien totals once and reuse them across generated aliases.
-   - Do not alter document output mappings except where needed to avoid CPU-heavy duplicate work.
+## Changes
+For each Select listed above:
+- Prepend `<SelectItem value="__select__">Select</SelectItem>` inside `SelectContent` (above the `US_STATES.map(...)`).
+- Wrap the existing `onValueChange` so `"__select__"` is normalized to `""` (empty string) before being passed to the existing setter / `onValueChange` handler.
+- Leave `value` binding, placeholder text, and surrounding layout exactly as-is.
 
-4. **Make stuck-job cleanup deterministic**
-   - Add a lightweight cleanup on document-page load / job refresh that marks stale `running` RE851D jobs as `failed` after the timeout window, so the UI no longer stays stuck until another generation is attempted.
-   - Keep the current realtime/polling behavior unchanged.
+No changes to:
+- The existing translation/persistence logic — the empty string is already the cleared value used by current save/update APIs.
+- `DealsPage.tsx`, admin pages (`PacketManagementPage.tsx`, `TemplateManagementPage.tsx`) — those are filter/search controls (not data-entry State dropdowns) and out of scope.
+- Database schema, RLS, APIs, document generation, or any other UI/component.
 
-5. **Validate against the reported case**
-   - Deploy `generate-document` after the code change.
-   - Test with deal `db7517e9-f124-4031-98c8-3e0f33caf889` and template `43492f94-60ad-44c3-a8c2-24dabf36eac7`.
-   - Confirm: no new `CPU Time exceeded`, job reaches `success` or explicit `failed`, and the generated document record appears.
-
-<lov-actions>
-<lov-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</lov-link>
-</lov-actions>
+## Verification
+- Open Create Contact modal → pick a state → reopen the dropdown → confirm "Select" still appears at top and choosing it clears the value.
+- Repeat for Contact → Lender Detail (mailing + 1099 addresses), Lender 1099, Broker 1099.
+- Save the form → reload → confirm cleared state remains empty (using existing save APIs, no schema change).
