@@ -1,25 +1,32 @@
-The issue is still the backend document generation path, not a missing merge value: the latest RE851D run is being killed with `CPU Time exceeded` after rendering the large `word/document.xml` file (~4.8 MB). `EdgeRuntime.waitUntil()` returns the UI response quickly, but it does not bypass Lovable Cloud function CPU limits, so the heavy RE851D post-processing still gets terminated.
+Plan to fix RE851D generation without changing UI polling behavior:
 
-Plan:
+1. Backend job guard and stale cleanup
+- Move stale-running cleanup before creating a new `generation_jobs` record.
+- Before inserting a new RE851D single-document job, check for an existing non-stale running job for the same deal/template and return that job instead of starting another.
+- Mark stale/killed RE851D jobs as failed with a clear timeout message so the UI no longer stays on Running.
 
-1. Reduce RE851D-only backend work before rendering
-   - Keep the existing data calculations and aliases intact.
-   - Avoid full-template preprocessing unless the RE851D template actually contains the specific `_N` placeholders that need rewriting.
-   - Narrow valid-field lookup work for RE851D to the template-specific field keys plus generated aliases instead of carrying the full field dictionary where possible.
+2. Restrict RE851D data/dictionary work
+- For RE851D, avoid full field-dictionary expansion where possible and build the valid-key set from:
+  - template field map keys,
+  - keys actually present in `deal_section_values`,
+  - RE851D dynamic alias families (`_1.._5`, encumbrance slot aliases, calculated aliases).
+- Keep `li_lt_anticipatedAmount`, `ln_p_amountOfEquity_N`, and `pr_netPropertyValue` calculations unchanged, but compute their source lien/property aggregates once and reuse them.
 
-2. Consolidate or skip expensive RE851D post-render safety passes
-   - Keep essential value population for liens, encumbrances, property values, and the new `pr_netPropertyValue` field.
-   - Disable repeated XML-scanning checkbox safety passes when their anchor text is absent.
-   - Reuse a single visible-text projection only where a pass truly needs it, and avoid rebuilding it after unrelated string mutations.
-   - Move simple literal tag replacement into the main merge-tag render path where possible so it does not require another full DOCX scan.
+3. Remove repeated large XML scans
+- Gate the `_N` preprocessing so it only unzips/normalizes when the DOCX XML actually contains `_N` indexed placeholders.
+- For the 4.8 MB `word/document.xml`, consolidate RE851D pre-render rewrites into one pass and avoid calling `normalizeWordXml` both before preprocessing and again during `processDocx` when the XML was already normalized.
+- Disable post-render checkbox safety passes when their anchor text is absent, using cached lowercase/visible-text projections instead of rebuilding projections after each mutation.
+- Keep one final rezip/flush after all RE851D post-render mutations.
 
-3. Fix job status handling so the UI does not show stale “running” work as a new failure
-   - Mark the current job failed if the backend is killed and no completion update arrives within the timeout window.
-   - Prevent duplicate clicks from starting overlapping RE851D generation jobs for the same deal/template while one is already running.
-   - Keep the existing realtime/polling behavior, only make the status reporting more accurate.
+4. Preserve document mapping behavior
+- Ensure `li_lt_anticipatedAmount` is still published from UI lien anticipated amount values.
+- Ensure `ln_p_amountOfEquity_N` remains per-property and currency formatted.
+- Ensure `pr_netPropertyValue` remains backend-only, null-safe, currency formatted, and available as `{{pr_netPropertyValue}}`.
 
-4. Validate against the actual failing deal/template
-   - Deploy the updated `generate-document` function.
-   - Run a single RE851D generation for deal `db7517e9-f124-4031-98c8-3e0f33caf889` / template `43492f94-60ad-44c3-a8c2-24dabf36eac7`.
-   - Confirm the job reaches `success` and does not log `CPU Time exceeded`.
-   - Confirm the generated document still includes `li_lt_anticipatedAmount`, `ln_p_amountOfEquity_N`, and `pr_netPropertyValue` values.
+5. Deploy and validate
+- Deploy only the `generate-document` backend function.
+- Test the specified deal/template:
+  - Deal: `db7517e9-f124-4031-98c8-3e0f33caf889`
+  - Template: `43492f94-60ad-44c3-a8c2-24dabf36eac7`
+- Verify recent function logs no longer show `CPU Time exceeded` and the job reaches `success` or a clear `failed` state.
+- Confirm generated output includes the three required values.
