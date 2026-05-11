@@ -2592,6 +2592,12 @@ async function generateSingleDocument(
         "existing_paydown_amount": "li_bp_existingPaydownAmount",
         "existing_payoff_amount": "li_bp_existingPayoffAmount",
         "existing_remain": "li_lt_existingRemain",
+        "anticipated": "li_lt_anticipated",
+        "anticipated_amount": "li_lt_anticipatedAmount",
+        "existing_paydown": "li_lt_existingPaydown",
+        "existing_payoff": "li_lt_existingPayoff",
+        "existing_paydown_amount": "li_lt_existingPaydownAmount",
+        "existing_payoff_amount": "li_lt_existingPayoffAmount",
       };
 
       // Additional lien bridging: pr_li_* and li_bp_* variants for template tags
@@ -2661,7 +2667,9 @@ async function generateSingleDocument(
         const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
         const aggregated = dedupedEntries.map(e => e.value).join("\n");
         const dataType = (field === "current_balance" || field === "original_balance" || 
-                          field === "regular_payment" || field === "balance_after") ? "currency" : "text";
+                          field === "regular_payment" || field === "balance_after" ||
+                          field === "anticipated_amount" || field === "existing_paydown_amount" ||
+                          field === "existing_payoff_amount") ? "currency" : "text";
 
         // Set pr_li_* key with aggregated value
         const prLiKey = lienFieldToPrLi[field];
