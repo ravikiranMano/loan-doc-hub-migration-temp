@@ -584,9 +584,10 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {brokerErrors['address.city'] && <p className="text-[10px] text-destructive ml-[108px]">{brokerErrors['address.city']}</p>}
               <div className="flex items-center gap-2">
                 <Label className="w-[100px] shrink-0 text-xs">State</Label>
-                <Select value={form['address.state'] || ''} onValueChange={(v) => { set('address.state', v); clrKErr('address.state'); }}>
+                <Select value={form['address.state'] || '__select__'} onValueChange={(v) => { set('address.state', v === '__select__' ? '' : v); clrKErr('address.state'); }}>
                   <SelectTrigger className={cn("h-7 text-xs flex-1", brokerErrors['address.state'] && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent className="bg-background border border-border z-[200]">
+                    <SelectItem value="__select__">Select</SelectItem>
                     {US_STATES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                   </SelectContent>
                 </Select>
