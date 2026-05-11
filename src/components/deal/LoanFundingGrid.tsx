@@ -562,7 +562,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'currentBalance':
         return <span className="font-semibold">{formatCurrency(totalCurrentBalance)}</span>;
       case 'pctOwned': {
-        const totalPctOwned = filteredData.reduce((sum, r) => sum + (Number(r.pctOwned) || 0), 0);
+        const totalPctOwned = filteredData.reduce((sum, r) => sum + getDisplayedPctOwned(r), 0);
         return <span className="font-semibold">{formatPercentage(totalPctOwned, 4)}</span>;
       }
       case 'regularPayment':
