@@ -2667,7 +2667,9 @@ async function generateSingleDocument(
         const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
         const aggregated = dedupedEntries.map(e => e.value).join("\n");
         const dataType = (field === "current_balance" || field === "original_balance" || 
-                          field === "regular_payment" || field === "balance_after") ? "currency" : "text";
+                          field === "regular_payment" || field === "balance_after" ||
+                          field === "anticipated_amount" || field === "existing_paydown_amount" ||
+                          field === "existing_payoff_amount") ? "currency" : "text";
 
         // Set pr_li_* key with aggregated value
         const prLiKey = lienFieldToPrLi[field];
