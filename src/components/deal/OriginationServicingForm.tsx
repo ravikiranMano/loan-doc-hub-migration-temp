@@ -21,6 +21,7 @@ interface OriginationServicingFormProps {
 
 const FK = {
   servicing_agent: 'origination_svc.servicing_agent',
+  servicing_agent_name: 'oo_sa_servicingAgentName',
   // 3rd Party
   tp_name: 'origination_svc.third_party.name',
   tp_street: 'origination_svc.third_party.street',
