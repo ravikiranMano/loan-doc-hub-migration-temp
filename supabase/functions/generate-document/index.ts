@@ -1730,6 +1730,24 @@ async function generateSingleDocument(
           }
         }
       }
+      // ── RE851D: per-property INCOME publisher ──
+      // Source: property{idx}.net_monthly_income (already bridged above).
+      // Derived per-index aliases (no cross-property fallback):
+      //   pr_p_netMonthlyIncome_{N} → numeric monthly value
+      //   pr_p_incomeGenerating_{N} → "Yes" if net>0 else "No" (plain text)
+      //   pr_p_grossAnnualIncome_{N} → net * 12 (numeric, unformatted)
+      for (const idx of sortedPropIndices) {
+        const raw = fieldValues.get(`property${idx}.net_monthly_income`)?.rawValue;
+        const cleaned = String(raw ?? "").replace(/[^0-9.-]/g, "");
+        const net = cleaned === "" || isNaN(parseFloat(cleaned)) ? 0 : parseFloat(cleaned);
+        const annual = net * 12;
+        const incomeYesNo = net > 0 ? "Yes" : "No";
+        fieldValues.set(`pr_p_netMonthlyIncome_${idx}`, { rawValue: String(net), dataType: "number" });
+        fieldValues.set(`pr_p_incomeGenerating_${idx}`, { rawValue: incomeYesNo, dataType: "text" });
+        fieldValues.set(`pr_p_grossAnnualIncome_${idx}`, { rawValue: String(annual), dataType: "number" });
+        console.log(`[RE851D] income prop#${idx}: netMonthly=${raw ?? ""} → incomeGenerating=${incomeYesNo} grossAnnual=${annual}`);
+      }
+
       // Per-index pr_p_address_${idx} auto-compute from per-property components.
       // The bare pr_p_address is auto-computed below from pr_p_street/city/state/zip,
       // but RE851D PROPERTY blocks reference {{pr_p_address_N}} per-index. Without
