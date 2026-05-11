@@ -1860,7 +1860,7 @@ async function generateSingleDocument(
         };
         // Suffixes that take the property index in the MIDDLE
         // (e.g. pr_li_currentDelinqu_<N>_yes_glyph), not at the end.
-        const MIDDLE_INDEX_SUFFIXES = ["_yes_glyph", "_no_glyph", "_yes", "_no"];
+        const MIDDLE_INDEX_SUFFIXES = ["_yes_glyph", "_no_glyph", "_glyph", "_yes", "_no"];
         const blanked: number[] = [];
         for (let idx = 1; idx <= MAX_PROPERTIES; idx++) {
           let blankedThisIdx = false;
