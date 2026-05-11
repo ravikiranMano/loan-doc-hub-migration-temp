@@ -4274,7 +4274,14 @@ async function generateSingleDocument(
             xml.includes("w:fldSimple") ||
             xml.includes("w:instrText") ||
             /\{(?:\s|<[^>]+>)+\{/.test(xml) ||
-            /\}(?:\s|<[^>]+>)+\}/.test(xml);
+            /\}(?:\s|<[^>]+>)+\}/.test(xml) ||
+            // RE851D encumbrance balloon labels are frequently authored with
+            // parenthesized/braced indices (pr_li_(rem|ant)_<field>_(N)_(S))
+            // and Word commonly splits those identifiers across <w:r> runs,
+            // which defeats the parenthesized-index rewrite below. When the
+            // file mentions the encumbrance prefix AND any (N)/{N} marker,
+            // force a normalize so the rewrite + strip passes can match.
+            (xml.includes("pr_li_") && /[\(\{]N[\)\}]/.test(xml));
           if (needsNormalize) {
             try {
               xml = normalizeWordXml(xml, template.name || "");
