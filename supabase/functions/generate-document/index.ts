@@ -4988,7 +4988,7 @@ async function generateSingleDocument(
         "ln_p_expectedEncumbrance", "ln_p_remainingEncumbrance",
         "pr_p_expectedSenior", "pr_p_remainingSenior",
         "pr_p_totalEncumbrance", "pr_p_totalSenior", "pr_p_totalSeniorPlusLoan",
-        "ln_p_totalEncumbrance", "ln_p_totalWithLoan", "ln_p_loanToValueRatio",
+        "ln_p_totalEncumbrance", "ln_p_totalWithLoan", "ln_p_amountOfEquity", "ln_p_loanToValueRatio",
         "property_number",
         // Per-property "Performed By" — both canonical and legacy-misspelled
         // aliases so the conditional resolver does an exact direct match per
