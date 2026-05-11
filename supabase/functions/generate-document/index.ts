@@ -2816,7 +2816,7 @@ async function generateSingleDocument(
           if (pm) {
             const pIdx = parseInt(pm[1], 10);
             if (!perProp[pIdx]) {
-              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null };
+              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null, sourceOfInfoText: "", sourceOfInfoPriorityFound: false };
             }
             const b = perProp[pIdx];
             b.hasLien = true;
@@ -2830,6 +2830,17 @@ async function generateSingleDocument(
             if (b.sourceInfoFirstLienIdx === null) {
               b.sourceInfoFirst = sourceInfoRaw;
               b.sourceInfoFirstLienIdx = lienIdx;
+            }
+            // Source of Information text alias selection: prefer lien with
+            // lien_priority_after === "1st"; else first non-empty value.
+            const priorityAfter = getLienVal(prefix, "lien_priority_after", "lienPriorityAfter").trim().toLowerCase();
+            if (!b.sourceOfInfoPriorityFound) {
+              if (priorityAfter === "1st") {
+                b.sourceOfInfoText = sourceInfoRaw;
+                b.sourceOfInfoPriorityFound = true;
+              } else if (!b.sourceOfInfoText && sourceInfoRaw) {
+                b.sourceOfInfoText = sourceInfoRaw;
+              }
             }
           }
         });
