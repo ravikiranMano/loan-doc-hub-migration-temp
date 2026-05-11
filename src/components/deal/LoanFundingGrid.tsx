@@ -317,6 +317,32 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return map;
   }, [fundingRecords]);
 
+  // Pro Rata rounding: if a record is flagged with `roundingAdjustment`,
+  // absorb the fractional difference between the sum of pctOwned values and
+  // exactly 100% into that record so the column total equals 100%.
+  const computedPctOwned = React.useMemo(() => {
+    const map = new Map<string, number>();
+    if (!fundingRecords.length) return map;
+    fundingRecords.forEach(r => map.set(r.id, Number(r.pctOwned) || 0));
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    if (adjIdx < 0) return map;
+    const sum = fundingRecords.reduce(
+      (acc, r) => acc.plus(new Decimal(Number(r.pctOwned) || 0)),
+      new Decimal(0)
+    );
+    const diff = new Decimal(100).minus(sum);
+    if (diff.isZero()) return map;
+    const adjRec = fundingRecords[adjIdx];
+    const adjusted = new Decimal(Number(adjRec.pctOwned) || 0).plus(diff).toNumber();
+    map.set(adjRec.id, adjusted);
+    return map;
+  }, [fundingRecords]);
+
+  const getDisplayedPctOwned = (record: FundingRecord) => {
+    const v = computedPctOwned.get(record.id);
+    return v !== undefined ? v : (Number(record.pctOwned) || 0);
+  };
+
   const getDisplayedPayment = (record: FundingRecord) => {
     const computed = computedPayments.get(record.id);
     if (computed !== undefined && computed > 0) return computed;
