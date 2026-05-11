@@ -1134,7 +1134,16 @@ async function generateSingleDocument(
         fieldValues.set(`${base}_no`,        { rawValue: isSingle   ? "true" : "false", dataType: "boolean" });
         fieldValues.set(`${base}_yes_glyph`, { rawValue: isMultiple ? "☑" : "☐",       dataType: "text" });
         fieldValues.set(`${base}_no_glyph`,  { rawValue: isSingle   ? "☑" : "☐",       dataType: "text" });
-        console.log(`[RE851D] multipleProperties: realCount=${realPropertyCount} rawIndices=[${sortedPropIndices.join(",")}] realIndices=[${realPropertyIndices.join(",")}] → YES=${isMultiple} NO=${isSingle}`);
+        // Per-property indexed variants — every property section gets the same
+        // global decision so all N sections render YES when count>1, NO when ≤1.
+        for (const idx of sortedPropIndices) {
+          fieldValues.set(`${base}_yes_${idx}`,       { rawValue: isMultiple ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`${base}_no_${idx}`,        { rawValue: isSingle   ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`${base}_yes_glyph_${idx}`, { rawValue: isMultiple ? "☑" : "☐",       dataType: "text" });
+          fieldValues.set(`${base}_no_glyph_${idx}`,  { rawValue: isSingle   ? "☑" : "☐",       dataType: "text" });
+        }
+        fieldValues.set("total_property_count", { rawValue: String(realPropertyCount), dataType: "number" });
+        console.log(`[RE851D] multipleProperties: realCount=${realPropertyCount} rawIndices=[${sortedPropIndices.join(",")}] realIndices=[${realPropertyIndices.join(",")}] → YES=${isMultiple} NO=${isSingle} (per-index published for [${sortedPropIndices.join(",")}])`);
       }
 
       // ── RE851D: Build property-address → property-index map ──
