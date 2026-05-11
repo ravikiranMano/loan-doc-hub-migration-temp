@@ -226,6 +226,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   loanNumber,
   borrowerName,
   fundingRecords,
+  totalRecordCount,
   historyRecords = [],
   onAddFunding,
   onDeleteRecord,
