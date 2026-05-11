@@ -273,15 +273,16 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // Auto-clear search/filter constraints when grid record count grows
   // (e.g., after adding a new Funding record), so newly added rows are
   // never hidden behind a stale search/filter.
-  const prevRecordsLenRef = useRef(fundingRecords.length);
+  const effectiveTotalCount = totalRecordCount ?? fundingRecords.length;
+  const prevTotalRef = useRef(effectiveTotalCount);
   useEffect(() => {
-    if (fundingRecords.length > prevRecordsLenRef.current) {
+    if (effectiveTotalCount > prevTotalRef.current) {
       if (searchQuery || activeFilterCount > 0) {
         clearFilters();
       }
     }
-    prevRecordsLenRef.current = fundingRecords.length;
-  }, [fundingRecords.length, searchQuery, activeFilterCount, clearFilters]);
+    prevTotalRef.current = effectiveTotalCount;
+  }, [effectiveTotalCount, searchQuery, activeFilterCount, clearFilters]);
 
   const {
     selectedIds, selectedItems, toggleOne, toggleAll, clearSelection,
