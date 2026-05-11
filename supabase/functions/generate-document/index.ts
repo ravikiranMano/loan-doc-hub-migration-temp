@@ -3744,6 +3744,12 @@ async function generateSingleDocument(
           "pr_li_currentDelinqu_N",
           "pr_li_sourceOfPayment_N",
           "pr_li_delinquHowMany_N",
+          // Source of Information checkboxes (per-property). _glyph listed first
+          // so longest-match wins over the bare boolean key.
+          "pr_li_sourceInfoBroker_N_glyph", "pr_li_sourceInfoBroker_N",
+          "pr_li_sourceInfoBorrower_N_glyph", "pr_li_sourceInfoBorrower_N",
+          "pr_li_sourceInfoOther_N_glyph", "pr_li_sourceInfoOther_N",
+          "pr_li_sourceInfoOtherText_N",
           "pr_li_encumbranceOfRecord_N",
           "pr_li_encumbranceOfRecord_N_yes", "pr_li_encumbranceOfRecord_N_no",
           "pr_li_encumbranceOfRecord_N_yes_glyph", "pr_li_encumbranceOfRecord_N_no_glyph",
