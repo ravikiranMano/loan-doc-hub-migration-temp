@@ -3767,6 +3767,7 @@ async function generateSingleDocument(
           "pr_li_sourceInfoBorrower_N_glyph", "pr_li_sourceInfoBorrower_N",
           "pr_li_sourceInfoOther_N_glyph", "pr_li_sourceInfoOther_N",
           "pr_li_sourceInfoOtherText_N",
+          "pr_li_sourceOfInformation_N",
           "pr_li_encumbranceOfRecord_N",
           "pr_li_encumbranceOfRecord_N_yes", "pr_li_encumbranceOfRecord_N_no",
           "pr_li_encumbranceOfRecord_N_yes_glyph", "pr_li_encumbranceOfRecord_N_no_glyph",
