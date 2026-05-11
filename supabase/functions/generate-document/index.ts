@@ -983,6 +983,40 @@ async function generateSingleDocument(
       }
     }
 
+    // Auto-compute origination_app.expense.total_expenses as the sum of all expense components.
+    // Treats null/undefined/non-numeric values as 0. Does not overwrite if already provided.
+    {
+      const expenseKeys = [
+        "origination_app.expense.credit_card",
+        "origination_app.expense.mortgage",
+        "origination_app.expense.spousal_child_support",
+        "origination_app.expense.insurance",
+        "origination_app.expense.automobile",
+        "origination_app.expense.other",
+      ];
+      const toNumber = (v: unknown): number => {
+        if (v === null || v === undefined || v === "") return 0;
+        const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[$,\s]/g, ""));
+        return isNaN(n) ? 0 : n;
+      };
+      const totalExpenseKey = "origination_app.expense.total_expenses";
+      const existingTotal = fieldValues.get(totalExpenseKey);
+      if (!existingTotal || existingTotal.rawValue === null || existingTotal.rawValue === undefined || existingTotal.rawValue === "") {
+        let total = 0;
+        for (const k of expenseKeys) {
+          const fd = getFieldData(k, fieldValues);
+          if (fd) total += toNumber(fd.data.rawValue);
+        }
+        fieldValues.set(totalExpenseKey, { rawValue: total, dataType: "currency" });
+        debugLog(`[generate-document] Computed ${totalExpenseKey} = ${total}`);
+      }
+      // Backend-only alias for document mapping: {{oo_totalExpenses}}
+      const finalTotalExp = fieldValues.get(totalExpenseKey);
+      if (finalTotalExp) {
+        fieldValues.set("oo_totalExpenses", { rawValue: finalTotalExp.rawValue, dataType: "currency" });
+      }
+    }
+
     // Auto-compute borrower.borrower_description if not already set
     const existingDesc = fieldValues.get("borrower.borrower_description");
     if (!existingDesc || !existingDesc.rawValue) {
