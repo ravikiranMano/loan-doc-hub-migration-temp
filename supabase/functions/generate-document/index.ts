@@ -5276,34 +5276,33 @@ async function generateSingleDocument(
       }
       const txt = txtParts.join("");
       const segN = s;
-      const lookup = (ti: number): number => {
-        if (ti < 0) return 0;
-        if (ti >= txt.length) return xml.length;
-        let lo = 0, hi = segN - 1, best = 0;
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          if (txtStart[mid] <= ti) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
+      // Materialize a dense Int32Array map: txt-index -> xml-index. Uses
+      // sequential per-segment fill (O(N) total) instead of the previous
+      // O(log n) Proxy lookup per access. The 6 RE851D safety passes do
+      // many millions of map[i] accesses on 4.8 MB documents — Proxy traps
+      // and binary searches were the dominant CPU sink that pushed the
+      // function past the edge runtime CPU limit. A typed array of ~3M
+      // int32 entries is ~12 MB of heap, well within the function memory
+      // budget and orders of magnitude faster on access.
+      const denseMap = new Int32Array(txt.length + 1);
+      for (let si = 0; si < segN; si++) {
+        const ts = txtStart[si];
+        const xs = xmlStart[si];
+        const sl = segLen[si];
+        if (sl === 0) {
+          // Synthetic space — single txt position maps to the '<' offset.
+          denseMap[ts] = xs;
+        } else {
+          for (let k = 0; k < sl; k++) denseMap[ts + k] = xs + k;
         }
-        const off = ti - txtStart[best];
-        return segLen[best] === 0 ? xmlStart[best] : xmlStart[best] + off;
-      };
-      // Lazy index-access proxy so existing `map[i]` and `map.length` call
-      // sites continue to work unchanged with O(log n) lookup.
-      const map = new Proxy({ length: txt.length } as { length: number; [i: number]: number }, {
-        get(target, prop) {
-          if (prop === "length") return target.length;
-          if (typeof prop === "string") {
-            const idx = Number(prop);
-            if (Number.isInteger(idx)) return lookup(idx);
-          }
-          return undefined;
-        },
-      }) as unknown as { length: number; [i: number]: number };
+      }
+      denseMap[txt.length] = xml.length;
+      const map = denseMap as unknown as { length: number; [i: number]: number };
       const propAnchorsRaw: number[] = [];
       const propRe = /\bPROPERTY\s+INFORMATION\b/gi;
       let m: RegExpExecArray | null;
       while ((m = propRe.exec(txt)) !== null) {
-        propAnchorsRaw.push(lookup(m.index));
+        propAnchorsRaw.push(denseMap[m.index]);
         if (propAnchorsRaw.length >= 5) break;
       }
       const propRanges: __VisProj["propRanges"] = [];
