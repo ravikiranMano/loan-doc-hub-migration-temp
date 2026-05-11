@@ -1,69 +1,47 @@
 ## Goal
 
-Map RE851D "Source of Information" checkboxes (Broker Inquiry / Borrower / Other) per property, derived from `lienK.source_of_information`, with full N-property support. Add an "Other (Explain)" text alias for non-Broker/Borrower values.
+Publish a per-property text alias `pr_li_sourceOfInformation_N` for RE851D, sourced from the property's lien `source_of_information`, with proper lien selection and N-property support.
 
-## Field keys (template tags)
+## Field key
 
-Per property `_N` (and also published per-lien `_K` for safety):
+- `pr_li_sourceOfInformation_N` — raw text (Broker / Borrower / Lender / Title / Prelim / Public Record / etc.)
 
-- `pr_li_sourceInfoBroker_N` (+ `_glyph`)
-- `pr_li_sourceInfoBorrower_N` (+ `_glyph`)
-- `pr_li_sourceInfoOther_N` (+ `_glyph`)
-- `pr_li_sourceInfoOtherText_N` (text)
-
-Mutually exclusive: exactly one `_glyph` is `☑`, the other two `☐`. If a property has no lien, all three `_glyph` default to `☐` (no auto-NO behavior; matches form layout — empty checkboxes).
+Note: distinct from the existing `pr_li_sourceInfoBroker/Borrower/Other_N` checkbox aliases (already implemented). This new tag is the plain text label rendered next to "SOURCE OF INFORMATION" in the document.
 
 ## Source data
 
-`lienK.source_of_information` (UI key in `LienDetailForm` / `LienModal`, dropdown values: `Borrower`, `Broker`, `Lender`, `Title / Prelim`, `Public Record`).
+`lienK.source_of_information` where `lienK.property === "propertyN"`.
 
-Match rules (case-insensitive, trimmed):
-- `"broker"` → Broker checked
-- `"borrower"` → Borrower checked
-- anything else non-empty → Other checked, `pr_li_sourceInfoOtherText_N = <value>`
-- empty → all unchecked, otherText = `""`
+## Lien selection (per property)
 
-## Per-property rule
-
-For property index `N`, use the **first lien** (lowest `lienK` ordinal) where `lienK.property === "propertyN"`. Ignore later liens for the checkbox decision. Do not fall back across properties.
+1. Filter liens to those bound to `propertyN`.
+2. Prefer lien with `lien_priority_after === "1st"` (string ordinal stored by `lienCalculationEngine.formatOrdinal`).
+3. Else first valid lien (lowest `lienK` index) with non-empty `source_of_information`.
+4. Else first lien for the property regardless of value.
+5. If no lien: write empty string (template renders blank). No "N/A" fallback unless user prefers it.
 
 ## Implementation (single file)
 
-`supabase/functions/generate-document/index.ts`, inside the existing RE851D lien-delinquency block (around line 2686–2840) — extend, do not refactor:
+`supabase/functions/generate-document/index.ts` — extend the existing RE851D lien block (around lines 2785–2890 where `sourceInfoFirst` aggregation already exists). Do not refactor.
 
-1. **In the `orderedLiens.forEach` per-lien loop** (after existing `setText pr_li_sourceOfPayment_${lienIdx}`):
-   - Read `getLienVal(prefix, "source_of_information", "sourceOfInformation")`.
-   - Compute `isBroker`, `isBorrower`, `isOther` (= non-empty AND not broker/borrower).
-   - Publish `pr_li_sourceInfoBroker_${lienIdx}` (+ `_glyph`), `_Borrower_${lienIdx}` (+ `_glyph`), `_Other_${lienIdx}` (+ `_glyph`), `pr_li_sourceInfoOtherText_${lienIdx}` (only when `isOther`, else `""`).
+1. **Extend `perProp` aggregation buckets**: add `sourceOfInfoText: string` and `sourceOfInfoPriorityFound: boolean`.
+   - On each `lienK` for the property: if `lien_priority_after === "1st"` and not yet set, store `source_of_information` as `sourceOfInfoText` and mark `sourceOfInfoPriorityFound = true`.
+   - Else if not priority-found and `sourceOfInfoText` empty and `source_of_information` non-empty, store it (first-valid fallback).
 
-2. **In the `perProp` aggregation buckets**, add fields: `sourceInfoFirst: string` and `sourceInfoFirstLienIdx: number | null`. Populate ONLY when `b.sourceInfoFirstLienIdx === null` (i.e., keep the first lien's value).
+2. **In the per-property publish loop**: emit `setText(`pr_li_sourceOfInformation_${pIdx}`, b.sourceOfInfoText || "")`.
 
-3. **In the per-property publish loop** (after `pr_li_sourceOfPayment_${pIdx}` set), publish the four `_N` aliases using the property's first-lien source value with the same broker/borrower/other resolver. When no lien exists for the property, write empty string + `☐` for all three glyphs.
+3. **Add to `SHIELD_BASES`**: `pr_li_sourceOfInformation` (text, no `_glyph`).
 
-4. **Add to `SHIELD_BASES`** (lines 1794–1841):
-   - `pr_li_sourceInfoBroker`, `pr_li_sourceInfoBroker_glyph`
-   - `pr_li_sourceInfoBorrower`, `pr_li_sourceInfoBorrower_glyph`
-   - `pr_li_sourceInfoOther`, `pr_li_sourceInfoOther_glyph`
-   - `pr_li_sourceInfoOtherText`
+4. **Add to `RE851D_INDEXED_TAGS`**: `pr_li_sourceOfInformation_N`.
 
-5. **Extend `GLYPH_DEFAULTS_NO_CHECKED`** sibling logic only for these three glyph keys to default to `☐` (not `☑`) — they should be empty when no data, never auto-NO.
-
-6. **Add to `RE851D_INDEXED_TAGS`** (line 3674+):
-   - `pr_li_sourceInfoBroker_N_glyph`, `pr_li_sourceInfoBroker_N`
-   - `pr_li_sourceInfoBorrower_N_glyph`, `pr_li_sourceInfoBorrower_N`
-   - `pr_li_sourceInfoOther_N_glyph`, `pr_li_sourceInfoOther_N`
-   - `pr_li_sourceInfoOtherText_N`
-
-7. Deploy `generate-document` edge function.
+5. Deploy `generate-document` edge function.
 
 ## Out of scope
 
-- No UI changes (LienDetailForm/LienModal already have `Source of Information` field).
-- No DB schema, no field_dictionary changes, no template `.docx` edits.
-- No other RE851D passes (delinquency, encumbrance, multi-property, taxes) are touched.
-- No post-render checkbox safety pass added (template uses direct `_glyph` substitution, mirroring existing `pr_pt_actual_N_glyph` / `pr_pt_estimated_N_glyph` pattern).
+- No UI, DB, field_dictionary, template `.docx` changes.
+- Existing checkbox publisher (`pr_li_sourceInfoBroker/Borrower/Other_N`) untouched.
+- No Property Tax source involvement.
 
 ## Validation
 
-- Generate RE851D with mixed liens: P1 lien=Broker, P2 lien=Borrower, P3 lien=Title/Prelim, P4 no lien.
-- Expect: P1 ☑ Broker; P2 ☑ Borrower; P3 ☑ Other with "Title / Prelim" in explain blank; P4 all ☐.
+Generate RE851D with: P1 lien priority 1st = "Broker"; P2 two liens (1st="Borrower", 2nd="Lender") → expect "Borrower"; P3 only non-1st liens with "Title / Prelim" → expect "Title / Prelim"; P4 no liens → expect blank.
