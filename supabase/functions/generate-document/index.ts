@@ -5618,33 +5618,50 @@ async function generateSingleDocument(
               touched = true;
             }
 
-            // Fallback: glyph(s) sit inside the SAME <w:t> as the YES/NO
-            // label (e.g. "☐ YES" in one run). Rewrite the glyph in-place
-            // inside that <w:t>, scoped strictly to the run that contains
-            // the label. Skip a side already handled above.
+            // Helper: locate the enclosing <w:t…>…</w:t> bounds for a given
+            // visible label position. Returns inner-content range or null.
+            const wtBoundsFor = (labelXml: number): { openTagEnd: number; closeStart: number; inner: string } | null => {
+              const wtOpen = xml.lastIndexOf("<w:t", labelXml);
+              if (wtOpen < 0 || labelXml - wtOpen > 600) return null;
+              const openTagEnd = xml.indexOf(">", wtOpen);
+              if (openTagEnd === -1 || openTagEnd > labelXml) return null;
+              const closeStart = xml.indexOf("</w:t>", labelXml);
+              if (closeStart === -1 || closeStart - openTagEnd > 1200) return null;
+              const inner = xml.slice(openTagEnd + 1, closeStart);
+              return { openTagEnd, closeStart, inner };
+            };
+
+            // Position-aware single-glyph rewrite within the SAME <w:t> as
+            // the label. Replaces only the glyph nearest to (and on a
+            // sensible side of) the label position — never global-replaces.
             const inlineForLabel = (
               labelXml: number,
               glyph: string,
               skip: boolean,
             ) => {
               if (skip) return;
-              // Look-back ~200 bytes for the enclosing <w:t…>; the label is
-              // visible-text adjacent so this window safely covers it.
-              const lo = Math.max(0, labelXml - 200);
-              const wtOpen = xml.lastIndexOf("<w:t", labelXml);
-              if (wtOpen < lo) return;
-              const wtCloseTagStart = xml.indexOf("</w:t>", labelXml);
-              if (wtCloseTagStart === -1 || wtCloseTagStart - wtOpen > 600) return;
-              const openTagEnd = xml.indexOf(">", wtOpen);
-              if (openTagEnd === -1 || openTagEnd > labelXml) return;
-              const inner = xml.slice(openTagEnd + 1, wtCloseTagStart);
-              if (!/[☐☑☑]/.test(inner)) return;
-              const newInner = inner.replace(/[☐☑☑]/g, glyph);
-              if (newInner === inner) return;
-              if (overlaps(openTagEnd + 1, wtCloseTagStart)) return;
+              const b = wtBoundsFor(labelXml);
+              if (!b) return;
+              if (overlaps(b.openTagEnd + 1, b.closeStart)) return;
+              const localLabel = labelXml - (b.openTagEnd + 1);
+              const glyphRe = /[☐☑]/g;
+              let best: { idx: number; d: number } | null = null;
+              let gm: RegExpExecArray | null;
+              while ((gm = glyphRe.exec(b.inner)) !== null) {
+                // Prefer glyphs to the LEFT of the label (typical layout
+                // is "☐ YES"); fall back to the closest glyph either side.
+                const d = gm.index <= localLabel
+                  ? localLabel - gm.index
+                  : (gm.index - localLabel) + 1000; // heavy penalty for right side
+                if (!best || d < best.d) best = { idx: gm.index, d };
+              }
+              if (!best) return;
+              const newInner =
+                b.inner.slice(0, best.idx) + glyph + b.inner.slice(best.idx + 1);
+              if (newInner === b.inner) return;
               inlineRewrites.push({
-                start: openTagEnd + 1,
-                end: wtCloseTagStart,
+                start: b.openTagEnd + 1,
+                end: b.closeStart,
                 replacement: newInner,
               });
               touched = true;
@@ -5652,30 +5669,36 @@ async function generateSingleDocument(
 
             // Combined-pair pass: when both YES and NO labels share ONE <w:t>
             // (e.g. "☐ YES   ☐ NO" produced by a single resolved merge-tag
-            // paragraph), the per-label inlineForLabel above does a global
-            // regex replace that flips both glyphs to the same value. Detect
-            // this exact pattern in the run that contains the YES label and
-            // rewrite the two glyph chars positionally so YES gets yesGlyph
-            // and NO gets noGlyph.
+            // paragraph), rewrite the two glyph chars positionally — first
+            // glyph → yesGlyph, second glyph → noGlyph — to avoid two
+            // competing single-side rewrites racing on the same run.
+            // Tolerates leading whitespace/NBSP, alternative separators,
+            // and varying label spelling.
             const combinedPairForRun = (): boolean => {
               if (yC || nC) return false;
-              const wtOpen = xml.lastIndexOf("<w:t", yXmlIdx);
-              if (wtOpen < 0) return false;
-              const openTagEnd = xml.indexOf(">", wtOpen);
-              if (openTagEnd === -1 || openTagEnd > yXmlIdx) return false;
-              const wtCloseTagStart = xml.indexOf("</w:t>", yXmlIdx);
-              if (wtCloseTagStart === -1) return false;
+              const b = wtBoundsFor(yXmlIdx);
+              if (!b) return false;
               // Both YES and NO must live in the same <w:t>.
-              if (nXmlIdx <= openTagEnd || nXmlIdx >= wtCloseTagStart) return false;
-              const inner = xml.slice(openTagEnd + 1, wtCloseTagStart);
-              const m = inner.match(/^([☐☑])(\s*(?:Y\s*E\s*S|Yes)\s+)([☐☑])(\s*(?:N\s*O|No)\b)/);
-              if (!m) return false;
-              const newInner = `${yesGlyph}${m[2]}${noGlyph}${m[4]}${inner.slice(m[0].length)}`;
-              if (newInner === inner) return false;
-              if (overlaps(openTagEnd + 1, wtCloseTagStart)) return false;
+              if (nXmlIdx <= b.openTagEnd || nXmlIdx >= b.closeStart) return false;
+              if (overlaps(b.openTagEnd + 1, b.closeStart)) return false;
+              // Find first two glyph positions in inner.
+              const glyphRe = /[☐☑]/g;
+              const positions: number[] = [];
+              let gm: RegExpExecArray | null;
+              while ((gm = glyphRe.exec(b.inner)) !== null) {
+                positions.push(gm.index);
+                if (positions.length >= 2) break;
+              }
+              if (positions.length < 2) return false;
+              const [p1, p2] = positions;
+              const newInner =
+                b.inner.slice(0, p1) + yesGlyph +
+                b.inner.slice(p1 + 1, p2) + noGlyph +
+                b.inner.slice(p2 + 1);
+              if (newInner === b.inner) return false;
               inlineRewrites.push({
-                start: openTagEnd + 1,
-                end: wtCloseTagStart,
+                start: b.openTagEnd + 1,
+                end: b.closeStart,
                 replacement: newInner,
               });
               touched = true;
@@ -5685,8 +5708,18 @@ async function generateSingleDocument(
             inlineForLabel(yXmlIdx, yesGlyph, !!yC || combinedHandled);
             inlineForLabel(nXmlIdx, noGlyph, !!nC || combinedHandled);
 
+            // Diagnostic: when nothing handled this occurrence, log a short
+            // snippet of the YES-label run so future regressions are visible.
+            if (!touched) {
+              const dbg = wtBoundsFor(yXmlIdx);
+              const snippet = dbg ? dbg.inner.slice(0, 80).replace(/\s+/g, " ") : "(no <w:t> bounds)";
+              console.log(
+                `[generate-document] RE851D multi-properties post-render occ#${qi + 1}: NO HANDLER MATCHED — innerSnippet="${snippet}"`,
+              );
+            }
+
             console.log(
-              `[generate-document] RE851D multi-properties post-render occ#${qi + 1}: propCount=${propCount} => YES=${yesGlyph} NO=${noGlyph} (yC=${yC ? yC.kind : "none"}, nC=${nC ? nC.kind : "none"}, inline=${inlineRewrites.length}, touched=${touched})`,
+              `[generate-document] RE851D multi-properties post-render occ#${qi + 1}: propCount=${propCount} => YES=${yesGlyph} NO=${noGlyph} (yC=${yC ? yC.kind : "none"}, nC=${nC ? nC.kind : "none"}, combined=${combinedHandled}, inline=${inlineRewrites.length}, touched=${touched})`,
             );
           }
 
