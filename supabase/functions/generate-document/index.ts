@@ -7215,6 +7215,10 @@ async function generateSingleDocument(
 
           type Insert = { at: number; html: string };
           const inserts: Insert[] = [];
+          // Set true when the defensive balloon-token scrub mutates `xml`
+          // outside the `inserts` flow so the empty-inserts early-exit still
+          // flushes the cleaned XML back into the rezip cache.
+          let xmlScrubMutated = false;
 
           // Helper: given a raw xml position inside a label, return the [tcStart, tcEnd]
           // (positions of "<w:tc" start tag and the END index of the matching "</w:tc>").
