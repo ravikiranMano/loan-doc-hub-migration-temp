@@ -400,7 +400,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       regularPayment: String(record.regularPayment),
       lenderShare: String(record.lenderShare || ''),
       rateSelection: record.rateSelection || 'note_rate',
-      rateNoteValue: record.rateNoteValue || noteRate,
+      rateNoteValue: noteRate || record.rateNoteValue || '',
       rateSoldValue: soldRate || record.rateSoldValue || '',
       rateLenderValue: record.rateLenderValue || '',
       lenderRateOverride: record.lenderRateOverride || false,
