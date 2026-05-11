@@ -502,7 +502,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'interestFrom':
         return formatDate(record.interestFrom) || '-';
       case 'noteRate':
-        return <span>{record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : (noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : '-')}</span>;
+        // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
+        return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
       case 'lenderRate':
         return <span>{formatPercentage(record.lenderRate, 3)}</span>;
       case 'regularPayment':
