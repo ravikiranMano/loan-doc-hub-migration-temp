@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -267,6 +267,19 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     searchQuery, setSearchQuery, sortState, toggleSort,
     activeFilters, setFilter, clearFilters, activeFilterCount, filteredData,
   } = useGridSortFilter(fundingRecords, SEARCH_FIELDS);
+
+  // Auto-clear search/filter constraints when grid record count grows
+  // (e.g., after adding a new Funding record), so newly added rows are
+  // never hidden behind a stale search/filter.
+  const prevRecordsLenRef = useRef(fundingRecords.length);
+  useEffect(() => {
+    if (fundingRecords.length > prevRecordsLenRef.current) {
+      if (searchQuery || activeFilterCount > 0) {
+        clearFilters();
+      }
+    }
+    prevRecordsLenRef.current = fundingRecords.length;
+  }, [fundingRecords.length, searchQuery, activeFilterCount, clearFilters]);
 
   const {
     selectedIds, selectedItems, toggleOne, toggleAll, clearSelection,

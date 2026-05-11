@@ -499,6 +499,8 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord]);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
+    // Ensure newly added record is visible by jumping to the page that contains it.
+    setCurrentPage(Math.max(1, Math.ceil(updatedRecords.length / pageSize)));
 
     // Build updated history
     const historyValue = values[FIELD_KEYS.fundingHistory];
