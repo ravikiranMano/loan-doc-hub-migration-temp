@@ -1843,6 +1843,7 @@ async function generateSingleDocument(
           "pr_li_sourceInfoBorrower", "pr_li_sourceInfoBorrower_glyph",
           "pr_li_sourceInfoOther", "pr_li_sourceInfoOther_glyph",
           "pr_li_sourceInfoOtherText",
+          "pr_li_sourceOfInformation",
         ];
         // Default-fill: per RE851D spec mutual exclusivity, when no lien data exists
         // for a property the four YES/NO questions render NO checked. Apply this to
