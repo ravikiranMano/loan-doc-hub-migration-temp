@@ -7502,7 +7502,11 @@ async function generateSingleDocument(
           }
 
           if (inserts.length === 0) {
-            rezip[filename] = [bytes, { level: 0 }];
+            if (xmlScrubMutated) {
+              rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            } else {
+              rezip[filename] = [bytes, { level: 0 }];
+            }
             continue;
           }
           // Apply: split into pure inserts (at >= 0) and replacements (at < 0 with marker)
