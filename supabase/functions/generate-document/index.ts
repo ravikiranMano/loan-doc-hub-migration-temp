@@ -3294,6 +3294,102 @@ async function generateSingleDocument(
           publishSection("pr_li_rem", perPropRem);
           publishSection("pr_li_ant", perPropAnt);
 
+          // ── Amount Owing universal fallback publisher ──
+          // The questionnaire XVI tables ("Liens that are not paid off…" and
+          // "Liens that will remain or are anticipated…") in some authored
+          // RE851D templates iterate ALL liens (rather than the bucketed
+          // pr_li_rem_/pr_li_ant_ slots) and reference Amount Owing via
+          // direct lien-prefix tags (e.g. {{lien1.amount_owing}}) OR via the
+          // opposite-bucket prefixed tag for the same row. To guarantee the
+          // cell renders for every lien regardless of classification, also
+          // publish:
+          //   1. Flat aliases on the lien prefix itself
+          //        <lp>.amount_owing  /  <lp>.amountOwing
+          //   2. Per-lien-index aliases  lien<K>.amount_owing / lien<K>.amountOwing
+          //   3. Cross-bucket per-property/per-slot aliases — only when the
+          //      target key has not already been set by publishSection (so we
+          //      never overwrite a real bucketed value).
+          {
+            const remStyle = (lp: string) => {
+              const get = (s: string) => String(fieldValues.get(`${lp}.${s}`)?.rawValue ?? "").trim();
+              return get("current_balance") || get("currentBalance")
+                  || get("existing_payoff_amount") || get("existingPayoffAmount")
+                  || get("existing_paydown_amount") || get("existingPaydownAmount")
+                  || get("original_balance") || get("originalBalance");
+            };
+            const antStyle = (lp: string) => {
+              const get = (s: string) => String(fieldValues.get(`${lp}.${s}`)?.rawValue ?? "").trim();
+              return get("new_remaining_balance") || get("newRemainingBalance")
+                  || get("anticipated_amount") || get("anticipatedAmount")
+                  || get("original_balance") || get("originalBalance")
+                  || get("current_balance") || get("currentBalance");
+            };
+            const setIfMissing = (k: string, v: string) => {
+              if (!v) return;
+              const cur = fieldValues.get(k);
+              const curStr = cur ? String(cur.rawValue ?? "").trim() : "";
+              if (!curStr) fieldValues.set(k, { rawValue: v, dataType: "currency" });
+            };
+            // Build a per-property → ordered list of ALL liens (not bucketed)
+            // so we can emit cross-bucket _N_S keys mirroring publishSection's
+            // slot numbering.
+            const perPropAll: Record<number, string[]> = {};
+            orderedLiens.forEach((prefix) => {
+              const propRaw = String(fieldValues.get(`${prefix}.property`)?.rawValue ?? "").trim();
+              const pm = propRaw.match(/^property(\d+)$/);
+              if (!pm) return;
+              const pIdx = parseInt(pm[1], 10);
+              (perPropAll[pIdx] ||= []).push(prefix);
+            });
+            for (const [pIdxStr, lps] of Object.entries(perPropAll)) {
+              const pIdx = parseInt(pIdxStr, 10);
+              lps.forEach((lp, sIdx0) => {
+                const s = sIdx0 + 1;
+                const rem = remStyle(lp);
+                const ant = antStyle(lp);
+                // Flat lien-prefix aliases — for templates that read directly.
+                if (rem || ant) {
+                  const flat = ant || rem;
+                  setIfMissing(`${lp}.amount_owing`, flat);
+                  setIfMissing(`${lp}.amountOwing`, flat);
+                }
+                // lien<K>.* aliases (lien1, lien2, …) keyed by global lien
+                // ordinal so {{lienK.amount_owing}} resolves universally.
+                const lienOrdMatch = lp.match(/lien(\d+)$/i);
+                if (lienOrdMatch) {
+                  const k = lienOrdMatch[1];
+                  if (rem) {
+                    setIfMissing(`lien${k}.amount_owing`, rem);
+                    setIfMissing(`lien${k}.amountOwing`, rem);
+                  }
+                  if (ant) {
+                    // ANT-flavoured alias for templates that prefer the
+                    // anticipated-source value on the same lien tag.
+                    setIfMissing(`lien${k}.amount_owing_anticipated`, ant);
+                    setIfMissing(`lien${k}.amountOwing_anticipated`, ant);
+                  }
+                }
+                // Cross-bucket per-property/per-slot fallback. Only fills a
+                // key when it's currently empty — never overrides the
+                // bucketed publishSection value.
+                const aliasNames = ["amountOwing", "amount_owing", "amount", "owing"];
+                for (const a of aliasNames) {
+                  if (rem) {
+                    setIfMissing(`pr_li_rem_${a}_${pIdx}_${s}`, rem);
+                    if (s === 1) setIfMissing(`pr_li_rem_${a}_${pIdx}`, rem);
+                    if (pIdx === 1 && s === 1) setIfMissing(`pr_li_rem_${a}`, rem);
+                  }
+                  if (ant) {
+                    setIfMissing(`pr_li_ant_${a}_${pIdx}_${s}`, ant);
+                    if (s === 1) setIfMissing(`pr_li_ant_${a}_${pIdx}`, ant);
+                    if (pIdx === 1 && s === 1) setIfMissing(`pr_li_ant_${a}`, ant);
+                  }
+                }
+                debugLog(`[generate-document] RE851D amountOwing fallback P${pIdx} S${s} ${lp}: rem="${rem}" ant="${ant}"`);
+              });
+            }
+          }
+
           debugLog(`[generate-document] RE851D encumbrance mapping: rem props=${Object.keys(perPropRem).length}, ant props=${Object.keys(perPropAnt).length}`);
 
           // ── RE851D Additional Encumbrances Attachment YES/NO ──
