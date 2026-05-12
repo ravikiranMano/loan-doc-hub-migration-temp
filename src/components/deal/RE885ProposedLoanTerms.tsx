@@ -118,11 +118,22 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     const abs = Math.abs(cashAtClosing);
     if (abs > 0) {
       setValue(FK.cash_at_closing_amount, formatCurrencyDisplay(abs.toFixed(2)));
-      setValue(FK.cash_at_closing_option, cashAtClosing >= 0 ? 'payable_to_you' : 'you_must_pay');
+      const payable = cashAtClosing >= 0;
+      setValue(FK.cash_at_closing_option, payable ? 'payable_to_you' : 'you_must_pay');
+      setBoolValue(FK.cash_payable_to_you, payable);
+      setBoolValue(FK.cash_you_must_pay, !payable);
     }
   }, [cashAtClosing]);
 
   const closingOption = getValue(FK.cash_at_closing_option);
+  const isPayableToYou = getBoolValue(FK.cash_payable_to_you) || closingOption === 'payable_to_you';
+  const isYouMustPay = getBoolValue(FK.cash_you_must_pay) || closingOption === 'you_must_pay';
+
+  const selectClosingOption = (which: 'payable_to_you' | 'you_must_pay') => {
+    setValue(FK.cash_at_closing_option, which);
+    setBoolValue(FK.cash_payable_to_you, which === 'payable_to_you');
+    setBoolValue(FK.cash_you_must_pay, which === 'you_must_pay');
+  };
   const termUnit = getValue(FK.loan_term_unit) || 'years';
 
   const ROW = 'flex items-center justify-between gap-4 py-2 border-b border-border/30';
