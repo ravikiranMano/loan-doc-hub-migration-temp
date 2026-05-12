@@ -311,10 +311,11 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     if (!fundingRecords.length) return map;
     const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
     const exact = fundingRecords.map(r => {
-      const principal = (r.principalBalance && r.principalBalance > 0) ? r.principalBalance : (r.originalAmount || 0);
+      // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
+      const fundingAmount = r.originalAmount || 0;
       const rate = noteRateNum > 0 ? noteRateNum : (r.lenderRate || 0);
-      const computed = computeAmortizedPayment(principal, rate, remainingPayments);
-      return new Decimal(computed === '' ? 0 : computed);
+      const monthly = (fundingAmount * (rate / 100)) / 12;
+      return new Decimal(monthly || 0);
     });
     const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
     const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))

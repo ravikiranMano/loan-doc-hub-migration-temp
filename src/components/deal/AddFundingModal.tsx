@@ -425,14 +425,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   // Regular Payment calculation — standard amortization formula
   // Payment = P × [r(1+r)^n] / [(1+r)^n − 1] with r = rate/100/12, n = remaining payments
   React.useEffect(() => {
-    // P = Principal Balance (fallback to loan amount), r = Note Rate / 12, n = remaining payments
-    const principal = parseFloat((formData.principalBalance || '').replace(/[$,]/g, '')) || loanAmount || 0;
+    // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
+    const fundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
     const rate = parseFloat((formData.noteRateDisplay || noteRate || '').replace(/[%,]/g, '')) || 0;
-    const payment = computeAmortizedPayment(principal, rate, remainingPayments);
+    const monthly = (fundingAmount * (rate / 100)) / 12;
+    const payment = monthly > 0 ? monthly.toFixed(2) : '';
     if (payment !== formData.regularPayment) {
       setFormData(prev => ({ ...prev, regularPayment: payment }));
     }
-  }, [loanAmount, formData.principalBalance, formData.noteRateDisplay, noteRate, remainingPayments]);
+  }, [loanAmount, formData.fundingAmount, formData.noteRateDisplay, noteRate]);
 
   // Auto-compute total columns for default fees
   const computeTotal = (lender: string, company: string, broker: string): string => {
