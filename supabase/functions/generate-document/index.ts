@@ -3501,34 +3501,61 @@ async function generateSingleDocument(
             // Additional Part-1 column aliases some template variants use.
             fieldValues.set(`pr_p_remainingEncumbrance_${pi}`, remVal);
             fieldValues.set(`pr_p_expectedEncumbrance_${pi}`, expVal);
-            // Amount of Equity = Market Value − Total Senior Encumbrances.
-            // Source market value is the per-property appraise/estimate value.
-            // Skip emission when market value is missing so the cell renders blank.
+            // Amount of Equity Securing the Loan: sourced strictly from the
+            // property's pledgedEquity field. Always emit so {{ln_p_amountOfEquity_N}}
+            // renders "0.00" instead of leaving the cell blank.
+            const pledgedRaw =
+              fieldValues.get(`pr_p_pledgedEquity_${pi}`)?.rawValue ??
+              fieldValues.get(`property${pi}.pledged_equity`)?.rawValue ??
+              fieldValues.get(`property${pi}.pledgedEquity`)?.rawValue;
+            let equityStr = "0.00";
+            if (pledgedRaw !== null && pledgedRaw !== undefined && String(pledgedRaw).trim() !== "") {
+              equityStr = parseAmt2(pledgedRaw).toFixed(2);
+            }
+            fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
+
+            // Per spec PART 1: LTV = (Total Senior Encumbrances / Market Value) × 100.
+            // Overrides the loanAmount/MV LTV written by the per-property bridge.
             const mvRaw =
               fieldValues.get(`pr_p_appraiseValue_${pi}`)?.rawValue ??
               fieldValues.get(`property${pi}.appraise_value`)?.rawValue ??
               fieldValues.get(`property${pi}.appraised_value`)?.rawValue;
-            let equityStr = "";
             let ltvStr = "";
             if (mvRaw !== null && mvRaw !== undefined && String(mvRaw).trim() !== "") {
               const mv = parseAmt2(mvRaw);
-              const equity = mv - tot;
-              equityStr = equity.toFixed(2);
-              fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
-              // Per spec PART 1: LTV = (Total Senior Encumbrances / Market Value) × 100.
-              // Overrides the loanAmount/MV LTV written by the per-property bridge.
-              if (mv > 0) {
-                ltvStr = ((tot / mv) * 100).toFixed(2);
-                fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
-              } else {
-                ltvStr = "0.00";
-                fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
-              }
+              ltvStr = mv > 0 ? ((tot / mv) * 100).toFixed(2) : "0.00";
+              fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
             }
             debugLog(
               `[generate-document] RE851D Part1 rollup property${pi}: liens=[${matchedLog[pi].join(",")}], ` +
               `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, ` +
-              `mv=${mvRaw ?? "∅"}, equity=${equityStr || "∅"}, ltv=${ltvStr || "∅"}`
+              `mv=${mvRaw ?? "∅"}, pledgedEquity=${equityStr}, ltv=${ltvStr || "∅"}`
+            );
+          }
+
+          // ── RE851D Part 1 totals (dynamic across all properties) ──
+          // {{ln_totalEquitySecuringLoan}} = SUM of per-property pledgedEquity.
+          // {{ln_totalLoanAmountSecured}} = the loan amount.
+          {
+            let totalEquity = 0;
+            for (const pi of propIdxSet) {
+              const v = fieldValues.get(`ln_p_amountOfEquity_${pi}`)?.rawValue;
+              if (v !== undefined && v !== null && String(v).trim() !== "") {
+                totalEquity += parseAmt2(v);
+              }
+            }
+            fieldValues.set("ln_totalEquitySecuringLoan", {
+              rawValue: totalEquity.toFixed(2),
+              dataType: "currency",
+            });
+            const loanAmtTotal = Number.isFinite(loanAmtRollup) ? loanAmtRollup : 0;
+            fieldValues.set("ln_totalLoanAmountSecured", {
+              rawValue: loanAmtTotal.toFixed(2),
+              dataType: "currency",
+            });
+            debugLog(
+              `[generate-document] RE851D Part1 totals: properties=${propIdxSet.size}, ` +
+              `totalEquity=${totalEquity.toFixed(2)}, totalLoanSecured=${loanAmtTotal.toFixed(2)}`
             );
           }
 
