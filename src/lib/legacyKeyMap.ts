@@ -1070,7 +1070,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'origination_fees.1001_hazard_insurance_months': 'of_fe_hazardInsuraMonths',
   'origination_fees.1001_hazard_insurance_per_month': 'of_fe_hazardInsuraPerMonth',
   'origination_fees.1001_hazard_insurance_total': 'of_fe_hazardInsuraTotal',
-  'origination_fees.1001_hazard_insurance_charge': 'of_fe_1001HazardInsuraCharge',
+  'origination_fees.1001_hazard_insurance_charge': 'of_1001_desc',
   'origination_fees.1001_hazard_insurance_broker': 'of_1001_hi_b',
   'origination_fees.1001_hazard_insurance_others': 'of_1001_hi_o',
   'origination_fees.1001_hazard_insurance_apr': 'of_fe_1001HazardInsuraApr',
@@ -1081,7 +1081,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'origination_fees.1002_mortgage_insurance_months': 'of_fe_mortgageInsuraMonths',
   'origination_fees.1002_mortgage_insurance_per_month': 'of_fe_mortgageInsuraPerMonth',
   'origination_fees.1002_mortgage_insurance_total': 'of_fe_mortgageInsuraTotal',
-  'origination_fees.1002_mortgage_insurance_charge': 'of_fe_1002MortgaInsuraCharge',
+  'origination_fees.1002_mortgage_insurance_charge': 'of_1002_desc',
   'origination_fees.1002_mortgage_insurance_broker': 'of_1002_mi_b',
   'origination_fees.1002_mortgage_insurance_others': 'of_1002_mi_o',
   'origination_fees.1002_mortgage_insurance_apr': 'of_fe_1002MortgaInsuraApr',
@@ -1092,7 +1092,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'origination_fees.1004_co_property_taxes_months': 'of_fe_coProperTaxesMonths',
   'origination_fees.1004_co_property_taxes_per_month': 'of_fe_coProperTaxesPer',
   'origination_fees.1004_co_property_taxes_total': 'of_fe_coProperTaxesTotal',
-  'origination_fees.1004_co_property_taxes_charge': 'of_fe_1004CoProperTaxes2',
+  'origination_fees.1004_co_property_taxes_charge': 'of_1004_desc',
   'origination_fees.1004_co_property_taxes_broker': 'of_1004_tax_b',
   'origination_fees.1004_co_property_taxes_others': 'of_1004_tax_o',
   'origination_fees.1004_co_property_taxes_apr': 'of_fe_1004CoProperTaxes',
@@ -1112,7 +1112,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1101 Settlement Closing Fee (8 fields)
   'origination_fees.1101_settlement_closing_fee_payable_to': 'of_fe_1101SettleClosinFee5',
-  'origination_fees.1101_settlement_closing_fee_d': 'of_fe_settlemeFeeD',
+  'origination_fees.1101_settlement_closing_fee_d': 'of_1101_desc',
   'origination_fees.1101_settlement_closing_fee_charge': 'of_fe_1101SettleClosinFee2',
   'origination_fees.1101_settlement_closing_fee_broker': 'of_1101_set_b',
   'origination_fees.1101_settlement_closing_fee_others': 'of_1101_set_o',
@@ -1122,7 +1122,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1105 Doc Preparation Fee (8 fields)
   'origination_fees.1105_doc_preparation_fee_payable_to': 'of_fe_1105DocPreparFee5',
-  'origination_fees.1105_doc_preparation_fee_d': 'of_fe_docPreparFeeD',
+  'origination_fees.1105_doc_preparation_fee_d': 'of_1105_desc',
   'origination_fees.1105_doc_preparation_fee_charge': 'of_fe_1105DocPreparFee2',
   'origination_fees.1105_doc_preparation_fee_broker': 'of_1105_doc_b',
   'origination_fees.1105_doc_preparation_fee_others': 'of_1105_doc_o',
