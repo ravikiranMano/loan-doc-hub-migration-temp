@@ -430,6 +430,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'loan_terms.paid_to': 'ln_p_paidTo',
   'loan_terms.next_payment': 'ln_p_nextPaymen',
   'loan_terms.regular_payment': 'ln_p_regularPaymen',
+  'loan_terms.added_to_regular_payment': 'ln_p_addedToRegulaPaymen',
   'loan_terms.additional_principal': 'ln_p_additionPrinci',
   'loan_terms.servicing_fees': 'ln_p_servicinFees',
   'loan_terms.total_payment': 'ln_p_totalPaymen',
