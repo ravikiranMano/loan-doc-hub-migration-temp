@@ -379,7 +379,7 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
           {renderCurrency('originalBalance', 'Original Balance', isThisLoan)}
           {renderCurrency('currentBalance', 'Current Balance')}
 
-          <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.newRemainingBalance}>
+          <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.anticipatedAmount}>
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0 leading-tight">Anticipated Balance<br />(if new lien)</Label>
               <div className="relative flex-1">
