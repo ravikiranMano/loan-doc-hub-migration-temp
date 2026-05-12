@@ -1132,7 +1132,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1106 Notary Fee (8 fields)
   'origination_fees.1106_notary_fee_payable_to': 'of_fe_1106NotaryFeePayabl',
-  'origination_fees.1106_notary_fee_d': 'of_fe_notaryFeeD',
+  'origination_fees.1106_notary_fee_d': 'of_1106_desc',
   'origination_fees.1106_notary_fee_charge': 'of_fe_1106NotaryFeeCharge',
   'origination_fees.1106_notary_fee_broker': 'of_1106_not_b',
   'origination_fees.1106_notary_fee_others': 'of_1106_not_o',
@@ -1142,7 +1142,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1108 Title Insurance (8 fields)
   'origination_fees.1108_title_insurance_payable_to': 'of_fe_1108TitleInsuraPayabl',
-  'origination_fees.1108_title_insurance_d': 'of_fe_titleInsuraD',
+  'origination_fees.1108_title_insurance_d': 'of_1108_desc',
   'origination_fees.1108_title_insurance_charge': 'of_fe_1108TitleInsuraCharge',
   'origination_fees.1108_title_insurance_broker': 'of_1108_ti_b',
   'origination_fees.1108_title_insurance_others': 'of_1108_ti_o',
@@ -1163,7 +1163,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1201 Recording Fees (8 fields)
   'origination_fees.1201_recording_fees_payable_to': 'of_fe_1201RecordFeesPayabl',
-  'origination_fees.1201_recording_fees_d': 'of_fe_recordinFeesD',
+  'origination_fees.1201_recording_fees_d': 'of_1201_desc',
   'origination_fees.1201_recording_fees_charge': 'of_fe_1201RecordFeesCharge',
   'origination_fees.1201_recording_fees_broker': 'of_1201_rec_b',
   'origination_fees.1201_recording_fees_others': 'of_1201_rec_o',
@@ -1173,7 +1173,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1202 City/County Tax Stamps (8 fields)
   'origination_fees.1202_city_county_tax_stamps_payable_to': 'of_fe_1202CityCountyTax5',
-  'origination_fees.1202_city_county_tax_stamps_d': 'of_fe_citycounTaxStampsD',
+  'origination_fees.1202_city_county_tax_stamps_d': 'of_1202_desc',
   'origination_fees.1202_city_county_tax_stamps_charge': 'of_fe_1202CityCountyTax2',
   'origination_fees.1202_city_county_tax_stamps_broker': 'of_1202_ts_b',
   'origination_fees.1202_city_county_tax_stamps_others': 'of_1202_ts_o',
@@ -1194,7 +1194,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 1302 Pest Inspection (8 fields)
   'origination_fees.1302_pest_inspection_payable_to': 'of_fe_1302PestInspecPayabl',
-  'origination_fees.1302_pest_inspection_d': 'of_fe_pestInspecD',
+  'origination_fees.1302_pest_inspection_d': 'of_1302_desc',
   'origination_fees.1302_pest_inspection_charge': 'of_fe_1302PestInspecCharge',
   'origination_fees.1302_pest_inspection_broker': 'of_1302_pest_b',
   'origination_fees.1302_pest_inspection_others': 'of_1302_pest_o',
