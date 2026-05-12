@@ -1,25 +1,51 @@
-## Diagnosis
+# Fix `{{ ln_p_lienPositi }}` rendering twice in RE851A
 
-The current failure is not the earlier `Deal not found` path. The backend can see the file `DL-2026-0250`, and previous RE851D runs succeeded.
+## Root cause
 
-The current active RE851D template was replaced at `18:05` with `1778609126890_RE851D-V12.1.docx`, which is about `3.9 MB`. The prior successful RE851D template files were about `0.44 MB`. The latest run is stuck in `running` and the function logs show `CPU Time exceeded` while processing a very large `word/document.xml`.
+`ln_p_lienPositi` is the field key for **this loan's** Lien Position (Loan Terms → Priority → Lien Position), populated from the user-entered `loan_terms.lien_position` value.
 
-## Plan
+In `supabase/functions/generate-document/index.ts` (line 2648), the **existing-liens** bridge incorrectly maps the per-lien `priority` field to the same key:
 
-1. Mark the currently stale RE851D generation job as failed so the UI stops showing it as still running.
-2. Restore the active RE851D template pointer to the last known-good uploaded template file (`1778608791266_Re851d_v1__1___2___19___5_.docx`) without changing schema or document-generation flow.
-3. Keep the existing `generate-document` API and UI unchanged.
-4. Re-test the deployed `generate-document` function against file `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` and template `43492f94-60ad-44c3-a8c2-24dabf36eac7`.
-5. Verify the new job reaches `success` and a fresh generated document row is created.
+```ts
+const lienFieldToLiKeys = {
+  ...
+  "priority": "ln_p_lienPositi",   // ← wrong target
+  ...
+};
+```
 
-## Technical details
+When a deal has multiple existing liens (this deal has 4), the multi-lien aggregator joins their priorities with newlines (e.g. `"1st\n1st"`) and `fieldValues.set("ln_p_lienPositi", ...)` overwrites the loan's own value. The template then renders the placeholder as two stacked lines inside the cell, which is what the screenshot shows.
 
-- No database schema changes.
-- No new tables.
-- No UI changes.
-- No edge-function refactor unless the restored template still fails.
-- This is a data/config recovery: update the `templates.file_path` for RE851D and clean up the stale `generation_jobs` row.
+The same lien priorities are already correctly published to `pr_li_lienPriori`, `pr_li_lienPrioriNow`, and `pr_li_lienPrioriAfter` for the Property → Liens table, so removing this misroute doesn't lose any data.
 
-## Rollback
+## Change (single edit, edge function only)
 
-If needed, the template pointer can be returned to `1778609126890_RE851D-V12.1.docx`, but that file is the one currently triggering CPU timeout.
+File: `supabase/functions/generate-document/index.ts`
+
+Remove the one offending entry from `lienFieldToLiKeys`:
+
+```diff
+ const lienFieldToLiKeys: Record<string, string> = {
+   "interest_rate": "li_gd_interestRate",
+-  "priority": "ln_p_lienPositi",
+   "lien_priority_now": "li_gd_lienPriorityNow",
+   ...
+ };
+```
+
+After this, `ln_p_lienPositi` is sourced solely from the user's Loan Terms entry (`loan_terms.lien_position`), so `{{ ln_p_lienPositi }}` renders the single value once.
+
+The downstream "senior lien" calculation at line 3708 still reads `loan_terms.lien_position` as a fallback, so it remains correct.
+
+## Out of scope
+
+- No UI changes
+- No schema/migration changes
+- No template edits
+- No other bridging logic touched (`pr_li_*` lien-table aliases stay as-is)
+
+## Validation
+
+1. Re-run document generation for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` with template RE851A.
+2. Confirm `{{ ln_p_lienPositi }}` cell shows the single Loan Terms value (e.g. `1st`) instead of repeating.
+3. Confirm Property → Liens table priority columns still populate from each lien.
