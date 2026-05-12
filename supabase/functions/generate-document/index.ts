@@ -4116,6 +4116,8 @@ async function generateSingleDocument(
           "pr_li_ant_balloonYes_N_S", "pr_li_ant_balloonYes_N",
           "pr_li_ant_balloonNo_N_S", "pr_li_ant_balloonNo_N",
           "pr_li_ant_balloonUnknown_N_S", "pr_li_ant_balloonUnknown_N",
+          "pr_li_ant_amountOwing_N_S", "pr_li_ant_amountOwing_N",
+          "pr_li_ant_amount_owing_N_S", "pr_li_ant_amount_owing_N",
           // Per-property "Performed By" — both canonical and legacy-misspelled
           // aliases so PROPERTY #K blocks rewrite _N → _K and each property
           // renders its own appraisal_performed_by value.
