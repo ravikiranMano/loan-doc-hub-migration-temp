@@ -15,6 +15,8 @@ const FK = {
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
+  cash_payable_to_you: 'origination_fees.re885_cash_payable_to_you',
+  cash_you_must_pay: 'origination_fees.re885_cash_you_must_pay',
   loan_term_value: 'origination_fees.re885_loan_term_value',
   loan_term_unit: 'origination_fees.re885_loan_term_unit',
   interest_rate: 'origination_fees.re885_interest_rate',
@@ -116,11 +118,22 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     const abs = Math.abs(cashAtClosing);
     if (abs > 0) {
       setValue(FK.cash_at_closing_amount, formatCurrencyDisplay(abs.toFixed(2)));
-      setValue(FK.cash_at_closing_option, cashAtClosing >= 0 ? 'payable_to_you' : 'you_must_pay');
+      const payable = cashAtClosing >= 0;
+      setValue(FK.cash_at_closing_option, payable ? 'payable_to_you' : 'you_must_pay');
+      setBoolValue(FK.cash_payable_to_you, payable);
+      setBoolValue(FK.cash_you_must_pay, !payable);
     }
   }, [cashAtClosing]);
 
   const closingOption = getValue(FK.cash_at_closing_option);
+  const isPayableToYou = getBoolValue(FK.cash_payable_to_you) || closingOption === 'payable_to_you';
+  const isYouMustPay = getBoolValue(FK.cash_you_must_pay) || closingOption === 'you_must_pay';
+
+  const selectClosingOption = (which: 'payable_to_you' | 'you_must_pay') => {
+    setValue(FK.cash_at_closing_option, which);
+    setBoolValue(FK.cash_payable_to_you, which === 'payable_to_you');
+    setBoolValue(FK.cash_you_must_pay, which === 'you_must_pay');
+  };
   const termUnit = getValue(FK.loan_term_unit) || 'years';
 
   const ROW = 'flex items-center justify-between gap-4 py-2 border-b border-border/30';
@@ -199,24 +212,32 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             <span className="text-xs font-bold text-foreground whitespace-nowrap">Estimated Cash at Closing</span>
             <div className="flex items-center gap-3">
               <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="re885_closing_option"
-                  checked={closingOption === 'payable_to_you'}
-                  onChange={() => setValue(FK.cash_at_closing_option, 'payable_to_you')}
+                <Checkbox
+                  checked={isPayableToYou}
+                  onCheckedChange={(c) => {
+                    if (c) selectClosingOption('payable_to_you');
+                    else {
+                      setBoolValue(FK.cash_payable_to_you, false);
+                      if (closingOption === 'payable_to_you') setValue(FK.cash_at_closing_option, '');
+                    }
+                  }}
                   disabled={disabled}
-                  className="h-3 w-3"
+                  className="h-3.5 w-3.5"
                 />
                 <span className="text-xs text-foreground">Payable to You</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="radio"
-                  name="re885_closing_option"
-                  checked={closingOption === 'you_must_pay'}
-                  onChange={() => setValue(FK.cash_at_closing_option, 'you_must_pay')}
+                <Checkbox
+                  checked={isYouMustPay}
+                  onCheckedChange={(c) => {
+                    if (c) selectClosingOption('you_must_pay');
+                    else {
+                      setBoolValue(FK.cash_you_must_pay, false);
+                      if (closingOption === 'you_must_pay') setValue(FK.cash_at_closing_option, '');
+                    }
+                  }}
                   disabled={disabled}
-                  className="h-3 w-3"
+                  className="h-3.5 w-3.5"
                 />
                 <span className="text-xs text-foreground">You Must Pay</span>
               </label>

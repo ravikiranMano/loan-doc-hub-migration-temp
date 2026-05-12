@@ -1346,6 +1346,8 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'origination_fees.re885_subtotal_deductions': 'of_re_subtotalDeductions',
   'origination_fees.re885_cash_at_closing_option': 'of_re_cashAtClosingOption',
   'origination_fees.re885_cash_at_closing_amount': 'of_re_cashAtClosingAmount',
+  'origination_fees.re885_cash_payable_to_you': 'of_fe_estimatedCashPayableToYou',
+  'origination_fees.re885_cash_you_must_pay': 'of_fe_estimatedCashYouMustPay',
   'origination_fees.re885_loan_term_value': 'of_re_loanTermValue',
   'origination_fees.re885_loan_term_unit': 'of_re_loanTermUnit',
   'origination_fees.re885_interest_rate': 'of_re_interestRate',
