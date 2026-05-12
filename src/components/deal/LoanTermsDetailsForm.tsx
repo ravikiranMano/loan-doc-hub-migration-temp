@@ -63,9 +63,37 @@ const PROCESSING_UNPAID_INTEREST_OPTIONS = [
   { value: 'both', label: 'Both' },
 ];
 const CALCULATION_PERIOD_OPTIONS = [
-  { value: 'regular_period', label: 'Regular Period (Due Date to Due Date)' },
-  { value: 'actual_days_due_date', label: 'Actual Days (Due Date to Due Date)' },
-  { value: 'actual_days_received_date', label: 'Actual Days (Received Date to Received Date)' },
+  { value: 'standard_due_to_due', label: 'Standard Due Date to Due Date' },
+  { value: 'actual_due_to_due', label: 'Actual Due Date to Due Date' },
+  { value: 'received_to_received', label: 'Received Date to Received Date' },
+];
+const ACCRUAL_METHOD_OPTIONS = [
+  { value: '30_360', label: '30/360' },
+  { value: 'actual_360', label: 'Actual/360' },
+  { value: 'actual_365', label: 'Actual/365' },
+  { value: 'actual_actual', label: 'Actual/Actual' },
+];
+const LOAN_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'hold', label: 'Hold' },
+  { value: 'closed', label: 'Closed' },
+];
+const HOLD_REASON_OPTIONS = [
+  { value: 'w9_document_needed', label: 'W-9 / Document Needed' },
+  { value: 'fraud_red_flag', label: 'Fraud / Red Flag' },
+  { value: 'payment_issue', label: 'Payment Issue' },
+  { value: 'occupancy_concern', label: 'Occupancy Concern' },
+  { value: 'pending_workout', label: 'Pending Workout' },
+  { value: 'other', label: 'Other' },
+];
+const CLOSED_REASON_OPTIONS = [
+  { value: 'paid', label: 'Paid' },
+  { value: 'transfer_out_customer', label: 'Transfer Out (Customer)' },
+  { value: 'transfer_out_company', label: 'Transfer Out (Company)' },
+  { value: 'dead', label: 'Dead' },
+  { value: 'reo', label: 'REO' },
+  { value: 'charged_off', label: 'Charged Off' },
+  { value: 'other', label: 'Other' },
 ];
 
 // Validation configs
