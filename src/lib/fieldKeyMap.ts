@@ -401,6 +401,7 @@ export const LOAN_TERMS_BALANCES_KEYS = {
   originalAmount: 'loan.original_amount',
   noteRate: 'loan_terms.note_rate',
   soldRate: 'loan_terms.sold_rate',
+  currentRate: 'loan_terms.current_rate',
   soldRateEnabled: 'loan_terms.sold_rate_enabled',
   soldRateOriginatingVendor: 'loan_terms.sold_rate_originating_vendor',
   soldRateCompany: 'loan_terms.sold_rate_company',
