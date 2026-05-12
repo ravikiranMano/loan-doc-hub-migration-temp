@@ -531,6 +531,33 @@ export const LOAN_TERMS_DETAILS_KEYS = {
   months: 'loan_terms.months',
   loanProvisions: 'loan_terms.loan_provisions',
   rateStructureOther: 'loan_terms.rate_structure_other',
+  // Redesigned Loan Details — Details column additions
+  companyId: 'loan_terms.company_id',
+  previousLoanNumber: 'loan_terms.previous_loan_number',
+  loanCode: 'loan_terms.loan_code',
+  originalBalance: 'loan_terms.original_balance',
+  recordingDate: 'loan_terms.recording_date',
+  recordingNumber: 'loan_terms.recording_number',
+  previousAccountNumber: 'loan_terms.previous_account_number',
+  overpaymentsAppliedTo: 'loan_terms.overpayments_applied_to',
+  relatedPartySearch: 'loan_terms.related_party_search',
+  // Loan Type additions
+  ownerOccupied: 'loan_terms.owner_occupied',
+  multiLender: 'loan_terms.multi_lender',
+  passThrough: 'loan_terms.pass_through',
+  // Status Categories
+  loanStatus: 'loan_terms.loan_status',
+  holdReason: 'loan_terms.hold_reason',
+  closedReason: 'loan_terms.closed_reason',
+  documentPrep: 'loan_terms.document_prep',
+  transferIn: 'loan_terms.transfer_in',
+  statusBankruptcy: 'loan_terms.status_bankruptcy',
+  statusForeclosure: 'loan_terms.status_foreclosure',
+  statusModification: 'loan_terms.status_modification',
+  statusForbearance: 'loan_terms.status_forbearance',
+  statusAssignment: 'loan_terms.status_assignment',
+  statusLitigation: 'loan_terms.status_litigation',
+  statusMilitarySCRA: 'loan_terms.status_military_scra',
 } as const;
 
 export const LOAN_TERMS_FUNDING_KEYS = {

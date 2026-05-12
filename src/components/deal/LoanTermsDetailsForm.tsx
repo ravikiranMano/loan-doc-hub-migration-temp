@@ -63,9 +63,37 @@ const PROCESSING_UNPAID_INTEREST_OPTIONS = [
   { value: 'both', label: 'Both' },
 ];
 const CALCULATION_PERIOD_OPTIONS = [
-  { value: 'regular_period', label: 'Regular Period (Due Date to Due Date)' },
-  { value: 'actual_days_due_date', label: 'Actual Days (Due Date to Due Date)' },
-  { value: 'actual_days_received_date', label: 'Actual Days (Received Date to Received Date)' },
+  { value: 'standard_due_to_due', label: 'Standard Due Date to Due Date' },
+  { value: 'actual_due_to_due', label: 'Actual Due Date to Due Date' },
+  { value: 'received_to_received', label: 'Received Date to Received Date' },
+];
+const ACCRUAL_METHOD_OPTIONS = [
+  { value: '30_360', label: '30/360' },
+  { value: 'actual_360', label: 'Actual/360' },
+  { value: 'actual_365', label: 'Actual/365' },
+  { value: 'actual_actual', label: 'Actual/Actual' },
+];
+const LOAN_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'hold', label: 'Hold' },
+  { value: 'closed', label: 'Closed' },
+];
+const HOLD_REASON_OPTIONS = [
+  { value: 'w9_document_needed', label: 'W-9 / Document Needed' },
+  { value: 'fraud_red_flag', label: 'Fraud / Red Flag' },
+  { value: 'payment_issue', label: 'Payment Issue' },
+  { value: 'occupancy_concern', label: 'Occupancy Concern' },
+  { value: 'pending_workout', label: 'Pending Workout' },
+  { value: 'other', label: 'Other' },
+];
+const CLOSED_REASON_OPTIONS = [
+  { value: 'paid', label: 'Paid' },
+  { value: 'transfer_out_customer', label: 'Transfer Out (Customer)' },
+  { value: 'transfer_out_company', label: 'Transfer Out (Company)' },
+  { value: 'dead', label: 'Dead' },
+  { value: 'reo', label: 'REO' },
+  { value: 'charged_off', label: 'Charged Off' },
+  { value: 'other', label: 'Other' },
 ];
 
 // Validation configs
@@ -349,130 +377,120 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  const renderInlineCheckbox = (key: string, label: string) => (
+    <DirtyFieldWrapper fieldKey={key}>
+      <div className="flex items-center space-x-2">
+        <Checkbox id={key} checked={getBoolValue(key)} onCheckedChange={(c) => setBoolValue(key, !!c)} disabled={disabled} className="h-3.5 w-3.5" />
+        <Label htmlFor={key} className="font-normal cursor-pointer text-xs">{label}</Label>
+      </div>
+    </DirtyFieldWrapper>
+  );
+
+  const renderAccountRow = (cbKey: string, valKey: string, label: string) => (
+    <div className="flex items-start gap-2">
+      <Checkbox id={cbKey} checked={getBoolValue(cbKey)} onCheckedChange={(c) => {
+        setBoolValue(cbKey, !!c);
+        if (!c) setValidationErrors(prev => ({ ...prev, [valKey]: null }));
+      }} disabled={disabled} className="h-3.5 w-3.5 mt-2" />
+      <Label htmlFor={cbKey} className="font-normal cursor-pointer text-xs min-w-[90px] shrink-0 mt-1.5">{label}</Label>
+      <div>
+        <Input
+          value={getValue(valKey)}
+          onChange={(e) => setValue(valKey, e.target.value)}
+          onKeyDown={(e) => handleValidatedKeyDown(e, VALIDATION_CONFIGS.accountNumber)}
+          onPaste={(e) => handleValidatedPaste(e, valKey, VALIDATION_CONFIGS.accountNumber)}
+          onBlur={() => handleValidatedBlur(valKey, VALIDATION_CONFIGS.accountNumber, getBoolValue(cbKey))}
+          disabled={disabled || !getBoolValue(cbKey)}
+          className={cn('h-8 text-xs w-[140px]', validationErrors[valKey] && 'border-destructive')}
+        />
+        {validationErrors[valKey] && <p className="text-destructive text-[10px] mt-0.5">{validationErrors[valKey]}</p>}
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-0">
-        
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-x-6 gap-y-0">
+
         {/* Details Column */}
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Details</h3>
-          {renderValidatedField(FIELD_KEYS.company, 'Company', 'company')}
-          {renderValidatedField(FIELD_KEYS.loanNumber, 'Loan Number', 'loanNumber')}
+          {renderInlineField(FIELD_KEYS.companyId, 'Company ID')}
+          {renderInlineField(FIELD_KEYS.previousLoanNumber, 'Previous Loan Number')}
+          {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
           {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
-          {renderInlineDateField(FIELD_KEYS.origination, 'Origination')}
-          {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding')}
-          {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
-          {/* LTV Ratio – computed read-only field */}
-          <DirtyFieldWrapper fieldKey={FIELD_KEYS.loanToValueRatio}>
-            <div className="flex items-center gap-2">
-              <Label className="w-[130px] shrink-0 text-xs">LTV Ratio</Label>
-              <div className="relative flex-1">
-                <Input
-                  id={FIELD_KEYS.loanToValueRatio}
-                  value={(() => {
-                    const loanAmtKey = 'loan_terms.loan_amount';
-                    const appraisedKey = 'property1.appraised_value';
-                    const loanRaw = values[loanAmtKey] || '';
-                    const appraisedRaw = values[appraisedKey] || '';
-                    const loan = parseFloat(loanRaw.replace(/[,$]/g, ''));
-                    const appraised = parseFloat(appraisedRaw.replace(/[,$]/g, ''));
-                    if (isNaN(loan) || isNaN(appraised) || appraised === 0) return '';
-                    return formatPercentDisplay((loan / appraised) * 100, 2);
-                  })()}
-                  disabled
-                  className="h-8 text-xs flex-1 bg-muted pr-7"
-                  placeholder="—"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
-              </div>
-            </div>
-          </DirtyFieldWrapper>
+          {renderInlineField(FIELD_KEYS.originatingVendor, 'Originating Vendor')}
+          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Balance')}
+          {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
+          {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
+          {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
+          {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
+          {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
+          {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
+          {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity')}
+          {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
+          {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
+          {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
+          <div className="pt-2">
+            {renderAccountRow(FIELD_KEYS.parentAccount, FIELD_KEYS.parentAccountValue, 'Parent Account')}
+          </div>
+          {renderAccountRow(FIELD_KEYS.childAccount, FIELD_KEYS.childAccountValue, 'Child Account')}
         </div>
 
-        {/* Middle Column */}
+        {/* Terms Column */}
         <div className="space-y-1.5">
-          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">&nbsp;</h3>
-          {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
+          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Terms</h3>
+          {renderInlineDateField('loan_terms.day_due', 'Day Due')}
+          {renderAdjPercentField('loan_terms.note_rate', 'Note Rate')}
+          {renderAdjPercentField('loan_terms.sold_rate', 'Sold Rate')}
+          {renderAdjPercentField('loan_terms.current_rate', 'Current Rate')}
+          {renderInlineField('loan_terms.interest_split', 'Interest Split')}
+          {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
+          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Dropdown')}
           {getValue(FIELD_KEYS.rateStructure) === 'other' && (
             renderInlineField(FIELD_KEYS.rateStructureOther, 'Other (specify)')
           )}
-          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calc', INTEREST_CALCULATION_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.shortPaymentsAppliedTo, 'Apply Short Payments', SHORT_PAYMENTS_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calc Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Dropdown')}
+          {renderInlineSelect('loan_terms.accrual_method', 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Dropdown')}
         </div>
 
         {/* Loan Type Column */}
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Type (can be multiple)</h3>
-          {[
-            { key: FIELD_KEYS.sellerCarry, label: 'Seller Carry' },
-            { key: FIELD_KEYS.aitdWrap, label: 'AITD / Wrap' },
-            { key: FIELD_KEYS.rehabConstruction, label: 'Rehab / Construction' },
-            { key: FIELD_KEYS.variableArm, label: 'Variable / ARM' },
-            { key: FIELD_KEYS.respa, label: 'RESPA' },
-            { key: FIELD_KEYS.unsecured, label: 'Unsecured' },
-            { key: FIELD_KEYS.crossCollateral, label: 'Cross Collateral' },
-            { key: FIELD_KEYS.limitedNoDoc, label: 'Limited / No Doc' },
-          ].map(({ key, label }) => (
-            <div key={key} className="flex items-center space-x-2">
-              <Checkbox id={key} checked={getBoolValue(key)} onCheckedChange={(checked) => setBoolValue(key, !!checked)} disabled={disabled} className="h-3.5 w-3.5" />
-              <Label htmlFor={key} className="font-normal cursor-pointer text-xs">{label}</Label>
-            </div>
-          ))}
-          <div className="flex items-center space-x-2">
-            <Checkbox id={FIELD_KEYS.balloonPayment} checked={getBoolValue(FIELD_KEYS.balloonPayment)} onCheckedChange={(checked) => setBoolValue(FIELD_KEYS.balloonPayment, !!checked)} disabled={disabled} className="h-3.5 w-3.5" />
-            <Label htmlFor={FIELD_KEYS.balloonPayment} className="font-normal cursor-pointer text-xs">Balloon Payment</Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox id={FIELD_KEYS.subordinationProvision} checked={getBoolValue(FIELD_KEYS.subordinationProvision)} onCheckedChange={(checked) => setBoolValue(FIELD_KEYS.subordinationProvision, !!checked)} disabled={disabled} className="h-3.5 w-3.5" />
-            <Label htmlFor={FIELD_KEYS.subordinationProvision} className="font-normal cursor-pointer text-xs">Subordination Provision</Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox id={FIELD_KEYS.loanProvisions} checked={getBoolValue(FIELD_KEYS.loanProvisions)} onCheckedChange={(checked) => setBoolValue(FIELD_KEYS.loanProvisions, !!checked)} disabled={disabled} className="h-3.5 w-3.5" />
-            <Label htmlFor={FIELD_KEYS.loanProvisions} className="font-normal cursor-pointer text-xs">Loan Provisions</Label>
-          </div>
-          <div className="flex items-start gap-2">
-            <Checkbox id={FIELD_KEYS.parentAccount} checked={getBoolValue(FIELD_KEYS.parentAccount)} onCheckedChange={(checked) => {
-              setBoolValue(FIELD_KEYS.parentAccount, !!checked);
-              if (!checked) setValidationErrors(prev => ({ ...prev, [FIELD_KEYS.parentAccountValue]: null }));
-            }} disabled={disabled} className="h-3.5 w-3.5 mt-2" />
-            <Label htmlFor={FIELD_KEYS.parentAccount} className="font-normal cursor-pointer text-xs min-w-[90px] shrink-0 mt-1.5">Parent Account</Label>
-            <div>
-              <Input
-                value={getValue(FIELD_KEYS.parentAccountValue)}
-                onChange={(e) => setValue(FIELD_KEYS.parentAccountValue, e.target.value)}
-                onKeyDown={(e) => handleValidatedKeyDown(e, VALIDATION_CONFIGS.accountNumber)}
-                onPaste={(e) => handleValidatedPaste(e, FIELD_KEYS.parentAccountValue, VALIDATION_CONFIGS.accountNumber)}
-                onBlur={() => handleValidatedBlur(FIELD_KEYS.parentAccountValue, VALIDATION_CONFIGS.accountNumber, getBoolValue(FIELD_KEYS.parentAccount))}
-                disabled={disabled || !getBoolValue(FIELD_KEYS.parentAccount)}
-                className={cn('h-8 text-xs w-[120px]', validationErrors[FIELD_KEYS.parentAccountValue] && 'border-destructive')}
-              />
-              {validationErrors[FIELD_KEYS.parentAccountValue] && <p className="text-destructive text-[10px] mt-0.5">{validationErrors[FIELD_KEYS.parentAccountValue]}</p>}
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Checkbox id={FIELD_KEYS.childAccount} checked={getBoolValue(FIELD_KEYS.childAccount)} onCheckedChange={(checked) => {
-              setBoolValue(FIELD_KEYS.childAccount, !!checked);
-              if (!checked) setValidationErrors(prev => ({ ...prev, [FIELD_KEYS.childAccountValue]: null }));
-            }} disabled={disabled} className="h-3.5 w-3.5 mt-2" />
-            <Label htmlFor={FIELD_KEYS.childAccount} className="font-normal cursor-pointer text-xs min-w-[90px] shrink-0 mt-1.5">Child Account</Label>
-            <div>
-              <Input
-                value={getValue(FIELD_KEYS.childAccountValue)}
-                onChange={(e) => setValue(FIELD_KEYS.childAccountValue, e.target.value)}
-                onKeyDown={(e) => handleValidatedKeyDown(e, VALIDATION_CONFIGS.accountNumber)}
-                onPaste={(e) => handleValidatedPaste(e, FIELD_KEYS.childAccountValue, VALIDATION_CONFIGS.accountNumber)}
-                onBlur={() => handleValidatedBlur(FIELD_KEYS.childAccountValue, VALIDATION_CONFIGS.accountNumber, getBoolValue(FIELD_KEYS.childAccount))}
-                disabled={disabled || !getBoolValue(FIELD_KEYS.childAccount)}
-                className={cn('h-8 text-xs w-[120px]', validationErrors[FIELD_KEYS.childAccountValue] && 'border-destructive')}
-              />
-              {validationErrors[FIELD_KEYS.childAccountValue] && <p className="text-destructive text-[10px] mt-0.5">{validationErrors[FIELD_KEYS.childAccountValue]}</p>}
-            </div>
-          </div>
+          {renderInlineCheckbox(FIELD_KEYS.ownerOccupied, 'Owner Occupied')}
+          {renderInlineCheckbox(FIELD_KEYS.multiLender, 'Multi-lender')}
+          {renderInlineCheckbox(FIELD_KEYS.sellerCarry, 'Seller Carry')}
+          {renderInlineCheckbox(FIELD_KEYS.aitdWrap, 'AITD / Wrap')}
+          {renderInlineCheckbox(FIELD_KEYS.rehabConstruction, 'Rehab / Construction')}
+          {renderInlineCheckbox(FIELD_KEYS.variableArm, 'Variable / ARM')}
+          {renderInlineCheckbox(FIELD_KEYS.respa, 'RESPA / Consumer')}
+          {renderInlineCheckbox(FIELD_KEYS.unsecured, 'Unsecured')}
+          {renderInlineCheckbox(FIELD_KEYS.crossCollateral, 'Cross Collateral')}
+          {renderInlineCheckbox(FIELD_KEYS.limitedNoDoc, 'Limited / No Documentation')}
+          {renderInlineCheckbox(FIELD_KEYS.balloonPayment, 'Balloon Payment')}
+          {renderInlineCheckbox(FIELD_KEYS.subordinationProvision, 'Subordination Provision')}
+          {renderInlineCheckbox(FIELD_KEYS.passThrough, 'Pass Through')}
+        </div>
+
+        {/* Status Categories Column */}
+        <div className="space-y-1.5">
+          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Status Categories (can be multiple)</h3>
+          {renderInlineSelect(FIELD_KEYS.loanStatus, 'Loan Status', LOAN_STATUS_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.holdReason, 'Hold Reason', HOLD_REASON_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.closedReason, 'Closed Reason', CLOSED_REASON_OPTIONS, 'Dropdown')}
+          {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
+          {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
+          {renderInlineCheckbox(FIELD_KEYS.statusBankruptcy, 'Bankruptcy')}
+          {renderInlineCheckbox(FIELD_KEYS.statusForeclosure, 'Foreclosure')}
+          {renderInlineCheckbox(FIELD_KEYS.statusModification, 'Modification')}
+          {renderInlineCheckbox(FIELD_KEYS.statusForbearance, 'Forbearance')}
+          {renderInlineCheckbox(FIELD_KEYS.statusAssignment, 'Assignment')}
+          {renderInlineCheckbox(FIELD_KEYS.statusLitigation, 'Litigation')}
+          {renderInlineCheckbox(FIELD_KEYS.statusMilitarySCRA, 'Military SCRA')}
         </div>
       </div>
 
