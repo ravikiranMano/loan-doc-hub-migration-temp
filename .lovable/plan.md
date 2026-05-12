@@ -1,61 +1,46 @@
-## Fix RE885 Other Liens — alignment under Lienholder / Amount Owing / Priority
+## RE851D — Populate `ln_p_equitySecuringLoan_N` (and confirm footer totals)
 
-### Diagnosis
+### Problem
+The RE851D template uses these tags in PART 1 — Loan to Value Ratio:
+- Per property: `{{ln_p_equitySecuringLoan_N}}`
+- Footer: `{{ln_totalEquitySecuringLoan}}`, `{{ln_totalLoanAmountSecured}}`
 
-Data publishing is already correct. `pr_li_lienHolder`, `pr_p_currentBalanc`, `pr_li_lienPrioriNow`, `li_lt_anticipatedAmount`, and `pr_li_lienPrioriAfter` are emitted by the publishers in `supabase/functions/generate-document/index.ts` (lines ~2595–2797). The values shown in image-530 (`Stephen / 18,000.00 / 1st`, `Stephen / 12,000.00 / 2nd`) are correct.
+In `supabase/functions/generate-document/index.ts` the per-property RE851D Part 1 publisher (~lines 3504–3515) currently emits only `ln_p_amountOfEquity_N` from `pledgedEquity`. The tag `ln_p_equitySecuringLoan_N` is never set, so the “Amount of Equity Securing the Loan” column renders blank. Footer totals are already computed (~lines 3537–3559) but they sum from `ln_p_amountOfEquity_N`, which means today they happen to work — they just need to keep working when we add the new alias.
 
-The shift seen is a **template layout problem**, not a code problem:
+### Change (single, additive — no refactor, no schema changes)
 
-- In the current RE885 template (section XVI – Other Liens), the three column labels and the three merge tags below them are placed in a single paragraph using **tab stops / spaces**, not in a Word table.
-- When `{{pr_p_currentBalanc}}` (16 chars) becomes `18,000.00` (9 chars) and `{{pr_li_lienPrioriNow}}` becomes `1st`, the tab columns reflow because Word recomputes tab positions from the resulting text width. That is why the second column drifts left and the third column shifts right of its header.
-- This cannot be fixed reliably from the doc-gen engine — the only stable fix is to bind the values into a fixed-width Word table in the template itself.
+**File:** `supabase/functions/generate-document/index.ts`
 
-### Required template change (RE885 section XVI)
+**1. Per property (inside the existing `for (const pi of propIdxSet)` loop, right after `ln_p_amountOfEquity_${pi}` is set, around line 3515):**
 
-Replace each of the two tab-aligned blocks with a real 3-column Word table.
+Add an alias publish so the template tag resolves directly from pledged equity:
 
-Block 1 — "Currently obligated":
-
-```
-┌──────────────────────┬──────────────────────┬─────────────────────────┐
-│ Lienholder's Name    │ Amount Owing         │ Priority                │   ← header row (italic)
-├──────────────────────┼──────────────────────┼─────────────────────────┤
-│ {{pr_li_lienHolder}} │ {{pr_p_currentBalanc}} │ {{pr_li_lienPrioriNow}} │
-└──────────────────────┴──────────────────────┴─────────────────────────┘
+```ts
+fieldValues.set(`ln_p_equitySecuringLoan_${pi}`, { rawValue: equityStr, dataType: "currency" });
 ```
 
-Block 2 — "Liens that will remain or are anticipated":
+Source remains strictly `property.pledgedEquity` via the existing fallback chain (`pr_p_pledgedEquity_${pi}` → `property${pi}.pledged_equity` → `property${pi}.pledgedEquity`). No Market Value / Encumbrance math.
 
+**2. Footer (existing block ~lines 3539–3555):** No structural change. Update only the totals input source so the sum is taken from the new authoritative key (functionally identical today, but keeps the two paths in sync if `ln_p_amountOfEquity` is ever changed):
+
+```ts
+const v = fieldValues.get(`ln_p_equitySecuringLoan_${pi}`)?.rawValue
+       ?? fieldValues.get(`ln_p_amountOfEquity_${pi}`)?.rawValue;
 ```
-┌──────────────────────┬──────────────────────────────┬──────────────────────────┐
-│ Lienholder's Name    │ Amount Owing                 │ Priority                 │
-├──────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ {{pr_li_lienHolder}} │ {{li_lt_anticipatedAmount}}  │ {{pr_li_lienPrioriAfter}}│
-└──────────────────────┴──────────────────────────────┴──────────────────────────┘
-```
 
-Rules for the template edit:
+`ln_totalLoanAmountSecured` continues to come from `loan_terms.loan_amount` via `loanAmtRollup`. Both footer keys remain in the merge payload (already are).
 
-1. Each merge tag must live entirely inside one `<w:tc>` cell — no split runs, no surrounding tabs/spaces in the cell.
-2. Set fixed column widths in DXA on the table and on each cell (e.g. 3120 / 3120 / 3120 for a 9360 DXA content area) and disable AutoFit ("Fixed column width").
-3. Keep the existing italic style on the header row. If the visual underline rule below the data row is required, keep it as a bottom cell border instead of the current paragraph underline.
-4. Do NOT change any field key names, the Roman numeral XVI, the question text, the YES/NO checkboxes, the descriptive sentences between the two tables, or any other section.
+### Why this is safe
+- Purely additive: one new key per property, plus a fallback-tolerant change to one read line in the totals loop.
+- `propIdxSet` already drives N properties, so it works for any property count.
+- No template edits, no schema/UI changes, no other field touched.
+- `ln_p_amountOfEquity_N` continues to be published unchanged for templates that still reference it.
 
-### Code changes
-
-**None.** The publishers already emit the correct values. No edits to publishers, doc-gen engine, schema, or UI.
-
-### What's needed to apply the fix
-
-The `.docx` template lives in the `templates` storage bucket and is not in the repo. To proceed I need one of:
-
-- The current RE885 `.docx` re-uploaded here, so I can rebuild section XVI as the two fixed-width tables and re-upload via the existing `upload-template` flow; **or**
-- Confirmation that you will edit the template manually in Word using the structure above.
-
-### Validation after the template is updated
-
-Generate RE885 against the same deal and verify:
-
-- Single lien per section: `Stephen | 18,000.00 | 1st` sits exactly under the three header cells.
-- Multiple liens: each lien renders in its own row with stable column alignment regardless of name/amount length.
-- No drift, no wrapped text, no extra blank rows, no other section affected.
+### Verification
+- Generate RE851D for the open deal (2 properties, pledged 23,432 and 6,778).
+- Confirm template renders:
+  - Property 1 “Amount of Equity Securing the Loan” = `23,432.00`
+  - Property 2 = `6,778.00`
+  - `TOTAL EQUITY AMOUNT SECURING THE LOAN` = `30,210.00`
+  - `TOTAL AMOUNT OF THE LOAN TO BE SECURED BY MULTIPLE PROPERTIES` = loan amount (e.g. `750,000.00`)
+- Check `[generate-document] RE851D Part1 totals: …` log line for the expected sums.

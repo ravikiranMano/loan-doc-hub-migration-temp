@@ -3513,6 +3513,9 @@ async function generateSingleDocument(
               equityStr = parseAmt2(pledgedRaw).toFixed(2);
             }
             fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
+            // Template tag {{ln_p_equitySecuringLoan_N}} — sourced strictly from
+            // property.pledgedEquity (no calculation). Additive alias only.
+            fieldValues.set(`ln_p_equitySecuringLoan_${pi}`, { rawValue: equityStr, dataType: "currency" });
 
             // Per spec PART 1: LTV = (Total Senior Encumbrances / Market Value) × 100.
             // Overrides the loanAmount/MV LTV written by the per-property bridge.
