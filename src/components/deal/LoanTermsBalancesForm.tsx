@@ -460,8 +460,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             </div>
 
             {/* Funding Holdback */}
-            <div className="flex items-center gap-3">
-              <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+            <div className="flex items-start gap-3">
+              <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0 pt-1.5">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`}
@@ -476,32 +476,34 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 </div>
                 <p className="text-xs text-muted-foreground pl-5">Held By</p>
               </div>
-              <div className="relative w-[110px] shrink-0">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                <Input
-                  value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
-                  onChange={(e) => handleCurrencyChange(FIELD_KEYS.fundingHoldbackAmount, e.target.value)}
-                  onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
-                  onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
+              <div className="flex-1 flex flex-col gap-2">
+                <div className="relative w-[110px]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                  <Input
+                    value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
+                    onChange={(e) => handleCurrencyChange(FIELD_KEYS.fundingHoldbackAmount, e.target.value)}
+                    onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
+                    onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
+                    disabled={disabled}
+                    className="h-8 text-sm pl-7"
+                    placeholder="0.00"
+                  />
+                </div>
+                <Select
+                  value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
+                  onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
                   disabled={disabled}
-                  className="h-8 text-sm pl-7"
-                  placeholder="0.00"
-                />
+                >
+                  <SelectTrigger className="h-8 text-sm w-full">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lender">Lender</SelectItem>
+                    <SelectItem value="company">Company</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Select
-                value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
-                onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
-                disabled={disabled}
-              >
-                <SelectTrigger className="h-8 text-sm flex-1">
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lender">Lender</SelectItem>
-                  <SelectItem value="company">Company</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             {/* Shortpay / Overpay Handling */}
