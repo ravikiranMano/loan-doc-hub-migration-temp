@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
