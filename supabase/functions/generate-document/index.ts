@@ -5329,6 +5329,7 @@ async function generateSingleDocument(
         "pr_li_rem_originalAmount", "pr_li_rem_principalBalance", "pr_li_rem_monthlyPayment",
         "pr_li_rem_maturityDate", "pr_li_rem_maturity_date", "pr_li_rem_matDate",
         "pr_li_rem_balloonAmount", "pr_li_rem_balloonYes", "pr_li_rem_balloonNo", "pr_li_rem_balloonUnknown",
+        "pr_li_rem_amountOwing", "pr_li_rem_amount_owing", "pr_li_rem_amount", "pr_li_rem_owing",
       ];
       const ENC_ANT_BASES = ENC_REM_BASES.map(b => b.replace("pr_li_rem_", "pr_li_ant_"));
       for (let p = 1; p <= 5; p++) {
