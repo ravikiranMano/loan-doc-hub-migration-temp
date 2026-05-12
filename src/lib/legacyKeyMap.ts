@@ -922,7 +922,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 804 Credit Report (8 fields)
   'origination_fees.804_credit_report_payable_to': 'of_fe_804CreditReportPayabl',
-  'origination_fees.804_credit_report_d': 'of_fe_creditReportD',
+  'origination_fees.804_credit_report_d': 'of_804_desc',
   'origination_fees.804_credit_report_charge': 'of_fe_804CreditReportCharge',
   'origination_fees.804_credit_report_broker': 'of_804_creditReportFee_broker',
   'origination_fees.804_credit_report_others': 'of_804_creditReportFee_others',
