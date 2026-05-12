@@ -932,7 +932,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 805 Lenders Inspection Fee (8 fields)
   'origination_fees.805_lenders_inspection_fee_payable_to': 'of_fe_805LenderInspecFee5',
-  'origination_fees.805_lenders_inspection_fee_d': 'of_fe_lendersInspecFeeD',
+  'origination_fees.805_lenders_inspection_fee_d': 'of_805_desc',
   'origination_fees.805_lenders_inspection_fee_charge': 'of_fe_805LenderInspecFee2',
   'origination_fees.805_lenders_inspection_fee_broker': 'of_805_lenderInspectionFee_broker',
   'origination_fees.805_lenders_inspection_fee_others': 'of_805_lenderInspectionFee_others',
