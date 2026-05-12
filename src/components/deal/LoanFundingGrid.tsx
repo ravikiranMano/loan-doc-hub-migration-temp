@@ -692,8 +692,22 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
                 readOnly
                 className="h-7 text-xs w-28 pl-5 bg-muted/30"
               />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-foreground font-medium shrink-0">Pro Rata</Label>
+            <div className="relative">
+              <Input
+                value={proRata || ''}
+                onChange={(e) => onProRataChange?.(e.target.value)}
+                onBlur={onHeaderFieldBlur}
+                disabled={disabled}
+                inputMode="decimal"
+                className="h-7 text-xs w-24 pr-5"
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
             </div>
           </div>
+        </div>
         </div>
 
         <div className="overflow-x-auto">
