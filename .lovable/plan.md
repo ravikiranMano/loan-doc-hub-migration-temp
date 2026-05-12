@@ -1,41 +1,63 @@
-## Root cause
+## Goal
 
-In `LoanTermsFundingForm.tsx` the grid is passed the already-paginated slice (`paginatedRecords`) as `fundingRecords`. The grid then:
+Fix the RE851d Part 1 (Loan-to-Value Ratio) section so each per-property row computes Remaining/Expected/Total Senior Encumbrances, Amount of Equity, Amount of Equity Securing the Loan, and LTV using the spec's exact rules — with strict `thisLoan` exclusion and the correct lien fields per Condition.
 
-- Tracks `prevRecordsLenRef` against this paginated slice length, so its "auto-clear filters when records grow" effect (`LoanFundingGrid.tsx` lines 274–282) does not fire on add (slice length usually shrinks or stays the same when jumping to the new last page).
-- Runs `useGridSortFilter(fundingRecords, …)` on the paginated slice, so any active search/filter applied to the prior page silently filters out the just-added record on the new page.
+All work stays inside `supabase/functions/generate-document/index.ts`. No DB schema, no UI, no new edge functions.
 
-Result: after saving in the Add Funding modal, the new row never appears in the grid until the user manually clears the search/filter or refreshes.
+## What's wrong today (lines ~3308–3495)
 
-## Change (minimal, frontend only)
+1. `thisLoan` is never checked — a "This Loan" lien still gets aggregated.
+2. Anticipated uses `lienN.original_balance`, but per spec it must use the "Anticipated Balance (if new lien)" value, which the UI persists as `lienN.new_remaining_balance` (fallback `lienN.anticipated_amount`).
+3. `ln_p_loanToValueRatio_N` is computed at lines 1407–1419 as `loanAmount / marketValue`, but per spec PART 1 LTV must be `Total Senior Encumbrances / marketValue × 100`.
+4. `pr_p_pledgedEquity_N` is mapped from `propertyN.pledged_equity` (line 256) but never explicitly bridged per-N like `pr_p_appraiseValue_N`. Verify it publishes; if not, add a per-N bridge.
+5. Equity formula at line 3487 uses `mv - rem` (remaining only). Spec says `Market Value − Total Senior Encumbrances`.
 
-Edit only the prop wiring so the grid can detect total-record growth correctly. No API, schema, layout, or persistence change.
+## Changes
 
-1. `src/components/deal/LoanTermsFundingForm.tsx`
-   - Add a new prop value passed to `<LoanFundingGrid>`: `totalRecordCount={fundingRecords.length}` (the full, unpaginated list length already computed in this file).
-   - Leave everything else (paginated slice prop, persistence, page jump) untouched.
+### 1. Per-property rollup (lines ~3308–3495)
 
-2. `src/components/deal/LoanFundingGrid.tsx`
-   - Add an optional `totalRecordCount?: number` to `LoanFundingGridProps` and destructure it (default to `fundingRecords.length` for safety/backwards compat).
-   - Replace the growth detector at lines 274–282 to track `totalRecordCount` instead of the paginated slice length:
-     ```ts
-     const prevTotalRef = useRef(totalRecordCount);
-     useEffect(() => {
-       if (totalRecordCount > prevTotalRef.current) {
-         if (searchQuery || activeFilterCount > 0) clearFilters();
-       }
-       prevTotalRef.current = totalRecordCount;
-     }, [totalRecordCount, searchQuery, activeFilterCount, clearFilters]);
-     ```
-   - No other logic, no UI, no totals row, no columns, no styling changed.
+- Add a `thisLoan` check at the top of the lien loop (line ~3408): read `lienK.this_loan` (truthy ⇒ skip). Use the existing `truthy3` helper.
+- For `cond === "anticipated"` (line ~3422), replace `original_balance` with:
+  ```
+  new_remaining_balance ?? newRemainingBalance ?? anticipated_amount ?? anticipatedAmount
+  ```
+- Keep `remain`/`paydown` on `current_balance` (already correct).
+- Keep `payoff` excluded (already correct).
+- Recompute equity (line ~3487) as `mv - tot` (Market Value − Total Senior Encumbrances) instead of `mv - rem`.
+- Per-property LTV: after `tot` is computed, set
+  `ln_p_loanToValueRatio_N = (tot / mv) * 100` formatted to 2 decimals; emit `"0.00"` (or skip) when `mv <= 0`.
+  This must override the loan/MV LTV written at lines 1416–1418 — write it after that pass (the rollup already runs later, so just ensure unconditional `set`).
 
-## Why this fixes it
+### 2. Pledged Equity per-property bridge
 
-- The page-jump in `handleAddFunding` already moves the user to the page that contains the new record.
-- With the corrected growth detector, any active search/filter is cleared on add, so the newly added record on the new page is no longer hidden by stale filter state and shows up immediately in the grid.
-- Persistence is unchanged (`directPersistFundingField` still writes both `funding_records` and `funding_history` JSON via the existing API).
+Near the per-property bridges around line 1351 (`pr_p_appraiseValue_${idx}`), add:
+```
+const pledgedV =
+  fieldValues.get(`${prefix}.pledged_equity`) ||
+  fieldValues.get(`${prefix}.pledgedEquity`);
+if (pledgedV?.rawValue && !fieldValues.has(`pr_p_pledgedEquity_${idx}`)) {
+  fieldValues.set(`pr_p_pledgedEquity_${idx}`,
+    { rawValue: pledgedV.rawValue, dataType: pledgedV.dataType || "currency" });
+}
+```
+
+### 3. Anti-fallback shield
+
+Add `pr_p_pledgedEquity_N` and `ln_p_amountOfEquity_N` to the per-N safe key list (lines 3902/4038/4062/5161 area) so unpublished indices render `"0.00"` rather than picking up the bare key.
+
+### 4. Logging
+
+Extend the existing `RE851D Part1 rollup property${pi}` debug line to include `mv`, `equity`, and `ltv` so future regressions are visible in `edge_function_logs`.
+
+## Verification
+
+- Existing RE851d tag-parser tests stay green (no parser touch).
+- Re-run an end-to-end generate against a deal containing the user's `Re851d_v1_1_2_19-2.docx` template; confirm via edge logs that for each property:
+  - `thisLoan` liens are absent from `matchedLog`,
+  - `Anticipated` liens contribute `new_remaining_balance` to Expected,
+  - `ln_p_loanToValueRatio_N` equals `total/mv*100`.
+- Spot-check the 8 spec test cases in the rendered docx (single-property deal, then multi-property deal).
 
 ## Out of scope
 
-- No changes to AddFundingModal, persistence helpers, save APIs, schema, or any other grid (history, adjustments).
-- No edits to totals/summary calculations or column definitions.
+UI, schema, new tables, Part 2 logic, footer total rows beyond what's already published. The plan does not touch `LiensTableView`, `useDealFields`, or any client code.
