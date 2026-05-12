@@ -66,7 +66,8 @@ const PenaltyPercentInput: React.FC<{
   onBlur?: () => void;
 }> = ({ value, onChange, disabled, className, onBlur }) => {
   const [isFocused, setIsFocused] = useState(false);
-  const displayValue = isFocused ? (value || '') : formatPercentageDisplay(value || '');
+  // Late charge / prepayment penalty %: max 3 decimals on display per platform standard.
+  const displayValue = isFocused ? (value || '') : formatPercentDisplay(value || '', 3);
 
   return (
     <div className="relative">
