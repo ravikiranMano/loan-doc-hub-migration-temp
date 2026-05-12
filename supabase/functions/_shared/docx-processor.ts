@@ -24,6 +24,49 @@ const debugLog = (...args: unknown[]) => {
 const PROCESSED_XML_COMPRESSION_LEVEL = 0;
 const UNCHANGED_XML_COMPRESSION_LEVEL = 0;
 
+/**
+ * Lossless cleanup of authoring noise that bloats document.xml without
+ * affecting rendering or merge logic. Mirrors the cleanup applied at upload
+ * time, but runs at generation time too so already-uploaded large templates
+ * (e.g. RE851D V12.x ~4.4MB) stay within the Edge Function CPU budget.
+ *
+ * Removes:
+ *   - <mc:Fallback>...</mc:Fallback> blocks (legacy VML duplicates of
+ *     modern DrawingML in mc:AlternateContent — Word renders mc:Choice).
+ *   - <mc:AlternateContent> wrappers when only mc:Choice remains.
+ *   - All w:rsid* attributes (Word revision-save IDs).
+ *   - <w:proofErr .../> spell/grammar markers.
+ *   - <w:lastRenderedPageBreak/> hints (recomputed by Word on open).
+ *   - _GoBack proof bookmarks.
+ *
+ * Paragraphs, runs, tables, sections, styles, SDTs, drawings, hyperlinks,
+ * and merge tags are preserved unchanged.
+ */
+function stripAuthoringNoise(xml: string): string {
+  let out = xml.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+
+  let prev: string;
+  let safety = 0;
+  do {
+    prev = out;
+    out = out.replace(
+      /<mc:AlternateContent[^>]*>\s*<mc:Choice\b[^>]*>([\s\S]*?)<\/mc:Choice>\s*<\/mc:AlternateContent>/g,
+      "$1",
+    );
+    safety++;
+  } while (out !== prev && safety < 8);
+
+  out = out.replace(/\s+w:rsid[A-Za-z]*="[0-9A-Fa-f]+"/g, "");
+  out = out.replace(/<w:proofErr\b[^/>]*\/>/g, "");
+  out = out.replace(/<w:lastRenderedPageBreak\s*\/>/g, "");
+  out = out.replace(
+    /<w:bookmarkStart\b[^/>]*w:name="_GoBack"[^/>]*\/>/g,
+    "",
+  );
+
+  return out;
+}
+
 function hasLikelyMergeWork(xml: string, labelMap: Record<string, LabelMapping>): boolean {
   if (
     xml.includes("{{") ||
@@ -161,7 +204,24 @@ export async function processDocx(
 
       if (isContentPart) {
         debugLog(`[docx-processor] Processing content XML: ${filename} (${content.length} bytes)`);
-        const originalXml = decoder.decode(content);
+        const decodedXml = decoder.decode(content);
+
+        // Defensive cleanup for large content parts: strip authoring noise
+        // (mc:Fallback duplicates, rsids, proofErr, lastRenderedPageBreak)
+        // before any regex pass runs. Only applied when the part exceeds
+        // ~1MB so small templates pay no measurable cost.
+        let originalXml = decodedXml;
+        if (decodedXml.length > 1_000_000) {
+          const tClean = performance.now();
+          const cleaned = stripAuthoringNoise(decodedXml);
+          if (cleaned.length < decodedXml.length) {
+            originalXml = cleaned;
+            console.log(
+              `[docx-processor] stripped authoring noise from ${filename}: ${decodedXml.length}B -> ${cleaned.length}B in ${Math.round(performance.now() - tClean)}ms`,
+            );
+          }
+        }
+
         const inputXml = is885 && filename === "word/document.xml"
           ? normalizeRe885OtherLienAmountCells(originalXml)
           : originalXml;
