@@ -890,6 +890,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           const v = !isNaN(parsed) && parsed > 0 ? parsed : (!isNaN(fallback) && fallback > 0 ? fallback : 0);
           return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
         })()}
+        remainingPayments={remainingPayments}
         existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned }))}
         editingRecordId={selectedRecord?.id}
       />
