@@ -266,6 +266,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const totalPayment = values['loan_terms.total_payment'] || values['loan_terms.regular_payment'] || '';
   const loanAmount = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || '';
   const loanPrincipalBalance = values['loan_terms.principal'] || '';
+  const remainingPayments = parseFloat(values['ln_p_termMonths'] || '') || 0;
 
   // Parse funding records from stored JSON value
   const fundingRecords: FundingRecord[] = useMemo(() => {
