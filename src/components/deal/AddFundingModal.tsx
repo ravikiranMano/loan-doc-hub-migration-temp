@@ -40,6 +40,7 @@ interface AddFundingModalProps {
   totalPayment?: string;
   loanAmount?: string;
   loanPrincipalBalance?: string;
+  remainingPayments?: number;
   existingRecords?: Array<{ id: string; roundingError: boolean; pctOwned: number }>;
   editingRecordId?: string;
 }
