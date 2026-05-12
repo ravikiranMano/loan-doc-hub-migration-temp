@@ -4767,6 +4767,7 @@ async function generateSingleDocument(
               "monthlyPayment", "maturityDate", "maturity_date", "matDate",
               "balloonAmount",
               "balloonYes", "balloonNo", "balloonUnknown",
+              "amountOwing", "amount_owing",
             ];
             const encTagRe = new RegExp(
               "\\bpr_li_(rem|ant)_(" + encFields.join("|") + ")(?:_N(?:_S)?)?(?![A-Za-z0-9_])",
