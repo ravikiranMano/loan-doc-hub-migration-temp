@@ -892,7 +892,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 801 Lenders Loan Origination Fee (8 fields)
   'origination_fees.801_lenders_loan_origination_fee_payable_to': 'of_fe_801LenderLoanOrigin5',
-  'origination_fees.801_lenders_loan_origination_fee_d': 'of_fe_lendersLoanOriginFee',
+  'origination_fees.801_lenders_loan_origination_fee_d': 'of_801_desc',
   'origination_fees.801_lenders_loan_origination_fee_charge': 'of_fe_801LenderLoanOrigin2',
   'origination_fees.801_lenders_loan_origination_fee_broker': 'of_801_lenderLoanOriginationFee_broker',
   'origination_fees.801_lenders_loan_origination_fee_others': 'of_801_lenderLoanOriginationFee_others',
@@ -902,7 +902,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 802 Lenders Loan Discount Fee (8 fields)
   'origination_fees.802_lenders_loan_discount_fee_payable_to': 'of_fe_802LenderLoanDiscou5',
-  'origination_fees.802_lenders_loan_discount_fee_d': 'of_fe_lendersLoanDiscouFee',
+  'origination_fees.802_lenders_loan_discount_fee_d': 'of_802_desc',
   'origination_fees.802_lenders_loan_discount_fee_charge': 'of_fe_802LenderLoanDiscou2',
   'origination_fees.802_lenders_loan_discount_fee_broker': 'of_802_lenderLoanDiscountFee_broker',
   'origination_fees.802_lenders_loan_discount_fee_others': 'of_802_lenderLoanDiscountFee_others',
@@ -912,7 +912,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 803 Appraisal Fee (8 fields)
   'origination_fees.803_appraisal_fee_payable_to': 'of_fe_803AppraiFeePayabl',
-  'origination_fees.803_appraisal_fee_d': 'of_fe_appraisaFeeD',
+  'origination_fees.803_appraisal_fee_d': 'of_803_desc',
   'origination_fees.803_appraisal_fee_charge': 'of_fe_803AppraiFeeCharge',
   'origination_fees.803_appraisal_fee_broker': 'of_803_appraisalFee_broker',
   'origination_fees.803_appraisal_fee_others': 'of_803_appraisalFee_others',
@@ -922,7 +922,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 804 Credit Report (8 fields)
   'origination_fees.804_credit_report_payable_to': 'of_fe_804CreditReportPayabl',
-  'origination_fees.804_credit_report_d': 'of_fe_creditReportD',
+  'origination_fees.804_credit_report_d': 'of_804_desc',
   'origination_fees.804_credit_report_charge': 'of_fe_804CreditReportCharge',
   'origination_fees.804_credit_report_broker': 'of_804_creditReportFee_broker',
   'origination_fees.804_credit_report_others': 'of_804_creditReportFee_others',
@@ -932,7 +932,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 805 Lenders Inspection Fee (8 fields)
   'origination_fees.805_lenders_inspection_fee_payable_to': 'of_fe_805LenderInspecFee5',
-  'origination_fees.805_lenders_inspection_fee_d': 'of_fe_lendersInspecFeeD',
+  'origination_fees.805_lenders_inspection_fee_d': 'of_805_desc',
   'origination_fees.805_lenders_inspection_fee_charge': 'of_fe_805LenderInspecFee2',
   'origination_fees.805_lenders_inspection_fee_broker': 'of_805_lenderInspectionFee_broker',
   'origination_fees.805_lenders_inspection_fee_others': 'of_805_lenderInspectionFee_others',
@@ -942,7 +942,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 808 Mortgage Broker Fee (8 fields)
   'origination_fees.808_mortgage_broker_fee_payable_to': 'of_fe_808MortgaBrokerFee5',
-  'origination_fees.808_mortgage_broker_fee_d': 'of_fe_mortgageBrokerFeeD',
+  'origination_fees.808_mortgage_broker_fee_d': 'of_806_desc',
   'origination_fees.808_mortgage_broker_fee_charge': 'of_fe_808MortgaBrokerFee2',
   'origination_fees.808_mortgage_broker_fee_broker': 'of_808_mortgageBrokerCommissionFee_broker',
   'origination_fees.808_mortgage_broker_fee_others': 'of_808_mortgageBrokerCommissionFee_others',
@@ -952,7 +952,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 809 Tax Service Fee (8 fields)
   'origination_fees.809_tax_service_fee_payable_to': 'of_fe_809TaxServicFee5',
-  'origination_fees.809_tax_service_fee_d': 'of_fe_taxServicFeeD',
+  'origination_fees.809_tax_service_fee_d': 'of_809_desc',
   'origination_fees.809_tax_service_fee_charge': 'of_fe_809TaxServicFee2',
   'origination_fees.809_tax_service_fee_broker': 'of_809_taxServiceFee_broker',
   'origination_fees.809_tax_service_fee_others': 'of_809_taxServiceFee_others',
@@ -962,7 +962,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 810 Processing Fee (8 fields)
   'origination_fees.810_processing_fee_payable_to': 'of_fe_810ProcesFeePayabl',
-  'origination_fees.810_processing_fee_d': 'of_fe_processiFeeD',
+  'origination_fees.810_processing_fee_d': 'of_810_desc',
   'origination_fees.810_processing_fee_charge': 'of_fe_810ProcesFeeCharge',
   'origination_fees.810_processing_fee_broker': 'of_810_processingFee_broker',
   'origination_fees.810_processing_fee_others': 'of_810_processingFee_others',
@@ -972,7 +972,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 811 Underwriting Fee (8 fields)
   'origination_fees.811_underwriting_fee_payable_to': 'of_fe_811UnderwFeePayabl',
-  'origination_fees.811_underwriting_fee_d': 'of_fe_underwriFeeD',
+  'origination_fees.811_underwriting_fee_d': 'of_811_desc',
   'origination_fees.811_underwriting_fee_charge': 'of_fe_811UnderwFeeCharge',
   'origination_fees.811_underwriting_fee_broker': 'of_811_underwritingFee_broker',
   'origination_fees.811_underwriting_fee_others': 'of_811_underwritingFee_others',
@@ -982,7 +982,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 812 Wire Transfer Fee (8 fields)
   'origination_fees.812_wire_transfer_fee_payable_to': 'of_fe_812WireTransfFee5',
-  'origination_fees.812_wire_transfer_fee_d': 'of_fe_wireTransfFeeD',
+  'origination_fees.812_wire_transfer_fee_d': 'of_812_desc',
   'origination_fees.812_wire_transfer_fee_charge': 'of_fe_812WireTransfFee2',
   'origination_fees.812_wire_transfer_fee_broker': 'of_812_wireTransferFee_broker',
   'origination_fees.812_wire_transfer_fee_others': 'of_812_wireTransferFee_others',
