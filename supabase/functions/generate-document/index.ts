@@ -7904,23 +7904,57 @@ async function generateSingleDocument(
             }
             continue;
           }
-          // Apply: split into pure inserts (at >= 0) and replacements (at < 0 with marker)
-          const pureInserts = inserts.filter(x => x.at >= 0).sort((a, b) => b.at - a.at);
-          for (const ins of pureInserts) {
-            xml = xml.slice(0, ins.at) + ins.html + xml.slice(ins.at);
-          }
-          const replacements = inserts
-            .filter(x => x.at < 0)
-            .map(x => {
-              const [body, tail] = x.html.split("|||REPLACE|||");
+          // Apply ALL edits (pure inserts + replacements) in one ascending-cursor
+          // pass so an insert that lands at a replacement boundary cannot
+          // truncate the replacement body — and vice versa. The previous
+          // "inserts first descending, replacements second using original
+          // offsets" sequence corrupted XML when a label insert at `end` of
+          // a replaced glyph caused the subsequent replacement to slice INTO
+          // the inserted label, dropping bytes (including `<w:p>` opens) and
+          // producing the observed "unbalanced <w:p>" integrity failure.
+          type Edit = { start: number; end: number; body: string };
+          const edits: Edit[] = [];
+          let pureInsertCount = 0;
+          let replacementCount = 0;
+          for (const ins of inserts) {
+            if (ins.at >= 0) {
+              edits.push({ start: ins.at, end: ins.at, body: ins.html });
+              pureInsertCount++;
+            } else {
+              const [body, tail] = ins.html.split("|||REPLACE|||");
               const start = parseInt(tail, 10);
-              const end = -x.at;
-              return { start, end, body };
-            })
-            .sort((a, b) => b.start - a.start);
-          for (const r of replacements) {
-            xml = xml.slice(0, r.start) + r.body + xml.slice(r.end);
+              const end = -ins.at;
+              if (Number.isFinite(start) && end > start) {
+                edits.push({ start, end, body });
+                replacementCount++;
+              }
+            }
           }
+          // Sort by start ascending, then by end ascending so a zero-width
+          // insert at position P comes BEFORE a replacement starting at P.
+          edits.sort((a, b) => (a.start - b.start) || (a.end - b.end));
+          let cursor = 0;
+          let outBuf = "";
+          let dropped = 0;
+          for (const e of edits) {
+            if (e.start < cursor) {
+              // Overlapping or out-of-order edit — skip rather than corrupt XML.
+              dropped++;
+              continue;
+            }
+            outBuf += xml.slice(cursor, e.start) + e.body;
+            cursor = e.end;
+          }
+          outBuf += xml.slice(cursor);
+          xml = outBuf;
+          if (dropped > 0) {
+            debugLog(
+              `[generate-document] RE851D enc post-render: dropped ${dropped} overlapping edit(s) in ${filename}`,
+            );
+          }
+          // Preserve previous variable names below for the existing log line.
+          const pureInserts = { length: pureInsertCount } as { length: number };
+          const replacements = { length: replacementCount } as { length: number };
           rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
           didMutate = true;
           debugLog(
