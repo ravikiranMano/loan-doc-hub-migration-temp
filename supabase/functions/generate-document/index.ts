@@ -3407,6 +3407,16 @@ async function generateSingleDocument(
             }
             if (pIdx === null) continue; // no cross-bleed
 
+            // Per spec: always exclude liens flagged as "This Loan" before any
+            // condition-based aggregation, regardless of condition value.
+            const thisLoanRaw =
+              fieldValues.get(`${lp}.this_loan`)?.rawValue ??
+              fieldValues.get(`${lp}.thisLoan`)?.rawValue;
+            if (truthy3(thisLoanRaw)) {
+              matchedLog[pIdx].push(`${li}:thisLoan-skip`);
+              continue;
+            }
+
             const cond = classify(lp);
             const dbgOrig = fieldValues.get(`${lp}.original_balance`)?.rawValue ?? "";
             const dbgCur = fieldValues.get(`${lp}.current_balance`)?.rawValue ?? "";
@@ -3420,7 +3430,15 @@ async function generateSingleDocument(
               continue;
             }
             if (cond === "anticipated") {
-              const amt = parseAmt2(fieldValues.get(`${lp}.original_balance`)?.rawValue);
+              // Per spec: Anticipated uses "Anticipated Balance (if new lien)"
+              // which the UI persists as new_remaining_balance, falling back to
+              // anticipated_amount when missing.
+              const antRaw =
+                fieldValues.get(`${lp}.new_remaining_balance`)?.rawValue ??
+                fieldValues.get(`${lp}.newRemainingBalance`)?.rawValue ??
+                fieldValues.get(`${lp}.anticipated_amount`)?.rawValue ??
+                fieldValues.get(`${lp}.anticipatedAmount`)?.rawValue;
+              const amt = parseAmt2(antRaw);
               expByProp.set(pIdx, (expByProp.get(pIdx) || 0) + amt);
               matchedLog[pIdx].push(`${li}:ant=${amt}`);
             } else {
