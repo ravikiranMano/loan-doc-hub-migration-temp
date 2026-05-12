@@ -154,6 +154,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   const [validationErrors, setValidationErrors] = useState<Record<string, string | null>>({});
 
   const [focusedCurrencyField, setFocusedCurrencyField] = useState<string | null>(null);
+  const [focusedPercentField, setFocusedPercentField] = useState<string | null>(null);
 
   const formatCurrencyDisplay = useCallback((val: string) => {
     if (!val) return '';
