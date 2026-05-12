@@ -1,49 +1,61 @@
-## Add missing fields to Loan → Terms & Balances
+## Fix RE885 Other Liens — alignment under Lienholder / Amount Owing / Priority
 
-Add the fields shown in the screenshot that are not currently in the form. No DB schema changes — values persist via the existing `deal_section_values` JSONB store and existing save/update API. Existing fields, layout for current rows, and other forms remain unchanged.
+### Diagnosis
 
-### 1. New field keys (`src/lib/fieldKeyMap.ts` → `LOAN_TERMS_BALANCES_KEYS`)
+Data publishing is already correct. `pr_li_lienHolder`, `pr_p_currentBalanc`, `pr_li_lienPrioriNow`, `li_lt_anticipatedAmount`, and `pr_li_lienPrioriAfter` are emitted by the publishers in `supabase/functions/generate-document/index.ts` (lines ~2595–2797). The values shown in image-530 (`Stephen / 18,000.00 / 1st`, `Stephen / 12,000.00 / 2nd`) are correct.
 
-Add under `loan_terms.*`:
+The shift seen is a **template layout problem**, not a code problem:
 
-- `shortPaymentHandling` — `loan_terms.short_payment_handling` (dropdown)
-- `applyToPaymentParameters` — `loan_terms.apply_to_payment_parameters` ("%" | "$")
-- `applyShortPayment` — `loan_terms.apply_short_payment` (dropdown)
-- `unpaidInterestProcessing` — `loan_terms.unpaid_interest_processing` (dropdown)
-- `payAutomatically` — `loan_terms.pay_automatically` (boolean)
-- `calculateInterestOnInterest` — `loan_terms.calculate_interest_on_interest` (boolean)
-- `fundingHoldbackAmount` — `loan_terms.funding_holdback_amount` (currency)
-- `toReserves` — `loan_terms.to_reserves` (currency)
-- `overpaymentsUnpaidInterest` — `loan_terms.overpayments_unpaid_interest` (currency)
-- `overpaymentsShortPayments` — `loan_terms.overpayments_short_payments` (currency)
-- `overpaymentsProcessingUnpaidInterest` — `loan_terms.overpayments_processing_unpaid_interest` (currency)
+- In the current RE885 template (section XVI – Other Liens), the three column labels and the three merge tags below them are placed in a single paragraph using **tab stops / spaces**, not in a Word table.
+- When `{{pr_p_currentBalanc}}` (16 chars) becomes `18,000.00` (9 chars) and `{{pr_li_lienPrioriNow}}` becomes `1st`, the tab columns reflow because Word recomputes tab positions from the resulting text width. That is why the second column drifts left and the third column shifts right of its header.
+- This cannot be fixed reliably from the doc-gen engine — the only stable fix is to bind the values into a fixed-width Word table in the template itself.
 
-### 2. UI additions (`src/components/deal/LoanTermsBalancesForm.tsx`)
+### Required template change (RE885 section XVI)
 
-Terms column — add new "Shortpay / Overpay Handling" sub-header above existing "Accept Short Payments" block:
-- Short Payment Handling — Select (options: Do Not Accept / Deposit to Suspense / Apply to Payment)
-- Apply to Payment Parameters — `%` / `$` toggle (checkbox/segmented)
-- Apply Short Payment — Select (options: Apply Short Pay / Unpaid Interest / Add to Principal)
-- Unpaid Interest Processing — Select (options: Pay Automatically / Manual)
-  - Pay Automatically — Checkbox sub-row
-  - Calculate Interest on Interest — Checkbox sub-row
+Replace each of the two tab-aligned blocks with a real 3-column Word table.
 
-Funding Holdback row — add a `$` currency input next to the existing `Held By` dropdown (keep current dropdown intact).
+Block 1 — "Currently obligated":
 
-Payments column — insert "To Reserves" currency row between "To Escrow Impounds" and "Default Interest" / "Total Payment".
+```
+┌──────────────────────┬──────────────────────┬─────────────────────────┐
+│ Lienholder's Name    │ Amount Owing         │ Priority                │   ← header row (italic)
+├──────────────────────┼──────────────────────┼─────────────────────────┤
+│ {{pr_li_lienHolder}} │ {{pr_p_currentBalanc}} │ {{pr_li_lienPrioriNow}} │
+└──────────────────────┴──────────────────────┴─────────────────────────┘
+```
 
-Payments column — append "Overpayments Applied To" labeled group at the bottom with three currency rows:
-- Unpaid Interest
-- Short Payments
-- Processing Unpaid Interest
+Block 2 — "Liens that will remain or are anticipated":
 
-### 3. Persistence
+```
+┌──────────────────────┬──────────────────────────────┬──────────────────────────┐
+│ Lienholder's Name    │ Amount Owing                 │ Priority                 │
+├──────────────────────┼──────────────────────────────┼──────────────────────────┤
+│ {{pr_li_lienHolder}} │ {{li_lt_anticipatedAmount}}  │ {{pr_li_lienPrioriAfter}}│
+└──────────────────────┴──────────────────────────────┴──────────────────────────┘
+```
 
-All new keys are read/written through the existing `values` / `onValueChange` props (already wired into `useDealFields` → `deal_section_values`). No new save logic, no edge function changes, no schema migration.
+Rules for the template edit:
 
-### 4. Constraints honored
+1. Each merge tag must live entirely inside one `<w:tc>` cell — no split runs, no surrounding tabs/spaces in the cell.
+2. Set fixed column widths in DXA on the table and on each cell (e.g. 3120 / 3120 / 3120 for a 9360 DXA content area) and disable AutoFit ("Fixed column width").
+3. Keep the existing italic style on the header row. If the visual underline rule below the data row is required, keep it as a bottom cell border instead of the current paragraph underline.
+4. Do NOT change any field key names, the Roman numeral XVI, the question text, the YES/NO checkboxes, the descriptive sentences between the two tables, or any other section.
 
-- No changes to existing fields, labels, or layout for unchanged rows.
-- No DB schema, RLS, or API changes.
-- Reuses `renderCurrencyField`, `Select`, `Checkbox`, and `DirtyFieldWrapper` patterns already in the file.
-- Uses existing `LABEL_CLASS` and column structure.
+### Code changes
+
+**None.** The publishers already emit the correct values. No edits to publishers, doc-gen engine, schema, or UI.
+
+### What's needed to apply the fix
+
+The `.docx` template lives in the `templates` storage bucket and is not in the repo. To proceed I need one of:
+
+- The current RE885 `.docx` re-uploaded here, so I can rebuild section XVI as the two fixed-width tables and re-upload via the existing `upload-template` flow; **or**
+- Confirmation that you will edit the template manually in Word using the structure above.
+
+### Validation after the template is updated
+
+Generate RE885 against the same deal and verify:
+
+- Single lien per section: `Stephen | 18,000.00 | 1st` sits exactly under the three header cells.
+- Multiple liens: each lien renders in its own row with stable column alignment regardless of name/amount length.
+- No drift, no wrapped text, no extra blank rows, no other section affected.
