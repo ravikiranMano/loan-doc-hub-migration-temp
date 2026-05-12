@@ -330,31 +330,38 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
-  const renderAdjPercentField = (fieldKey: string, label: string) => (
-    <DirtyFieldWrapper fieldKey={fieldKey}>
-      <div className="flex items-center gap-2">
-        <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
-        <div className="relative flex-1">
-          <Input
-            value={getValue(fieldKey)}
-            onChange={(e) => {
-              const cleaned = e.target.value.replace(/[^0-9.]/g, '');
-              setValue(fieldKey, cleaned);
-            }}
-            onBlur={() => {
-              const val = getValue(fieldKey);
-              if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(fieldKey, stored); }
-            }}
-            disabled={disabled}
-            className="h-8 text-xs pr-5"
-            inputMode="decimal"
+  const renderAdjPercentField = (fieldKey: string, label: string) => {
+    const isFocused = focusedPercentField === fieldKey;
+    const raw = getValue(fieldKey);
+    const display = isFocused ? raw : (raw ? formatPercentDisplay(raw, 3) : '');
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-center gap-2">
+          <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
+          <div className="relative flex-1">
+            <Input
+              value={display}
+              onChange={(e) => {
+                const cleaned = e.target.value.replace(/[^0-9.]/g, '');
+                setValue(fieldKey, cleaned);
+              }}
+              onFocus={() => setFocusedPercentField(fieldKey)}
+              onBlur={() => {
+                setFocusedPercentField(null);
+                const val = getValue(fieldKey);
+                if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(fieldKey, stored); }
+              }}
+              disabled={disabled}
+              className="h-8 text-xs pr-5"
+              inputMode="decimal"
               placeholder="0.00"
-          />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+          </div>
         </div>
-      </div>
-    </DirtyFieldWrapper>
-  );
+      </DirtyFieldWrapper>
+    );
+  };
 
   const renderAdjCurrencyField = (fieldKey: string, label: string, suffix: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
