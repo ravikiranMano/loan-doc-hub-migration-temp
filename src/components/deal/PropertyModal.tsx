@@ -53,7 +53,7 @@ const generatePropertyId = () => `property_${Date.now()}_${Math.random().toStrin
 
 const getEmptyProperty = (): PropertyData => ({
   id: generatePropertyId(), isPrimary: false, description: '', street: '', city: '', state: '', zipCode: '', county: '',
-  propertyType: '', occupancy: '', appraisedValue: '', appraisedDate: '', ltv: '', apn: '',
+  propertyType: '', occupancy: '', appraisedValue: '', appraisedDate: '', ltv: '', originationLtv: '', apn: '',
   loanPriority: '', floodZone: '', fireZone: '', landClassification: '', pledgedEquity: '',
   zoning: '', performedBy: '', copyBorrowerAddress: false,
   purchasePrice: '', downPayment: '', delinquentTaxes: '',
@@ -374,7 +374,8 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
                 
                 {renderCurrencyField('pledgedEquity', 'Pledged Equity')}
                 {renderCurrencyField('protectiveEquity', 'Protective Equity')}
-                {renderPercentageField('ltv', 'Loan To Value')}
+                {renderPercentageField('originationLtv' as keyof PropertyData, 'Origination LTV')}
+                {renderPercentageField('ltv', 'Current LTV')}
                 {renderPercentageField('cltv', 'CLTV (If a Junior Lien)')}
               </div>
             </div>
