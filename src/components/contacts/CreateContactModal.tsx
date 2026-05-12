@@ -239,7 +239,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
     if (contactType === 'lender') {
       const errs: Record<string, string> = {};
       if (!form['type']) errs['type'] = 'Please select a lender type';
-      if (!(form['full_name'] || '').trim()) errs['full_name'] = 'Full Name is required';
+      if (!(form['full_name'] || '').trim()) errs['full_name'] = 'Entity is required';
       else if ((form['full_name'] || '').length > 100) errs['full_name'] = 'Max 100 characters';
       if (!(form['first_name'] || '').trim()) errs['first_name'] = 'Enter valid first name';
       if (!(form['last_name'] || '').trim()) errs['last_name'] = 'Enter valid last name';
