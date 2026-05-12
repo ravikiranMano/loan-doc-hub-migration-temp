@@ -787,6 +787,8 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       onLoanNumberChange={handleLoanNumberChange}
       onBorrowerNameChange={handleBorrowerNameChange}
       onHeaderFieldBlur={handleHeaderFieldBlur}
+      proRata={values['loan_terms.pro_rata'] || ''}
+      onProRataChange={(v) => onValueChange('loan_terms.pro_rata', v)}
       fundingAdjustments={fundingAdjustments}
       onSaveAdjustment={handleSaveAdjustment}
       onDeleteHistoryRecord={handleDeleteHistoryRecord}
