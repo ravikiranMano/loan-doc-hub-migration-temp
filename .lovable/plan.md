@@ -1,34 +1,52 @@
-## Fix: register `ln_p_equitySecuringLoan_N` in the RE851D region rewrite allowlist
+## Root cause
 
-### Root cause
-The per-property publisher writes `ln_p_equitySecuringLoan_${pi}` correctly (we added that last turn), and the footer totals are wired. But RE851D uses a region-restricted `_N` → `_1/_2/...` template rewrite driven by two allowlists in `supabase/functions/generate-document/index.ts`:
+`{{ln_p_equitySecuringLoan_N}}` is whitelisted in `PART1_TAGS` (line 4114) and `PART2_TAGS` (line 4139), but the rewrite scan that drives `_N → _K` expansion only iterates the master list `RE851D_INDEXED_TAGS` (built into `tagsByLengthDesc` at line 4619 of `supabase/functions/generate-document/index.ts`):
 
-- `PART1_TAGS` (~lines 4105–4126)
-- `PART2_TAGS` (~lines 4127–4150)
+```ts
+const tagsByLengthDesc = RE851D_INDEXED_TAGS
+  .filter((t) => xml.includes(t))
+  .sort((a, b) => b.length - a.length);
+```
 
-`ln_p_amountOfEquity_N` is whitelisted; **`ln_p_equitySecuringLoan_N` is not**. So the literal `{{ln_p_equitySecuringLoan_N}}` in the template is never expanded into per-property tags and resolves to blank, regardless of the publish step.
+`RE851D_INDEXED_TAGS` (lines 3968–4097) contains `ln_p_amountOfEquity_N`, `ln_p_totalEncumbrance_N`, `ln_p_remainingEncumbrance_N`, etc., but **does not contain `ln_p_equitySecuringLoan_N`**. Result:
 
-### Change (additive only)
+- The scanner never visits any `ln_p_equitySecuringLoan_N` occurrence in the XML.
+- No rewrite is generated for it, so the literal `{{ln_p_equitySecuringLoan_N}}` survives into the final tag-resolution pass.
+- The resolver has no value for the literal `_N` key (only `_1`, `_2`, … were published by the publisher at line 3518), so the cell renders blank.
+
+The PART1_TAGS/PART2_TAGS allowlist only acts as a region filter *after* a candidate match is found — it cannot enable a tag that was never scanned. This explains why the prior fix (adding to PART1_TAGS/PART2_TAGS) did not change behavior, while sibling tags like `ln_p_amountOfEquity_N` work correctly because they are members of the master list.
+
+The footer totals (`ln_totalEquitySecuringLoan`, `ln_totalLoanAmountSecured`) populate fine because they are non-`_N` tags that bypass this rewrite path entirely.
+
+## Fix (additive, single line)
+
 **File:** `supabase/functions/generate-document/index.ts`
 
-Add the new tag to both allowlists alongside `ln_p_amountOfEquity_N`:
+Add `ln_p_equitySecuringLoan_N` to `RE851D_INDEXED_TAGS` directly next to its sibling, on line 3980:
 
-- In `PART1_TAGS` (after line 4113):
-  ```ts
-  "ln_p_equitySecuringLoan_N",
-  ```
-- In `PART2_TAGS` (after line 4137):
-  ```ts
-  "ln_p_equitySecuringLoan_N",
-  ```
+Change:
+```ts
+"ln_p_totalEncumbrance_N", "ln_p_totalWithLoan_N", "ln_p_amountOfEquity_N", "property_number_N",
+```
+to:
+```ts
+"ln_p_totalEncumbrance_N", "ln_p_totalWithLoan_N", "ln_p_amountOfEquity_N", "ln_p_equitySecuringLoan_N", "property_number_N",
+```
 
-No other code, schema, or template changes. Footer keys (`ln_totalEquitySecuringLoan`, `ln_totalLoanAmountSecured`) are non-`_N` and don't need allowlist entries.
+No other change needed:
+- PART1_TAGS / PART2_TAGS allowlist entries (lines 4114, 4139) stay as-is — they correctly scope the rewrite to PART 1 and PART 2 regions.
+- Per-property publisher (line 3518) already emits `ln_p_equitySecuringLoan_${pi}` for each property.
+- Footer wiring (line 3545) already reads from this key.
+- No template, schema, UI, or formatting change.
 
-### Deploy & verify
+## Deploy & verify
+
 1. Deploy `generate-document`.
-2. Regenerate RE851D for the open deal (2 properties, pledged 23,432 and 6,778).
+2. Regenerate RE851D for the open deal (2 properties, pledged equity 23,432 and 6,778).
 3. Confirm:
-   - Property 1 "Amount of Equity Securing the Loan" = `23,432.00`
-   - Property 2 = `6,778.00`
-   - Footer totals already populating (per prior fix).
-4. Check log line `[generate-document] RE851D Part1 rollup property{N}: ... pledgedEquity=...` to confirm publish, and inspect that the literal `{{ln_p_equitySecuringLoan_N}}` no longer appears in the output.
+   - PART 1 row 1 "Amount of Equity Securing the Loan" = `$23,432.00`
+   - PART 1 row 2 = `$6,778.00`
+   - Rows 3–5 remain blank (no property), as today.
+   - PART 2 column populates identically.
+   - Footer totals unchanged (already working).
+4. Confirm the literal `{{ln_p_equitySecuringLoan_N}}` no longer appears anywhere in the rendered DOCX.
