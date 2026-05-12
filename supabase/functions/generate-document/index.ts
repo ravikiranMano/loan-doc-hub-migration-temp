@@ -2083,7 +2083,12 @@ async function generateSingleDocument(
       };
       const principalP = numFromKeysMP("ln_p_loanAmount", "loan_terms.loan_amount");
       const annualRate = numFromKeysMP("ln_p_noteRate", "loan_terms.note_rate");
-      const termMonths = numFromKeysMP("ln_p_loanTermMonths", "ln_p_termMonths", "loan_terms.term_months");
+      const termMonths = numFromKeysMP(
+        "ln_p_numberOfPaymen", "loan_terms.number_of_payments",
+        "ln_p_termMonths", "loan_terms.term_months",
+        "ln_p_months", "loan_terms.months",
+        "ln_p_loanTermMonths"
+      );
       const monthlyRate = annualRate / 12 / 100;
       let monthlyPI = 0;
       if (termMonths > 0) {
