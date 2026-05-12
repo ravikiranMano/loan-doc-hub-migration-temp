@@ -912,7 +912,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 803 Appraisal Fee (8 fields)
   'origination_fees.803_appraisal_fee_payable_to': 'of_fe_803AppraiFeePayabl',
-  'origination_fees.803_appraisal_fee_d': 'of_fe_appraisaFeeD',
+  'origination_fees.803_appraisal_fee_d': 'of_803_desc',
   'origination_fees.803_appraisal_fee_charge': 'of_fe_803AppraiFeeCharge',
   'origination_fees.803_appraisal_fee_broker': 'of_803_appraisalFee_broker',
   'origination_fees.803_appraisal_fee_others': 'of_803_appraisalFee_others',
