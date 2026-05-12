@@ -92,6 +92,41 @@ export function sumPercents(values: Array<string | number | null | undefined>): 
   }, new Decimal(0));
 }
 
+/**
+ * Compute amortized monthly payment using the standard formula:
+ *   Payment = P × [r(1+r)^n] / [(1+r)^n − 1]
+ * where:
+ *   P = principal balance
+ *   r = monthly rate = annualRatePct / 100 / 12
+ *   n = remaining number of monthly payments
+ *
+ * Falls back to interest-only (P × r) when n <= 0 (no/unknown term).
+ * Returns '' for invalid inputs. Uses Decimal arithmetic to 2dp.
+ */
+export function computeAmortizedPayment(
+  principal: string | number | null | undefined,
+  annualRatePct: string | number | null | undefined,
+  remainingPayments: string | number | null | undefined
+): string {
+  const P = toDecimal(principal);
+  const ratePct = toDecimal(annualRatePct);
+  if (P === null || ratePct === null || P.lte(0) || ratePct.lte(0)) return '';
+  const r = ratePct.div(100).div(12);
+  const nDec = toDecimal(remainingPayments);
+  const n = nDec === null ? 0 : Math.floor(nDec.toNumber());
+  if (!Number.isFinite(n) || n <= 0) {
+    return P.mul(r).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+  }
+  // (1+r)^n via decimal.js Decimal.pow
+  const onePlusRPowN = r.plus(1).pow(n);
+  const denom = onePlusRPowN.minus(1);
+  if (denom.isZero()) {
+    return P.mul(r).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+  }
+  const payment = P.mul(r.mul(onePlusRPowN)).div(denom);
+  return payment.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+}
+
 /** Allocate a dollar amount by a percent (both as strings/numbers). Rounded to 2dp. */
 export function allocateDollarsByPercent(
   dollarAmount: string | number | null | undefined,

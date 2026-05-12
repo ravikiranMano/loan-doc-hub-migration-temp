@@ -25,7 +25,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
-import { roundPctForStorage } from '@/lib/precisionFormat';
+import { roundPctForStorage, computeAmortizedPayment } from '@/lib/precisionFormat';
 
 interface AddFundingModalProps {
   open: boolean;
@@ -40,6 +40,7 @@ interface AddFundingModalProps {
   totalPayment?: string;
   loanAmount?: string;
   loanPrincipalBalance?: string;
+  remainingPayments?: number;
   existingRecords?: Array<{ id: string; roundingError: boolean; pctOwned: number }>;
   editingRecordId?: string;
 }
@@ -225,6 +226,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   totalPayment = '',
   loanAmount = '',
   loanPrincipalBalance,
+  remainingPayments = 0,
   existingRecords = [],
   editingRecordId,
 }) => {
@@ -420,17 +422,17 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     prevCurrentBalanceRef.current = formData.currentBalance;
   }, [formData.currentBalance, formData.fundingAmount, formData.disbursements]);
 
-  // Regular Payment calculation
+  // Regular Payment calculation — standard amortization formula
+  // Payment = P × [r(1+r)^n] / [(1+r)^n − 1] with r = rate/100/12, n = remaining payments
   React.useEffect(() => {
-    const la = parseFloat(loanAmount) || 0;
     const rate = formData.lenderRateOverride
       ? (parseFloat(formData.lenderRateOverrideValue || '') || 0)
       : (parseFloat(formData.lenderRate || '') || 0);
-    const payment = la > 0 && rate > 0 ? (la * (rate / 100) / 12).toFixed(2) : '';
+    const payment = computeAmortizedPayment(loanAmount, rate, remainingPayments);
     if (payment !== formData.regularPayment) {
       setFormData(prev => ({ ...prev, regularPayment: payment }));
     }
-  }, [loanAmount, formData.lenderRateOverride, formData.lenderRateOverrideValue, formData.lenderRate]);
+  }, [loanAmount, formData.lenderRateOverride, formData.lenderRateOverrideValue, formData.lenderRate, remainingPayments]);
 
   // Auto-compute total columns for default fees
   const computeTotal = (lender: string, company: string, broker: string): string => {

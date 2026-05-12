@@ -9,23 +9,26 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 import type { FundingFormData } from './AddFundingModal';
 import { resolveLegacyKey } from '@/lib/legacyKeyMap';
 import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
-import { Decimal } from '@/lib/precisionFormat';
+import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
 
 /**
  * Recompute monthly payment for every lender row using Decimal arithmetic
- * (no native floating point). Each lender's payment is independent:
- *   payment_i = originalAmount_i * lenderRate_i / 100 / 12
+ * (no native floating point). Each lender's payment is independent and
+ * uses the standard amortization formula:
+ *   Payment_i = P_i × [r(1+r)^n] / [(1+r)^n − 1]
+ * where P_i = originalAmount_i, r = lenderRate_i / 100 / 12,
+ *       n = remainingPayments (loan term months).
+ * When n <= 0 (no term provided), falls back to interest-only (P × r).
  * Any sub-cent rounding remainder between the exact total and the sum of
  * rounded shares is assigned to the single lender flagged with
  * `roundingAdjustment` (mutual exclusivity is enforced elsewhere).
  * Guarantees every row — including the last — has its payment persisted.
  */
-const recomputeLenderPayments = (records: FundingRecord[]): FundingRecord[] => {
+const recomputeLenderPayments = (records: FundingRecord[], remainingPayments: number): FundingRecord[] => {
   if (!records.length) return records;
   const exact = records.map(r => {
-    const p = new Decimal(r.originalAmount || 0);
-    const rate = new Decimal(r.lenderRate || 0);
-    return p.mul(rate).div(100).div(12);
+    const computed = computeAmortizedPayment(r.originalAmount || 0, r.lenderRate || 0, remainingPayments);
+    return new Decimal(computed === '' ? 0 : computed);
   });
   const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
   const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
@@ -263,6 +266,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const totalPayment = values['loan_terms.total_payment'] || values['loan_terms.regular_payment'] || '';
   const loanAmount = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || '';
   const loanPrincipalBalance = values['loan_terms.principal'] || '';
+  const remainingPayments = parseFloat(values['ln_p_termMonths'] || '') || 0;
 
   // Parse funding records from stored JSON value
   const fundingRecords: FundingRecord[] = useMemo(() => {
@@ -498,7 +502,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord]);
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], remainingPayments);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
     // Ensure newly added record is visible by jumping to the page that contains it.
@@ -584,7 +588,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       if (record.id === id) return { ...record, ...updates };
       if (enablingRounding && record.roundingAdjustment) return { ...record, roundingAdjustment: false };
       return record;
-    }));
+    }), remainingPayments);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
@@ -779,6 +783,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       totalPayment={totalPayment}
       loanAmount={loanAmount}
       loanPrincipalBalance={loanPrincipalBalance}
+      remainingPayments={remainingPayments}
       onLoanNumberChange={handleLoanNumberChange}
       onBorrowerNameChange={handleBorrowerNameChange}
       onHeaderFieldBlur={handleHeaderFieldBlur}

@@ -18,7 +18,7 @@ import { useTableColumnConfig } from '@/hooks/useTableColumnConfig';
 import { FilterOption } from './GridToolbar';
 import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
-import { formatPercentDisplay, Decimal } from '@/lib/precisionFormat';
+import { formatPercentDisplay, Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -177,6 +177,7 @@ interface LoanFundingGridProps {
   totalPayment?: string;
   loanAmount?: string;
   loanPrincipalBalance?: string;
+  remainingPayments?: number;
   onLoanNumberChange?: (value: string) => void;
   onBorrowerNameChange?: (value: string) => void;
   onHeaderFieldBlur?: () => void;
@@ -245,6 +246,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   totalPayment = '',
   loanAmount = '',
   loanPrincipalBalance = '',
+  remainingPayments = 0,
   onLoanNumberChange,
   onBorrowerNameChange,
   onHeaderFieldBlur,
@@ -292,17 +294,20 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const parsePaymentAmount = (value?: string) => parseFloat((value || '').replace(/[$,]/g, '')) || 0;
 
   // Per-lender payment computation using Decimal arithmetic.
-  // payment_i = originalAmount_i * lenderRate_i / 100 / 12  (interest-only monthly)
+  // Standard amortization formula:
+  //   payment_i = P_i × [r(1+r)^n] / [(1+r)^n − 1]
+  // where P_i = originalAmount_i, r = lenderRate_i / 100 / 12,
+  //       n = remainingPayments (loan term months).
+  // Falls back to interest-only when n <= 0.
   // Sum is rounded; any fractional-cent remainder is assigned to the single
   // lender flagged with `roundingAdjustment`. Recomputes whenever the underlying
-  // funding records change (loan amount, rate, or any lender field edit).
+  // funding records change (loan amount, rate, term, or any lender field edit).
   const computedPayments = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
     const exact = fundingRecords.map(r => {
-      const p = new Decimal(r.originalAmount || 0);
-      const rate = new Decimal(r.lenderRate || 0);
-      return p.mul(rate).div(100).div(12);
+      const computed = computeAmortizedPayment(r.originalAmount || 0, r.lenderRate || 0, remainingPayments);
+      return new Decimal(computed === '' ? 0 : computed);
     });
     const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
     const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
@@ -315,7 +320,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     }
     fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [fundingRecords]);
+  }, [fundingRecords, remainingPayments]);
 
   // Pro Rata rounding: if a record is flagged with `roundingAdjustment`,
   // absorb the fractional difference between the sum of pctOwned values and
@@ -885,6 +890,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           const v = !isNaN(parsed) && parsed > 0 ? parsed : (!isNaN(fallback) && fallback > 0 ? fallback : 0);
           return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
         })()}
+        remainingPayments={remainingPayments}
         existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned }))}
         editingRecordId={selectedRecord?.id}
       />
