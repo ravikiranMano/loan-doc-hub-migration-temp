@@ -1782,7 +1782,7 @@ async function generateSingleDocument(
       // this loop, the publisher above only sets pr_p_address_${idx} when a
       // dedicated `${prefix}.address` value exists in the dictionary, which it
       // does not. Compose from per-property street/city/state/zip/country instead.
-      for (const idx of sortedPropIndices) {
+      for (const idx of realPropertyIndices) {
         const prefix = `property${idx}`;
         if (fieldValues.has(`pr_p_address_${idx}`)) continue;
         const street  = fieldValues.get(`${prefix}.street`)?.rawValue;
