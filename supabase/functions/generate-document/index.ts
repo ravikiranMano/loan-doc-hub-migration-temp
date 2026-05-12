@@ -1764,7 +1764,7 @@ async function generateSingleDocument(
       //   pr_p_netMonthlyIncome_{N} → numeric monthly value
       //   pr_p_incomeGenerating_{N} → "Yes" if net>0 else "No" (plain text)
       //   pr_p_grossAnnualIncome_{N} → net * 12 (numeric, unformatted)
-      for (const idx of sortedPropIndices) {
+      for (const idx of realPropertyIndices) {
         const raw = fieldValues.get(`property${idx}.net_monthly_income`)?.rawValue;
         const cleaned = String(raw ?? "").replace(/[^0-9.-]/g, "");
         const net = cleaned === "" || isNaN(parseFloat(cleaned)) ? 0 : parseFloat(cleaned);
