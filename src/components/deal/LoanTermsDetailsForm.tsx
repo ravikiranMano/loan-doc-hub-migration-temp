@@ -333,8 +333,8 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   const renderAdjPercentField = (fieldKey: string, label: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
-        <Label className="shrink-0 text-xs">{label}</Label>
-        <div className="relative w-[100px]">
+        <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
+        <div className="relative w-[220px] 3xl:w-[280px]">
           <Input
             value={getValue(fieldKey)}
             onChange={(e) => {
@@ -388,12 +388,14 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
 
   const renderAccountRow = (cbKey: string, valKey: string, label: string) => (
     <div className="flex items-start gap-2">
-      <Checkbox id={cbKey} checked={getBoolValue(cbKey)} onCheckedChange={(c) => {
-        setBoolValue(cbKey, !!c);
-        if (!c) setValidationErrors(prev => ({ ...prev, [valKey]: null }));
-      }} disabled={disabled} className="h-3.5 w-3.5 mt-2" />
-      <Label htmlFor={cbKey} className="font-normal cursor-pointer text-xs min-w-[90px] shrink-0 mt-1.5">{label}</Label>
-      <div>
+      <div className="w-[130px] shrink-0 flex items-center gap-2 mt-1.5">
+        <Checkbox id={cbKey} checked={getBoolValue(cbKey)} onCheckedChange={(c) => {
+          setBoolValue(cbKey, !!c);
+          if (!c) setValidationErrors(prev => ({ ...prev, [valKey]: null }));
+        }} disabled={disabled} className="h-3.5 w-3.5" />
+        <Label htmlFor={cbKey} className="font-normal cursor-pointer text-xs">{label}</Label>
+      </div>
+      <div className="flex-1">
         <Input
           value={getValue(valKey)}
           onChange={(e) => setValue(valKey, e.target.value)}
@@ -401,7 +403,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           onPaste={(e) => handleValidatedPaste(e, valKey, VALIDATION_CONFIGS.accountNumber)}
           onBlur={() => handleValidatedBlur(valKey, VALIDATION_CONFIGS.accountNumber, getBoolValue(cbKey))}
           disabled={disabled || !getBoolValue(cbKey)}
-          className={cn('h-8 text-xs w-[140px]', validationErrors[valKey] && 'border-destructive')}
+          className={cn('h-8 text-xs w-full', validationErrors[valKey] && 'border-destructive')}
         />
         {validationErrors[valKey] && <p className="text-destructive text-[10px] mt-0.5">{validationErrors[valKey]}</p>}
       </div>
