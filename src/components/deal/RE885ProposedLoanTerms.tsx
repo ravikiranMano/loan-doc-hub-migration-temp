@@ -15,6 +15,8 @@ const FK = {
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
+  cash_payable_to_you: 'origination_fees.re885_cash_payable_to_you',
+  cash_you_must_pay: 'origination_fees.re885_cash_you_must_pay',
   loan_term_value: 'origination_fees.re885_loan_term_value',
   loan_term_unit: 'origination_fees.re885_loan_term_unit',
   interest_rate: 'origination_fees.re885_interest_rate',
