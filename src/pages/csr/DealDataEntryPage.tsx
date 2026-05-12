@@ -69,7 +69,7 @@ const SECTION_LABELS: Partial<
 > = {
   participants: "Participants",
   property: "Property",
-  loan_terms: "Loan",
+  loan_terms: "Loan Details",
   
   funding: "Funding",
   charges: "Charges",
