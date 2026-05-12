@@ -982,7 +982,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 812 Wire Transfer Fee (8 fields)
   'origination_fees.812_wire_transfer_fee_payable_to': 'of_fe_812WireTransfFee5',
-  'origination_fees.812_wire_transfer_fee_d': 'of_fe_wireTransfFeeD',
+  'origination_fees.812_wire_transfer_fee_d': 'of_812_desc',
   'origination_fees.812_wire_transfer_fee_charge': 'of_fe_812WireTransfFee2',
   'origination_fees.812_wire_transfer_fee_broker': 'of_812_wireTransferFee_broker',
   'origination_fees.812_wire_transfer_fee_others': 'of_812_wireTransferFee_others',
