@@ -431,14 +431,11 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     onValueChange(`${prefix}.appraised_value`, propertyData.appraisedValue);
     onValueChange(`${prefix}.appraised_date`, propertyData.appraisedDate);
     onValueChange(`${prefix}.ltv`, propertyData.ltv);
-    // Persist Origination LTV only if explicitly provided AND there is no existing
-    // origination value already saved for this property (immutable after creation
-    // unless edited directly in the detail form).
+    // Persist Origination LTV from the modal whenever a value is supplied.
     {
-      const existingOrig = values[`${prefix}.origination_ltv`];
       const incomingOrig = (propertyData as any).originationLtv;
-      if ((!existingOrig || existingOrig.trim() === '') && incomingOrig) {
-        onValueChange(`${prefix}.origination_ltv`, incomingOrig);
+      if (incomingOrig !== undefined && incomingOrig !== null) {
+        onValueChange(`${prefix}.origination_ltv`, String(incomingOrig));
       }
     }
     onValueChange(`${prefix}.apn`, propertyData.apn);
