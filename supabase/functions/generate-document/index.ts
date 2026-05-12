@@ -4097,6 +4097,8 @@ async function generateSingleDocument(
           "pr_li_rem_balloonYes_N_S", "pr_li_rem_balloonYes_N",
           "pr_li_rem_balloonNo_N_S", "pr_li_rem_balloonNo_N",
           "pr_li_rem_balloonUnknown_N_S", "pr_li_rem_balloonUnknown_N",
+          "pr_li_rem_amountOwing_N_S", "pr_li_rem_amountOwing_N",
+          "pr_li_rem_amount_owing_N_S", "pr_li_rem_amount_owing_N",
           "pr_li_ant_priority_N_S", "pr_li_ant_priority_N",
           "pr_li_ant_interestRate_N_S", "pr_li_ant_interestRate_N",
           "pr_li_ant_interest_rate_N_S", "pr_li_ant_interest_rate_N",
