@@ -344,78 +344,10 @@ export async function processDocx(
       filename.endsWith(".xml")
     );
 
-    const countOpens = (xml: string, tag: string) => {
-      const re = new RegExp(`<${tag}(\\s[^>]*[^/])?>`, 'g');
-      return (xml.match(re) || []).length;
-    };
-    const countCloses = (xml: string, tag: string) =>
-      (xml.match(new RegExp(`</${tag}>`, 'g')) || []).length;
-
     for (const partName of contentPartNames) {
       const xml = getPartXml(partName);
       if (!xml) continue;
-      const trimmed = xml.trim();
-
-      if (!trimmed.startsWith("<?xml")) {
-        throw new Error(`DOCX_INTEGRITY: ${partName} does not start with <?xml prolog`);
-      }
-
-      // Determine the expected closing root element for this part.
-      let rootClose: string | null = null;
-      if (partName === "word/document.xml") rootClose = "</w:document>";
-      else if (partName.startsWith("word/header")) rootClose = "</w:hdr>";
-      else if (partName.startsWith("word/footer")) rootClose = "</w:ftr>";
-      else if (partName.startsWith("word/footnotes")) rootClose = "</w:footnotes>";
-      else if (partName.startsWith("word/endnotes")) rootClose = "</w:endnotes>";
-
-      if (rootClose && !trimmed.endsWith(rootClose)) {
-        throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
-      }
-
-      // Tag-balance check on the structural elements that, when unbalanced,
-      // produce the "file could not be opened" error in Word. Orphaned
-      // text-run tags from malformed merge-tag substitutions are the
-      // historical root cause of corrupted .docx files.
-      for (const tag of ['w:p', 'w:r', 'w:t']) {
-        const opens = countOpens(xml, tag);
-        const closes = countCloses(xml, tag);
-        if (opens !== closes) {
-          throw new Error(
-            `DOCX_INTEGRITY: ${partName} has unbalanced <${tag}> tags (open=${opens}, close=${closes})`
-          );
-        }
-      }
-
-      // Reject any leftover \uFFFD or SDT placeholder markers — internal
-      // artifacts of convertGlyphsToSdtCheckboxes that must never reach the
-      // output. Google Docs rejects \uFFFD inside element / attribute names.
-      if (xml.includes('\uFFFD')) {
-        throw new Error(`DOCX_INTEGRITY: ${partName} contains stray U+FFFD replacement char`);
-      }
-      if (xml.includes('_SDT_PLACEHOLDER_')) {
-        throw new Error(`DOCX_INTEGRITY: ${partName} contains unrestored SDT placeholder marker`);
-      }
-
-      // If this part uses the w14 prefix anywhere, its root element MUST
-      // declare xmlns:w14. Without it, the file is namespace-invalid and
-      // Google Docs / strict parsers will refuse to open it.
-      if (/(<|\s)w14:/.test(xml)) {
-        let rootOpenRegex: RegExp | null = null;
-        if (partName === "word/document.xml") rootOpenRegex = /<w:document\b([^>]*)>/;
-        else if (partName.startsWith("word/header")) rootOpenRegex = /<w:hdr\b([^>]*)>/;
-        else if (partName.startsWith("word/footer")) rootOpenRegex = /<w:ftr\b([^>]*)>/;
-        else if (partName.startsWith("word/footnotes")) rootOpenRegex = /<w:footnotes\b([^>]*)>/;
-        else if (partName.startsWith("word/endnotes")) rootOpenRegex = /<w:endnotes\b([^>]*)>/;
-
-        if (rootOpenRegex) {
-          const m = xml.match(rootOpenRegex);
-          if (!m || !/\bxmlns:w14\s*=/.test(m[1] || '')) {
-            throw new Error(
-              `DOCX_INTEGRITY: ${partName} uses w14:* but root element is missing xmlns:w14 declaration`
-            );
-          }
-        }
-      }
+      validateContentXmlPart(partName, xml);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
