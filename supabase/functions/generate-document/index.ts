@@ -2659,6 +2659,8 @@ async function generateSingleDocument(
         "existing_payoff": "li_lt_existingPayoff",
         "existing_paydown_amount": "li_lt_existingPaydownAmount",
         "existing_payoff_amount": "li_lt_existingPayoffAmount",
+        "new_remaining_balance": "li_gd_newRemainingBalance",
+        "newRemainingBalance": "li_gd_newRemainingBalance",
       };
 
       // Additional lien bridging: pr_li_* and li_bp_* variants for template tags
