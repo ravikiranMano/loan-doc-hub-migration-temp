@@ -1,52 +1,36 @@
 ## Root cause
 
-`{{ln_p_equitySecuringLoan_N}}` is whitelisted in `PART1_TAGS` (line 4114) and `PART2_TAGS` (line 4139), but the rewrite scan that drives `_N → _K` expansion only iterates the master list `RE851D_INDEXED_TAGS` (built into `tagsByLengthDesc` at line 4619 of `supabase/functions/generate-document/index.ts`):
+In `supabase/functions/generate-document/index.ts` (around lines 3505–3520), both `ln_p_amountOfEquity_${pi}` and `ln_p_equitySecuringLoan_${pi}` are assigned the same value derived from `pr_p_pledgedEquity_${pi}`. This is why the two PART 1 columns render identical numbers.
 
-```ts
-const tagsByLengthDesc = RE851D_INDEXED_TAGS
-  .filter((t) => xml.includes(t))
-  .sort((a, b) => b.length - a.length);
-```
+Per spec:
+- `{{ln_p_amountOfEquity_N}}` must be **calculated**: `Market Value − Total Senior Encumbrances`, clamped to `0` when negative.
+- `{{ln_p_equitySecuringLoan_N}}` must be the **direct pledged equity** value from Property → Valuation.
 
-`RE851D_INDEXED_TAGS` (lines 3968–4097) contains `ln_p_amountOfEquity_N`, `ln_p_totalEncumbrance_N`, `ln_p_remainingEncumbrance_N`, etc., but **does not contain `ln_p_equitySecuringLoan_N`**. Result:
-
-- The scanner never visits any `ln_p_equitySecuringLoan_N` occurrence in the XML.
-- No rewrite is generated for it, so the literal `{{ln_p_equitySecuringLoan_N}}` survives into the final tag-resolution pass.
-- The resolver has no value for the literal `_N` key (only `_1`, `_2`, … were published by the publisher at line 3518), so the cell renders blank.
-
-The PART1_TAGS/PART2_TAGS allowlist only acts as a region filter *after* a candidate match is found — it cannot enable a tag that was never scanned. This explains why the prior fix (adding to PART1_TAGS/PART2_TAGS) did not change behavior, while sibling tags like `ln_p_amountOfEquity_N` work correctly because they are members of the master list.
-
-The footer totals (`ln_totalEquitySecuringLoan`, `ln_totalLoanAmountSecured`) populate fine because they are non-`_N` tags that bypass this rewrite path entirely.
-
-## Fix (additive, single line)
+## Fix (additive, scoped to one block)
 
 **File:** `supabase/functions/generate-document/index.ts`
+**Block:** the per-property publisher inside the RE851D Part 1 rollup loop (lines ~3505–3520).
 
-Add `ln_p_equitySecuringLoan_N` to `RE851D_INDEXED_TAGS` directly next to its sibling, on line 3980:
+1. Move the existing Market Value lookup (`mvRaw` → `mv = parseAmt2(mvRaw)`) earlier so it is available before the equity assignments. The LTV computation below continues to use the same `mv`.
+2. Compute `amountOfEquityStr`:
+   - If `mvRaw` is present: `amt = max(0, mv − tot)` → `amt.toFixed(2)`.
+   - Else: fallback to `"0.00"` (preserves current "always emit" behavior so the cell never renders blank).
+3. Compute `pledgedEquityStr` from the existing pledged-equity lookup chain (`pr_p_pledgedEquity_${pi}` → `property${pi}.pledged_equity` → `property${pi}.pledgedEquity`), defaulting to `"0.00"`.
+4. Assign:
+   - `fieldValues.set("ln_p_amountOfEquity_${pi}", { rawValue: amountOfEquityStr, dataType: "currency" });`
+   - `fieldValues.set("ln_p_equitySecuringLoan_${pi}", { rawValue: pledgedEquityStr, dataType: "currency" });`
+5. Update the debug log to print both values (`amountOfEquity=…, pledgedEquity=…`).
 
-Change:
-```ts
-"ln_p_totalEncumbrance_N", "ln_p_totalWithLoan_N", "ln_p_amountOfEquity_N", "property_number_N",
-```
-to:
-```ts
-"ln_p_totalEncumbrance_N", "ln_p_totalWithLoan_N", "ln_p_amountOfEquity_N", "ln_p_equitySecuringLoan_N", "property_number_N",
-```
-
-No other change needed:
-- PART1_TAGS / PART2_TAGS allowlist entries (lines 4114, 4139) stay as-is — they correctly scope the rewrite to PART 1 and PART 2 regions.
-- Per-property publisher (line 3518) already emits `ln_p_equitySecuringLoan_${pi}` for each property.
-- Footer wiring (line 3545) already reads from this key.
-- No template, schema, UI, or formatting change.
+No change to:
+- Footer totals. `ln_totalEquitySecuringLoan` already prefers `ln_p_equitySecuringLoan_${pi}` (pledged equity sum), which remains correct.
+- LTV calculation, MV lookup chain, or any other tag.
+- `RE851D_INDEXED_TAGS`, `PART1_TAGS`, `PART2_TAGS` allowlists (both tags already registered).
+- Templates, schema, UI, or formatting.
 
 ## Deploy & verify
 
 1. Deploy `generate-document`.
-2. Regenerate RE851D for the open deal (2 properties, pledged equity 23,432 and 6,778).
-3. Confirm:
-   - PART 1 row 1 "Amount of Equity Securing the Loan" = `$23,432.00`
-   - PART 1 row 2 = `$6,778.00`
-   - Rows 3–5 remain blank (no property), as today.
-   - PART 2 column populates identically.
-   - Footer totals unchanged (already working).
-4. Confirm the literal `{{ln_p_equitySecuringLoan_N}}` no longer appears anywhere in the rendered DOCX.
+2. Regenerate RE851D for the open deal:
+   - Property 1: MV `250,000`, Total Senior Encumbrance `25,000`, Pledged `6,778` → Amount of Equity `225,000.00`, Equity Securing Loan `6,778.00`.
+   - Property 2: MV `234`, Total Senior Encumbrance `24,654`, Pledged `23,432` → Amount of Equity `0.00` (negative clamped), Equity Securing Loan `23,432.00`.
+3. Confirm the two columns now show distinct values per property and footer totals are unchanged.
