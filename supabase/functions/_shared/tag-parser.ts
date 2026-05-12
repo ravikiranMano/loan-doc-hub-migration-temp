@@ -2737,6 +2737,22 @@ export function replaceMergeTags(
     }
   }
 
+  // Recovery: every <w:tc> must contain at least one <w:p> (OOXML requirement).
+  // The empty-paragraph cleanup above can strip the sole <w:p> from a cell whose
+  // only content was a merge tag that resolved to "". Re-insert <w:p/> so Word
+  // can open the document.
+  {
+    let cellsRepaired = 0;
+    result = result.replace(/<w:tc(\s[^>]*)?>([\s\S]*?)<\/w:tc>/g, (full, _attrs, inner) => {
+      if (/<w:p[\s>\/]/.test(inner)) return full;
+      cellsRepaired++;
+      return full.replace(/<\/w:tc>$/, '<w:p/></w:tc>');
+    });
+    if (cellsRepaired > 0) {
+      debugLog(`[tag-parser] Repaired ${cellsRepaired} table cells missing required <w:p>`);
+    }
+  }
+
   // Clean up orphaned {{ that remain as literal text after tag replacement.
   // These are artifacts of Word XML fragmentation where {{ was in a separate run
   // from the field code structure. The tag was resolved but {{ survived as text.
