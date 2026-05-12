@@ -226,6 +226,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   totalPayment = '',
   loanAmount = '',
   loanPrincipalBalance,
+  remainingPayments = 0,
   existingRecords = [],
   editingRecordId,
 }) => {
