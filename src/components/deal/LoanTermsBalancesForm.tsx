@@ -891,8 +891,19 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 </div>
               </div>
             </DirtyFieldWrapper>
+            {renderCurrencyField(FIELD_KEYS.toReserves, "To Reserves")}
             {renderCurrencyField(FIELD_KEYS.defaultInterest, "Default Interest")}
             {renderCurrencyField(FIELD_KEYS.totalPayment, "Total Payment")}
+
+            {/* Overpayments Applied To */}
+            <div className="pt-3">
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Overpayments Applied To</h4>
+              <div className="space-y-2">
+                {renderCurrencyField(FIELD_KEYS.overpaymentsUnpaidInterest, "Unpaid Interest")}
+                {renderCurrencyField(FIELD_KEYS.overpaymentsShortPayments, "Short Payments")}
+                {renderCurrencyField(FIELD_KEYS.overpaymentsProcessingUnpaidInterest, "Processing Unpaid Int.")}
+              </div>
+            </div>
           </div>
         </div>
 
