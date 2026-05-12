@@ -299,6 +299,42 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     return [];
   }, [values]);
 
+  // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
+  // The single record flagged with `roundingAdjustment` absorbs any fractional
+  // remainder so the displayed total matches the grid column total exactly.
+  const computedProRataTotal = useMemo(() => {
+    if (!fundingRecords.length) return '';
+    const sum = fundingRecords.reduce(
+      (acc, r) => acc.plus(new Decimal(Number(r.pctOwned) || 0)),
+      new Decimal(0)
+    );
+    const adjIdx = fundingRecords.findIndex((r) => r.roundingAdjustment);
+    let total = sum;
+    if (adjIdx >= 0) {
+      const diff = new Decimal(100).minus(sum);
+      if (!diff.isZero()) total = sum.plus(diff);
+    }
+    return total.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+  }, [fundingRecords]);
+
+  // Persist the auto-filled Pro Rata into loan_terms.pro_rata whenever the
+  // grid total changes. Uses the existing onValueChange + saveDraft pipeline.
+  const lastPersistedProRataRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!computedProRataTotal) return;
+    const current = values['loan_terms.pro_rata'] || '';
+    if (current === computedProRataTotal) {
+      lastPersistedProRataRef.current = computedProRataTotal;
+      return;
+    }
+    if (lastPersistedProRataRef.current === computedProRataTotal) return;
+    lastPersistedProRataRef.current = computedProRataTotal;
+    onValueChange('loan_terms.pro_rata', computedProRataTotal);
+    if (saveDraft) {
+      window.setTimeout(() => { void saveDraft(); }, 0);
+    }
+  }, [computedProRataTotal, values, onValueChange, saveDraft]);
+
   // Parse funding history from stored JSON value.
   // Fallback: if no stored history exists yet (e.g. legacy/in-progress deals where the
   // history field failed to persist), derive a read-only history view from the current
