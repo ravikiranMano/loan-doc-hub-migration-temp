@@ -2702,36 +2702,42 @@ async function generateSingleDocument(
         // any indexed lien (>=1) is present, regardless of value match.
         const hasIndexed = entries.some(e => e.index >= 1);
         const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
-        const aggregated = dedupedEntries.map(e => e.value).join("\n");
-        const dataType = (field === "current_balance" || field === "original_balance" || 
+        const isCurrencyField = (field === "current_balance" || field === "original_balance" ||
                           field === "regular_payment" || field === "balance_after" ||
                           field === "anticipated_amount" || field === "existing_paydown_amount" ||
-                          field === "existing_payoff_amount") ? "currency" : "text";
+                          field === "existing_payoff_amount");
+        const dataType = isCurrencyField ? "currency" : "text";
+        // For multi-lien currency fields, pre-format each entry so all values render
+        // (downstream resolver only parseFloat's a single number, dropping the rest).
+        const aggregated = isCurrencyField && dedupedEntries.length > 1
+          ? dedupedEntries.map(e => formatCurrency(e.value)).join("\n")
+          : dedupedEntries.map(e => e.value).join("\n");
+        const setDataType = isCurrencyField && dedupedEntries.length > 1 ? "text" : dataType;
 
         // Set pr_li_* key with aggregated value
         const prLiKey = lienFieldToPrLi[field];
         if (prLiKey) {
-          fieldValues.set(prLiKey, { rawValue: aggregated, dataType });
+          fieldValues.set(prLiKey, { rawValue: aggregated, dataType: setDataType });
           debugLog(`[generate-document] Multi-lien bridged ${field} -> ${prLiKey} (${entries.length} liens)`);
         }
 
         // Also publish pr_p_currentBalanc alias (template tag for Property -> Liens Current Balance)
         if (field === "current_balance") {
-          fieldValues.set("pr_p_currentBalanc", { rawValue: aggregated, dataType: "currency" });
+          fieldValues.set("pr_p_currentBalanc", { rawValue: aggregated, dataType: setDataType });
           debugLog(`[generate-document] Published pr_p_currentBalanc (${entries.length} liens)`);
         }
 
         // Set li_* key with aggregated value
         const liKey = lienFieldToLiKeys[field];
         if (liKey) {
-          fieldValues.set(liKey, { rawValue: aggregated, dataType });
+          fieldValues.set(liKey, { rawValue: aggregated, dataType: setDataType });
           debugLog(`[generate-document] Multi-lien li bridged ${field} -> ${liKey} (${entries.length} liens)`);
         }
 
         // Set alt key (pr_li_lienPrioriNow, pr_li_lienPrioriAfter, li_bp_balanceAfter)
         const altKey = lienFieldToAltKeys[field];
         if (altKey) {
-          fieldValues.set(altKey, { rawValue: aggregated, dataType });
+          fieldValues.set(altKey, { rawValue: aggregated, dataType: setDataType });
           debugLog(`[generate-document] Multi-lien alt bridged ${field} -> ${altKey} (${entries.length} liens)`);
         }
       }
