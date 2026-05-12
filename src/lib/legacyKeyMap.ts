@@ -962,7 +962,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 810 Processing Fee (8 fields)
   'origination_fees.810_processing_fee_payable_to': 'of_fe_810ProcesFeePayabl',
-  'origination_fees.810_processing_fee_d': 'of_fe_processiFeeD',
+  'origination_fees.810_processing_fee_d': 'of_810_desc',
   'origination_fees.810_processing_fee_charge': 'of_fe_810ProcesFeeCharge',
   'origination_fees.810_processing_fee_broker': 'of_810_processingFee_broker',
   'origination_fees.810_processing_fee_others': 'of_810_processingFee_others',
