@@ -1269,7 +1269,11 @@ async function generateSingleDocument(
         }
       }
 
-      for (const idx of sortedPropIndices) {
+      // CPU optimization: iterate only properties with real data. Empty
+      // slots are handled by the anti-fallback shield further down which
+      // writes default ☐ glyphs / blank values for unpublished _N tags.
+      // This avoids running ~30 publisher sub-blocks for phantom indices.
+      for (const idx of realPropertyIndices) {
         const prefix = `property${idx}`;
         // ── RE851D: auto-numbered Property No. for Part 1 LTV table ──
         // Set unconditionally for any index that has a property record so the
@@ -1760,7 +1764,7 @@ async function generateSingleDocument(
       //   pr_p_netMonthlyIncome_{N} → numeric monthly value
       //   pr_p_incomeGenerating_{N} → "Yes" if net>0 else "No" (plain text)
       //   pr_p_grossAnnualIncome_{N} → net * 12 (numeric, unformatted)
-      for (const idx of sortedPropIndices) {
+      for (const idx of realPropertyIndices) {
         const raw = fieldValues.get(`property${idx}.net_monthly_income`)?.rawValue;
         const cleaned = String(raw ?? "").replace(/[^0-9.-]/g, "");
         const net = cleaned === "" || isNaN(parseFloat(cleaned)) ? 0 : parseFloat(cleaned);
@@ -1778,7 +1782,7 @@ async function generateSingleDocument(
       // this loop, the publisher above only sets pr_p_address_${idx} when a
       // dedicated `${prefix}.address` value exists in the dictionary, which it
       // does not. Compose from per-property street/city/state/zip/country instead.
-      for (const idx of sortedPropIndices) {
+      for (const idx of realPropertyIndices) {
         const prefix = `property${idx}`;
         if (fieldValues.has(`pr_p_address_${idx}`)) continue;
         const street  = fieldValues.get(`${prefix}.street`)?.rawValue;
