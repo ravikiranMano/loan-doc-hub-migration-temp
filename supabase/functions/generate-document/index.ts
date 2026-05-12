@@ -2776,43 +2776,24 @@ async function generateSingleDocument(
       // to liens flagged as anticipated/new (lienN.anticipated == true). Falls back
       // to lienN.anticipated_amount when new_remaining_balance is missing for a lien.
       {
-        const toAmt = (v: unknown): number => {
-          if (v === null || v === undefined) return 0;
-          const s = String(v).replace(/[$,\s]/g, "").trim();
-          if (s === "") return 0;
-          const n = parseFloat(s);
-          return Number.isFinite(n) ? n : 0;
-        };
-        const isTrue = (v: unknown): boolean => {
-          if (v === null || v === undefined) return false;
-          const s = String(v).toLowerCase().trim();
-          return s === "true" || s === "1" || s === "yes";
-        };
-        // Group lien fields by index
-        const perLien: Record<string, { nrb?: unknown; ant?: unknown; antAmt?: unknown }> = {};
-        for (const [key, val] of fieldValues.entries()) {
-          const m = key.match(/^lien(\d*)\.(.+)$/);
-          if (!m) continue;
-          const idx = m[1] || "0";
-          const field = m[2];
-          if (field !== "new_remaining_balance" && field !== "anticipated_amount" && field !== "anticipated") continue;
-          if (!perLien[idx]) perLien[idx] = {};
-          if (field === "new_remaining_balance") perLien[idx].nrb = val?.rawValue;
-          else if (field === "anticipated_amount") perLien[idx].antAmt = val?.rawValue;
-          else if (field === "anticipated") perLien[idx].ant = val?.rawValue;
-        }
-        let total = 0;
-        let count = 0;
-        for (const [idx, rec] of Object.entries(perLien)) {
-          if (!isTrue(rec.ant)) continue; // only anticipated/new liens
-          const amt = toAmt(rec.nrb) || toAmt(rec.antAmt);
-          if (amt <= 0) continue;
-          total += amt;
-          count++;
-        }
-        if (count > 0) {
-          fieldValues.set("li_lt_anticipatedAmount", { rawValue: total.toFixed(2), dataType: "currency" });
-          debugLog(`[generate-document] Published li_lt_anticipatedAmount = ${total.toFixed(2)} (sum of ${count} anticipated liens)`);
+        // Per spec: {{li_lt_anticipatedAmount}} is bound directly to the UI's
+        // "Anticipated Balance (if new lien)" field on lien1 (single source).
+        // Order of precedence: lien1.new_remaining_balance → lien1.anticipated_amount
+        // → lien.new_remaining_balance → lien.anticipated_amount.
+        const rawAnt =
+          fieldValues.get("lien1.new_remaining_balance")?.rawValue ??
+          fieldValues.get("lien1.newRemainingBalance")?.rawValue ??
+          fieldValues.get("lien1.anticipated_amount")?.rawValue ??
+          fieldValues.get("lien1.anticipatedAmount")?.rawValue ??
+          fieldValues.get("lien.new_remaining_balance")?.rawValue ??
+          fieldValues.get("lien.anticipated_amount")?.rawValue;
+        if (rawAnt !== undefined && rawAnt !== null && String(rawAnt).trim() !== "") {
+          const cleaned = String(rawAnt).replace(/[$,\s]/g, "").trim();
+          const n = parseFloat(cleaned);
+          if (Number.isFinite(n)) {
+            fieldValues.set("li_lt_anticipatedAmount", { rawValue: n.toFixed(2), dataType: "currency" });
+            debugLog(`[generate-document] Published li_lt_anticipatedAmount = ${n.toFixed(2)} (direct from lien1 UI value)`);
+          }
         }
 
         // ── RE885-only: row-aligned Amount Owing column publisher ──────────────
