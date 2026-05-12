@@ -1351,6 +1351,14 @@ async function generateSingleDocument(
         if (appraiseV?.rawValue && !fieldValues.has(`pr_p_appraiseValue_${idx}`)) {
           fieldValues.set(`pr_p_appraiseValue_${idx}`, { rawValue: appraiseV.rawValue, dataType: appraiseV.dataType || "currency" });
         }
+        // Per-property Pledged Equity (Property → Valuation → Pledged Equity).
+        // Drives RE851D Part 1 "Amount of Equity Securing the Loan" column.
+        const pledgedV =
+          fieldValues.get(`${prefix}.pledged_equity`) ||
+          fieldValues.get(`${prefix}.pledgedEquity`);
+        if (pledgedV?.rawValue && !fieldValues.has(`pr_p_pledgedEquity_${idx}`)) {
+          fieldValues.set(`pr_p_pledgedEquity_${idx}`, { rawValue: pledgedV.rawValue, dataType: pledgedV.dataType || "currency" });
+        }
         // Property Owner: UI saves under property{N}.property_owner (FIELD_KEYS.propertyOwner).
         // Also accept legacy `.owner`/`.vesting`. Publish pr_p_owner_N (legacy) and
         // pr_p_ownerName_N (RE851D PROPERTY OWNER section) per-index, no cross-bleed.
