@@ -333,8 +333,8 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   const renderAdjPercentField = (fieldKey: string, label: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
-        <Label className="shrink-0 text-xs">{label}</Label>
-        <div className="relative w-[100px]">
+        <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
+        <div className="relative w-[220px] 3xl:w-[280px]">
           <Input
             value={getValue(fieldKey)}
             onChange={(e) => {
