@@ -177,6 +177,7 @@ interface LoanFundingGridProps {
   totalPayment?: string;
   loanAmount?: string;
   loanPrincipalBalance?: string;
+  remainingPayments?: number;
   onLoanNumberChange?: (value: string) => void;
   onBorrowerNameChange?: (value: string) => void;
   onHeaderFieldBlur?: () => void;
