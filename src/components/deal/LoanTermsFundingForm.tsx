@@ -193,17 +193,31 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const dictCacheRef = useRef<Map<string, string>>(new Map());
   const hydrationAttemptedRef = useRef(false);
 
-  // Get loan number and borrower name from values - auto-populate
-  const derivedLoanNumber = values['loan_terms.loan_number'] || values['Terms.LoanNumber'] || '';
+  // Get loan number and borrower name from values - auto-populate.
+  // Account auto-fills from Previous Account Number (loan_terms.previous_account_number)
+  // when the user hasn't typed anything into the Account field yet.
+  const previousAccountNumber =
+    values['loan_terms.previous_account_number'] ||
+    values['ln_p_previousAccountNumber'] ||
+    '';
+  const derivedLoanNumber =
+    values['loan_terms.loan_number'] ||
+    values['Terms.LoanNumber'] ||
+    previousAccountNumber ||
+    '';
   const [localLoanNumber, setLocalLoanNumber] = useState(derivedLoanNumber);
   const loanNumberEdited = useRef(false);
 
   // Sync from props only if user hasn't locally edited
   useEffect(() => {
     if (!loanNumberEdited.current && derivedLoanNumber) {
-      setLocalLoanNumber(derivedLoanNumber);
+      setLocalLoanNumber((prev) => (prev === derivedLoanNumber ? prev : derivedLoanNumber));
+      const existing = values['loan_terms.loan_number'] || values['Terms.LoanNumber'] || '';
+      if (!existing && previousAccountNumber) {
+        onValueChange('Terms.LoanNumber', previousAccountNumber);
+      }
     }
-  }, [derivedLoanNumber]);
+  }, [derivedLoanNumber, previousAccountNumber, values, onValueChange]);
 
   const loanNumber = localLoanNumber;
 
