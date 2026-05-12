@@ -3493,22 +3493,34 @@ async function generateSingleDocument(
             // Additional Part-1 column aliases some template variants use.
             fieldValues.set(`pr_p_remainingEncumbrance_${pi}`, remVal);
             fieldValues.set(`pr_p_expectedEncumbrance_${pi}`, expVal);
-            // Amount of Equity = Market Value − Remaining Senior Encumbrances.
+            // Amount of Equity = Market Value − Total Senior Encumbrances.
             // Source market value is the per-property appraise/estimate value.
             // Skip emission when market value is missing so the cell renders blank.
             const mvRaw =
               fieldValues.get(`pr_p_appraiseValue_${pi}`)?.rawValue ??
-              fieldValues.get(`property${pi}.appraise_value`)?.rawValue;
+              fieldValues.get(`property${pi}.appraise_value`)?.rawValue ??
+              fieldValues.get(`property${pi}.appraised_value`)?.rawValue;
             let equityStr = "";
+            let ltvStr = "";
             if (mvRaw !== null && mvRaw !== undefined && String(mvRaw).trim() !== "") {
               const mv = parseAmt2(mvRaw);
-              const equity = mv - rem;
+              const equity = mv - tot;
               equityStr = equity.toFixed(2);
               fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
+              // Per spec PART 1: LTV = (Total Senior Encumbrances / Market Value) × 100.
+              // Overrides the loanAmount/MV LTV written by the per-property bridge.
+              if (mv > 0) {
+                ltvStr = ((tot / mv) * 100).toFixed(2);
+                fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
+              } else {
+                ltvStr = "0.00";
+                fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
+              }
             }
             debugLog(
               `[generate-document] RE851D Part1 rollup property${pi}: liens=[${matchedLog[pi].join(",")}], ` +
-              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, equity=${equityStr || "∅"}`
+              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, ` +
+              `mv=${mvRaw ?? "∅"}, equity=${equityStr || "∅"}, ltv=${ltvStr || "∅"}`
             );
           }
 
