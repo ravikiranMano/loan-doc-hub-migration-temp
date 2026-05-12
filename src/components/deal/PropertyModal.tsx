@@ -53,7 +53,7 @@ const generatePropertyId = () => `property_${Date.now()}_${Math.random().toStrin
 
 const getEmptyProperty = (): PropertyData => ({
   id: generatePropertyId(), isPrimary: false, description: '', street: '', city: '', state: '', zipCode: '', county: '',
-  propertyType: '', occupancy: '', appraisedValue: '', appraisedDate: '', ltv: '', apn: '',
+  propertyType: '', occupancy: '', appraisedValue: '', appraisedDate: '', ltv: '', originationLtv: '', apn: '',
   loanPriority: '', floodZone: '', fireZone: '', landClassification: '', pledgedEquity: '',
   zoning: '', performedBy: '', copyBorrowerAddress: false,
   purchasePrice: '', downPayment: '', delinquentTaxes: '',
