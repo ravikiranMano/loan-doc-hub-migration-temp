@@ -952,7 +952,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 809 Tax Service Fee (8 fields)
   'origination_fees.809_tax_service_fee_payable_to': 'of_fe_809TaxServicFee5',
-  'origination_fees.809_tax_service_fee_d': 'of_fe_taxServicFeeD',
+  'origination_fees.809_tax_service_fee_d': 'of_809_desc',
   'origination_fees.809_tax_service_fee_charge': 'of_fe_809TaxServicFee2',
   'origination_fees.809_tax_service_fee_broker': 'of_809_taxServiceFee_broker',
   'origination_fees.809_tax_service_fee_others': 'of_809_taxServiceFee_others',
