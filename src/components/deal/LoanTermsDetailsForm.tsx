@@ -222,7 +222,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
         <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
         <Popover open={datePickerStates[fieldKey] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}>
           <PopoverTrigger asChild>
-            <Button variant="outline" className={cn('h-8 text-xs w-[220px] 3xl:w-[280px] justify-start text-left font-normal', !getValue(fieldKey) && 'text-muted-foreground')} disabled={disabled}>
+            <Button variant="outline" className={cn('h-8 text-xs flex-1 justify-start text-left font-normal', !getValue(fieldKey) && 'text-muted-foreground')} disabled={disabled}>
               {(() => { const d = safeParseDateStr(getValue(fieldKey)); return d ? format(d, 'MM/dd/yyyy') : 'MM/DD/YYYY'; })()}
               <CalendarIcon className="ml-auto h-3.5 w-3.5" />
             </Button>
