@@ -460,6 +460,22 @@ export const LOAN_TERMS_BALANCES_KEYS = {
   autoPostEnabled: 'loan_terms.auto_post_enabled',
   overrideFundsHeld: 'loan_terms.override_funds_held',
   holdDays: 'loan_terms.hold_days',
+  // Shortpay / Overpay Handling
+  shortPaymentHandling: 'loan_terms.short_payment_handling',
+  applyToPaymentParameters: 'loan_terms.apply_to_payment_parameters',
+  applyShortPayment: 'loan_terms.apply_short_payment',
+  // Unpaid Interest Processing
+  unpaidInterestProcessing: 'loan_terms.unpaid_interest_processing',
+  payAutomatically: 'loan_terms.pay_automatically',
+  calculateInterestOnInterest: 'loan_terms.calculate_interest_on_interest',
+  // Funding Holdback amount
+  fundingHoldbackAmount: 'loan_terms.funding_holdback_amount',
+  // To Reserves
+  toReserves: 'loan_terms.to_reserves',
+  // Overpayments Applied To
+  overpaymentsUnpaidInterest: 'loan_terms.overpayments_unpaid_interest',
+  overpaymentsShortPayments: 'loan_terms.overpayments_short_payments',
+  overpaymentsProcessingUnpaidInterest: 'loan_terms.overpayments_processing_unpaid_interest',
 } as const;
 
 export const LOAN_TERMS_DETAILS_KEYS = {

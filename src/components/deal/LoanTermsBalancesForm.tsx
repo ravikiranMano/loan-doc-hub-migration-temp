@@ -476,6 +476,18 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 </div>
                 <p className="text-xs text-muted-foreground pl-5">Held By</p>
               </div>
+              <div className="relative w-[110px] shrink-0">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                <Input
+                  value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
+                  onChange={(e) => handleCurrencyChange(FIELD_KEYS.fundingHoldbackAmount, e.target.value)}
+                  onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
+                  onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
+                  disabled={disabled}
+                  className="h-8 text-sm pl-7"
+                  placeholder="0.00"
+                />
+              </div>
               <Select
                 value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
                 onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
@@ -490,6 +502,126 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Shortpay / Overpay Handling */}
+            <div className="pt-2">
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Shortpay / Overpay Handling</h4>
+              <div className="space-y-2">
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.shortPaymentHandling}>
+                  <div className="flex items-center gap-3">
+                    <Label className={LABEL_CLASS}>Short Payment Handling</Label>
+                    <Select
+                      value={getValue(FIELD_KEYS.shortPaymentHandling) || undefined}
+                      onValueChange={(value) => setValue(FIELD_KEYS.shortPaymentHandling, value)}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger className="h-8 text-sm flex-1">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="do_not_accept">Do Not Accept</SelectItem>
+                        <SelectItem value="deposit_to_suspense">Deposit to Suspense</SelectItem>
+                        <SelectItem value="apply_to_payment">Apply to Payment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DirtyFieldWrapper>
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentParameters}>
+                  <div className="flex items-center gap-3">
+                    <Label className={LABEL_CLASS}>Apply to Pmt Params</Label>
+                    <div className="flex items-center gap-3 flex-1">
+                      <label className="flex items-center gap-1 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={getValue(FIELD_KEYS.applyToPaymentParameters) === 'percent'}
+                          onCheckedChange={(c) => setValue(FIELD_KEYS.applyToPaymentParameters, c ? 'percent' : '')}
+                          disabled={disabled}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span>%</span>
+                      </label>
+                      <span className="text-xs text-muted-foreground">or</span>
+                      <label className="flex items-center gap-1 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={getValue(FIELD_KEYS.applyToPaymentParameters) === 'dollar'}
+                          onCheckedChange={(c) => setValue(FIELD_KEYS.applyToPaymentParameters, c ? 'dollar' : '')}
+                          disabled={disabled}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span>$</span>
+                      </label>
+                    </div>
+                  </div>
+                </DirtyFieldWrapper>
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyShortPayment}>
+                  <div className="flex items-center gap-3">
+                    <Label className={LABEL_CLASS}>Apply Short Payment</Label>
+                    <Select
+                      value={getValue(FIELD_KEYS.applyShortPayment) || undefined}
+                      onValueChange={(value) => setValue(FIELD_KEYS.applyShortPayment, value)}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger className="h-8 text-sm flex-1">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="apply_short_pay">Apply Short Pay</SelectItem>
+                        <SelectItem value="unpaid_interest">Unpaid Interest</SelectItem>
+                        <SelectItem value="add_to_principal">Add to Principal</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DirtyFieldWrapper>
+              </div>
+            </div>
+
+            {/* Unpaid Interest Processing */}
+            <div className="pt-2">
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Unpaid Interest Processing</h4>
+              <div className="space-y-2">
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.unpaidInterestProcessing}>
+                  <div className="flex items-center gap-3">
+                    <Label className={LABEL_CLASS}>Processing</Label>
+                    <Select
+                      value={getValue(FIELD_KEYS.unpaidInterestProcessing) || undefined}
+                      onValueChange={(value) => setValue(FIELD_KEYS.unpaidInterestProcessing, value)}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger className="h-8 text-sm flex-1">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pay_automatically">Pay Automatically</SelectItem>
+                        <SelectItem value="manual">Manual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DirtyFieldWrapper>
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.payAutomatically}>
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id={`${FIELD_KEYS.payAutomatically}-cb`}
+                      checked={isChecked(FIELD_KEYS.payAutomatically)}
+                      onCheckedChange={() => toggleCheck(FIELD_KEYS.payAutomatically)}
+                      disabled={disabled}
+                      className="h-3.5 w-3.5"
+                    />
+                    <Label htmlFor={`${FIELD_KEYS.payAutomatically}-cb`} className="text-sm">Pay Automatically</Label>
+                  </div>
+                </DirtyFieldWrapper>
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.calculateInterestOnInterest}>
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id={`${FIELD_KEYS.calculateInterestOnInterest}-cb`}
+                      checked={isChecked(FIELD_KEYS.calculateInterestOnInterest)}
+                      onCheckedChange={() => toggleCheck(FIELD_KEYS.calculateInterestOnInterest)}
+                      disabled={disabled}
+                      className="h-3.5 w-3.5"
+                    />
+                    <Label htmlFor={`${FIELD_KEYS.calculateInterestOnInterest}-cb`} className="text-sm">Calculate Interest on Interest</Label>
+                  </div>
+                </DirtyFieldWrapper>
+              </div>
             </div>
 
             {/* Accept Short, Post-maturity, Auto-post, Override - part of Interest Split section */}
@@ -759,8 +891,19 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 </div>
               </div>
             </DirtyFieldWrapper>
+            {renderCurrencyField(FIELD_KEYS.toReserves, "To Reserves")}
             {renderCurrencyField(FIELD_KEYS.defaultInterest, "Default Interest")}
             {renderCurrencyField(FIELD_KEYS.totalPayment, "Total Payment")}
+
+            {/* Overpayments Applied To */}
+            <div className="pt-3">
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Overpayments Applied To</h4>
+              <div className="space-y-2">
+                {renderCurrencyField(FIELD_KEYS.overpaymentsUnpaidInterest, "Unpaid Interest")}
+                {renderCurrencyField(FIELD_KEYS.overpaymentsShortPayments, "Short Payments")}
+                {renderCurrencyField(FIELD_KEYS.overpaymentsProcessingUnpaidInterest, "Processing Unpaid Int.")}
+              </div>
+            </div>
           </div>
         </div>
 
