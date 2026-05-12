@@ -3219,6 +3219,26 @@ async function generateSingleDocument(
                 const isNo = balloon === "false" || balloon === "no";
                 const isUnknown = !isYes && !isNo;
 
+                // Amount Owing source rule (RE851D questionnaire XVI table):
+                //   Other Liens (REM) → current_balance (fall back to
+                //     existing_payoff_amount/existing_paydown_amount/original).
+                //   Liens that will remain or are anticipated (ANT) →
+                //     new_remaining_balance, then anticipated_amount, then
+                //     original_balance.
+                const amountOwingVal = tagPrefix === "pr_li_ant"
+                  ? firstNonEmpty(
+                      "new_remaining_balance", "newRemainingBalance",
+                      "anticipated_amount", "anticipatedAmount",
+                      "original_balance", "originalBalance",
+                      "current_balance", "currentBalance",
+                    )
+                  : firstNonEmpty(
+                      "current_balance", "currentBalance",
+                      "existing_payoff_amount", "existingPayoffAmount",
+                      "existing_paydown_amount", "existingPaydownAmount",
+                      "original_balance", "originalBalance",
+                    );
+
                 const fields: Array<[string, string, string]> = [
                   ["priority", firstNonEmpty("lien_priority_now", "priority", "remaining_new_lien_priority", "lien_priority_after", "n"), "text"],
                   ["interestRate", firstNonEmpty("interest_rate", "intRate"), "percent"],
@@ -3232,12 +3252,16 @@ async function generateSingleDocument(
                   ["monthlyPayment", firstNonEmpty("regular_payment", "regularPayment"), "currency"],
                   ["maturityDate", firstNonEmpty("maturity_date", "matDate"), "date"],
                   ["balloonAmount", firstNonEmpty("balloon_amount", "balloonAmount"), "currency"],
+                  // RE851D questionnaire XVI "Amount Owing" column (per-row).
+                  ["amountOwing", amountOwingVal, "currency"],
                 ];
 
                 const fieldAliases: Record<string, string[]> = {
                   interestRate: ["interest_rate", "intRate"],
                   beneficiary: ["lienHolder", "holder"],
                   maturityDate: ["maturity_date", "matDate"],
+                  // Template author-friendly variants for Amount Owing.
+                  amountOwing: ["amount_owing", "amount", "owing"],
                 };
                 for (const [f, v, dt] of fields) {
                   const names = [f, ...(fieldAliases[f] ?? [])];
