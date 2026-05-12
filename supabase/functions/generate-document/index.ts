@@ -816,12 +816,28 @@ async function generateSingleDocument(
         if (norm === "payabletoyou")    canonical = "Payable to you";
         else if (norm === "youmustpay") canonical = "You Must Pay";
 
-        const isPayable = canonical === "Payable to you";
-        const isMustPay = canonical === "You Must Pay";
+        // Direct boolean dictionary fields (UI checkboxes) take precedence when set true
+        const boolPayable = String(
+          fieldValues.get("origination_fees.re885_cash_payable_to_you")?.rawValue ??
+          fieldValues.get("of_fe_estimatedCashPayableToYou")?.rawValue ?? ""
+        ).toLowerCase() === "true";
+        const boolMustPay = String(
+          fieldValues.get("origination_fees.re885_cash_you_must_pay")?.rawValue ??
+          fieldValues.get("of_fe_estimatedCashYouMustPay")?.rawValue ?? ""
+        ).toLowerCase() === "true";
+
+        const isPayable = boolPayable || canonical === "Payable to you";
+        const isMustPay = boolMustPay || canonical === "You Must Pay";
 
         fieldValues.set("re885_cash_payable_to_you", { rawValue: isPayable ? "true" : "false", dataType: "boolean" });
         fieldValues.set("re885_cash_you_must_pay",   { rawValue: isMustPay ? "true" : "false", dataType: "boolean" });
+        fieldValues.set("of_fe_estimatedCashPayableToYou", { rawValue: isPayable ? "true" : "false", dataType: "boolean" });
+        fieldValues.set("of_fe_estimatedCashYouMustPay",   { rawValue: isMustPay ? "true" : "false", dataType: "boolean" });
 
+        if (!canonical) {
+          if (isPayable) canonical = "Payable to you";
+          else if (isMustPay) canonical = "You Must Pay";
+        }
         if (canonical) {
           fieldValues.set("origination_fees.re885_cash_at_closing_option",       { rawValue: canonical, dataType: "text" });
           fieldValues.set("origination_fees.re885_cash_at_closing_amount_label", { rawValue: canonical, dataType: "text" });
