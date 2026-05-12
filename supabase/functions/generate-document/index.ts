@@ -2963,6 +2963,65 @@ async function generateSingleDocument(
         debugLog(`  pr_netPropertyValue: ${netVal.toFixed(2)}`);
       }
 
+      // ── Calculated field: pr_li_balanceAfterPaydown (per-lien) ──
+      // Per-lien: lienN.current_balance − lienN.existing_paydown_amount.
+      // Publishes:
+      //   • pr_li_balanceAfterPaydown      (aggregated, newline-joined, formatted currency)
+      //   • pr_li_balanceAfterPaydown_N    (per-lien indexed alias, formatted currency)
+      {
+        const toNum = (v: unknown): number => {
+          if (v === null || v === undefined || v === "") return 0;
+          const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
+          return Number.isFinite(n) ? n : 0;
+        };
+
+        const perLien: Record<string, { cb?: unknown; pd?: unknown }> = {};
+        for (const [key, val] of fieldValues.entries()) {
+          const m = key.match(/^lien(\d*)\.(.+)$/);
+          if (!m) continue;
+          const idx = m[1] || "0";
+          const field = m[2];
+          if (field === "current_balance") {
+            (perLien[idx] ||= {}).cb = val?.rawValue;
+          } else if (field === "existing_paydown_amount" || field === "existingPaydownAmount") {
+            (perLien[idx] ||= {}).pd = val?.rawValue;
+          }
+        }
+
+        const allIdx = Object.keys(perLien);
+        const hasIdx = allIdx.some((i) => i !== "0");
+        const orderedIdx = (hasIdx ? allIdx.filter((i) => i !== "0") : allIdx)
+          .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+        const lines: string[] = [];
+        for (const i of orderedIdx) {
+          const cbRaw = perLien[i]?.cb;
+          const pdRaw = perLien[i]?.pd;
+          const hasCb = cbRaw !== undefined && cbRaw !== null && String(cbRaw).trim() !== "";
+          if (!hasCb) {
+            lines.push("");
+            continue;
+          }
+          const result = toNum(cbRaw) - toNum(pdRaw);
+          const formatted = formatCurrency(result.toFixed(2));
+          lines.push(formatted);
+          // Per-lien indexed alias (1-based)
+          const nIdx = i === "0" ? "1" : i;
+          fieldValues.set(`pr_li_balanceAfterPaydown_${nIdx}`, {
+            rawValue: result.toFixed(2),
+            dataType: "currency",
+          });
+        }
+
+        if (orderedIdx.length > 0) {
+          fieldValues.set("pr_li_balanceAfterPaydown", {
+            rawValue: orderedIdx.length > 1 ? lines.join("\n") : (toNum(perLien[orderedIdx[0]]?.cb) - toNum(perLien[orderedIdx[0]]?.pd)).toFixed(2),
+            dataType: orderedIdx.length > 1 ? "text" : "currency",
+          });
+          debugLog(`[generate-document] Published pr_li_balanceAfterPaydown for ${orderedIdx.length} lien(s)`);
+        }
+      }
+
       // ── RE851D Delinquency mapping: publish pr_li_*_N aliases per lien index
       // AND per-property index (aggregated when multiple liens belong to one property).
       // Source UI fields live on each lienK.* record; template uses _N expansion.
