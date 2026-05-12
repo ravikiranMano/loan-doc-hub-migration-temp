@@ -334,7 +334,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
         <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
-        <div className="relative w-[220px] 3xl:w-[280px]">
+        <div className="relative flex-1">
           <Input
             value={getValue(fieldKey)}
             onChange={(e) => {
