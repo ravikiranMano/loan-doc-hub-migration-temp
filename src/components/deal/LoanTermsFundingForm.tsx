@@ -783,6 +783,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       totalPayment={totalPayment}
       loanAmount={loanAmount}
       loanPrincipalBalance={loanPrincipalBalance}
+      remainingPayments={remainingPayments}
       onLoanNumberChange={handleLoanNumberChange}
       onBorrowerNameChange={handleBorrowerNameChange}
       onHeaderFieldBlur={handleHeaderFieldBlur}
