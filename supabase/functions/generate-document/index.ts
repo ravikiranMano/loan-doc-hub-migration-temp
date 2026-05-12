@@ -2737,6 +2737,40 @@ async function generateSingleDocument(
       }
       debugLog(`[generate-document] Lien field bridging complete`);
 
+      // ── Bridge: "Anticipated Balance (if new lien)" → li_lt_anticipatedAmount ──
+      // Per spec, {{li_lt_anticipatedAmount}} sources from Property → Liens →
+      // "Anticipated Balance" UI field, stored as lienN.new_remaining_balance.
+      // Fallback to lienN.anticipated_amount when present and new_remaining_balance is empty.
+      {
+        const nrbEntries: { index: number; value: string }[] = [];
+        for (const [key, val] of fieldValues.entries()) {
+          const m = key.match(/^lien(\d*)\.(.+)$/);
+          if (!m) continue;
+          const field = m[2];
+          if (field !== "new_remaining_balance" && field !== "anticipated_amount") continue;
+          const raw = val?.rawValue;
+          if (raw === undefined || raw === null || String(raw).trim() === "") continue;
+          const idx = m[1] ? parseInt(m[1], 10) : 0;
+          const existing = nrbEntries.find(e => e.index === idx);
+          // new_remaining_balance wins; only set anticipated_amount if no NRB present for that index
+          if (field === "new_remaining_balance") {
+            if (existing) existing.value = String(raw);
+            else nrbEntries.push({ index: idx, value: String(raw) });
+          } else if (!existing) {
+            nrbEntries.push({ index: idx, value: String(raw) });
+          }
+        }
+        if (nrbEntries.length > 0) {
+          const hasIndexed = nrbEntries.some(e => e.index >= 1);
+          const deduped = hasIndexed ? nrbEntries.filter(e => e.index >= 1) : nrbEntries;
+          deduped.sort((a, b) => a.index - b.index);
+          const aggregated = deduped.map(e => e.value).join("\n");
+          fieldValues.set("li_lt_anticipatedAmount", { rawValue: aggregated, dataType: "currency" });
+          debugLog(`[generate-document] Published li_lt_anticipatedAmount from new_remaining_balance (${deduped.length} liens) = ${aggregated}`);
+        }
+      }
+
+
       // ── Calculated field: pr_netPropertyValue ──
       // Net Property Value = Estimate Value − Loan Amount − Sum(Current Lien Balance) − Sum(Anticipated Lien Amount)
       // Backend-only field (not surfaced in UI), available for document mapping as {{pr_netPropertyValue}}.
