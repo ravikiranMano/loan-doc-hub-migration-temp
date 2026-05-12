@@ -318,7 +318,10 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   }, [fundingRecords]);
 
   // Persist the auto-filled Pro Rata into loan_terms.pro_rata whenever the
-  // grid total changes. Uses the existing onValueChange + saveDraft pipeline.
+  // grid total changes. Uses the same direct-persist path as funding_records
+  // so it cannot race with — or be overwritten by — a parent saveDraft() that
+  // may be operating on a stale field_values snapshot (which would drop the
+  // most recently added funding record).
   const lastPersistedProRataRef = useRef<string | null>(null);
   useEffect(() => {
     if (!computedProRataTotal) return;
@@ -330,10 +333,13 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     if (lastPersistedProRataRef.current === computedProRataTotal) return;
     lastPersistedProRataRef.current = computedProRataTotal;
     onValueChange('loan_terms.pro_rata', computedProRataTotal);
-    if (saveDraft) {
-      window.setTimeout(() => { void saveDraft(); }, 0);
-    }
-  }, [computedProRataTotal, values, onValueChange, saveDraft]);
+    void directPersistFundingField(
+      dealId,
+      'loan_terms.pro_rata',
+      computedProRataTotal,
+      dictCacheRef.current,
+    );
+  }, [computedProRataTotal, values, onValueChange, dealId]);
 
   // Parse funding history from stored JSON value.
   // Fallback: if no stored history exists yet (e.g. legacy/in-progress deals where the
