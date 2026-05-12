@@ -426,7 +426,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   // Payment = P × [r(1+r)^n] / [(1+r)^n − 1] with r = rate/100/12, n = remaining payments
   React.useEffect(() => {
     // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
-    const fundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || loanAmount || 0;
+    const fundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
     const rate = parseFloat((formData.noteRateDisplay || noteRate || '').replace(/[%,]/g, '')) || 0;
     const monthly = (fundingAmount * (rate / 100)) / 12;
     const payment = monthly > 0 ? monthly.toFixed(2) : '';
