@@ -902,7 +902,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 802 Lenders Loan Discount Fee (8 fields)
   'origination_fees.802_lenders_loan_discount_fee_payable_to': 'of_fe_802LenderLoanDiscou5',
-  'origination_fees.802_lenders_loan_discount_fee_d': 'of_fe_lendersLoanDiscouFee',
+  'origination_fees.802_lenders_loan_discount_fee_d': 'of_802_desc',
   'origination_fees.802_lenders_loan_discount_fee_charge': 'of_fe_802LenderLoanDiscou2',
   'origination_fees.802_lenders_loan_discount_fee_broker': 'of_802_lenderLoanDiscountFee_broker',
   'origination_fees.802_lenders_loan_discount_fee_others': 'of_802_lenderLoanDiscountFee_others',
