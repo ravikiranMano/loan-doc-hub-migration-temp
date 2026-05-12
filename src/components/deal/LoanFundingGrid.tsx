@@ -705,11 +705,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             <div className="relative">
               <Input
                 value={proRata || ''}
-                onChange={(e) => onProRataChange?.(e.target.value)}
-                onBlur={onHeaderFieldBlur}
+                readOnly
                 disabled={disabled}
                 inputMode="decimal"
-                className="h-7 text-xs w-24 pr-5"
+                className="h-7 text-xs w-24 pr-5 bg-muted/30"
               />
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
             </div>
