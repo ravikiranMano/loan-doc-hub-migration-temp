@@ -1269,7 +1269,11 @@ async function generateSingleDocument(
         }
       }
 
-      for (const idx of sortedPropIndices) {
+      // CPU optimization: iterate only properties with real data. Empty
+      // slots are handled by the anti-fallback shield further down which
+      // writes default ☐ glyphs / blank values for unpublished _N tags.
+      // This avoids running ~30 publisher sub-blocks for phantom indices.
+      for (const idx of realPropertyIndices) {
         const prefix = `property${idx}`;
         // ── RE851D: auto-numbered Property No. for Part 1 LTV table ──
         // Set unconditionally for any index that has a property record so the
