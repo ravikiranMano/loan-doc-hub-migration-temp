@@ -781,7 +781,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             </div>
 
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>Day Due</Label>
+              <Label className={LABEL_CLASS}>Payment Due Date</Label>
               <Input
                 value={getValue(FIELD_KEYS.dayDue)}
                 onChange={(e) => setValue(FIELD_KEYS.dayDue, e.target.value.replace(/\D/g, ''))}
@@ -792,20 +792,21 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               />
             </div>
 
-            {renderDateField(FIELD_KEYS.firstPayment, "First Payment")}
+            {renderDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
             {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
-            {renderDateField(FIELD_KEYS.paidTo, "Paid To")}
-            {renderDateField(FIELD_KEYS.nextPayment, "Next Payment")}
-            {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular Payment")}
+            {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
+            {renderDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
+            {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
+            {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
 
             {/* Servicing Fees - always currency, independent of Sales Tax */}
-            {renderCurrencyField(FIELD_KEYS.servicingFees, "Servicing Fees")}
+            {renderCurrencyField(FIELD_KEYS.servicingFees, "Borrower Servicing Fees")}
 
             {/* Sales Tax - percentage input */}
             <DirtyFieldWrapper fieldKey={FIELD_KEYS.salesTaxPercent}>
               <div className="flex items-center gap-3">
-                <Label className={LABEL_CLASS}>Sales Tax</Label>
+                <Label className={LABEL_CLASS}>Sales Tax on Servicing Fees</Label>
                 <div className="relative flex-1">
                   <Input
                     id={FIELD_KEYS.salesTaxPercent}
