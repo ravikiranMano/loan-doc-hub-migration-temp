@@ -1,40 +1,44 @@
-## Goal
-Add a new calculated field in the field dictionary that computes `pr_li_lienCurrenBalanc - li_lt_existingPaydownAmount`, and surface its value in document generation (RE851D) via a merge tag.
+## Issue confirmed
 
-## Changes
+Generation is failing after the RE851D post-render passes with:
 
-### 1. Database — `field_dictionary` (migration, INSERT)
-Insert a new row:
-- `field_key`: `pr_li_balanceAfterPaydown`
-- `label`: `Balance After Paydown`
-- `section`: `property`
-- `data_type`: `currency`
-- `is_calculated`: `true`
-- `calculation_formula`: `{pr_li_lienCurrenBalanc} - {li_lt_existingPaydownAmount}`
-- `calculation_dependencies`: `{pr_li_lienCurrenBalanc, li_lt_existingPaydownAmount}`
-- `is_repeatable`: `false`
-- `allowed_roles`: `{admin, csr}` (default), `read_only_roles`: `{}` (default)
-- `description`: `Auto-calculated: Lien Current Balance minus Existing Paydown Amount`
+```text
+DOCX_INTEGRITY: word/document.xml has unbalanced <w:p> tags (open=1739, close=1744)
+```
 
-The existing `calculationEngine.ts` already supports the `{a} - {b}` pattern (parser line 87, executor lines 184–193), so no engine changes are required. The hook `useDealFields.ts` (lines 783–814 + the saveDraft compute pass at 826–830) already runs calculated fields automatically and persists their results into `deal_section_values`, so the value will be written to storage on every save.
+The uploaded RE851D template itself is XML-well-formed, but it contains malformed placeholder/control syntax that becomes unsafe during generation:
 
-### 2. Database — `merge_tag_aliases` (INSERT)
-Insert one row binding a Word merge tag to the new field:
-- `tag_name`: `pr_li_balanceAfterPaydown`
-- `field_key`: `pr_li_balanceAfterPaydown`
-- `tag_type`: `merge_tag`
-- `is_active`: `true`
-- `description`: `Lien Current Balance minus Existing Paydown Amount`
+- Unsupported encumbrance placeholders like `{{pr_li_rem_priority_(N)_(S)}}` and `{{pr_li_ant_priority_{N}_{S}}}`.
+- Broken balloon conditional fragments like `{{#if ... pr_li_ant_balloonYes_(N)_(S)}}{{else}}☐{{/if}}`, including one incomplete `{{/if`.
+- Some conditional expressions with spacing errors, e.g. `{{#if (eq pr_p_performeBy_N"Broker")}}`.
+- Template text/control fragments are mixed with Word paragraph/table XML inside the same runs, so a replacement pass can leave extra closing paragraphs.
 
-Author the RE851D template tag as `{{pr_li_balanceAfterPaydown}}` (or the existing single-brace convention used in the template — I'll mirror whatever RE851D uses today).
+## Plan
 
-### 3. No edge-function code changes
-Document generation already resolves placeholder values via `merge_tag_aliases → field_key → deal_section_values`. Once the calculated field persists and the alias exists, the tag will populate automatically on the next generation. No edits to `supabase/functions/generate-document/index.ts` or the shared tag parser.
+1. **Harden RE851D template pre-normalization**
+   - Extend the existing RE851D preprocessing in `generate-document` to normalize all unsupported `{N}/{S}` and `(N)/(S)` encumbrance tag variants before merge replacement.
+   - Include mixed-case field names and non-simple field names currently missed by the existing `[A-Za-z]+` matcher.
+   - Normalize malformed `#if (eq FIELD"Value")` spacing to valid `#if (eq FIELD "Value")` for RE851D-safe field families.
 
-## Out of scope
-- No UI form changes (calculated field is derived, not user-edited).
-- No template binary edits — the user/admin places `{{pr_li_balanceAfterPaydown}}` in RE851D where they want it to appear.
-- No changes to per-property/per-lien repeatable indexing (the source fields are non-repeatable in the dictionary).
+2. **Sanitize malformed balloon conditionals before post-render passes**
+   - Add a RE851D-only cleanup for balloon checkbox runs that removes broken `{{#if ...}}`, `{{else}}`, and incomplete `{{/if` fragments when they reference `pr_li_rem_balloon*` or `pr_li_ant_balloon*`.
+   - Preserve the visible checkbox glyphs so the existing balloon safety pass can still force the correct Yes/No/Unknown state.
 
-## Open item
-Confirm the merge-tag spelling you want in the Word template. Default proposed: `pr_li_balanceAfterPaydown`. If you want a different tag name (e.g. `pr_li_remainingAfterPaydown`), say so and I'll use that exact tag in `merge_tag_aliases`.
+3. **Fix the unsafe post-render replacement ordering**
+   - In the RE851D encumbrance post-render pass, apply replacements before insertions, or recompute insertion offsets after replacements.
+   - This prevents replacements from shifting later insertion positions and cutting into Word XML, which matches the observed extra `</w:p>` count.
+
+4. **Improve final integrity diagnostics**
+   - When final validation fails, log a compact count of unbalanced tags and a small XML context around the first suspicious paragraph/table boundary.
+   - Keep the user-facing error clean, but make future failures diagnosable from logs.
+
+5. **Validate with the uploaded template**
+   - Add or run a focused test/diagnostic using `RE851D-V12.1-3.docx` against the same normalization and final validation path.
+   - Confirm `word/document.xml` passes balance checks and the generated DOCX opens without XML parsing errors.
+
+## Files expected to change
+
+- `supabase/functions/generate-document/index.ts`
+- Potentially `supabase/functions/_shared/tag-parser.ts` only if the shared parser needs a narrow generic guard for incomplete control tags.
+
+No database/schema changes are needed.
