@@ -7663,7 +7663,17 @@ async function generateSingleDocument(
                 const slice = xml.slice(rawWinStart, rawWinEnd);
                 const glyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([\u2610\u2611\u2612])(<\/w:t>\s*<\/w:r>)/g;
                 const drawingRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:drawing\b[\s\S]*?<\/w:drawing>\s*<\/w:r>/g;
-                type Hit = { idx: number; len: number; kind: "glyph" | "drawing"; cur?: string; pre?: string; post?: string };
+                // Some authored RE851D templates encode balloon checkboxes as
+                // inline Handlebars conditionals inside a single <w:t> run, e.g.
+                //   <w:r><w:t>{{#if pr_li_ant_balloonYes_(N)_(S)}}☒{{else}}☐{{/if}}</w:t></w:r>
+                // The plain glyph regex above can't match these (the run holds
+                // both ☒ and ☐), so the ANT section's checkbox state was never
+                // forced and every box rendered as ☐. Treat those runs as
+                // checkbox slots too — in document order — so the YES/NO/UNKNOWN
+                // selection logic that already works for the REM section also
+                // applies here.
+                const handlebarsRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>([\s\S]*?)<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>([^<]*\{\{[^{}]*?pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown)[^{}]*?\}\}[^<]*)<\/w:t>\s*<\/w:r>/g;
+                type Hit = { idx: number; len: number; kind: "glyph" | "drawing" | "handlebars"; cur?: string; pre?: string; post?: string; rPr?: string };
                 const hits: Hit[] = [];
                 let gm: RegExpExecArray | null;
                 while ((gm = glyphRunRe.exec(slice)) !== null) {
@@ -7672,6 +7682,10 @@ async function generateSingleDocument(
                 let dm: RegExpExecArray | null;
                 while ((dm = drawingRunRe.exec(slice)) !== null) {
                   hits.push({ idx: dm.index, len: dm[0].length, kind: "drawing" });
+                }
+                let hm: RegExpExecArray | null;
+                while ((hm = handlebarsRunRe.exec(slice)) !== null) {
+                  hits.push({ idx: hm.index, len: hm[0].length, kind: "handlebars", rPr: hm[1] || "" });
                 }
                 hits.sort((a, b) => a.idx - b.idx);
                 const labels = ["YES", "NO", "Unknown"];
@@ -7688,6 +7702,12 @@ async function generateSingleDocument(
                       needReplace = true;
                       replacement = `${h.pre}${want}${h.post}`;
                     }
+                  } else if (h.kind === "handlebars") {
+                    // Replace the whole Handlebars-bearing run with a clean
+                    // single-glyph run, preserving original <w:rPr> formatting.
+                    needReplace = true;
+                    const rPr = h.rPr ? `<w:rPr>${h.rPr}</w:rPr>` : "";
+                    replacement = `<w:r>${rPr}<w:t xml:space="preserve">${want}</w:t></w:r>`;
                   } else {
                     // Always swap drawing → glyph run so the rendered state matches.
                     needReplace = true;
