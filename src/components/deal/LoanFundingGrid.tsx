@@ -309,8 +309,11 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const computedPayments = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
+    const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
     const exact = fundingRecords.map(r => {
-      const computed = computeAmortizedPayment(r.originalAmount || 0, r.lenderRate || 0, remainingPayments);
+      const principal = (r.principalBalance && r.principalBalance > 0) ? r.principalBalance : (r.originalAmount || 0);
+      const rate = noteRateNum > 0 ? noteRateNum : (r.lenderRate || 0);
+      const computed = computeAmortizedPayment(principal, rate, remainingPayments);
       return new Decimal(computed === '' ? 0 : computed);
     });
     const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
@@ -324,7 +327,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     }
     fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [fundingRecords, remainingPayments]);
+  }, [fundingRecords, remainingPayments, noteRate]);
 
   // Pro Rata rounding: if a record is flagged with `roundingAdjustment`,
   // absorb the fractional difference between the sum of pctOwned values and
