@@ -972,7 +972,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 811 Underwriting Fee (8 fields)
   'origination_fees.811_underwriting_fee_payable_to': 'of_fe_811UnderwFeePayabl',
-  'origination_fees.811_underwriting_fee_d': 'of_fe_underwriFeeD',
+  'origination_fees.811_underwriting_fee_d': 'of_811_desc',
   'origination_fees.811_underwriting_fee_charge': 'of_fe_811UnderwFeeCharge',
   'origination_fees.811_underwriting_fee_broker': 'of_811_underwritingFee_broker',
   'origination_fees.811_underwriting_fee_others': 'of_811_underwritingFee_others',
