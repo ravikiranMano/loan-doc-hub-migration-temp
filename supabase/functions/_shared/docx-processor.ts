@@ -56,6 +56,25 @@ function hasLikelyMergeWork(xml: string, labelMap: Record<string, LabelMapping>)
 
 const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
 
+function setParagraphJustification(para: string, value: string): string {
+  if (/<w:jc\b[^>]*\/>/.test(para)) {
+    return para.replace(/<w:jc\b[^>]*\/>/, `<w:jc w:val="${value}"/>`);
+  }
+  const pPrOpen = para.match(/<w:pPr\b[^>]*>/);
+  if (pPrOpen) {
+    return para.replace(pPrOpen[0], `${pPrOpen[0]}<w:jc w:val="${value}"/>`);
+  }
+  return para.replace(/<w:p\b([^>]*)>/, `<w:p$1><w:pPr><w:jc w:val="${value}"/></w:pPr>`);
+}
+
+function normalizeRe885OtherLienAmountCells(xml: string): string {
+  if (!xml.includes("pr_p_currentBalanc") && !xml.includes("li_lt_anticipatedAmount")) return xml;
+  return xml.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (cell) => {
+    if (!cell.includes("pr_p_currentBalanc") && !cell.includes("li_lt_anticipatedAmount")) return cell;
+    return cell.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (para) => setParagraphJustification(para, "center"));
+  });
+}
+
 /**
  * If the processed XML contains any w14:* token (typically introduced by
  * convertGlyphsToSdtCheckboxes injecting <w14:checkbox> blocks) but the
@@ -143,14 +162,17 @@ export async function processDocx(
       if (isContentPart) {
         debugLog(`[docx-processor] Processing content XML: ${filename} (${content.length} bytes)`);
         const originalXml = decoder.decode(content);
+        const inputXml = is885 && filename === "word/document.xml"
+          ? normalizeRe885OtherLienAmountCells(originalXml)
+          : originalXml;
 
-        if (!hasLikelyMergeWork(originalXml, labelMap)) {
+        if (!hasLikelyMergeWork(inputXml, labelMap)) {
           processedFiles[filename] = [content, { level: UNCHANGED_XML_COMPRESSION_LEVEL }];
           continue;
         }
 
         const tPartStart = performance.now();
-        let processedXml = replaceMergeTags(originalXml, fieldValues, fieldTransforms, mergeTagMap, labelMap, validFieldKeys, options.templateName);
+        let processedXml = replaceMergeTags(inputXml, fieldValues, fieldTransforms, mergeTagMap, labelMap, validFieldKeys, options.templateName);
         const tAfterReplace = performance.now();
 
         // If the post-pass injected w14:* (e.g. <w14:checkbox>) into a part
