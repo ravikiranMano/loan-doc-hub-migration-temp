@@ -25,7 +25,7 @@ import type {
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
 import { processDocx } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
-import { formatByDataType } from "../_shared/formatting.ts";
+import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
 const DOC_GEN_DEBUG = Deno.env.get("DOC_GEN_DEBUG") === "true";
 const debugLog = (...args: unknown[]) => {
