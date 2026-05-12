@@ -398,6 +398,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'loan.original_amount': 'ln_p_originalAmount',
   'loan_terms.note_rate': 'ln_p_noteRate',
   'loan_terms.sold_rate': 'ln_p_soldRate',
+  'loan_terms.current_rate': 'ln_p_currentRate',
   'loan_terms.sold_rate_enabled': 'ln_p_soldRateEnable',
   'loan_terms.sold_rate_originating_vendor': 'ln_p_soldRateOriginatingVendor',
   'loan_terms.sold_rate_company': 'ln_p_soldRateCompany',
