@@ -1,0 +1,1 @@
+UPDATE public.field_dictionary SET data_type = 'date' WHERE field_key = 'ln_p_dayDue';
