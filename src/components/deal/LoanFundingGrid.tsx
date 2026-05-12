@@ -181,6 +181,8 @@ interface LoanFundingGridProps {
   onLoanNumberChange?: (value: string) => void;
   onBorrowerNameChange?: (value: string) => void;
   onHeaderFieldBlur?: () => void;
+  proRata?: string;
+  onProRataChange?: (value: string) => void;
   // Funding Adjustment
   fundingAdjustments?: FundingAdjustmentData[];
   onSaveAdjustment?: (adjustment: FundingAdjustmentData) => void;
