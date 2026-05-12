@@ -1351,6 +1351,14 @@ async function generateSingleDocument(
         if (appraiseV?.rawValue && !fieldValues.has(`pr_p_appraiseValue_${idx}`)) {
           fieldValues.set(`pr_p_appraiseValue_${idx}`, { rawValue: appraiseV.rawValue, dataType: appraiseV.dataType || "currency" });
         }
+        // Per-property Pledged Equity (Property → Valuation → Pledged Equity).
+        // Drives RE851D Part 1 "Amount of Equity Securing the Loan" column.
+        const pledgedV =
+          fieldValues.get(`${prefix}.pledged_equity`) ||
+          fieldValues.get(`${prefix}.pledgedEquity`);
+        if (pledgedV?.rawValue && !fieldValues.has(`pr_p_pledgedEquity_${idx}`)) {
+          fieldValues.set(`pr_p_pledgedEquity_${idx}`, { rawValue: pledgedV.rawValue, dataType: pledgedV.dataType || "currency" });
+        }
         // Property Owner: UI saves under property{N}.property_owner (FIELD_KEYS.propertyOwner).
         // Also accept legacy `.owner`/`.vesting`. Publish pr_p_owner_N (legacy) and
         // pr_p_ownerName_N (RE851D PROPERTY OWNER section) per-index, no cross-bleed.
@@ -3407,6 +3415,16 @@ async function generateSingleDocument(
             }
             if (pIdx === null) continue; // no cross-bleed
 
+            // Per spec: always exclude liens flagged as "This Loan" before any
+            // condition-based aggregation, regardless of condition value.
+            const thisLoanRaw =
+              fieldValues.get(`${lp}.this_loan`)?.rawValue ??
+              fieldValues.get(`${lp}.thisLoan`)?.rawValue;
+            if (truthy3(thisLoanRaw)) {
+              matchedLog[pIdx].push(`${li}:thisLoan-skip`);
+              continue;
+            }
+
             const cond = classify(lp);
             const dbgOrig = fieldValues.get(`${lp}.original_balance`)?.rawValue ?? "";
             const dbgCur = fieldValues.get(`${lp}.current_balance`)?.rawValue ?? "";
@@ -3420,7 +3438,15 @@ async function generateSingleDocument(
               continue;
             }
             if (cond === "anticipated") {
-              const amt = parseAmt2(fieldValues.get(`${lp}.original_balance`)?.rawValue);
+              // Per spec: Anticipated uses "Anticipated Balance (if new lien)"
+              // which the UI persists as new_remaining_balance, falling back to
+              // anticipated_amount when missing.
+              const antRaw =
+                fieldValues.get(`${lp}.new_remaining_balance`)?.rawValue ??
+                fieldValues.get(`${lp}.newRemainingBalance`)?.rawValue ??
+                fieldValues.get(`${lp}.anticipated_amount`)?.rawValue ??
+                fieldValues.get(`${lp}.anticipatedAmount`)?.rawValue;
+              const amt = parseAmt2(antRaw);
               expByProp.set(pIdx, (expByProp.get(pIdx) || 0) + amt);
               matchedLog[pIdx].push(`${li}:ant=${amt}`);
             } else {
@@ -3475,22 +3501,34 @@ async function generateSingleDocument(
             // Additional Part-1 column aliases some template variants use.
             fieldValues.set(`pr_p_remainingEncumbrance_${pi}`, remVal);
             fieldValues.set(`pr_p_expectedEncumbrance_${pi}`, expVal);
-            // Amount of Equity = Market Value − Remaining Senior Encumbrances.
+            // Amount of Equity = Market Value − Total Senior Encumbrances.
             // Source market value is the per-property appraise/estimate value.
             // Skip emission when market value is missing so the cell renders blank.
             const mvRaw =
               fieldValues.get(`pr_p_appraiseValue_${pi}`)?.rawValue ??
-              fieldValues.get(`property${pi}.appraise_value`)?.rawValue;
+              fieldValues.get(`property${pi}.appraise_value`)?.rawValue ??
+              fieldValues.get(`property${pi}.appraised_value`)?.rawValue;
             let equityStr = "";
+            let ltvStr = "";
             if (mvRaw !== null && mvRaw !== undefined && String(mvRaw).trim() !== "") {
               const mv = parseAmt2(mvRaw);
-              const equity = mv - rem;
+              const equity = mv - tot;
               equityStr = equity.toFixed(2);
               fieldValues.set(`ln_p_amountOfEquity_${pi}`, { rawValue: equityStr, dataType: "currency" });
+              // Per spec PART 1: LTV = (Total Senior Encumbrances / Market Value) × 100.
+              // Overrides the loanAmount/MV LTV written by the per-property bridge.
+              if (mv > 0) {
+                ltvStr = ((tot / mv) * 100).toFixed(2);
+                fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
+              } else {
+                ltvStr = "0.00";
+                fieldValues.set(`ln_p_loanToValueRatio_${pi}`, { rawValue: ltvStr, dataType: "percentage" });
+              }
             }
             debugLog(
               `[generate-document] RE851D Part1 rollup property${pi}: liens=[${matchedLog[pi].join(",")}], ` +
-              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, equity=${equityStr || "∅"}`
+              `remaining=${rem.toFixed(2)}, expected=${exp.toFixed(2)}, total=${tot.toFixed(2)}, ` +
+              `mv=${mvRaw ?? "∅"}, equity=${equityStr || "∅"}, ltv=${ltvStr || "∅"}`
             );
           }
 
