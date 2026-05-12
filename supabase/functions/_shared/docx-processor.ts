@@ -204,7 +204,24 @@ export async function processDocx(
 
       if (isContentPart) {
         debugLog(`[docx-processor] Processing content XML: ${filename} (${content.length} bytes)`);
-        const originalXml = decoder.decode(content);
+        const decodedXml = decoder.decode(content);
+
+        // Defensive cleanup for large content parts: strip authoring noise
+        // (mc:Fallback duplicates, rsids, proofErr, lastRenderedPageBreak)
+        // before any regex pass runs. Only applied when the part exceeds
+        // ~1MB so small templates pay no measurable cost.
+        let originalXml = decodedXml;
+        if (decodedXml.length > 1_000_000) {
+          const tClean = performance.now();
+          const cleaned = stripAuthoringNoise(decodedXml);
+          if (cleaned.length < decodedXml.length) {
+            originalXml = cleaned;
+            console.log(
+              `[docx-processor] stripped authoring noise from ${filename}: ${decodedXml.length}B -> ${cleaned.length}B in ${Math.round(performance.now() - tClean)}ms`,
+            );
+          }
+        }
+
         const inputXml = is885 && filename === "word/document.xml"
           ? normalizeRe885OtherLienAmountCells(originalXml)
           : originalXml;
