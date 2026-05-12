@@ -7882,15 +7882,30 @@ async function generateSingleDocument(
 
 
     // ── RE851D post-render flush ──
-    // If any RE851D safety pass mutated the in-memory cache, rezip exactly
-    // once now (instead of once per pass) before upload.
+    // If any RE851D safety pass mutated the in-memory cache, run a final
+    // table-cell paragraph repair sweep on every dirty content part, then
+    // validate each one with the same integrity rules processDocx uses
+    // internally — but on the FINAL bytes we are about to upload. Without
+    // this gate, a post-render mutation that produces malformed XML (the
+    // historical cause of RE851D "Xml parsing error" reports in Word) would
+    // ship as a successful generation.
     if (__re851dPassCache) {
       try {
         const flushZip: fflate.Zippable = {};
         const flushEncoder = new TextEncoder();
         for (const [k, v] of Object.entries(__re851dPassCache)) {
           if (__xmlDirty.has(k)) {
-            // Re-encode the cached mutated string exactly once.
+            // Repair table cells stripped of their sole <w:p> by mutations.
+            const repaired = repairTableCellParagraphs(__xmlStrCache[k]);
+            if (repaired.repaired > 0) {
+              __xmlStrCache[k] = repaired.xml;
+              debugLog(
+                `[generate-document] RE851D post-render flush: repaired ${repaired.repaired} <w:tc> in ${k}`,
+              );
+            }
+            // Validate the FINAL XML before re-encoding — fail loudly rather
+            // than upload a corrupt DOCX that Word will refuse to open.
+            validateContentXmlPart(k, __xmlStrCache[k]);
             flushZip[k] = [flushEncoder.encode(__xmlStrCache[k]), { level: 0 }];
           } else {
             flushZip[k] = [v, { level: 0 }];
@@ -7898,9 +7913,17 @@ async function generateSingleDocument(
         }
         processedDocx = new Uint8Array(fflate.zipSync(flushZip));
       } catch (flushErr) {
+        const message = flushErr instanceof Error ? flushErr.message : String(flushErr);
+        if (message.startsWith("DOCX_INTEGRITY")) {
+          console.error(
+            `[generate-document] DOCX integrity check failed AFTER RE851D post-render passes for template ${templateId}: ${message}`,
+          );
+          result.error = `Generated document failed integrity check (${message.replace(/^DOCX_INTEGRITY:\s*/, "")}). Please review the template for unbalanced tags or invalid placeholders.`;
+          return result;
+        }
         console.error(
           `[generate-document] RE851D post-render flush failed:`,
-          flushErr instanceof Error ? flushErr.message : String(flushErr),
+          message,
         );
       }
     }
