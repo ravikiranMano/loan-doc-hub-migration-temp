@@ -80,7 +80,23 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     });
     lienPrefixes.forEach(prefix => {
       const raw = values[`${prefix}.new_remaining_balance`] || '';
-      const num = parseFloat(raw.replace(/[,$]/g, ''));
+      const num = parseFloat(raw.replace(/[, $]/g, ''));
+      if (!isNaN(num)) total += num;
+    });
+    return total;
+  }, [values]);
+
+  // Helper: sum all lien current_balance values for Current LTV numerator
+  const liensCurrentBalanceTotal = React.useMemo(() => {
+    let total = 0;
+    const lienPrefixes = new Set<string>();
+    Object.keys(values).forEach(key => {
+      const m = key.match(/^(lien\d+)\./);
+      if (m) lienPrefixes.add(m[1]);
+    });
+    lienPrefixes.forEach(prefix => {
+      const raw = values[`${prefix}.current_balance`] || '';
+      const num = parseFloat(raw.replace(/[, $]/g, ''));
       if (!isNaN(num)) total += num;
     });
     return total;
@@ -88,24 +104,28 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
   // Auto-calculate equities & LTVs — auto-sync on any input change.
   // Formulas (per spec):
-  //   Protective Equity = Estimate of Value − Current Balance
+  //   Protective Equity = Estimate of Value − Current Balance (from liens)
   //   Pledged Equity    = Estimate of Value − Loan Amount
   //   CLTV              = Total All Liens / Estimate of Value × 100
   //   Current LTV       = Current Balance / Estimate of Value × 100
   //   Origination LTV   = Loan Amount / Estimate of Value × 100
   const loanAmountRaw = values['loan_terms.loan_amount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
-  const currentBalanceRaw = values['property1.lien_current_balance'] || '';
+  const currentBalanceRaw = liensCurrentBalanceTotal;
   useEffect(() => {
-    const loanAmount = parseFloat(loanAmountRaw.replace(/[,$]/g, ''));
-    const estValue = parseFloat(estValueRaw.replace(/[,$]/g, ''));
-    const currentBalance = parseFloat(currentBalanceRaw.replace(/[,$]/g, ''));
+    const loanAmount = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
+    const estValue = parseFloat(estValueRaw.replace(/[, $]/g, ''));
+    const currentBalance = currentBalanceRaw;
     const totalAllLiens = existingLiensTotal;
 
     const writeIfChanged = (key: string, next: string) => {
-      const cur = (values[key] || '').replace(/[,$]/g, '').trim();
+      const cur = (values[key] || '').replace(/[, $]/g, '').trim();
       if (cur !== next) onValueChange(key, next);
     };
+
+    // Persist computed current balance from liens into property field
+    const computedBalanceStr = roundDollarForStorage(currentBalance);
+    writeIfChanged('property1.lien_current_balance', computedBalanceStr);
 
     // Protective Equity = Estimate of Value − Current Balance
     if (!isNaN(estValue) && !isNaN(currentBalance)) {
@@ -131,7 +151,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     if (!isNaN(estValue) && estValue > 0 && !isNaN(loanAmount)) {
       writeIfChanged(FIELD_KEYS.originationLtv, roundPctForStorage((loanAmount / estValue) * 100));
     }
-  }, [loanAmountRaw, estValueRaw, currentBalanceRaw, existingLiensTotal]);
+  }, [loanAmountRaw, estValueRaw, liensCurrentBalanceTotal, existingLiensTotal]);
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
   const informationProvidedBy = getFieldValue(FIELD_KEYS.informationProvidedBy);
