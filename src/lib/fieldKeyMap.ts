@@ -427,6 +427,7 @@ export const LOAN_TERMS_BALANCES_KEYS = {
   paidTo: 'loan_terms.paid_to',
   nextPayment: 'loan_terms.next_payment',
   regularPayment: 'loan_terms.regular_payment',
+  addedToRegularPayment: 'loan_terms.added_to_regular_payment',
   additionalPrincipal: 'loan_terms.additional_principal',
   servicingFees: 'loan_terms.servicing_fees',
   salesTaxEnabled: 'loan_terms.sales_tax_enabled',
