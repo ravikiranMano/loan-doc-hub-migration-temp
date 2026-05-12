@@ -1003,7 +1003,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 901 Interest For Days (8 fields)
   'origination_fees.901_interest_for_days_payable_to': 'of_fe_901IntereForDays5',
-  'origination_fees.901_interest_for_days_d': 'of_fe_interestForDaysD',
+  'origination_fees.901_interest_for_days_d': 'of_901_desc',
   'origination_fees.901_interest_for_days_charge': 'of_fe_901IntereForDays2',
   'origination_fees.901_interest_for_days_broker': 'of_901_int_b',
   'origination_fees.901_interest_for_days_others': 'of_901_int_o',
@@ -1017,7 +1017,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 902 Mortgage Insurance Premiums (8 fields)
   'origination_fees.902_mortgage_insurance_premiums_payable_to': 'of_fe_902MortgaInsuraPremiu5',
-  'origination_fees.902_mortgage_insurance_premiums_d': 'of_fe_mortgageInsuraPremiuD',
+  'origination_fees.902_mortgage_insurance_premiums_d': 'of_902_desc',
   'origination_fees.902_mortgage_insurance_premiums_charge': 'of_fe_902MortgaInsuraPremiu2',
   'origination_fees.902_mortgage_insurance_premiums_broker': 'of_902_mi_b',
   'origination_fees.902_mortgage_insurance_premiums_others': 'of_902_mi_o',
@@ -1027,7 +1027,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 903 Hazard Insurance Premiums (8 fields)
   'origination_fees.903_hazard_insurance_premiums_payable_to': 'of_fe_903HazardInsuraPremiu5',
-  'origination_fees.903_hazard_insurance_premiums_d': 'of_fe_hazardInsuraPremiuD',
+  'origination_fees.903_hazard_insurance_premiums_d': 'of_903_desc',
   'origination_fees.903_hazard_insurance_premiums_charge': 'of_fe_903HazardInsuraPremiu2',
   'origination_fees.903_hazard_insurance_premiums_broker': 'of_903_hi_b',
   'origination_fees.903_hazard_insurance_premiums_others': 'of_903_hi_o',
@@ -1037,7 +1037,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 904 County Property Taxes (8 fields)
   'origination_fees.904_county_property_taxes_payable_to': 'of_fe_904CountyProperTaxes5',
-  'origination_fees.904_county_property_taxes_d': 'of_fe_countyProperTaxesD',
+  'origination_fees.904_county_property_taxes_d': 'of_904_desc',
   'origination_fees.904_county_property_taxes_charge': 'of_fe_904CountyProperTaxes2',
   'origination_fees.904_county_property_taxes_broker': 'of_904_tax_b',
   'origination_fees.904_county_property_taxes_others': 'of_904_tax_o',
@@ -1047,7 +1047,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 905 VA Funding Fee (8 fields)
   'origination_fees.905_va_funding_fee_payable_to': 'of_fe_905VaFundinFee5',
-  'origination_fees.905_va_funding_fee_d': 'of_fe_vaFundinFeeD',
+  'origination_fees.905_va_funding_fee_d': 'of_905_desc',
   'origination_fees.905_va_funding_fee_charge': 'of_fe_905VaFundinFee2',
   'origination_fees.905_va_funding_fee_broker': 'of_905_va_b',
   'origination_fees.905_va_funding_fee_others': 'of_905_va_o',
