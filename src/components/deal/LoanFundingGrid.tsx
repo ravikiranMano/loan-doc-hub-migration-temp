@@ -246,6 +246,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   totalPayment = '',
   loanAmount = '',
   loanPrincipalBalance = '',
+  remainingPayments = 0,
   onLoanNumberChange,
   onBorrowerNameChange,
   onHeaderFieldBlur,
