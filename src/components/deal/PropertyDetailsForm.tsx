@@ -124,7 +124,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
     // Current LTV = Current Balance / Estimate of Value × 100
     if (!isNaN(estValue) && estValue > 0 && !isNaN(currentBalance)) {
-      writeIfChanged(FIELD_KEYS.ltv, roundPctForStorage((currentBalance / estValue) * 100));
+      writeIfChanged('property1.lien_current_balance' === FIELD_KEYS.ltv ? FIELD_KEYS.ltv : FIELD_KEYS.ltv, roundPctForStorage((currentBalance / estValue) * 100));
     }
 
     // Origination LTV = Loan Amount / Estimate of Value × 100
