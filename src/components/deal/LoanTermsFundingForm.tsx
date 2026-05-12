@@ -502,7 +502,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord]);
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], remainingPayments);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
     // Ensure newly added record is visible by jumping to the page that contains it.
