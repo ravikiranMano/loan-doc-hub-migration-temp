@@ -8249,28 +8249,50 @@ serve(async (req) => {
       });
     }
 
-    // Create GenerationJob record
-    const { data: job, error: jobError } = await supabase
-      .from("generation_jobs")
-      .insert({
-        deal_id: dealId,
-        requested_by: userId,
-        request_type: requestType,
-        packet_id: packetId || deal.packet_id,
-        template_id: templateId || null,
-        output_type: outputType,
-        status: "running",
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    // Create GenerationJob record (with retry for transient Cloudflare/origin errors)
+    let job: any = null;
+    let jobError: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await supabase
+        .from("generation_jobs")
+        .insert({
+          deal_id: dealId,
+          requested_by: userId,
+          request_type: requestType,
+          packet_id: packetId || deal.packet_id,
+          template_id: templateId || null,
+          output_type: outputType,
+          status: "running",
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      job = result.data;
+      jobError = result.error;
+      if (!jobError && job) break;
+      const status = (jobError as any)?.status ?? (jobError as any)?.code;
+      const isTransient =
+        status === 520 || status === 521 || status === 522 || status === 523 ||
+        status === 524 || status === 502 || status === 503 || status === 504 ||
+        (typeof status === "string" && /^(520|521|522|523|524|502|503|504)$/.test(status));
+      if (!isTransient) break;
+      console.warn(`[generate-document] Transient error creating job (attempt ${attempt + 1}/3):`, status);
+      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+    }
 
-    if (jobError) {
+    if (jobError || !job) {
       console.error("[generate-document] Failed to create job:", jobError);
-      return new Response(JSON.stringify({ error: "Failed to create generation job" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "Failed to create generation job",
+          detail: (jobError as any)?.message || "Backend temporarily unavailable. Please retry.",
+          retryable: true,
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
     debugLog(`[generate-document] Created job: ${job.id}`);
