@@ -3542,7 +3542,8 @@ async function generateSingleDocument(
           {
             let totalEquity = 0;
             for (const pi of propIdxSet) {
-              const v = fieldValues.get(`ln_p_amountOfEquity_${pi}`)?.rawValue;
+              const v = fieldValues.get(`ln_p_equitySecuringLoan_${pi}`)?.rawValue
+                     ?? fieldValues.get(`ln_p_amountOfEquity_${pi}`)?.rawValue;
               if (v !== undefined && v !== null && String(v).trim() !== "") {
                 totalEquity += parseAmt2(v);
               }
