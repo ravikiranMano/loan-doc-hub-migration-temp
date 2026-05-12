@@ -3219,6 +3219,26 @@ async function generateSingleDocument(
                 const isNo = balloon === "false" || balloon === "no";
                 const isUnknown = !isYes && !isNo;
 
+                // Amount Owing source rule (RE851D questionnaire XVI table):
+                //   Other Liens (REM) → current_balance (fall back to
+                //     existing_payoff_amount/existing_paydown_amount/original).
+                //   Liens that will remain or are anticipated (ANT) →
+                //     new_remaining_balance, then anticipated_amount, then
+                //     original_balance.
+                const amountOwingVal = tagPrefix === "pr_li_ant"
+                  ? firstNonEmpty(
+                      "new_remaining_balance", "newRemainingBalance",
+                      "anticipated_amount", "anticipatedAmount",
+                      "original_balance", "originalBalance",
+                      "current_balance", "currentBalance",
+                    )
+                  : firstNonEmpty(
+                      "current_balance", "currentBalance",
+                      "existing_payoff_amount", "existingPayoffAmount",
+                      "existing_paydown_amount", "existingPaydownAmount",
+                      "original_balance", "originalBalance",
+                    );
+
                 const fields: Array<[string, string, string]> = [
                   ["priority", firstNonEmpty("lien_priority_now", "priority", "remaining_new_lien_priority", "lien_priority_after", "n"), "text"],
                   ["interestRate", firstNonEmpty("interest_rate", "intRate"), "percent"],
@@ -3232,12 +3252,16 @@ async function generateSingleDocument(
                   ["monthlyPayment", firstNonEmpty("regular_payment", "regularPayment"), "currency"],
                   ["maturityDate", firstNonEmpty("maturity_date", "matDate"), "date"],
                   ["balloonAmount", firstNonEmpty("balloon_amount", "balloonAmount"), "currency"],
+                  // RE851D questionnaire XVI "Amount Owing" column (per-row).
+                  ["amountOwing", amountOwingVal, "currency"],
                 ];
 
                 const fieldAliases: Record<string, string[]> = {
                   interestRate: ["interest_rate", "intRate"],
                   beneficiary: ["lienHolder", "holder"],
                   maturityDate: ["maturity_date", "matDate"],
+                  // Template author-friendly variants for Amount Owing.
+                  amountOwing: ["amount_owing", "amount", "owing"],
                 };
                 for (const [f, v, dt] of fields) {
                   const names = [f, ...(fieldAliases[f] ?? [])];
@@ -4073,6 +4097,8 @@ async function generateSingleDocument(
           "pr_li_rem_balloonYes_N_S", "pr_li_rem_balloonYes_N",
           "pr_li_rem_balloonNo_N_S", "pr_li_rem_balloonNo_N",
           "pr_li_rem_balloonUnknown_N_S", "pr_li_rem_balloonUnknown_N",
+          "pr_li_rem_amountOwing_N_S", "pr_li_rem_amountOwing_N",
+          "pr_li_rem_amount_owing_N_S", "pr_li_rem_amount_owing_N",
           "pr_li_ant_priority_N_S", "pr_li_ant_priority_N",
           "pr_li_ant_interestRate_N_S", "pr_li_ant_interestRate_N",
           "pr_li_ant_interest_rate_N_S", "pr_li_ant_interest_rate_N",
@@ -4090,6 +4116,8 @@ async function generateSingleDocument(
           "pr_li_ant_balloonYes_N_S", "pr_li_ant_balloonYes_N",
           "pr_li_ant_balloonNo_N_S", "pr_li_ant_balloonNo_N",
           "pr_li_ant_balloonUnknown_N_S", "pr_li_ant_balloonUnknown_N",
+          "pr_li_ant_amountOwing_N_S", "pr_li_ant_amountOwing_N",
+          "pr_li_ant_amount_owing_N_S", "pr_li_ant_amount_owing_N",
           // Per-property "Performed By" — both canonical and legacy-misspelled
           // aliases so PROPERTY #K blocks rewrite _N → _K and each property
           // renders its own appraisal_performed_by value.
@@ -4739,6 +4767,7 @@ async function generateSingleDocument(
               "monthlyPayment", "maturityDate", "maturity_date", "matDate",
               "balloonAmount",
               "balloonYes", "balloonNo", "balloonUnknown",
+              "amountOwing", "amount_owing",
             ];
             const encTagRe = new RegExp(
               "\\bpr_li_(rem|ant)_(" + encFields.join("|") + ")(?:_N(?:_S)?)?(?![A-Za-z0-9_])",
@@ -5301,6 +5330,7 @@ async function generateSingleDocument(
         "pr_li_rem_originalAmount", "pr_li_rem_principalBalance", "pr_li_rem_monthlyPayment",
         "pr_li_rem_maturityDate", "pr_li_rem_maturity_date", "pr_li_rem_matDate",
         "pr_li_rem_balloonAmount", "pr_li_rem_balloonYes", "pr_li_rem_balloonNo", "pr_li_rem_balloonUnknown",
+        "pr_li_rem_amountOwing", "pr_li_rem_amount_owing", "pr_li_rem_amount", "pr_li_rem_owing",
       ];
       const ENC_ANT_BASES = ENC_REM_BASES.map(b => b.replace("pr_li_rem_", "pr_li_ant_"));
       for (let p = 1; p <= 5; p++) {
@@ -7345,6 +7375,7 @@ async function generateSingleDocument(
           { rx: /\bMONTHLY\s+PAYMENT\b/i, suffix: "monthlyPayment" },
           { rx: /\bMATURITY\s+DATE\b/i, suffix: "maturityDate" },
           { rx: /\bIF\s+YES,\s*AMOUNT\b/i, suffix: "balloonAmount" },
+          { rx: /\bAMOUNT\s+OWING\b/i, suffix: "amountOwing" },
         ];
 
         for (const [filename, bytes] of Object.entries(unzipped)) {
