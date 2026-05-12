@@ -24,10 +24,13 @@ import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
  * `roundingAdjustment` (mutual exclusivity is enforced elsewhere).
  * Guarantees every row — including the last — has its payment persisted.
  */
-const recomputeLenderPayments = (records: FundingRecord[], remainingPayments: number): FundingRecord[] => {
+const recomputeLenderPayments = (records: FundingRecord[], remainingPayments: number, noteRate: string = ''): FundingRecord[] => {
   if (!records.length) return records;
+  const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
   const exact = records.map(r => {
-    const computed = computeAmortizedPayment(r.originalAmount || 0, r.lenderRate || 0, remainingPayments);
+    const principal = (r.principalBalance && r.principalBalance > 0) ? r.principalBalance : (r.originalAmount || 0);
+    const rate = noteRateNum > 0 ? noteRateNum : (r.lenderRate || 0);
+    const computed = computeAmortizedPayment(principal, rate, remainingPayments);
     return new Decimal(computed === '' ? 0 : computed);
   });
   const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
