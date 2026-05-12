@@ -368,12 +368,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     );
   };
   const getNetPayment = (record: FundingRecord) => {
-    // Spread approach: Net Payment = Funding Amount × (Note Rate − Lender Rate) / 12
+    // Net Payment = Funding Amount × Lender Rate / 12
     const fundingAmount = record.originalAmount || 0;
-    const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || (record.rateNoteValue ? parseFloat(String(record.rateNoteValue).replace(/[%,]/g, '')) : 0) || 0;
     const lenderRateNum = record.lenderRate || 0;
-    const spread = (noteRateNum - lenderRateNum) / 100;
-    return Math.max(0, (fundingAmount * spread) / 12);
+    return Math.max(0, (fundingAmount * (lenderRateNum / 100)) / 12);
   };
 
   const computeCurrentBalance = (record: FundingRecord): number => {
