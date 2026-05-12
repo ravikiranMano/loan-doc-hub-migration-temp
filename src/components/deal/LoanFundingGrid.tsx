@@ -252,6 +252,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   onLoanNumberChange,
   onBorrowerNameChange,
   onHeaderFieldBlur,
+  proRata = '',
+  onProRataChange,
   fundingAdjustments = [],
   onSaveAdjustment,
   onDeleteHistoryRecord,
