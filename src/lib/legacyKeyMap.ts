@@ -942,7 +942,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
 
   // 808 Mortgage Broker Fee (8 fields)
   'origination_fees.808_mortgage_broker_fee_payable_to': 'of_fe_808MortgaBrokerFee5',
-  'origination_fees.808_mortgage_broker_fee_d': 'of_fe_mortgageBrokerFeeD',
+  'origination_fees.808_mortgage_broker_fee_d': 'of_806_desc',
   'origination_fees.808_mortgage_broker_fee_charge': 'of_fe_808MortgaBrokerFee2',
   'origination_fees.808_mortgage_broker_fee_broker': 'of_808_mortgageBrokerCommissionFee_broker',
   'origination_fees.808_mortgage_broker_fee_others': 'of_808_mortgageBrokerCommissionFee_others',
