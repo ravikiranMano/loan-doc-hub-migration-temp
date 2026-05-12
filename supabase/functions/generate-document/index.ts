@@ -2744,35 +2744,49 @@ async function generateSingleDocument(
       debugLog(`[generate-document] Lien field bridging complete`);
 
       // ── Bridge: "Anticipated Balance (if new lien)" → li_lt_anticipatedAmount ──
-      // Per spec, {{li_lt_anticipatedAmount}} sources from Property → Liens →
-      // "Anticipated Balance" UI field, stored as lienN.new_remaining_balance.
-      // Fallback to lienN.anticipated_amount when present and new_remaining_balance is empty.
+      // {{li_lt_anticipatedAmount}} is the document's TOTAL "encumbrances anticipated
+      // or expected to be junior to this loan". Source: Property → Liens →
+      // "Anticipated Balance (if new lien)" (lienN.new_remaining_balance), restricted
+      // to liens flagged as anticipated/new (lienN.anticipated == true). Falls back
+      // to lienN.anticipated_amount when new_remaining_balance is missing for a lien.
       {
-        const nrbEntries: { index: number; value: string }[] = [];
+        const toAmt = (v: unknown): number => {
+          if (v === null || v === undefined) return 0;
+          const s = String(v).replace(/[$,\s]/g, "").trim();
+          if (s === "") return 0;
+          const n = parseFloat(s);
+          return Number.isFinite(n) ? n : 0;
+        };
+        const isTrue = (v: unknown): boolean => {
+          if (v === null || v === undefined) return false;
+          const s = String(v).toLowerCase().trim();
+          return s === "true" || s === "1" || s === "yes";
+        };
+        // Group lien fields by index
+        const perLien: Record<string, { nrb?: unknown; ant?: unknown; antAmt?: unknown }> = {};
         for (const [key, val] of fieldValues.entries()) {
           const m = key.match(/^lien(\d*)\.(.+)$/);
           if (!m) continue;
+          const idx = m[1] || "0";
           const field = m[2];
-          if (field !== "new_remaining_balance" && field !== "anticipated_amount") continue;
-          const raw = val?.rawValue;
-          if (raw === undefined || raw === null || String(raw).trim() === "") continue;
-          const idx = m[1] ? parseInt(m[1], 10) : 0;
-          const existing = nrbEntries.find(e => e.index === idx);
-          // new_remaining_balance wins; only set anticipated_amount if no NRB present for that index
-          if (field === "new_remaining_balance") {
-            if (existing) existing.value = String(raw);
-            else nrbEntries.push({ index: idx, value: String(raw) });
-          } else if (!existing) {
-            nrbEntries.push({ index: idx, value: String(raw) });
-          }
+          if (field !== "new_remaining_balance" && field !== "anticipated_amount" && field !== "anticipated") continue;
+          if (!perLien[idx]) perLien[idx] = {};
+          if (field === "new_remaining_balance") perLien[idx].nrb = val?.rawValue;
+          else if (field === "anticipated_amount") perLien[idx].antAmt = val?.rawValue;
+          else if (field === "anticipated") perLien[idx].ant = val?.rawValue;
         }
-        if (nrbEntries.length > 0) {
-          const hasIndexed = nrbEntries.some(e => e.index >= 1);
-          const deduped = hasIndexed ? nrbEntries.filter(e => e.index >= 1) : nrbEntries;
-          deduped.sort((a, b) => a.index - b.index);
-          const aggregated = deduped.map(e => e.value).join("\n");
-          fieldValues.set("li_lt_anticipatedAmount", { rawValue: aggregated, dataType: "currency" });
-          debugLog(`[generate-document] Published li_lt_anticipatedAmount from new_remaining_balance (${deduped.length} liens) = ${aggregated}`);
+        let total = 0;
+        let count = 0;
+        for (const [idx, rec] of Object.entries(perLien)) {
+          if (!isTrue(rec.ant)) continue; // only anticipated/new liens
+          const amt = toAmt(rec.nrb) || toAmt(rec.antAmt);
+          if (amt <= 0) continue;
+          total += amt;
+          count++;
+        }
+        if (count > 0) {
+          fieldValues.set("li_lt_anticipatedAmount", { rawValue: total.toFixed(2), dataType: "currency" });
+          debugLog(`[generate-document] Published li_lt_anticipatedAmount = ${total.toFixed(2)} (sum of ${count} anticipated liens)`);
         }
       }
 
