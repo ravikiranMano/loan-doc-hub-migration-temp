@@ -7375,6 +7375,7 @@ async function generateSingleDocument(
           { rx: /\bMONTHLY\s+PAYMENT\b/i, suffix: "monthlyPayment" },
           { rx: /\bMATURITY\s+DATE\b/i, suffix: "maturityDate" },
           { rx: /\bIF\s+YES,\s*AMOUNT\b/i, suffix: "balloonAmount" },
+          { rx: /\bAMOUNT\s+OWING\b/i, suffix: "amountOwing" },
         ];
 
         for (const [filename, bytes] of Object.entries(unzipped)) {
