@@ -9,23 +9,26 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 import type { FundingFormData } from './AddFundingModal';
 import { resolveLegacyKey } from '@/lib/legacyKeyMap';
 import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
-import { Decimal } from '@/lib/precisionFormat';
+import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
 
 /**
  * Recompute monthly payment for every lender row using Decimal arithmetic
- * (no native floating point). Each lender's payment is independent:
- *   payment_i = originalAmount_i * lenderRate_i / 100 / 12
+ * (no native floating point). Each lender's payment is independent and
+ * uses the standard amortization formula:
+ *   Payment_i = P_i × [r(1+r)^n] / [(1+r)^n − 1]
+ * where P_i = originalAmount_i, r = lenderRate_i / 100 / 12,
+ *       n = remainingPayments (loan term months).
+ * When n <= 0 (no term provided), falls back to interest-only (P × r).
  * Any sub-cent rounding remainder between the exact total and the sum of
  * rounded shares is assigned to the single lender flagged with
  * `roundingAdjustment` (mutual exclusivity is enforced elsewhere).
  * Guarantees every row — including the last — has its payment persisted.
  */
-const recomputeLenderPayments = (records: FundingRecord[]): FundingRecord[] => {
+const recomputeLenderPayments = (records: FundingRecord[], remainingPayments: number): FundingRecord[] => {
   if (!records.length) return records;
   const exact = records.map(r => {
-    const p = new Decimal(r.originalAmount || 0);
-    const rate = new Decimal(r.lenderRate || 0);
-    return p.mul(rate).div(100).div(12);
+    const computed = computeAmortizedPayment(r.originalAmount || 0, r.lenderRate || 0, remainingPayments);
+    return new Decimal(computed === '' ? 0 : computed);
   });
   const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
   const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
