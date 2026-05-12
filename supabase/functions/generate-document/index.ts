@@ -2796,6 +2796,80 @@ async function generateSingleDocument(
           fieldValues.set("li_lt_anticipatedAmount", { rawValue: total.toFixed(2), dataType: "currency" });
           debugLog(`[generate-document] Published li_lt_anticipatedAmount = ${total.toFixed(2)} (sum of ${count} anticipated liens)`);
         }
+
+        // ── RE885-only: row-aligned Amount Owing column publisher ──────────────
+        // The RE885 template has two encumbrance tables whose rows expand from
+        // the newline-joined `{{pr_li_lienHolder}}` cell. The "Amount Owing"
+        // column tags ({{pr_p_currentBalanc}} for the existing/remaining table
+        // and {{li_lt_anticipatedAmount}} for the anticipated table) currently
+        // emit aggregated values that skip liens missing the source field, so
+        // amounts shift up and misalign against the lien-holder rows.
+        //
+        // For RE885 ONLY, re-publish those two tags as one entry per lien
+        // (in the same lien-index order used by `pr_li_lienHolder`), inserting
+        // an empty line for liens that don't contribute, so each amount sits on
+        // the row of its own lien holder.
+        if (isTemplate885) {
+          const perLienAll: Record<string, { cb?: unknown; nrb?: unknown; antAmt?: unknown; ant?: unknown }> = {};
+          for (const [key, val] of fieldValues.entries()) {
+            const m = key.match(/^lien(\d*)\.(.+)$/);
+            if (!m) continue;
+            const idx = m[1] || "0";
+            const field = m[2];
+            if (field === "current_balance" || field === "new_remaining_balance" || field === "anticipated_amount" || field === "anticipated") {
+              if (!perLienAll[idx]) perLienAll[idx] = {};
+              if (field === "current_balance") perLienAll[idx].cb = val?.rawValue;
+              else if (field === "new_remaining_balance") perLienAll[idx].nrb = val?.rawValue;
+              else if (field === "anticipated_amount") perLienAll[idx].antAmt = val?.rawValue;
+              else if (field === "anticipated") perLienAll[idx].ant = val?.rawValue;
+            }
+          }
+          // Use the same dedupe semantics as the lien aggregator: drop index 0
+          // when any indexed lien (>=1) is present.
+          const allIdx = Object.keys(perLienAll);
+          const hasIdx = allIdx.some((i) => i !== "0");
+          const orderedIdx = (hasIdx ? allIdx.filter((i) => i !== "0") : allIdx)
+            .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+          const fmtAmt = (v: unknown): string => {
+            if (v === null || v === undefined) return "";
+            const s = String(v).trim();
+            if (s === "") return "";
+            const n = parseFloat(s.replace(/[$,\s]/g, ""));
+            if (!Number.isFinite(n) || n === 0) return "";
+            return formatCurrency(s);
+          };
+          const isTrueLocal = (v: unknown): boolean => {
+            if (v === null || v === undefined) return false;
+            const s = String(v).toLowerCase().trim();
+            return s === "true" || s === "1" || s === "yes";
+          };
+
+          const cbLines = orderedIdx.map((i) => fmtAmt(perLienAll[i]?.cb));
+          const antLines = orderedIdx.map((i) => {
+            const rec = perLienAll[i] || {};
+            // Only output anticipated amount on rows whose lien is flagged
+            // anticipated; otherwise blank to keep the row aligned.
+            if (!isTrueLocal(rec.ant)) return "";
+            return fmtAmt(rec.nrb) || fmtAmt(rec.antAmt);
+          });
+
+          if (orderedIdx.length > 0) {
+            fieldValues.set("pr_p_currentBalanc", {
+              rawValue: cbLines.join("\n"),
+              dataType: "text",
+            });
+            fieldValues.set("li_lt_anticipatedAmount", {
+              rawValue: antLines.join("\n"),
+              dataType: "text",
+            });
+            debugLog(
+              `[generate-document] RE885 row-aligned Amount Owing: ${orderedIdx.length} rows; ` +
+              `pr_p_currentBalanc=[${cbLines.map((s) => s || "·").join("|")}] ` +
+              `li_lt_anticipatedAmount=[${antLines.map((s) => s || "·").join("|")}]`
+            );
+          }
+        }
       }
 
 
