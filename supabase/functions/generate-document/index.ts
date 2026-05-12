@@ -2014,6 +2014,38 @@ async function generateSingleDocument(
       }
     }
 
+    // ── Bridge "Number of Payments" between dictionary aliases ──
+    // The Loan Terms UI persists this value under the field_dictionary entry
+    // `ln_p_numberOfPaymen` (label "Number of Payments"). A second dictionary
+    // entry `ln_p_noofPaymen` (label "No.of Payments") exists with no UI writer,
+    // so RE851A template tags like {{ ln_p_noofPaymen }} resolve to blank.
+    // Mirror the value across both keys (and the `n_p_*` short variants seen in
+    // some template tags) so the field populates regardless of which alias the
+    // template uses. Also seeded from the canonical loan_terms.number_of_payments.
+    {
+      const noPaymentsRaw =
+        fieldValues.get("ln_p_numberOfPaymen")?.rawValue ||
+        fieldValues.get("ln_p_noofPaymen")?.rawValue ||
+        fieldValues.get("loan_terms.number_of_payments")?.rawValue ||
+        "";
+      if (noPaymentsRaw !== "" && noPaymentsRaw !== undefined && noPaymentsRaw !== null) {
+        const entry = { rawValue: String(noPaymentsRaw), dataType: "text" as const };
+        for (const k of [
+          "ln_p_numberOfPaymen",
+          "ln_p_noofPaymen",
+          "n_p_numberOfPaymen",
+          "n_p_noofPaymen",
+          "loan_terms.number_of_payments",
+        ]) {
+          const cur = fieldValues.get(k)?.rawValue;
+          if (cur === undefined || cur === null || cur === "") {
+            fieldValues.set(k, entry);
+          }
+        }
+        debugLog(`[generate-document] Bridged Number of Payments across aliases = ${noPaymentsRaw}`);
+      }
+    }
+
     // Bridge ld_fd_fundingAmount from lender funding data or loan amount if not set
     const existingFundingAmt = fieldValues.get("ld_fd_fundingAmount");
     if (!existingFundingAmt || !existingFundingAmt.rawValue) {
