@@ -410,7 +410,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
 
   return (
     <div className="p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-x-6 gap-y-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0">
 
         {/* Details Column */}
         <div className="space-y-1.5">
