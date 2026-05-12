@@ -86,49 +86,52 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     return total;
   }, [values]);
 
-  // Auto-calculate LTV, Protective Equity, CLTV
+  // Auto-calculate equities & LTVs — auto-sync on any input change.
+  // Formulas (per spec):
+  //   Protective Equity = Estimate of Value − Current Balance
+  //   Pledged Equity    = Estimate of Value − Loan Amount
+  //   CLTV              = Total All Liens / Estimate of Value × 100
+  //   Current LTV       = Current Balance / Estimate of Value × 100
+  //   Origination LTV   = Loan Amount / Estimate of Value × 100
+  const loanAmountRaw = values['loan_terms.loan_amount'] || '';
+  const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
+  const currentBalanceRaw = values[FIELD_KEYS.currentBalance] || '';
   useEffect(() => {
-    const loanAmountRaw = values['loan_terms.loan_amount'] || '';
-    const propertyValueRaw = getFieldValue(FIELD_KEYS.appraisedValue);
-    const purchasePriceRaw = getFieldValue(FIELD_KEYS.purchasePrice);
     const loanAmount = parseFloat(loanAmountRaw.replace(/[,$]/g, ''));
-    const propertyValue = parseFloat(propertyValueRaw.replace(/[,$]/g, ''));
-    const purchasePrice = parseFloat(purchasePriceRaw.replace(/[,$]/g, ''));
+    const estValue = parseFloat(estValueRaw.replace(/[,$]/g, ''));
+    const currentBalance = parseFloat(currentBalanceRaw.replace(/[,$]/g, ''));
+    const totalAllLiens = existingLiensTotal;
 
-    // Current LTV = (Loan Amount / Property Value) × 100  — store at 4dp (display caps at 2)
-    if (!isNaN(loanAmount) && !isNaN(propertyValue) && propertyValue > 0) {
-      const ltv = roundPctForStorage((loanAmount / propertyValue) * 100);
-      const existingLtv = getFieldValue(FIELD_KEYS.ltv);
-      if (!existingLtv || existingLtv.trim() === '') {
-        onValueChange(FIELD_KEYS.ltv, ltv);
-      }
-      // Origination LTV is captured ONCE at initial creation and is then immutable
-      // against further auto-recalculation. It only seeds when no value exists.
-      const existingOrig = getFieldValue(FIELD_KEYS.originationLtv);
-      if (!existingOrig || existingOrig.trim() === '') {
-        onValueChange(FIELD_KEYS.originationLtv, ltv);
-      }
+    const writeIfChanged = (key: string, next: string) => {
+      const cur = (values[key] || '').replace(/[,$]/g, '').trim();
+      if (cur !== next) onValueChange(key, next);
+    };
+
+    // Protective Equity = Estimate of Value − Current Balance
+    if (!isNaN(estValue) && !isNaN(currentBalance)) {
+      writeIfChanged(FIELD_KEYS.protectiveEquity, roundDollarForStorage(estValue - currentBalance));
     }
 
-
-    // Protective Equity (dollars) — store at 2dp; seed once, then user-editable
-    if (!isNaN(purchasePrice) && !isNaN(loanAmount)) {
-      const protEq = roundDollarForStorage(purchasePrice - (existingLiensTotal + loanAmount));
-      const existingProtEq = getFieldValue(FIELD_KEYS.protectiveEquity);
-      if (!existingProtEq || existingProtEq.trim() === '') {
-        onValueChange(FIELD_KEYS.protectiveEquity, protEq);
-      }
+    // Pledged Equity = Estimate of Value − Loan Amount
+    if (!isNaN(estValue) && !isNaN(loanAmount)) {
+      writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValue - loanAmount));
     }
 
-    // CLTV — seed once, then user-editable
-    if (!isNaN(loanAmount) && !isNaN(purchasePrice) && purchasePrice > 0) {
-      const cltv = roundPctForStorage(((existingLiensTotal + loanAmount) / purchasePrice) * 100);
-      const existingCltv = getFieldValue(FIELD_KEYS.cltv);
-      if (!existingCltv || existingCltv.trim() === '') {
-        onValueChange(FIELD_KEYS.cltv, cltv);
-      }
+    // CLTV = Total All Liens / Estimate of Value × 100
+    if (!isNaN(estValue) && estValue > 0) {
+      writeIfChanged(FIELD_KEYS.cltv, roundPctForStorage((totalAllLiens / estValue) * 100));
     }
-  }, [values['loan_terms.loan_amount'], values[FIELD_KEYS.appraisedValue], existingLiensTotal]);
+
+    // Current LTV = Current Balance / Estimate of Value × 100
+    if (!isNaN(estValue) && estValue > 0 && !isNaN(currentBalance)) {
+      writeIfChanged(FIELD_KEYS.ltv, roundPctForStorage((currentBalance / estValue) * 100));
+    }
+
+    // Origination LTV = Loan Amount / Estimate of Value × 100
+    if (!isNaN(estValue) && estValue > 0 && !isNaN(loanAmount)) {
+      writeIfChanged(FIELD_KEYS.originationLtv, roundPctForStorage((loanAmount / estValue) * 100));
+    }
+  }, [loanAmountRaw, estValueRaw, currentBalanceRaw, existingLiensTotal]);
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
   const informationProvidedBy = getFieldValue(FIELD_KEYS.informationProvidedBy);
