@@ -374,7 +374,8 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
                 
                 {renderCurrencyField('pledgedEquity', 'Pledged Equity')}
                 {renderCurrencyField('protectiveEquity', 'Protective Equity')}
-                {renderPercentageField('ltv', 'Loan To Value')}
+                {renderPercentageField('originationLtv' as keyof PropertyData, 'Origination LTV')}
+                {renderPercentageField('ltv', 'Current LTV')}
                 {renderPercentageField('cltv', 'CLTV (If a Junior Lien)')}
               </div>
             </div>
