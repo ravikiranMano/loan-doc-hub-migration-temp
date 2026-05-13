@@ -150,8 +150,8 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D) {
-        throw new Error("RE851D cache bypassed so XML integrity fixes always regenerate the DOCX");
+      if (isTemplate851D || /851a/i.test(template.name || "")) {
+        throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
       const { data: cachedDocs } = await supabase
@@ -2249,7 +2249,8 @@ async function generateSingleDocument(
         const proRata = numFromKeysPR("loan_terms.pro_rata", "ln_p_proRata");
 
         if (estimatedBalloon !== null && regularPayment !== null && proRata !== null && proRata !== 0) {
-          const proRataPayment = (estimatedBalloon + regularPayment) / proRata;
+          const proRataDivisor = proRata > 1 ? proRata / 100 : proRata;
+          const proRataPayment = (estimatedBalloon + regularPayment) * proRataDivisor;
           const proRataStr = proRataPayment.toFixed(2);
           fieldValues.set("ln_p_proRataPayment", { rawValue: proRataStr, dataType: "currency" });
           fieldValues.set("loan_terms.pro_rata_payment", { rawValue: proRataStr, dataType: "currency" });
