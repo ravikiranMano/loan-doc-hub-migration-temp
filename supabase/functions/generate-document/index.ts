@@ -4458,7 +4458,7 @@ async function generateSingleDocument(
           const cleaned = original.replace(
             /(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g,
             (_m, open: string, body: string, close: string) => {
-              if (!body.includes("{P}") && !body.includes("{S}")) return _m;
+              if (!body.includes("{P}") && !body.includes("{N}") && !body.includes("{S}")) return _m;
               let out = body;
               const P = 1;
               // Consume optional existing {{ }} delimiters as part of the same
