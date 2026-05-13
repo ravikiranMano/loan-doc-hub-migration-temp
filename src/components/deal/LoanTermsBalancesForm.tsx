@@ -173,7 +173,6 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
   useEffect(() => {
     if (disabled) return;
-    if (focusedCurrencyField === FIELD_KEYS.regularPayment) return;
     if (computedRegularPayment == null) return;
     const current = getValue(FIELD_KEYS.regularPayment);
     const currentNum = parseFloat(current);
