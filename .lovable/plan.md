@@ -1,59 +1,51 @@
 ## Root cause
 
-The RE851D template itself is well-formed; the corruption is introduced during generation after the normal DOCX render succeeds.
+Pro Rata is computed per-record as `fundingAmount / loanAmount * 100` in two places:
 
-The failing XML fragment is:
+- `src/components/deal/AddFundingModal.tsx` lines 376–388 (auto-compute on edit)
+- `src/components/deal/FundingDetailForm.tsx` lines 61–71 (auto-compute on edit)
 
-```text
-</w:sdt><w:r><w:rPr><w:color w:v<w:r><w:rPr>...
-```
+The denominator is the **original loan amount**, not the **sum of all lender funding amounts**, so when total funded ≠ loan amount, every Pro Rata value is wrong.
 
-That means a post-render replacement was applied at an offset inside an XML tag (`<w:color w:v...`) instead of at a full Word run boundary. This leaves an unfinished parent `<w:rPr>` / `<w:r>` and inserts a new checkbox/value run inside it, so validation fails with:
+The display layer in `LoanFundingGrid.computedPctOwned` (lines 336–352) only re-applies rounding on top of these stored (wrong) values, so the rounding lender ends up absorbing a huge residual instead of a fractional penny.
 
-```text
-expected </w:rPr> before </w:p> at offset 343087
-```
+## Fix
 
-The current `repairUnclosedRunProperties` pass does not fix this because the XML is not just missing `</w:rPr>`; it also contains a partial tag fragment (`<w:color w:v`) caused by stale replacement offsets.
+### 1. `src/components/deal/LoanFundingGrid.tsx` — make display authoritative
 
-The specific source is the RE851D post-render encumbrance pass: it queues inserts/replacements using offsets from one XML string, then the balloon-token scrub mutates `xml` before those queued edits are applied. Once that scrub changes length, the queued offsets no longer point to the original run boundaries, so a later replacement can splice into the middle of `<w:rPr>`.
+Rewrite `computedPctOwned` (lines 336–352) to:
 
-## Fix plan
+- `totalFunded = Σ originalAmount` across `fundingRecords` (skip zero-funded rows)
+- For every non-rounding lender: `proRata = round(originalAmount / totalFunded * 100, 4)`
+- Rounding lender (`roundingAdjustment === true`): `proRata = round(100 − Σ others, 4)`
+- If no rounding lender selected, return the natural rounded values (sum may drift by ≤0.0002%)
+- Add a `console.error` assertion when `|Σ proRata − 100| > 0.0001` and a rounding lender exists
+- Guard: `totalFunded <= 0` → return zeros, no division
 
-1. **Make the RE851D encumbrance post-render pass offset-safe**
-   - Stop mutating `xml` immediately inside the balloon-token scrub block.
-   - Convert balloon-token cleanup into queued edits with original `start/end` offsets.
-   - Apply value-cell inserts, balloon checkbox replacements, and token-scrub removals together in one sorted edit pass against the same original XML snapshot.
-   - Keep the existing overlap-drop guard so competing edits are skipped instead of corrupting XML.
+This already feeds `getDisplayedPctOwned` (line 354), which is what the grid renders, so the column is fixed without any schema change.
 
-2. **Add boundary validation before applying queued edits**
-   - For every replacement edit, verify it starts at a safe XML element boundary and does not start inside an open tag.
-   - If an edit is unsafe, drop it and log a concise diagnostic rather than corrupting the document.
+### 2. `src/components/deal/AddFundingModal.tsx` — fix denominator on save
 
-3. **Keep strict final DOCX validation**
-   - Keep `validateContentXmlPart` enabled before upload.
-   - Keep the current internal context logging around any future failing offset.
-   - Do not bypass validation and do not mark corrupt DOCX files as successful.
+Lines 376–388: replace `loanAmount` denominator with `totalFunded = Σ existingRecords[*].originalAmount + currentFundingAmount` (excluding the row being edited, identified via `editingRecordId`). Use the same `roundPctForStorage` helper. This keeps the stored `percentOwned` in sync with the new display formula.
 
-4. **Verify with the live RE851D case**
-   - Deploy the updated `generate-document` function.
-   - Regenerate RE851D for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` and template `43492f94-60ad-44c3-a8c2-24dabf36eac7`.
-   - Confirm the `generation_jobs` row reaches `success`.
-   - Download the produced DOCX and validate `word/document.xml` locally for well-formed XML.
-   - Confirm the same malformed fragment no longer appears.
+Note: `existingRecords` prop currently passes `pctOwned` only. Extend the prop in `LoanFundingGrid` line 918 to also include `originalAmount`, and update the `existingRecords` type at `AddFundingModal.tsx` line 44.
 
-## Files to change
+### 3. `src/components/deal/FundingDetailForm.tsx` — fix denominator
 
-- `supabase/functions/generate-document/index.ts`
-  - Update only the RE851D encumbrance post-render edit application.
-  - Add safe-boundary checks near the existing edit queue.
+Lines 61–71: same change. Add an optional `totalFunded?: number` (or `siblingFundingTotal`) prop; fall back to `loanAmount` only when not provided so any existing caller keeps working. Use `(siblingTotal + fa)` as denominator.
 
-No schema changes, no frontend changes, and no template upload changes are needed.
+### 4. `src/components/deal/FundingAdjustmentModal.tsx` — read computed Pro Rata
 
-<presentation-actions>
-  <presentation-open-history>View History</presentation-open-history>
-</presentation-actions>
+Lines 131–142 and 230 currently call `formatPercentDisplay(r.pctOwned, 4)` directly off the funding record. Compute the same `totalFunded`-based pro rata locally inside the modal (small inline helper that mirrors step 1) and use that value for both the seed `proRata` column and the `handleLenderSelect` autofill, so pro-rata distribution math (lines 158–169) uses correct shares.
 
-<presentation-actions>
-<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
-</presentation-actions>
+### 5. Validation / rounding rules (per requirements)
+
+- 4-decimal rounding everywhere (`toFixed(4)` / `Decimal.toDecimalPlaces(4)`).
+- Rounding lender delta is bounded by `n * 5e-5` (sub-penny); add the post-calc assertion in step 1.
+- Payment / Net Payment formulas in `computedPayments` (lines 309–331) are untouched.
+
+## Out of scope
+
+- No DB schema or migration changes
+- No edits to `LoanTermsFundingForm.tsx` aggregator (line 302 sums display values; it will continue to sum and naturally land at 100%)
+- No changes to other grids, document generation, or unrelated modules
