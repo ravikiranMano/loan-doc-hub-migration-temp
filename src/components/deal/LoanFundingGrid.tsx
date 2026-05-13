@@ -529,6 +529,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         return <span className="font-medium">{record.lenderAccount || '-'}</span>;
       case 'lenderName':
         return record.lenderName || '-';
+      case 'lenderEmail':
+        return record.lenderEmail || '-';
+      case 'lenderPhone':
+        return record.lenderPhone || '-';
       case 'originalAmount':
         return <span>{formatCurrency(record.originalAmount)}</span>;
       case 'principalBalance':
