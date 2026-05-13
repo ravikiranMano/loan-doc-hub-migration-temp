@@ -4733,6 +4733,20 @@ async function generateSingleDocument(
           "pr_p_multipleProperties_yes_N", "pr_p_multipleProperties_no_N",
         ];
 
+        const REMAINING_DYNAMIC_FIELDS = [
+          "priority", "interestRate", "interest_rate", "intRate",
+          "beneficiary", "lienHolder", "holder",
+          "originalAmount", "principalBalance", "monthlyPayment",
+          "maturityDate", "maturity_date", "matDate",
+          "balloonAmount", "balloonYes", "balloonNo", "balloonUnknown",
+          "amountOwing", "amount_owing", "amount", "owing",
+        ];
+        const remainingFieldAlt = REMAINING_DYNAMIC_FIELDS
+          .sort((a, b) => b.length - a.length)
+          .map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+        const REMAINING_DYNAMIC_TOKEN_RE = new RegExp(`pr_li_rem_(${remainingFieldAlt})_\\{N\\}_\\{S\\}`, "g");
+
         const decoder = new TextDecoder("utf-8");
         const encoder = new TextEncoder();
         const decompressed = fflate.unzipSync(templateBuffer);
