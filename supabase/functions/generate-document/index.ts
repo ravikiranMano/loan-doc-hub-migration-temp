@@ -3008,7 +3008,124 @@ async function generateSingleDocument(
             );
           }
         }
+    }
+
+    // ── Lien Mappings template: convert literal "{P}/{S}" placeholders into
+    // resolved handlebar tags ────────────────────────────────────────────────
+    // The "Lien Mapping Only" template is authored as bare text (e.g.
+    //   pr_li_rem_priority_{P}_{S}
+    // ) without {{ … }} delimiters, so the merge-tag parser would never see
+    // them and the literal field keys print verbatim in the rendered DOCX.
+    // This pass scans every <w:t> body and rewrites occurrences of the
+    // pr_li_(rem|ant)_<field>_{P}_{S} family to a concrete handlebar tag
+    // (e.g. {{pr_li_rem_priority_1_1}}) so the existing encumbrance publisher
+    // (gated by isEncumbrancePipeline) can populate values per slot.
+    //
+    // P defaults to 1 (this template is single-property). S increments per
+    // (P, family, fieldBase) by document order — first slot=1, second=2, etc.
+    // Slots > 2 are still emitted; the existing addendum/overflow appender
+    // handles them. Strictly additive; gated by isLienMappingTemplate so no
+    // other template is affected.
+    if (isLienMappingTemplate) {
+      try {
+        const tLien = performance.now();
+        const decompressed = fflate.unzipSync(templateBuffer);
+        const decoder = new TextDecoder("utf-8");
+        const encoder = new TextEncoder();
+        const PARTS = [
+          "word/document.xml",
+          "word/header1.xml", "word/header2.xml", "word/header3.xml",
+          "word/footer1.xml", "word/footer2.xml", "word/footer3.xml",
+        ];
+        // Allowed field bases per family — must match ENC_REM_BASES /
+        // ENC_ANT_BASES used by the post-render publisher and valid-key
+        // extension below. Order does not matter (the regex uses alternation).
+        const FIELD_BASES = [
+          "priority",
+          "interestRate", "interest_rate", "intRate",
+          "beneficiary", "lienHolder", "holder",
+          "originalAmount", "principalBalance", "monthlyPayment",
+          "maturityDate", "maturity_date", "matDate",
+          "balloonAmount", "balloonYes", "balloonNo", "balloonUnknown",
+          "amountOwing", "amount_owing", "amount", "owing",
+        ];
+        // Longest-first so e.g. "balloonAmount" wins before "balloon".
+        FIELD_BASES.sort((a, b) => b.length - a.length);
+        const fieldAlt = FIELD_BASES.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+        // Three forms (longest-first):
+        //   pr_li_<fam>_<field>_{P}_{S}
+        //   pr_li_<fam>_<field>_{S}        (treat P as 1)
+        //   pr_li_<fam>_<field>_{P}        (no slot — single value per property)
+        const reFull = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}_\\{S\\}`, "g");
+        const reSlotOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{S\\}`, "g");
+        const rePropOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}(?!_\\{S\\})`, "g");
+
+        let totalRewrites = 0;
+        let touched = false;
+        for (const part of PARTS) {
+          const data = decompressed[part];
+          if (!data) continue;
+          const original = decoder.decode(data);
+          if (!original.includes("{P}") && !original.includes("{S}")) continue;
+          // Per-(P, family, fieldBase) slot counter, document-order across
+          // ALL <w:t> bodies in this part. P is 1 for this template (no
+          // PROPERTY anchors) — still keyed by P so future multi-property
+          // variants extend cleanly.
+          const slotCounter = new Map<string, number>();
+          const nextSlot = (p: number, fam: string, base: string): number => {
+            const k = `${p}|${fam}|${base}`;
+            const n = (slotCounter.get(k) || 0) + 1;
+            slotCounter.set(k, n);
+            return n;
+          };
+          let partRewrites = 0;
+          // Walk each <w:t …>BODY</w:t>. The opening tag may carry attributes
+          // like xml:space="preserve"; preserve them verbatim.
+          const cleaned = original.replace(
+            /(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g,
+            (_m, open: string, body: string, close: string) => {
+              if (!body.includes("{P}") && !body.includes("{S}")) return _m;
+              let out = body;
+              const P = 1;
+              out = out.replace(reFull, (_full, fam: string, base: string) => {
+                partRewrites++;
+                const s = nextSlot(P, fam, base);
+                return `{{pr_li_${fam}_${base}_${P}_${s}}}`;
+              });
+              out = out.replace(reSlotOnly, (_full, fam: string, base: string) => {
+                partRewrites++;
+                const s = nextSlot(P, fam, base);
+                return `{{pr_li_${fam}_${base}_${P}_${s}}}`;
+              });
+              out = out.replace(rePropOnly, (_full, fam: string, base: string) => {
+                partRewrites++;
+                return `{{pr_li_${fam}_${base}_${P}}}`;
+              });
+              return open + out + close;
+            },
+          );
+          if (cleaned !== original) {
+            decompressed[part] = encoder.encode(cleaned);
+            touched = true;
+            totalRewrites += partRewrites;
+          }
+        }
+        if (touched) {
+          templateBuffer = new Uint8Array(
+            fflate.zipSync(decompressed as fflate.Zippable, { level: 0 }),
+          );
+          console.log(
+            `[generate-document] Lien Mappings: rewrote ${totalRewrites} {P}/{S} placeholder(s) in ${Math.round(performance.now() - tLien)}ms`,
+          );
+        }
+      } catch (lienErr) {
+        // Never fail generation on opportunistic preprocessing.
+        console.warn(
+          "[generate-document] Lien Mappings preprocessing skipped:",
+          lienErr instanceof Error ? lienErr.message : String(lienErr),
+        );
       }
+    }
 
 
       // ── Calculated field: pr_netPropertyValue ──
