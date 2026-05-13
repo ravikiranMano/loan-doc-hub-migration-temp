@@ -935,7 +935,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
         })()}
         remainingPayments={remainingPayments}
-        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned }))}
+        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount }))}
         editingRecordId={selectedRecord?.id}
       />
 
