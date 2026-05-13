@@ -3403,6 +3403,34 @@ async function generateSingleDocument(
         }
         debugLog(`[generate-document] RE851D lien delinquency mapping published for ${orderedLiens.length} liens / ${Object.keys(perProp).length} properties`);
 
+        // Bare alias fallback: ensure pr_li_sourceOfPayment is always published when
+        // any lien has source_of_payment set, regardless of property assignment.
+        // (The per-property publisher above only sets the bare key when pIdx===1,
+        // which requires lien.property === "property1". Liens with no property
+        // assignment, or first-lien tied to property2+, would otherwise leave the
+        // bare tag blank.)
+        {
+          const cur = String(fieldValues.get("pr_li_sourceOfPayment")?.rawValue ?? "").trim();
+          if (!cur) {
+            const allSources: string[] = [];
+            orderedLiens.forEach((prefix) => {
+              const s = getLienVal(prefix, "source_of_payment", "sourceOfPayment").trim();
+              if (s) allSources.push(s);
+            });
+            if (allSources.length > 0) {
+              const joined = allSources.join("\n");
+              fieldValues.set("pr_li_sourceOfPayment", { rawValue: joined, dataType: "text" });
+              if (!fieldValues.get("pr_p_sourceOfPaymen")?.rawValue) {
+                fieldValues.set("pr_p_sourceOfPaymen", { rawValue: joined, dataType: "text" });
+              }
+              if (!fieldValues.get("pr_p_sourceOfPayment")?.rawValue) {
+                fieldValues.set("pr_p_sourceOfPayment", { rawValue: joined, dataType: "text" });
+              }
+              debugLog(`[generate-document] Bare pr_li_sourceOfPayment fallback published: "${joined}"`);
+            }
+          }
+        }
+
         // ── RE851D Encumbrance Remaining / Anticipated per-property + per-slot mapping ──
         // Each property has two sections: REMAINING (anticipated !== 'true') and
         // ANTICIPATED (anticipated === 'true'). Within each section, lien rows are
