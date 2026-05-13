@@ -7038,8 +7038,8 @@ async function generateSingleDocument(
         };
         const unpaidByIdx: Record<number, boolean> = {};
         for (let k = 1; k <= 5; k++) {
-          const yesAlias = fieldValues.get(`pr_li_currentDelinqu_${k}_yes`);
-          const bareAlias = fieldValues.get(`pr_li_currentDelinqu_${k}`);
+          const yesAlias = fieldValues.get(`pr_li_remainUnpaid_${k}_yes`);
+          const bareAlias = fieldValues.get(`pr_li_remainUnpaid_${k}`);
           unpaidByIdx[k] = yesAlias
             ? truthy(yesAlias.rawValue)
             : truthy(bareAlias?.rawValue);
