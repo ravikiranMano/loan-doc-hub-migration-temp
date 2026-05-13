@@ -2600,16 +2600,11 @@ async function generateSingleDocument(
     {
       const existing = fieldValues.get("br_p_address")?.rawValue;
       if (existing === undefined || existing === null || String(existing).trim() === "") {
-        const primaryBorrowerCd = primaryBorrower?.contact_id
-          ? (contactRowsByUuid.get(primaryBorrower.contact_id)?.contact_data || {})
-          : {};
         const street =
           fieldValues.get("borrower.address.street")?.rawValue ||
           fieldValues.get("borrower1.address.street")?.rawValue ||
           fieldValues.get("borrower.street")?.rawValue ||
-          fieldValues.get("br_p_street")?.rawValue ||
-          primaryBorrowerCd["address.street"] ||
-          primaryBorrowerCd["primary_address.street"];
+          fieldValues.get("br_p_street")?.rawValue;
         if (street && String(street).trim() !== "") {
           fieldValues.set("br_p_address", { rawValue: String(street), dataType: "text" });
           debugLog(`[generate-document] Auto-published br_p_address = "${street}"`);
