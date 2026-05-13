@@ -25,6 +25,9 @@ interface FundingDetailFormProps {
   onChange: (data: FundingFormData) => void;
   totalPayment?: string;
   loanAmount?: string;
+  /** Sum of funding amounts across sibling records (excluding this row). When
+   *  provided, Pro Rata is computed as fundingAmount / (siblingTotal + fundingAmount). */
+  siblingFundingTotal?: number;
 }
 
 export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
@@ -32,6 +35,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
   onChange,
   totalPayment = '',
   loanAmount = '',
+  siblingFundingTotal,
 }) => {
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
   const [interestFromOpen, setInterestFromOpen] = useState(false);
