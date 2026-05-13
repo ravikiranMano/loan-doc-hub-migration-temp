@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx, validateContentXmlPart, repairTableCellParagraphs } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
@@ -8035,6 +8035,13 @@ async function generateSingleDocument(
               __xmlStrCache[k] = repaired.xml;
               debugLog(
                 `[generate-document] RE851D post-render flush: repaired ${repaired.repaired} <w:tc> in ${k}`,
+              );
+            }
+            const sdtRepaired = repairOrphanedSdtOpen(__xmlStrCache[k]);
+            if (sdtRepaired.repaired > 0) {
+              __xmlStrCache[k] = sdtRepaired.xml;
+              debugLog(
+                `[generate-document] RE851D post-render flush: removed ${sdtRepaired.repaired} orphaned <w:sdt> opener in ${k}`,
               );
             }
             // Validate the FINAL XML before re-encoding — fail loudly rather
