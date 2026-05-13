@@ -194,13 +194,23 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
 
   // Track previous checkbox state: copy on check, clear on uncheck.
+  // Snapshot last-known property address values on uncheck so a subsequent
+  // re-check restores the same data even when the live borrower source is empty.
   const prevCopyRef = React.useRef<boolean>(isCopyBorrower);
+  const lastCopiedAddressRef = React.useRef<{ street: string; city: string; state: string; zip: string } | null>(null);
   useEffect(() => {
     const justChecked = isCopyBorrower && !prevCopyRef.current;
     const justUnchecked = !isCopyBorrower && prevCopyRef.current;
     prevCopyRef.current = isCopyBorrower;
 
     if (justUnchecked) {
+      // Snapshot current values before clearing so we can restore on re-check
+      lastCopiedAddressRef.current = {
+        street: getFieldValue(FIELD_KEYS.street),
+        city: getFieldValue(FIELD_KEYS.city),
+        state: getFieldValue(FIELD_KEYS.state),
+        zip: getFieldValue(FIELD_KEYS.zip),
+      };
       [FIELD_KEYS.street, FIELD_KEYS.city, FIELD_KEYS.state, FIELD_KEYS.zip].forEach((dst) => {
         if (getFieldValue(dst) !== '') onValueChange(dst, '');
       });
@@ -210,21 +220,33 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     if (!isCopyBorrower) return;
 
     const hasBorrowerSource = !!primaryBorrowerPrefix || !!(borrowerAddressProp && (borrowerAddressProp.street || borrowerAddressProp.city || borrowerAddressProp.state || borrowerAddressProp.zipCode));
-    if (!hasBorrowerSource) {
+    const snapshot = lastCopiedAddressRef.current;
+    const hasSnapshot = !!snapshot && !!(snapshot.street || snapshot.city || snapshot.state || snapshot.zip);
+
+    if (!hasBorrowerSource && !hasSnapshot) {
       if (justChecked) {
         toast.error('Primary Borrower not found in Participants');
       }
       return;
     }
 
-    const mappings: [string, string][] = [
-      [FIELD_KEYS.street, borrowerStreet],
-      [FIELD_KEYS.city, borrowerCity],
-      [FIELD_KEYS.state, borrowerState],
-      [FIELD_KEYS.zip, borrowerZip],
-    ];
+    // Prefer live borrower source; fall back to last snapshot when source is empty
+    const pick = (live: string, snap: string) => (live !== '' ? live : snap);
+    const mappings: [string, string][] = hasBorrowerSource
+      ? [
+          [FIELD_KEYS.street, pick(borrowerStreet, snapshot?.street || '')],
+          [FIELD_KEYS.city, pick(borrowerCity, snapshot?.city || '')],
+          [FIELD_KEYS.state, pick(borrowerState, snapshot?.state || '')],
+          [FIELD_KEYS.zip, pick(borrowerZip, snapshot?.zip || '')],
+        ]
+      : [
+          [FIELD_KEYS.street, snapshot?.street || ''],
+          [FIELD_KEYS.city, snapshot?.city || ''],
+          [FIELD_KEYS.state, snapshot?.state || ''],
+          [FIELD_KEYS.zip, snapshot?.zip || ''],
+        ];
     mappings.forEach(([dst, srcVal]) => {
-      if (getFieldValue(dst) !== srcVal) onValueChange(dst, srcVal);
+      if (srcVal !== '' && getFieldValue(dst) !== srcVal) onValueChange(dst, srcVal);
     });
   }, [isCopyBorrower, primaryBorrowerPrefix, borrowerStreet, borrowerCity, borrowerState, borrowerZip]);
 
