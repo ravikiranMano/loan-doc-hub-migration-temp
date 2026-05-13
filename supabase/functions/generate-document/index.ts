@@ -612,6 +612,40 @@ async function generateSingleDocument(
         }
       }
 
+      // Address fallback: if primary borrower had no address, fill br_p_address /
+      // br_p_street / borrower(1).address.* from any borrower participant that has one
+      if (!fieldValues.get("br_p_address")?.rawValue) {
+        for (const bp of borrowerParticipants) {
+          if (!bp.contact_id) continue;
+          const c = contactRowsByUuid.get(bp.contact_id);
+          const cd = c?.contact_data || {};
+          const street = cd["address.street"];
+          if (street && String(street).trim() !== "") {
+            setIfEmpty("br_p_address", String(street));
+            setIfEmpty("br_p_street", String(street));
+            setIfEmpty("borrower.address.street", String(street));
+            setIfEmpty("borrower1.address.street", String(street));
+            if (cd["address.city"] || c?.city) {
+              setIfEmpty("br_p_city", cd["address.city"] || c.city);
+              setIfEmpty("borrower.address.city", cd["address.city"] || c.city);
+              setIfEmpty("borrower1.address.city", cd["address.city"] || c.city);
+            }
+            if (cd["address.state"] || c?.state) {
+              setIfEmpty("br_p_state", cd["address.state"] || c.state);
+              setIfEmpty("borrower.state", cd["address.state"] || c.state);
+              setIfEmpty("borrower1.state", cd["address.state"] || c.state);
+            }
+            if (cd["address.zip"]) {
+              setIfEmpty("br_p_zip", cd["address.zip"]);
+              setIfEmpty("borrower.address.zip", cd["address.zip"]);
+              setIfEmpty("borrower1.address.zip", cd["address.zip"]);
+            }
+            debugLog(`[generate-document] br_p_address fallback from participant ${bp.name}: "${street}"`);
+            break;
+          }
+        }
+      }
+
       // Inject co-borrower (only if different from primary)
       if (coBorrower?.contact_id && coBorrower.contact_id !== primaryBorrower?.contact_id) {
         const cbc = contactRowsByUuid.get(coBorrower.contact_id);
