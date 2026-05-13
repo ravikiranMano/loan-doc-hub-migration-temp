@@ -429,6 +429,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       borrower: borrowerName || '',
       lenderId: record.lenderAccount,
       lenderFullName: record.lenderName,
+      lenderEmail: record.lenderEmail || '',
+      lenderPhone: record.lenderPhone || '',
       lenderRate: String(record.lenderRate),
       fundingAmount: formatCurrencyDisplay(String(record.originalAmount)),
       baseFee: record.baseFee !== undefined && record.baseFee !== null ? formatCurrencyDisplay(String(record.baseFee)) : '',
