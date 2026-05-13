@@ -4244,7 +4244,6 @@ async function generateSingleDocument(
     // candidate during processDocx — a major CPU sink that contributed to
     // "Generation timed out (CPU limit exceeded)". Disable label-based
     // replacement for RE851D only; all other templates keep current behavior.
-    const isTemplate851D = /851d/i.test(template.name || "");
     const effectiveLabelMap = isTemplate851D
       ? {}
       : { ...labelMap, ...re851aLabelAdditions };
