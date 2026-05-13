@@ -3611,6 +3611,20 @@ async function generateSingleDocument(
           publishSection("pr_li_rem", perPropRem);
           publishSection("pr_li_ant", perPropAnt);
 
+          const remCollectionLog = Object.entries(perPropRem)
+            .map(([pIdx, rows]) => `P${pIdx}=${rows.length}`)
+            .join(", ") || "none";
+          const remResolvedSamples: string[] = [];
+          for (const [pIdx, rows] of Object.entries(perPropRem)) {
+            rows.slice(0, 2).forEach((_row, sIdx0) => {
+              const s = sIdx0 + 1;
+              const sampleKeys = ["priority", "interestRate", "beneficiary", "balloonYes", "balloonNo", "balloonUnknown"];
+              remResolvedSamples.push(
+                `P${pIdx}S${s}{${sampleKeys.map((name) => `${name}=${String(fieldValues.get(`pr_li_rem_${name}_${pIdx}_${s}`)?.rawValue ?? "").slice(0, 40)}`).join(",")}}`
+              );
+            });
+          }
+          console.log(`[generate-document] RE851D Remaining Encumbrance data before render: collections=${remCollectionLog}; resolved=[${remResolvedSamples.slice(0, 8).join(" | ")}]`);
           debugLog(`[generate-document] RE851D encumbrance mapping: rem props=${Object.keys(perPropRem).length}, ant props=${Object.keys(perPropAnt).length}`);
 
           // ── RE851D Additional Encumbrances Attachment YES/NO ──
@@ -4719,6 +4733,20 @@ async function generateSingleDocument(
           "pr_p_multipleProperties_yes_N", "pr_p_multipleProperties_no_N",
         ];
 
+        const REMAINING_DYNAMIC_FIELDS = [
+          "priority", "interestRate", "interest_rate", "intRate",
+          "beneficiary", "lienHolder", "holder",
+          "originalAmount", "principalBalance", "monthlyPayment",
+          "maturityDate", "maturity_date", "matDate",
+          "balloonAmount", "balloonYes", "balloonNo", "balloonUnknown",
+          "amountOwing", "amount_owing", "amount", "owing",
+        ];
+        const remainingFieldAlt = REMAINING_DYNAMIC_FIELDS
+          .sort((a, b) => b.length - a.length)
+          .map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+        const REMAINING_DYNAMIC_TOKEN_RE = new RegExp(`pr_li_rem_(${remainingFieldAlt})_\\{N\\}_\\{S\\}`, "g");
+
         const decoder = new TextDecoder("utf-8");
         const encoder = new TextEncoder();
         const decompressed = fflate.unzipSync(templateBuffer);
@@ -4981,7 +5009,11 @@ async function generateSingleDocument(
             continue;
           }
           let xml = decoder.decode(bytes);
-          if (!xml.includes("_N")) {
+          const remainingDynamicHits = (xml.match(REMAINING_DYNAMIC_TOKEN_RE) || []).slice(0, 20);
+          if (remainingDynamicHits.length > 0) {
+            console.log(`[generate-document] RE851D Remaining parsed placeholder keys in ${filename}: ${remainingDynamicHits.join(", ")}`);
+          }
+          if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)")) {
             out[filename] = bytes;
             continue;
           }
@@ -5010,7 +5042,7 @@ async function generateSingleDocument(
             // which defeats the parenthesized-index rewrite below. When the
             // file mentions the encumbrance prefix AND any (N)/{N} marker,
             // force a normalize so the rewrite + strip passes can match.
-            (xml.includes("pr_li_") && /[\(\{]N[\)\}]/.test(xml));
+            (xml.includes("pr_li_") && /[\(\{][NP][\)\}]/.test(xml));
           if (needsNormalize) {
             try {
               xml = normalizeWordXml(xml, template.name || "");
@@ -5025,6 +5057,14 @@ async function generateSingleDocument(
           // Strictly scoped to encumbrance families so other prose with
           // literal parens is never touched.
           xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\(P\)_\(S\)/g,
+            "$1_N_S",
+          );
+          xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\(P\)/g,
+            "$1_N",
+          );
+          xml = xml.replace(
             /\b(pr_li_(?:rem|ant)_[A-Za-z]+)_\(N\)_\(S\)/g,
             "$1_N_S",
           );
@@ -5034,6 +5074,14 @@ async function generateSingleDocument(
           );
           // Curly-brace placeholder variant authored in some RE851D templates:
           // pr_li_(rem|ant)_<field>_{N}_{S} -> _N_S, _{N} -> _N.
+          xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\{P\}_\{S\}/g,
+            "$1_N_S",
+          );
+          xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\{P\}/g,
+            "$1_N",
+          );
           xml = xml.replace(
             /\b(pr_li_(?:rem|ant)_[A-Za-z]+)_\{N\}_\{S\}/g,
             "$1_N_S",
@@ -8519,6 +8567,27 @@ async function generateSingleDocument(
           `[generate-document] RE851D post-render flush failed:`,
           message,
         );
+      }
+    }
+
+    if (isTemplate851D) {
+      try {
+        const renderedZip = fflate.unzipSync(processedDocx);
+        const decoder = new TextDecoder("utf-8");
+        const unresolved: string[] = [];
+        for (const [name, bytes] of Object.entries(renderedZip)) {
+          if (!(name === "word/document.xml" || name.startsWith("word/header") || name.startsWith("word/footer") || name.startsWith("word/footnotes") || name.startsWith("word/endnotes"))) continue;
+          const xml = decoder.decode(bytes as Uint8Array);
+          const hits = xml.match(/\{\{\s*pr_li_rem_[^{}<]*(?:\{N\}|\{S\}|\{P\})[^{}<]*\}\}|pr_li_rem_[A-Za-z]+_(?:\{N\}_\{S\}|\{P\}_\{S\}|\(N\)_\(S\)|\(P\)_\(S\)|N_S)/g) || [];
+          hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
+        }
+        if (unresolved.length > 0) {
+          console.warn(`[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: ${unresolved.slice(0, 30).join(" | ")}`);
+        } else {
+          console.log("[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: none");
+        }
+      } catch (scanErr) {
+        console.warn("[generate-document] RE851D unresolved Remaining scan skipped:", scanErr instanceof Error ? scanErr.message : String(scanErr));
       }
     }
 
