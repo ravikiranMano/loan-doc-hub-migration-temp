@@ -4246,6 +4246,86 @@ async function generateSingleDocument(
 
     let templateBuffer = new Uint8Array(await fileData.arrayBuffer());
 
+    // ── Upfront authoring-noise strip for RE851D ──
+    // The RE851D pre-processing block below unzips templateBuffer and runs
+    // ~180 regex scans on word/document.xml. On uploaded RE851D templates
+    // (~4.4MB document.xml — 63% of which is mc:Fallback / rsid / proofErr
+    // authoring noise) those scans alone consume the entire 2s edge-function
+    // CPU budget BEFORE processDocx() even runs. Stripping the same noise
+    // here once produces an equivalent ~1.5MB document.xml that every
+    // downstream pass operates on, cutting CPU work proportionally.
+    //
+    // Lossless: removes only mc:Fallback (legacy VML duplicate of mc:Choice),
+    // rsid* attributes, <w:proofErr/>, <w:lastRenderedPageBreak/>, and
+    // _GoBack bookmarks. Paragraphs, runs, tables, sections, styles, SDTs,
+    // drawings, hyperlinks, and merge tags are preserved unchanged.
+    if (/851d/i.test(template.name || "")) {
+      try {
+        const tStrip = performance.now();
+        const decompressed = fflate.unzipSync(templateBuffer);
+        const decoder = new TextDecoder("utf-8");
+        const encoder = new TextEncoder();
+        const STRIP_PARTS = [
+          "word/document.xml",
+          "word/header1.xml", "word/header2.xml", "word/header3.xml",
+          "word/footer1.xml", "word/footer2.xml", "word/footer3.xml",
+        ];
+        let touched = false;
+        let beforeBytes = 0;
+        let afterBytes = 0;
+        for (const part of STRIP_PARTS) {
+          const data = decompressed[part];
+          if (!data) continue;
+          const original = decoder.decode(data);
+          // Cheap exit: skip parts with no detectable noise.
+          if (
+            !original.includes("<mc:Fallback>") &&
+            !/\sw:rsid[A-Za-z]*="/.test(original) &&
+            !original.includes("<w:proofErr") &&
+            !original.includes("<w:lastRenderedPageBreak") &&
+            !original.includes('w:name="_GoBack"')
+          ) {
+            continue;
+          }
+          let cleaned = original.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+          // Single AlternateContent unwrap pass — Word emits at most one
+          // Fallback per Choice so iterating to fixpoint costs >300ms on
+          // large templates and yields no further reduction.
+          cleaned = cleaned.replace(
+            /<mc:AlternateContent[^>]*>\s*<mc:Choice\b[^>]*>([\s\S]*?)<\/mc:Choice>\s*<\/mc:AlternateContent>/g,
+            "$1",
+          );
+          cleaned = cleaned.replace(/\s+w:rsid[A-Za-z]*="[0-9A-Fa-f]+"/g, "");
+          cleaned = cleaned.replace(/<w:proofErr\b[^/>]*\/>/g, "");
+          cleaned = cleaned.replace(/<w:lastRenderedPageBreak\s*\/>/g, "");
+          cleaned = cleaned.replace(
+            /<w:bookmarkStart\b[^/>]*w:name="_GoBack"[^/>]*\/>/g,
+            "",
+          );
+          if (cleaned.length !== original.length) {
+            decompressed[part] = encoder.encode(cleaned);
+            touched = true;
+            beforeBytes += original.length;
+            afterBytes += cleaned.length;
+          }
+        }
+        if (touched) {
+          templateBuffer = new Uint8Array(
+            fflate.zipSync(decompressed as fflate.Zippable, { level: 0 }),
+          );
+          console.log(
+            `[generate-document] RE851D upfront authoring-noise strip: ${beforeBytes}B -> ${afterBytes}B in ${Math.round(performance.now() - tStrip)}ms`,
+          );
+        }
+      } catch (stripErr) {
+        // Never fail generation on opportunistic cleanup.
+        console.warn(
+          "[generate-document] RE851D upfront cleanup skipped:",
+          stripErr instanceof Error ? stripErr.message : String(stripErr),
+        );
+      }
+    }
+
     // ── RE851D: expand literal "_N" placeholders into per-occurrence "_1", "_2", ... ──
     // Some authored RE851D templates leave generic placeholders (e.g.
     // {{pr_p_address_N}}) inside each PROPERTY block instead of the resolved
