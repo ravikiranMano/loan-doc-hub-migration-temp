@@ -4424,9 +4424,11 @@ async function generateSingleDocument(
         // Longest-first so e.g. "balloonAmount" wins over "balloon".
         FIELD_BASES.sort((a, b) => b.length - a.length);
         const fieldAlt = FIELD_BASES.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-        const reFull = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}_\\{S\\}`, "g");
+        // Property-index placeholder accepts both {P} (legacy) and {N} (new
+        // standard for Remaining lien mappings). Slot index always {S}.
+        const reFull = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{[PN]\\}_\\{S\\}`, "g");
         const reSlotOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{S\\}`, "g");
-        const rePropOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}(?!_\\{S\\})`, "g");
+        const rePropOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{[PN]\\}(?!_\\{S\\})`, "g");
 
         let totalRewrites = 0;
         const rewrittenKeys = new Set<string>();
@@ -4444,7 +4446,7 @@ async function generateSingleDocument(
           } catch (_normErr) {
             original = originalRaw;
           }
-          if (!original.includes("{P}") && !original.includes("{S}")) continue;
+          if (!original.includes("{P}") && !original.includes("{N}") && !original.includes("{S}")) continue;
           const slotCounter = new Map<string, number>();
           const nextSlot = (p: number, fam: string, base: string): number => {
             const k = `${p}|${fam}|${base}`;
@@ -4456,7 +4458,7 @@ async function generateSingleDocument(
           const cleaned = original.replace(
             /(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g,
             (_m, open: string, body: string, close: string) => {
-              if (!body.includes("{P}") && !body.includes("{S}")) return _m;
+              if (!body.includes("{P}") && !body.includes("{N}") && !body.includes("{S}")) return _m;
               let out = body;
               const P = 1;
               // Consume optional existing {{ }} delimiters as part of the same
