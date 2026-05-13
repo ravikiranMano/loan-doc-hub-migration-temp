@@ -50,15 +50,31 @@ function parseFormula(formula: string): {
   type: 'date_add_months' | 'date_add_days' | 'arithmetic' | 'arithmetic_chained' | 'unknown';
   baseField: string;
   addendField: string | null;
+  chainAddendField?: string | null;
   staticValue: number | null;
   operator?: '*' | '+' | '-' | '/';
   chainOperator?: '*' | '+' | '-' | '/';
 } | null {
   const cleanFormula = formula.trim();
-  
+
+  // Chained arithmetic with field RHS: ({field1} op {field2}) op {field3}
+  const chainedArithFieldPattern = /^\(\{([^}]+)\}\s*([+\-*/])\s*\{([^}]+)\}\)\s*([+\-*/])\s*\{([^}]+)\}$/;
+  let match: RegExpMatchArray | null = cleanFormula.match(chainedArithFieldPattern);
+  if (match) {
+    return {
+      type: 'arithmetic_chained',
+      baseField: match[1],
+      addendField: match[3],
+      chainAddendField: match[5],
+      staticValue: null,
+      operator: match[2] as '*' | '+' | '-' | '/',
+      chainOperator: match[4] as '*' | '+' | '-' | '/',
+    };
+  }
+
   // Chained arithmetic: ({field1} / {field2}) * N  e.g. LTV ratio
   const chainedArithPattern = /^\(\{([^}]+)\}\s*([+\-*/])\s*\{([^}]+)\}\)\s*([+\-*/])\s*(\d+(?:\.\d+)?)$/;
-  let match: RegExpMatchArray | null = cleanFormula.match(chainedArithPattern);
+  match = cleanFormula.match(chainedArithPattern);
   if (match) {
     return {
       type: 'arithmetic_chained',
@@ -213,8 +229,20 @@ function computeField(
         case '-': intermediate = baseNum - addVal; break;
         default: intermediate = 0;
       }
-      // Chain operation: intermediate chainOp staticValue
-      const chainVal = parsed.staticValue || 0;
+      // Chain operation: intermediate chainOp (field or static)
+      let chainVal: number;
+      if (parsed.chainAddendField) {
+        const cv = values[parsed.chainAddendField];
+        if (cv === undefined || cv === null || String(cv).trim() === '') {
+          return { field_key: field.field_key, value: null, computed: false };
+        }
+        chainVal = parseFloat(String(cv).replace(/[,$%]/g, ''));
+        if (isNaN(chainVal)) {
+          return { field_key: field.field_key, value: null, computed: false, error: `Invalid numeric value for ${parsed.chainAddendField}` };
+        }
+      } else {
+        chainVal = parsed.staticValue || 0;
+      }
       let result: number;
       switch (parsed.chainOperator) {
         case '*': result = intermediate * chainVal; break;
