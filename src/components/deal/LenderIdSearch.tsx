@@ -60,7 +60,11 @@ export const LenderIdSearch: React.FC<LenderIdSearchProps> = ({
       const mapped = (data || []).map((row: any) => ({
         contact_id: row.contact_id,
         full_name: row.full_name || '',
-        contact_data: (row.contact_data as Record<string, any>) || {},
+        contact_data: {
+          ...((row.contact_data as Record<string, any>) || {}),
+          email: row.email || (row.contact_data?.email ?? ''),
+          phone: row.phone || (row.contact_data?.phone ?? ''),
+        },
       }));
       setResults(mapped);
       setIsOpen(true);
