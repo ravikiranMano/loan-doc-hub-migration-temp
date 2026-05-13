@@ -3303,6 +3303,13 @@ async function generateSingleDocument(
           setBool(`pr_li_currentDelinqu_${lienIdx}_no`, !currentDelinq);
           setText(`pr_li_currentDelinqu_${lienIdx}_yes_glyph`, currentDelinq ? "☑" : "☐");
           setText(`pr_li_currentDelinqu_${lienIdx}_no_glyph`, currentDelinq ? "☐" : "☑");
+          // Balance-derived "remain unpaid" alias (used by RE851D safety pass
+          // for "Do any of these payments remain unpaid?" — semantics preserved).
+          setBool(`pr_li_remainUnpaid_${lienIdx}`, remainUnpaid);
+          setBool(`pr_li_remainUnpaid_${lienIdx}_yes`, remainUnpaid);
+          setBool(`pr_li_remainUnpaid_${lienIdx}_no`, !remainUnpaid);
+          setText(`pr_li_remainUnpaid_${lienIdx}_yes_glyph`, remainUnpaid ? "☑" : "☐");
+          setText(`pr_li_remainUnpaid_${lienIdx}_no_glyph`, remainUnpaid ? "☐" : "☑");
           setText(`pr_li_delinquHowMany_${lienIdx}`,
             Number.isFinite(howManyNum) && howManyNum > 0 ? String(howManyNum) : (howManyRaw || ""),
             "number");
