@@ -8199,10 +8199,31 @@ async function generateSingleDocument(
           let cursor = 0;
           let outBuf = "";
           let dropped = 0;
+          let unsafe = 0;
+          // Boundary safety: an edit must start at a safe XML position. For
+          // pure inserts (start === end) the position must be either at end-of-
+          // doc, immediately before a `<`, or immediately after a `>`.
+          // For replacements, start must point at `<` AND end must be one
+          // past `>`. This prevents a stale offset from splicing inside an
+          // attribute (e.g. `<w:color w:v|`) and producing the malformed
+          // `</w:rPr> before </w:p>` failure observed on RE851D.
+          const isSafeBoundary = (e: { start: number; end: number }): boolean => {
+            if (e.start < 0 || e.end > xml.length || e.start > e.end) return false;
+            if (e.start === e.end) {
+              if (e.start === xml.length) return true;
+              const ch = xml.charAt(e.start);
+              const prev = e.start > 0 ? xml.charAt(e.start - 1) : "";
+              return ch === "<" || prev === ">";
+            }
+            return xml.charAt(e.start) === "<" && xml.charAt(e.end - 1) === ">";
+          };
           for (const e of edits) {
             if (e.start < cursor) {
-              // Overlapping or out-of-order edit — skip rather than corrupt XML.
               dropped++;
+              continue;
+            }
+            if (!isSafeBoundary(e)) {
+              unsafe++;
               continue;
             }
             outBuf += xml.slice(cursor, e.start) + e.body;
@@ -8210,9 +8231,9 @@ async function generateSingleDocument(
           }
           outBuf += xml.slice(cursor);
           xml = outBuf;
-          if (dropped > 0) {
+          if (dropped > 0 || unsafe > 0) {
             debugLog(
-              `[generate-document] RE851D enc post-render: dropped ${dropped} overlapping edit(s) in ${filename}`,
+              `[generate-document] RE851D enc post-render: dropped ${dropped} overlapping + ${unsafe} unsafe-boundary edit(s) in ${filename}`,
             );
           }
           // Preserve previous variable names below for the existing log line.
