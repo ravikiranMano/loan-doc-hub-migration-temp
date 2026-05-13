@@ -70,10 +70,32 @@ const getEmptyProperty = (): PropertyData => ({
   propertyOwner: '',
 });
 
-export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange, property, onSave, isEdit = false, borrowerAddress, borrowerOptions = [] }) => {
+export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange, property, onSave, isEdit = false, borrowerAddress, borrowerOptions = [], borrowerParticipants = [] }) => {
   const [formData, setFormData] = useState<PropertyData>(getEmptyProperty());
   const [showConfirm, setShowConfirm] = useState(false);
   const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
+  // Snapshot of last-known address values, captured on uncheck so that a
+  // subsequent re-check repopulates the same data even when the live source
+  // resolves to empty strings.
+  const lastCopiedAddressRef = React.useRef<{ street: string; city: string; state: string; zipCode: string } | null>(null);
+
+  // Resolve effective borrower address: prefer the participant matching the
+  // currently-selected Property Owner; fall back to the parent-supplied
+  // borrowerAddress prop.
+  const resolveBorrowerAddress = (ownerName: string | undefined) => {
+    if (ownerName && borrowerParticipants.length > 0) {
+      const match = borrowerParticipants.find(b => b.name === ownerName);
+      if (match && (match.street || match.city || match.state || match.zipCode)) {
+        return { street: match.street || '', city: match.city || '', state: match.state || '', zipCode: match.zipCode || '' };
+      }
+    }
+    return {
+      street: borrowerAddress?.street || '',
+      city: borrowerAddress?.city || '',
+      state: borrowerAddress?.state || '',
+      zipCode: borrowerAddress?.zipCode || '',
+    };
+  };
 
   const CURRENCY_MODAL_FIELDS: (keyof PropertyData)[] = ['purchasePrice', 'downPayment', 'delinquentTaxes', 'appraisedValue', 'monthlyIncome', 'lienProtectiveEquity', 'netMonthlyIncome', 'fromRent', 'fromOtherDescribe', 'protectiveEquity', 'pledgedEquity'];
   useEffect(() => {
@@ -84,6 +106,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
         if (v) (base as any)[f] = formatCurrencyDisplay(v);
       });
       setFormData(base);
+      lastCopiedAddressRef.current = null;
     }
   }, [open, property]);
 
@@ -92,16 +115,44 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     setFormData(prev => {
       const next = { ...prev, [field]: resolved } as PropertyData;
       if (field === 'copyBorrowerAddress') {
-        if (value === true && borrowerAddress) {
-          next.street = borrowerAddress.street || '';
-          next.city = borrowerAddress.city || '';
-          next.state = borrowerAddress.state || '';
-          next.zipCode = borrowerAddress.zipCode || '';
+        if (value === true) {
+          const live = resolveBorrowerAddress(prev.propertyOwner);
+          const snap = lastCopiedAddressRef.current;
+          const hasLive = !!(live.street || live.city || live.state || live.zipCode);
+          const hasSnap = !!(snap && (snap.street || snap.city || snap.state || snap.zipCode));
+          if (hasLive) {
+            next.street = live.street;
+            next.city = live.city;
+            next.state = live.state;
+            next.zipCode = live.zipCode;
+          } else if (hasSnap) {
+            next.street = snap!.street;
+            next.city = snap!.city;
+            next.state = snap!.state;
+            next.zipCode = snap!.zipCode;
+          }
         } else if (value === false) {
+          // Snapshot current values before clearing so re-check restores them
+          lastCopiedAddressRef.current = {
+            street: prev.street || '',
+            city: prev.city || '',
+            state: prev.state || '',
+            zipCode: prev.zipCode || '',
+          };
           next.street = '';
           next.city = '';
           next.state = '';
           next.zipCode = '';
+        }
+      } else if (field === 'propertyOwner' && prev.copyBorrowerAddress) {
+        // When the Property Owner changes while Copy is checked, refresh the
+        // address from the newly-selected participant.
+        const live = resolveBorrowerAddress(String(resolved || ''));
+        if (live.street || live.city || live.state || live.zipCode) {
+          next.street = live.street;
+          next.city = live.city;
+          next.state = live.state;
+          next.zipCode = live.zipCode;
         }
       }
       return next;
