@@ -3392,6 +3392,12 @@ async function generateSingleDocument(
           fieldValues.set(`pr_li_currentDelinqu_${pIdx}_no`, { rawValue: b.currentDelinq ? "false" : "true", dataType: "boolean" });
           fieldValues.set(`pr_li_currentDelinqu_${pIdx}_yes_glyph`, { rawValue: b.currentDelinq ? "☑" : "☐", dataType: "text" });
           fieldValues.set(`pr_li_currentDelinqu_${pIdx}_no_glyph`, { rawValue: b.currentDelinq ? "☐" : "☑", dataType: "text" });
+          // Per-property balance-derived "remain unpaid" alias (RE851D safety pass).
+          setBoolP(`pr_li_remainUnpaid_${pIdx}`, b.remainUnpaid);
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_yes`, { rawValue: b.remainUnpaid ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_no`, { rawValue: b.remainUnpaid ? "false" : "true", dataType: "boolean" });
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_yes_glyph`, { rawValue: b.remainUnpaid ? "☑" : "☐", dataType: "text" });
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_no_glyph`, { rawValue: b.remainUnpaid ? "☐" : "☑", dataType: "text" });
           setTextP(`pr_li_delinquHowMany_${pIdx}`, b.howMany > 0 ? String(b.howMany) : "", "number");
           setTextP(`pr_li_sourceOfPayment_${pIdx}`, b.source.join("\n"));
           // Q1: Encumbrances of record? — YES iff the property has at least one
