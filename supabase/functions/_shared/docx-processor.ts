@@ -402,6 +402,34 @@ export function validateContentXmlPart(partName: string, xml: string): void {
     const opens = countOpens(xml, tag);
     const closes = countCloses(xml, tag);
     if (opens !== closes) {
+      // Locate first imbalance: walk the XML and find the position where
+      // open/close counts diverge so logs include actionable context.
+      let openSoFar = 0;
+      let closeSoFar = 0;
+      const openRe = new RegExp(`<${tag}(\\s[^>]*[^/])?>`, 'g');
+      const closeRe = new RegExp(`</${tag}>`, 'g');
+      let firstSuspect = -1;
+      const events: Array<{ pos: number; kind: 'open' | 'close' }> = [];
+      let m: RegExpExecArray | null;
+      while ((m = openRe.exec(xml)) !== null) events.push({ pos: m.index, kind: 'open' });
+      while ((m = closeRe.exec(xml)) !== null) events.push({ pos: m.index, kind: 'close' });
+      events.sort((a, b) => a.pos - b.pos);
+      for (const ev of events) {
+        if (ev.kind === 'open') openSoFar++;
+        else closeSoFar++;
+        if (closeSoFar > openSoFar && firstSuspect === -1) {
+          firstSuspect = ev.pos;
+          break;
+        }
+      }
+      if (firstSuspect !== -1) {
+        const sliceStart = Math.max(0, firstSuspect - 200);
+        const sliceEnd = Math.min(xml.length, firstSuspect + 200);
+        console.error(
+          `[docx-processor] DOCX_INTEGRITY context for <${tag}> in ${partName} ` +
+            `at offset ${firstSuspect}: …${xml.slice(sliceStart, sliceEnd)}…`,
+        );
+      }
       throw new Error(
         `DOCX_INTEGRITY: ${partName} has unbalanced <${tag}> tags (open=${opens}, close=${closes})`
       );

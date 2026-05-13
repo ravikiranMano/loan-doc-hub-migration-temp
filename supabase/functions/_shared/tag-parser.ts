@@ -1993,6 +1993,16 @@ export function processConditionalBlocks(
   result = result.replace(/\{\{\/unless\}\}/g, "");
   result = result.replace(/\{\{else\}\}/g, "");
 
+  // Tolerate malformed openers missing whitespace after `#if` / `#unless`
+  // (e.g. `{{#ifpr_li_ant_balloonYes_N_S}}`) — strip the opener so it does
+  // not print verbatim. The paired `{{/if}}` is already removed above.
+  result = result.replace(/\{\{#if[A-Za-z0-9_.]+\}\}/g, "");
+  result = result.replace(/\{\{#unless[A-Za-z0-9_.]+\}\}/g, "");
+
+  // Tolerate `{{/if}` / `{{/unless}` (single trailing brace) malformed close.
+  result = result.replace(/\{\{\/if\}(?!\})/g, "");
+  result = result.replace(/\{\{\/unless\}(?!\})/g, "");
+
   // Extended safety net: also strip Handlebars-style sub-expression openers
   // such as {{#if (eq ld_p_lenderType "Individual")}} or {{#unless (ne ...)}}.
   // The engine does not evaluate sub-expressions, so leaving these in would

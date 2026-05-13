@@ -4724,6 +4724,57 @@ async function generateSingleDocument(
             '$1"$2"$3',
           );
 
+          // ── RE851D malformed inline-expression sanitization ──
+          // The uploaded RE851D template variants contain a handful of
+          // syntactically-broken merge-tag fragments that, left as-is, either
+          // print verbatim or trick downstream cleanup into mis-slicing
+          // paragraphs (causing unbalanced <w:p> integrity failures).
+          // All rewrites below are scoped to specific RE851D field families
+          // so other templates are never touched.
+
+          // (a) Fix `(eq pr_p_performeBy_N"Broker")` / `(eq pr_p_performedBy_N"Broker")`
+          //     where the literal lacks whitespace before the opening quote.
+          //     The eq evaluator requires `eq FIELD "LITERAL"` with whitespace.
+          xml = xml.replace(
+            /(\(\s*(?:eq|ne)\s+pr_p_perform(?:e|ed)By(?:_(?:N|[1-5]))?)\s*"\s*([^"<]*?)\s*"\s*\)/gi,
+            '$1 "$2")',
+          );
+          xml = xml.replace(
+            /(\(\s*(?:eq|ne)\s+pr_p_perform(?:e|ed)By(?:_(?:N|[1-5]))?)\s*&quot;([^"<]*?)&quot;\s*\)/gi,
+            '$1 "$2")',
+          );
+
+          // (b) Fix `{{#ifFIELD}}` openers that are missing whitespace after
+          //     `#if`. Limited to RE851D pr_li_(rem|ant)_* boolean fields used
+          //     by the encumbrance balloon checkboxes (template authors wrote
+          //     `{{#ifpr_li_ant_balloonYes_(N)_(S)}}`). Combined with the
+          //     parenthesized-index normalization above, this resolves to a
+          //     valid `{{#if pr_li_ant_balloonYes_N_S}}` opener.
+          xml = xml.replace(
+            /\{\{#if(pr_li_(?:rem|ant)_[A-Za-z]+(?:_(?:N|S|[1-5]))*)\s*\}\}/g,
+            "{{#if $1}}",
+          );
+
+          // (c) Fix incomplete `{{/if}` (single trailing brace) — close it
+          //     properly so the conditional evaluator can match the block
+          //     and the safety-net stripper can consume any orphans. Only
+          //     rewrite when the next character is NOT a `}` (i.e. it is
+          //     genuinely missing the second brace, not a normal `{{/if}}`).
+          xml = xml.replace(/\{\{\/if\}(?!\})/g, "{{/if}}");
+          xml = xml.replace(/\{\{\/unless\}(?!\})/g, "{{/unless}}");
+
+          // (d) Fix the `{{...}}` merge tags that lost their trailing brace,
+          //     where the malformed bare RE851D encumbrance field is
+          //     immediately followed by another `{{` opener (e.g.
+          //     `{{pr_li_ant_priority_{N}_{S}}` followed by ` <w:t>` then
+          //     `{{else}}`). After the `_{N}_{S}` → `_N_S` rewrite above,
+          //     repair any single-brace tail that we can identify
+          //     unambiguously (next non-space, non-`}` char is `<`).
+          xml = xml.replace(
+            /(\{\{pr_li_(?:rem|ant)_[A-Za-z]+(?:_(?:N|S|[1-5]))*)\}(?!\})/g,
+            "$1}}",
+          );
+
           // Strip leftover decorative "_(N)_(S)" / "_(N)" annotation labels
           // that some authored RE851D templates place after each encumbrance
           // field as a slot/property indicator. Step A above has already
