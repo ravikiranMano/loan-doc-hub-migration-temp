@@ -2955,6 +2955,22 @@ async function generateSingleDocument(
           debugLog(`[generate-document] Multi-lien alt bridged ${field} -> ${altKey} (${entries.length} liens)`);
         }
       }
+
+      // RE851A override: pr_li_lienCurrenBalanc must render ONLY the 1st lien's
+      // current balance value (not aggregated across multiple liens).
+      {
+        const cbEntries = lienFieldCollector["current_balance"];
+        if (cbEntries && cbEntries.length > 0) {
+          const sorted = [...cbEntries].sort((a, b) => a.index - b.index);
+          const firstVal = sorted[0].value;
+          fieldValues.set("pr_li_lienCurrenBalanc", {
+            rawValue: formatCurrency(firstVal),
+            dataType: "currency",
+          });
+          debugLog(`[generate-document] pr_li_lienCurrenBalanc forced to 1st lien only: ${firstVal}`);
+        }
+      }
+
       debugLog(`[generate-document] Lien field bridging complete`);
 
       // ── Bridge: "Anticipated Balance (if new lien)" → li_lt_anticipatedAmount ──
