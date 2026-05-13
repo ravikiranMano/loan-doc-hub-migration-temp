@@ -64,6 +64,8 @@ export interface FundingRecord {
   fundingDate: string;
   lenderAccount: string;
   lenderName: string;
+  lenderEmail?: string;
+  lenderPhone?: string;
   pctOwned: number;
   lenderRate: number;
   principalBalance: number;
