@@ -741,11 +741,19 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Lender ID</Label>
                 <LenderIdSearch
                   value={formData.lenderId}
-                  onChange={(lenderId, lenderFullName) => {
+                  onChange={(lenderId, lenderFullName, contactData) => {
                     setFormData(prev => ({
                       ...prev,
                       lenderId,
                       ...(lenderFullName ? { lenderFullName } : {}),
+                      ...(contactData ? {
+                        lenderEmail: (contactData.email as string) || prev.lenderEmail || '',
+                        lenderPhone: (contactData.phone as string)
+                          || (contactData['phone.cell'] as string)
+                          || (contactData['phone.work'] as string)
+                          || (contactData['phone.home'] as string)
+                          || prev.lenderPhone || '',
+                      } : {}),
                     }));
                   }}
                   className="h-6 text-xs"
@@ -754,6 +762,26 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Name</Label>
                 <Input value={formData.lenderFullName} readOnly className="h-6 text-xs bg-muted/30" />
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs font-bold min-w-[75px] shrink-0">Email</Label>
+                <Input
+                  type="email"
+                  value={formData.lenderEmail || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, lenderEmail: e.target.value }))}
+                  className="h-6 text-xs"
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs font-bold min-w-[75px] shrink-0">Phone</Label>
+                <Input
+                  type="tel"
+                  value={formData.lenderPhone || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, lenderPhone: e.target.value }))}
+                  className="h-6 text-xs"
+                  placeholder="Phone"
+                />
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Note Rate</Label>
