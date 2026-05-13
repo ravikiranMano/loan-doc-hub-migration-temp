@@ -229,8 +229,20 @@ function computeField(
         case '-': intermediate = baseNum - addVal; break;
         default: intermediate = 0;
       }
-      // Chain operation: intermediate chainOp staticValue
-      const chainVal = parsed.staticValue || 0;
+      // Chain operation: intermediate chainOp (field or static)
+      let chainVal: number;
+      if (parsed.chainAddendField) {
+        const cv = values[parsed.chainAddendField];
+        if (cv === undefined || cv === null || String(cv).trim() === '') {
+          return { field_key: field.field_key, value: null, computed: false };
+        }
+        chainVal = parseFloat(String(cv).replace(/[,$%]/g, ''));
+        if (isNaN(chainVal)) {
+          return { field_key: field.field_key, value: null, computed: false, error: `Invalid numeric value for ${parsed.chainAddendField}` };
+        }
+      } else {
+        chainVal = parsed.staticValue || 0;
+      }
       let result: number;
       switch (parsed.chainOperator) {
         case '*': result = intermediate * chainVal; break;
