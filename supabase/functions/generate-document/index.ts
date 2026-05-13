@@ -119,6 +119,7 @@ async function generateSingleDocument(
 
     result.templateName = template.name;
     const isTemplate885 = /885/i.test(template.name || "");
+    const isTemplate851D = /851d/i.test(template.name || "");
     const t885Total = performance.now();
     const tDataFetchStart = performance.now();
     const tDataMappingStart = performance.now();
@@ -139,6 +140,10 @@ async function generateSingleDocument(
     try {
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
+
+      if (isTemplate851D) {
+        throw new Error("RE851D cache bypassed so XML integrity fixes always regenerate the DOCX");
+      }
 
       const { data: cachedDocs } = await supabase
         .from("generated_documents")
@@ -4239,7 +4244,6 @@ async function generateSingleDocument(
     // candidate during processDocx — a major CPU sink that contributed to
     // "Generation timed out (CPU limit exceeded)". Disable label-based
     // replacement for RE851D only; all other templates keep current behavior.
-    const isTemplate851D = /851d/i.test(template.name || "");
     const effectiveLabelMap = isTemplate851D
       ? {}
       : { ...labelMap, ...re851aLabelAdditions };
@@ -4279,7 +4283,7 @@ async function generateSingleDocument(
           const original = decoder.decode(data);
           // Cheap exit: skip parts with no detectable noise.
           if (
-            !original.includes("<mc:Fallback>") &&
+            !original.includes("<mc:Fallback") &&
             !/\sw:rsid[A-Za-z]*="/.test(original) &&
             !original.includes("<w:proofErr") &&
             !original.includes("<w:lastRenderedPageBreak") &&
@@ -4287,7 +4291,7 @@ async function generateSingleDocument(
           ) {
             continue;
           }
-          let cleaned = original.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+          let cleaned = original.replace(/<mc:Fallback\b[^>]*>[\s\S]*?<\/mc:Fallback>/g, "");
           // Single AlternateContent unwrap pass — Word emits at most one
           // Fallback per Choice so iterating to fixpoint costs >300ms on
           // large templates and yields no further reduction.

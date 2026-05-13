@@ -43,7 +43,7 @@ const UNCHANGED_XML_COMPRESSION_LEVEL = 0;
  * and merge tags are preserved unchanged.
  */
 function stripAuthoringNoise(xml: string): string {
-  let out = xml.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+  let out = xml.replace(/<mc:Fallback\b[^>]*>[\s\S]*?<\/mc:Fallback>/g, "");
 
   let prev: string;
   let safety = 0;
@@ -386,6 +386,26 @@ export function validateContentXmlPart(partName: string, xml: string): void {
 
   if (rootClose && !trimmed.endsWith(rootClose)) {
     throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+  }
+
+  const stack: string[] = [];
+  const tagRe = /<(!\[CDATA\[[\s\S]*?\]\]|!--[\s\S]*?--|\?[^>]*\?|\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?)>/g;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRe.exec(trimmed)) !== null) {
+    const body = tagMatch[1].trim();
+    if (!body || body.startsWith("?") || body.startsWith("!--") || body.startsWith("![CDATA")) continue;
+    if (body.startsWith("/")) {
+      const closeName = body.slice(1).trim().split(/\s+/)[0];
+      const openName = stack.pop();
+      if (openName !== closeName) {
+        throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (expected </${openName || "none"}> before </${closeName}> at offset ${tagMatch.index})`);
+      }
+    } else if (!body.endsWith("/")) {
+      stack.push(body.split(/\s+/)[0]);
+    }
+  }
+  if (stack.length > 0) {
+    throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (unclosed <${stack[stack.length - 1]}>)`);
   }
 
   const countOpens = (s: string, tag: string) => {
