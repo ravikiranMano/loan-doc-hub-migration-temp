@@ -4885,6 +4885,58 @@ async function generateSingleDocument(
             "$1$2$3$4",
           );
 
+          // (e) RE851D placeholder identifier repair.
+          //
+          // The uploaded RE851D V12.x template carries identifiers that have
+          // an embedded space inside the merge-tag identifier itself, e.g.
+          //   {{ pr_p_squareFeet_ N }}
+          //   {{ property_type_sfr_owner _N }}
+          //   {{ pr_pt_actual_N_ glyph }}
+          //   {{ pr_p_m ultipleProperties_no_glyph }}
+          //   {{ propertytax.source _of_information_N }}
+          //   {{ pr_li_sourceOfPayment_ N } }
+          // Word splits these spans across multiple <w:r>/<w:t> runs at the
+          // exact insertion point of the stray space. After normalizeWordXml
+          // joined the runs, the whitespace survives and the merge-tag
+          // resolver looks up "pr_p_squareFeet_ N" instead of
+          // "pr_p_squareFeet_N", silently dropping every value.
+          //
+          // Repair scope: ONLY inside `{{ ... }}` bodies, ONLY between
+          // identifier characters (letter/digit/underscore/dot), and ONLY
+          // when the surrounding tag matches a known RE851D field family.
+          // We scan with a bounded {{...}} window to avoid touching prose.
+          xml = xml.replace(/\{\{([^{}]{1,240})\}\}/g, (full, body: string) => {
+            // Quick reject: if there is no inner whitespace between identifier
+            // chars, leave the body untouched (cheap exit for intact tags).
+            if (!/[A-Za-z0-9_.]\s+[A-Za-z0-9_.]/.test(body)) return full;
+            // Collapse whitespace that sits between two identifier chars.
+            const collapsed = body.replace(
+              /([A-Za-z0-9_.])\s+([A-Za-z0-9_.])/g,
+              "$1$2",
+            );
+            return `{{${collapsed}}}`;
+          });
+
+          // (f) Repair `{{ identifier } }` (closing braces split by whitespace).
+          // After (e) collapses inner identifier whitespace, the trailing
+          // `} }` form sometimes survives because the gap is between the two
+          // closing braces (not between identifier chars). Scoped to bodies
+          // that look like RE851D placeholders (no spaces, identifier-only).
+          xml = xml.replace(
+            /\{\{(\s*[A-Za-z0-9_.]+\s*)\}\s+\}/g,
+            "{{$1}}",
+          );
+
+          // (g) Repair `{{ identifier }` (single trailing brace, no second
+          // brace at all) when the opener is on the same paragraph and the
+          // body is identifier-only. Conservative: only fires when the next
+          // few characters are XML markup or whitespace, never another `{`
+          // or alphanumeric content.
+          xml = xml.replace(
+            /\{\{(\s*[A-Za-z0-9_.]+\s*)\}(?!\})(?=\s|<)/g,
+            "{{$1}}",
+          );
+
           if (!xml.includes("_N")) {
             out[filename] = encoder.encode(xml);
             continue;
