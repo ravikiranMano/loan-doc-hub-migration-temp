@@ -5009,7 +5009,7 @@ async function generateSingleDocument(
             continue;
           }
           let xml = decoder.decode(bytes);
-          if (!xml.includes("_N")) {
+          if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)")) {
             out[filename] = bytes;
             continue;
           }
@@ -5038,7 +5038,7 @@ async function generateSingleDocument(
             // which defeats the parenthesized-index rewrite below. When the
             // file mentions the encumbrance prefix AND any (N)/{N} marker,
             // force a normalize so the rewrite + strip passes can match.
-            (xml.includes("pr_li_") && /[\(\{]N[\)\}]/.test(xml));
+            (xml.includes("pr_li_") && /[\(\{][NP][\)\}]/.test(xml));
           if (needsNormalize) {
             try {
               xml = normalizeWordXml(xml, template.name || "");
@@ -5053,6 +5053,14 @@ async function generateSingleDocument(
           // Strictly scoped to encumbrance families so other prose with
           // literal parens is never touched.
           xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\(P\)_\(S\)/g,
+            "$1_N_S",
+          );
+          xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\(P\)/g,
+            "$1_N",
+          );
+          xml = xml.replace(
             /\b(pr_li_(?:rem|ant)_[A-Za-z]+)_\(N\)_\(S\)/g,
             "$1_N_S",
           );
@@ -5062,6 +5070,14 @@ async function generateSingleDocument(
           );
           // Curly-brace placeholder variant authored in some RE851D templates:
           // pr_li_(rem|ant)_<field>_{N}_{S} -> _N_S, _{N} -> _N.
+          xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\{P\}_\{S\}/g,
+            "$1_N_S",
+          );
+          xml = xml.replace(
+            /\b(pr_li_rem_[A-Za-z]+)_\{P\}/g,
+            "$1_N",
+          );
           xml = xml.replace(
             /\b(pr_li_(?:rem|ant)_[A-Za-z]+)_\{N\}_\{S\}/g,
             "$1_N_S",
