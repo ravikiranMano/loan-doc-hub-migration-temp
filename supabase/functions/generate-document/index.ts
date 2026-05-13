@@ -8100,58 +8100,58 @@ async function generateSingleDocument(
               // survive into the rendered document. The glyph-forcing pass
               // above has already set the correct ☒/☐ checkbox state from
               // the published booleans, so here we simply strip the literal
-              // noise from <w:t> bodies inside the section window. Strictly
-              // scoped to this section's raw range and to <w:t> text content,
-              // and only touches Handlebars fragments that reference a
-              // pr_li_(rem|ant)_balloon* identifier OR bare balloon token
-              // text — never general prose.
+              // noise from <w:t> bodies inside the section window.
+              //
+              // OFFSET-SAFETY: queue these as proper {start,end} edits in the
+              // shared `inserts` queue (using absolute offsets in the original
+              // xml). Mutating `xml` in-place mid-loop invalidated all queued
+              // balloon-checkbox replacement offsets for later property regions,
+              // splicing replacements into the middle of <w:rPr> attributes and
+              // producing the "expected </w:rPr> before </w:p>" failure.
               {
                 const rawSecStart = map[sm.index] ?? -1;
                 const rawSecEnd = map[Math.min(winEnd, map.length - 1)] ?? region.end;
                 if (rawSecStart >= 0 && rawSecEnd > rawSecStart) {
-                  const before = xml.slice(0, rawSecStart);
-                  const after = xml.slice(rawSecEnd);
-                  let mid = xml.slice(rawSecStart, rawSecEnd);
                   const balloonTokenRe = /pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown|Amount)(?:_(?:\(?[A-Za-z0-9]+\)?))*/g;
-                  mid = mid.replace(
-                    /(<w:t(?:\s[^>]*)?>)([^<]*?)(<\/w:t>)/g,
-                    (m, openTag, text, closeTag) => {
-                      if (!/pr_li_(?:rem|ant)_balloon/i.test(text) &&
-                          !/\{\{\s*(?:#if|else|\/if)\b[^{}]*?balloon/i.test(text)) {
-                        return m;
-                      }
-                      let cleaned = text;
-                      // Strip complete Handlebars fragments referencing balloon ids.
-                      cleaned = cleaned.replace(
-                        /\{\{[^{}]*?pr_li_(?:rem|ant)_balloon[^{}]*?\}\}/g,
-                        "",
-                      );
-                      // Strip orphan {{else}} / {{/if}} markers that flanked
-                      // those fragments (only when balloon residue triggered
-                      // this branch — confined to this <w:t>).
-                      cleaned = cleaned.replace(/\{\{\s*#if\s*\}\}/g, "");
-                      cleaned = cleaned.replace(/\b#if\b/g, "");
-                      cleaned = cleaned.replace(/\{\{\s*else\s*\}\}/g, "");
-                      cleaned = cleaned.replace(/\{\{\s*\/if\s*\}\}/g, "");
-                      cleaned = cleaned.replace(/\belse\b/g, "");
-                      cleaned = cleaned.replace(/\/?if\b/g, "");
-                      // Strip bare token text variants:
-                      //   pr_li_ant_balloonYes_(N)_(S)
-                      //   pr_li_ant_balloonNo_2_1
-                      //   pr_li_rem_balloonUnknown_N
-                      cleaned = cleaned.replace(balloonTokenRe, "");
-                      // Collapse residual whitespace/punctuation noise.
-                      cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
-                      if (cleaned === text) return m;
-                      return `${openTag}${cleaned}${closeTag}`;
-                    },
-                  );
-                  if (mid !== xml.slice(rawSecStart, rawSecEnd)) {
-                    xml = before + mid + after;
-                    didMutate = true;
-                    xmlScrubMutated = true;
+                  const wtRe = /(<w:t(?:\s[^>]*)?>)([^<]*?)(<\/w:t>)/g;
+                  let scrubbed = 0;
+                  // Iterate over the immutable section slice; queue absolute-
+                  // offset edits instead of mutating `xml`.
+                  let wm: RegExpExecArray | null;
+                  wtRe.lastIndex = 0;
+                  const sectionSlice = xml.slice(rawSecStart, rawSecEnd);
+                  while ((wm = wtRe.exec(sectionSlice)) !== null) {
+                    const text = wm[2];
+                    if (!/pr_li_(?:rem|ant)_balloon/i.test(text) &&
+                        !/\{\{\s*(?:#if|else|\/if)\b[^{}]*?balloon/i.test(text)) {
+                      continue;
+                    }
+                    let cleaned = text;
+                    cleaned = cleaned.replace(
+                      /\{\{[^{}]*?pr_li_(?:rem|ant)_balloon[^{}]*?\}\}/g,
+                      "",
+                    );
+                    cleaned = cleaned.replace(/\{\{\s*#if\s*\}\}/g, "");
+                    cleaned = cleaned.replace(/\b#if\b/g, "");
+                    cleaned = cleaned.replace(/\{\{\s*else\s*\}\}/g, "");
+                    cleaned = cleaned.replace(/\{\{\s*\/if\s*\}\}/g, "");
+                    cleaned = cleaned.replace(/\belse\b/g, "");
+                    cleaned = cleaned.replace(/\/?if\b/g, "");
+                    cleaned = cleaned.replace(balloonTokenRe, "");
+                    cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
+                    if (cleaned === text) continue;
+                    const absStart = rawSecStart + wm.index;
+                    const absEnd = absStart + wm[0].length;
+                    const replacement = `${wm[1]}${cleaned}${wm[3]}`;
+                    // Queue as a "replacement" edit using the same encoding
+                    // (negative `at`, "|||REPLACE|||{start}" tail) the
+                    // downstream applier already understands.
+                    inserts.push({ at: -absEnd, html: `${replacement}|||REPLACE|||${absStart}` });
+                    scrubbed++;
+                  }
+                  if (scrubbed > 0) {
                     debugLog(
-                      `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"}: scrubbed unresolved balloon-token literals`,
+                      `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"}: queued ${scrubbed} balloon-token <w:t> scrub edit(s)`,
                     );
                   }
                 }
