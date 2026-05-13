@@ -4272,7 +4272,7 @@ async function generateSingleDocument(
     // rsid* attributes, <w:proofErr/>, <w:lastRenderedPageBreak/>, and
     // _GoBack bookmarks. Paragraphs, runs, tables, sections, styles, SDTs,
     // drawings, hyperlinks, and merge tags are preserved unchanged.
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       try {
         const tStrip = performance.now();
         const decompressed = fflate.unzipSync(templateBuffer);
