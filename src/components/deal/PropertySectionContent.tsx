@@ -893,6 +893,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
         isEdit={!!editingProperty}
         borrowerOptions={borrowerOptions}
         borrowerAddress={primaryBorrowerAddress}
+        borrowerParticipants={borrowerParticipants}
       />
 
       {/* Add/Edit Property Tax Modal */}
