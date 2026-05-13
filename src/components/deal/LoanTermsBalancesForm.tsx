@@ -137,6 +137,53 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     return calculatedTotalBalanceDue + oneMonthInterest;
   }, [calculatedTotalBalanceDue, values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
 
+  // Auto-calculate Regular P & I Payment based on loan amount, note rate,
+  // number of payments, and payment frequency (standard amortization formula).
+  const PERIODS_PER_YEAR: Record<string, number> = {
+    monthly: 12,
+    bi_weekly: 26,
+    weekly: 52,
+    quarterly: 4,
+    annually: 1,
+    semi_annually: 2,
+  };
+
+  const computedRegularPayment = useMemo(() => {
+    const principal = parseNum(FIELD_KEYS.loanAmount);
+    const annualRatePct = parseNum(FIELD_KEYS.noteRate);
+    const n = parseNum(FIELD_KEYS.numberOfPayments);
+    const freq = getValue(FIELD_KEYS.paymentFrequency);
+    const periodsPerYear = PERIODS_PER_YEAR[freq];
+    if (!principal || !n || !periodsPerYear) return null;
+    const r = (annualRatePct / 100) / periodsPerYear;
+    let pmt: number;
+    if (r === 0) {
+      pmt = principal / n;
+    } else {
+      pmt = (principal * r) / (1 - Math.pow(1 + r, -n));
+    }
+    if (!isFinite(pmt) || pmt <= 0) return null;
+    return pmt.toFixed(2);
+  }, [
+    values[FIELD_KEYS.loanAmount],
+    values[FIELD_KEYS.noteRate],
+    values[FIELD_KEYS.numberOfPayments],
+    values[FIELD_KEYS.paymentFrequency],
+  ]);
+
+  useEffect(() => {
+    if (disabled) return;
+    if (focusedCurrencyField === FIELD_KEYS.regularPayment) return;
+    if (computedRegularPayment == null) return;
+    const current = getValue(FIELD_KEYS.regularPayment);
+    const currentNum = parseFloat(current);
+    const nextNum = parseFloat(computedRegularPayment);
+    if (isNaN(currentNum) || Math.abs(currentNum - nextNum) > 0.005) {
+      setValue(FIELD_KEYS.regularPayment, computedRegularPayment);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computedRegularPayment, disabled]);
+
   const renderReadOnlyCurrencyField = (value: number, label: string, labelClassName?: string) => {
     const displayValue = new Intl.NumberFormat("en-US", {
       minimumFractionDigits: 2,
