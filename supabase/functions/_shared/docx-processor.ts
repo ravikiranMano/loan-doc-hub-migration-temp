@@ -43,7 +43,7 @@ const UNCHANGED_XML_COMPRESSION_LEVEL = 0;
  * and merge tags are preserved unchanged.
  */
 function stripAuthoringNoise(xml: string): string {
-  let out = xml.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+  let out = xml.replace(/<mc:Fallback\b[^>]*>[\s\S]*?<\/mc:Fallback>/g, "");
 
   let prev: string;
   let safety = 0;
@@ -386,6 +386,18 @@ export function validateContentXmlPart(partName: string, xml: string): void {
 
   if (rootClose && !trimmed.endsWith(rootClose)) {
     throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+  }
+
+  try {
+    const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
+    const parserError = parsed.getElementsByTagName("parsererror")[0];
+    if (parserError) {
+      const message = parserError.textContent?.replace(/\s+/g, " ").trim() || "XML parse error";
+      throw new Error(message);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (${message})`);
   }
 
   const countOpens = (s: string, tag: string) => {
