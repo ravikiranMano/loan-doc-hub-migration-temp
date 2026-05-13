@@ -3216,6 +3216,7 @@ async function generateSingleDocument(
           delinq60: boolean;
           howMany: number;
           currentDelinq: boolean;
+          remainUnpaid: boolean;
           source: string[];
           hasLien: boolean;
           allPaidOff: boolean;
@@ -3268,11 +3269,18 @@ async function generateSingleDocument(
             "currently_delinquent_amount", "currentlyDelinquentAmount",
           );
           const remBalNum = parseMoney(remBalRaw);
-          const currentDelinq = Number.isFinite(remBalNum) && remBalNum > 0;
+          // RE851A "Currently Delinquent" YES/NO is driven by the explicit UI
+          // checkbox (lien.currently_delinquent) — NOT by remaining balance.
+          // The balance-derived flag is preserved as `remainUnpaid` for the
+          // RE851D "Do any of these payments remain unpaid?" safety pass.
+          const remainUnpaid = Number.isFinite(remBalNum) && remBalNum > 0;
+          const currentDelinq = truthy(
+            getLienVal(prefix, "currently_delinquent", "currentlyDelinquent"),
+          );
           // Spec: Q1 = paid_off (slt_paid_off checkbox)
           const paidOff = truthy(getLienVal(prefix, "slt_paid_off", "sltPaidOff"));
           const source = getLienVal(prefix, "source_of_payment", "sourceOfPayment").trim();
-          debugLog(`[generate-document] RE851D lien delinquency src ${prefix}: paidByLoan="${paidByLoanRaw}" howMany="${howManyRaw}" remBal="${remBalRaw}" paidOff=${paidOff} has60=${has60} currentDelinq=${currentDelinq} source="${source}" (Q1 uses anyPaidOff per property)`);
+          debugLog(`[generate-document] RE851D lien delinquency src ${prefix}: paidByLoan="${paidByLoanRaw}" howMany="${howManyRaw}" remBal="${remBalRaw}" paidOff=${paidOff} has60=${has60} uiCurrentlyDelinquent=${currentDelinq} remainUnpaid=${remainUnpaid} source="${source}" (Q1 uses anyPaidOff per property)`);
 
           // Per-lien-index aliases
           const setBool = (k: string, v: boolean) =>
@@ -3296,6 +3304,13 @@ async function generateSingleDocument(
           setBool(`pr_li_currentDelinqu_${lienIdx}_no`, !currentDelinq);
           setText(`pr_li_currentDelinqu_${lienIdx}_yes_glyph`, currentDelinq ? "☑" : "☐");
           setText(`pr_li_currentDelinqu_${lienIdx}_no_glyph`, currentDelinq ? "☐" : "☑");
+          // Balance-derived "remain unpaid" alias (used by RE851D safety pass
+          // for "Do any of these payments remain unpaid?" — semantics preserved).
+          setBool(`pr_li_remainUnpaid_${lienIdx}`, remainUnpaid);
+          setBool(`pr_li_remainUnpaid_${lienIdx}_yes`, remainUnpaid);
+          setBool(`pr_li_remainUnpaid_${lienIdx}_no`, !remainUnpaid);
+          setText(`pr_li_remainUnpaid_${lienIdx}_yes_glyph`, remainUnpaid ? "☑" : "☐");
+          setText(`pr_li_remainUnpaid_${lienIdx}_no_glyph`, remainUnpaid ? "☐" : "☑");
           setText(`pr_li_delinquHowMany_${lienIdx}`,
             Number.isFinite(howManyNum) && howManyNum > 0 ? String(howManyNum) : (howManyRaw || ""),
             "number");
@@ -3321,7 +3336,7 @@ async function generateSingleDocument(
           if (pm) {
             const pIdx = parseInt(pm[1], 10);
             if (!perProp[pIdx]) {
-              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null, sourceOfInfoText: "", sourceOfInfoPriorityFound: false };
+              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, remainUnpaid: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null, sourceOfInfoText: "", sourceOfInfoPriorityFound: false };
             }
             const b = perProp[pIdx];
             b.hasLien = true;
@@ -3330,6 +3345,7 @@ async function generateSingleDocument(
             if (paidByLoan) b.paidByLoan = true;
             if (has60) b.delinq60 = true;
             if (currentDelinq) b.currentDelinq = true;
+            if (remainUnpaid) b.remainUnpaid = true;
             if (Number.isFinite(howManyNum) && howManyNum > 0) b.howMany += howManyNum;
             if (source) b.source.push(source);
             if (b.sourceInfoFirstLienIdx === null) {
@@ -3376,6 +3392,12 @@ async function generateSingleDocument(
           fieldValues.set(`pr_li_currentDelinqu_${pIdx}_no`, { rawValue: b.currentDelinq ? "false" : "true", dataType: "boolean" });
           fieldValues.set(`pr_li_currentDelinqu_${pIdx}_yes_glyph`, { rawValue: b.currentDelinq ? "☑" : "☐", dataType: "text" });
           fieldValues.set(`pr_li_currentDelinqu_${pIdx}_no_glyph`, { rawValue: b.currentDelinq ? "☐" : "☑", dataType: "text" });
+          // Per-property balance-derived "remain unpaid" alias (RE851D safety pass).
+          setBoolP(`pr_li_remainUnpaid_${pIdx}`, b.remainUnpaid);
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_yes`, { rawValue: b.remainUnpaid ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_no`, { rawValue: b.remainUnpaid ? "false" : "true", dataType: "boolean" });
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_yes_glyph`, { rawValue: b.remainUnpaid ? "☑" : "☐", dataType: "text" });
+          fieldValues.set(`pr_li_remainUnpaid_${pIdx}_no_glyph`, { rawValue: b.remainUnpaid ? "☐" : "☑", dataType: "text" });
           setTextP(`pr_li_delinquHowMany_${pIdx}`, b.howMany > 0 ? String(b.howMany) : "", "number");
           setTextP(`pr_li_sourceOfPayment_${pIdx}`, b.source.join("\n"));
           // Q1: Encumbrances of record? — YES iff the property has at least one
@@ -5745,8 +5767,8 @@ async function generateSingleDocument(
                 const s = String(raw).trim().toLowerCase();
                 return ["true", "yes", "y", "1", "checked", "on"].includes(s);
               };
-              const yesAlias = fieldValues.get(`pr_li_currentDelinqu_${pIdx}_yes`);
-              const bareAlias = fieldValues.get(`pr_li_currentDelinqu_${pIdx}`);
+              const yesAlias = fieldValues.get(`pr_li_remainUnpaid_${pIdx}_yes`);
+              const bareAlias = fieldValues.get(`pr_li_remainUnpaid_${pIdx}`);
               const isYes = yesAlias
                 ? truthy(yesAlias.rawValue)
                 : truthy(bareAlias?.rawValue);
@@ -7016,8 +7038,8 @@ async function generateSingleDocument(
         };
         const unpaidByIdx: Record<number, boolean> = {};
         for (let k = 1; k <= 5; k++) {
-          const yesAlias = fieldValues.get(`pr_li_currentDelinqu_${k}_yes`);
-          const bareAlias = fieldValues.get(`pr_li_currentDelinqu_${k}`);
+          const yesAlias = fieldValues.get(`pr_li_remainUnpaid_${k}_yes`);
+          const bareAlias = fieldValues.get(`pr_li_remainUnpaid_${k}`);
           unpaidByIdx[k] = yesAlias
             ? truthy(yesAlias.rawValue)
             : truthy(bareAlias?.rawValue);
