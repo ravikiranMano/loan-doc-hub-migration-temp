@@ -5719,7 +5719,7 @@ async function generateSingleDocument(
     // direct match and removes any chance of the resolver returning a different
     // ultimate key for our publisher-set values. Template-gated.
     let effectiveValidFieldKeys = validFieldKeys;
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       effectiveValidFieldKeys = new Set(validFieldKeys);
       const SUFFIXED_BASES = [
         "ln_p_expectedEncumbrance", "ln_p_remainingEncumbrance",
