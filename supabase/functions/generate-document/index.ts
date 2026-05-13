@@ -3216,6 +3216,7 @@ async function generateSingleDocument(
           delinq60: boolean;
           howMany: number;
           currentDelinq: boolean;
+          remainUnpaid: boolean;
           source: string[];
           hasLien: boolean;
           allPaidOff: boolean;
