@@ -130,6 +130,92 @@ async function generateSingleDocument(
 
     debugLog(`[generate-document] Processing template: ${template.name}`);
 
+    // ── Generation result cache (5 min TTL) ──
+    // If the same (deal, template, outputType) was generated successfully in the
+    // last 5 minutes AND no deal_section_values have been updated since, clone
+    // the prior result instead of re-running the heavy DOCX pipeline.
+    // This stops repeated "CPU limit exceeded" failures when the user retries
+    // the same RE851D document multiple times in a row.
+    try {
+      const CACHE_TTL_MS = 5 * 60 * 1000;
+      const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
+
+      const { data: cachedDocs } = await supabase
+        .from("generated_documents")
+        .select("id, output_docx_path, output_pdf_path, output_type, version_number, created_at")
+        .eq("deal_id", dealId)
+        .eq("template_id", templateId)
+        .eq("generation_status", "success")
+        .gte("created_at", cacheCutoffIso)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const cached = cachedDocs && cachedDocs[0];
+      if (cached && cached.output_docx_path) {
+        // Match outputType: a cached docx_only entry can satisfy a docx_only
+        // request; for docx_and_pdf we additionally require the PDF to exist.
+        const outputMatches =
+          (outputType === "docx_only") ||
+          (outputType === "docx_and_pdf" && !!cached.output_pdf_path);
+
+        if (outputMatches) {
+          // Check that no deal data has been edited since the cached result.
+          const { data: latestSv } = await supabase
+            .from("deal_section_values")
+            .select("updated_at")
+            .eq("deal_id", dealId)
+            .order("updated_at", { ascending: false })
+            .limit(1);
+          const latestSvAt = latestSv && latestSv[0]?.updated_at;
+          const cachedAt = cached.created_at;
+          const dataIsStableSinceCache = !latestSvAt || new Date(latestSvAt) <= new Date(cachedAt);
+
+          if (dataIsStableSinceCache) {
+            // Reuse the cached storage objects by inserting a NEW
+            // generated_documents row pointing at the same files. The
+            // version trigger auto-increments version_number per
+            // (deal_id, template_id) so history stays intact.
+            const { data: reusedDoc, error: reuseInsertError } = await supabase
+              .from("generated_documents")
+              .insert({
+                deal_id: dealId,
+                template_id: templateId,
+                packet_id: packetId,
+                template_name: template.name,
+                packet_name: packetName,
+                generation_batch_id: generationBatchId,
+                output_docx_path: cached.output_docx_path,
+                output_pdf_path: cached.output_pdf_path,
+                output_type: outputType,
+                created_by: userId,
+                generation_status: "success",
+                error_message: null,
+              })
+              .select()
+              .single();
+
+            if (!reuseInsertError && reusedDoc) {
+              console.log(
+                `[generate-document] Cache HIT for deal=${dealId} template=${templateId} (cached at ${cachedAt}); skipped full regeneration`
+              );
+              result.success = true;
+              result.documentId = reusedDoc.id;
+              result.versionNumber = reusedDoc.version_number;
+              result.outputPath = cached.output_docx_path;
+              return result;
+            }
+            // If the cached-clone insert fails for any reason, fall through
+            // to a normal generation rather than returning an error.
+          }
+        }
+      }
+    } catch (cacheErr) {
+      console.warn(
+        "[generate-document] Generation cache check failed (continuing with full generation):",
+        cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
+      );
+    }
+
     // 2. Fetch template field maps
     const { data: fieldMaps, error: fmError } = await supabase
       .from("template_field_maps")
