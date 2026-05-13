@@ -50,15 +50,31 @@ function parseFormula(formula: string): {
   type: 'date_add_months' | 'date_add_days' | 'arithmetic' | 'arithmetic_chained' | 'unknown';
   baseField: string;
   addendField: string | null;
+  chainAddendField?: string | null;
   staticValue: number | null;
   operator?: '*' | '+' | '-' | '/';
   chainOperator?: '*' | '+' | '-' | '/';
 } | null {
   const cleanFormula = formula.trim();
-  
+
+  // Chained arithmetic with field RHS: ({field1} op {field2}) op {field3}
+  const chainedArithFieldPattern = /^\(\{([^}]+)\}\s*([+\-*/])\s*\{([^}]+)\}\)\s*([+\-*/])\s*\{([^}]+)\}$/;
+  let match: RegExpMatchArray | null = cleanFormula.match(chainedArithFieldPattern);
+  if (match) {
+    return {
+      type: 'arithmetic_chained',
+      baseField: match[1],
+      addendField: match[3],
+      chainAddendField: match[5],
+      staticValue: null,
+      operator: match[2] as '*' | '+' | '-' | '/',
+      chainOperator: match[4] as '*' | '+' | '-' | '/',
+    };
+  }
+
   // Chained arithmetic: ({field1} / {field2}) * N  e.g. LTV ratio
   const chainedArithPattern = /^\(\{([^}]+)\}\s*([+\-*/])\s*\{([^}]+)\}\)\s*([+\-*/])\s*(\d+(?:\.\d+)?)$/;
-  let match: RegExpMatchArray | null = cleanFormula.match(chainedArithPattern);
+  match = cleanFormula.match(chainedArithPattern);
   if (match) {
     return {
       type: 'arithmetic_chained',
