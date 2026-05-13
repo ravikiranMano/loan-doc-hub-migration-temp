@@ -43,6 +43,8 @@ import { formatCurrencyDisplay } from '@/lib/numericInputFilter';
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'lenderAccount', label: 'Lender ID', visible: true },
   { id: 'lenderName', label: 'Name', visible: true },
+  { id: 'lenderEmail', label: 'Email', visible: true },
+  { id: 'lenderPhone', label: 'Phone', visible: true },
   { id: 'originalAmount', label: 'Funding Amount', visible: true },
   { id: 'currentBalance', label: 'Current Balance', visible: true },
   
@@ -62,6 +64,8 @@ export interface FundingRecord {
   fundingDate: string;
   lenderAccount: string;
   lenderName: string;
+  lenderEmail?: string;
+  lenderPhone?: string;
   pctOwned: number;
   lenderRate: number;
   principalBalance: number;
@@ -189,7 +193,7 @@ interface LoanFundingGridProps {
   onDeleteHistoryRecord?: (record: { id: string }) => void;
 }
 
-const SEARCH_FIELDS = ['lenderAccount', 'lenderName'];
+const SEARCH_FIELDS = ['lenderAccount', 'lenderName', 'lenderEmail', 'lenderPhone'];
 
 const buildFundingFilterOptions = (records: FundingRecord[]): FilterOption[] => {
   const uniqueAccounts = [...new Set(records.map(r => r.lenderAccount).filter(Boolean))];
@@ -425,6 +429,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       borrower: borrowerName || '',
       lenderId: record.lenderAccount,
       lenderFullName: record.lenderName,
+      lenderEmail: record.lenderEmail || '',
+      lenderPhone: record.lenderPhone || '',
       lenderRate: String(record.lenderRate),
       fundingAmount: formatCurrencyDisplay(String(record.originalAmount)),
       baseFee: record.baseFee !== undefined && record.baseFee !== null ? formatCurrencyDisplay(String(record.baseFee)) : '',
@@ -525,6 +531,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         return <span className="font-medium">{record.lenderAccount || '-'}</span>;
       case 'lenderName':
         return record.lenderName || '-';
+      case 'lenderEmail':
+        return record.lenderEmail || '-';
+      case 'lenderPhone':
+        return record.lenderPhone || '-';
       case 'originalAmount':
         return <span>{formatCurrency(record.originalAmount)}</span>;
       case 'principalBalance':

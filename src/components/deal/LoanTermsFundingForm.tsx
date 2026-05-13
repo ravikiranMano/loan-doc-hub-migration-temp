@@ -501,6 +501,8 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       fundingDate: data.fundingDate || '',
       lenderAccount: data.lenderId || '',
       lenderName: data.lenderFullName || '',
+      lenderEmail: data.lenderEmail || '',
+      lenderPhone: data.lenderPhone || '',
       pctOwned: safeParseFloat(data.percentOwned),
       lenderRate,
       principalBalance: safeParseFloat(data.principalBalance || data.fundingAmount),
