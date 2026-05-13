@@ -2956,18 +2956,25 @@ async function generateSingleDocument(
         }
       }
 
-      // RE851A override: pr_li_lienCurrenBalanc must render ONLY the 1st lien's
-      // current balance value (not aggregated across multiple liens).
+      // RE851A override: the bare (non-indexed) Current Balance aliases must render
+      // ONLY the 1st lien's current_balance value, never the aggregated newline-joined
+      // multi-lien string. Per-lien table cells use _N indexed keys instead.
       {
         const cbEntries = lienFieldCollector["current_balance"];
         if (cbEntries && cbEntries.length > 0) {
           const sorted = [...cbEntries].sort((a, b) => a.index - b.index);
           const firstVal = sorted[0].value;
-          fieldValues.set("pr_li_lienCurrenBalanc", {
-            rawValue: formatCurrency(firstVal),
-            dataType: "currency",
-          });
-          debugLog(`[generate-document] pr_li_lienCurrenBalanc forced to 1st lien only: ${firstVal}`);
+          const formatted = formatCurrency(firstVal);
+          const aliases = [
+            "pr_li_lienCurrenBalanc",
+            "pr_p_currentBalanc",
+            "li_p_currentBalance",
+            "li_lt_currentBalance",
+          ];
+          for (const alias of aliases) {
+            fieldValues.set(alias, { rawValue: formatted, dataType: "currency" });
+          }
+          debugLog(`[generate-document] Forced 1st-lien-only current_balance for aliases [${aliases.join(", ")}]: ${formatted} (raw=${firstVal})`);
         }
       }
 
