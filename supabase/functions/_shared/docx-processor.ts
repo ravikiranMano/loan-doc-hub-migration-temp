@@ -388,16 +388,24 @@ export function validateContentXmlPart(partName: string, xml: string): void {
     throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
   }
 
-  try {
-    const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
-    const parserError = parsed.getElementsByTagName("parsererror")[0];
-    if (parserError) {
-      const message = parserError.textContent?.replace(/\s+/g, " ").trim() || "XML parse error";
-      throw new Error(message);
+  const stack: string[] = [];
+  const tagRe = /<(!\[CDATA\[[\s\S]*?\]\]|!--[\s\S]*?--|\?[^>]*\?|\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?)>/g;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRe.exec(trimmed)) !== null) {
+    const body = tagMatch[1].trim();
+    if (!body || body.startsWith("?") || body.startsWith("!--") || body.startsWith("![CDATA")) continue;
+    if (body.startsWith("/")) {
+      const closeName = body.slice(1).trim().split(/\s+/)[0];
+      const openName = stack.pop();
+      if (openName !== closeName) {
+        throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (expected </${openName || "none"}> before </${closeName}> at offset ${tagMatch.index})`);
+      }
+    } else if (!body.endsWith("/")) {
+      stack.push(body.split(/\s+/)[0]);
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (${message})`);
+  }
+  if (stack.length > 0) {
+    throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (unclosed <${stack[stack.length - 1]}>)`);
   }
 
   const countOpens = (s: string, tag: string) => {
