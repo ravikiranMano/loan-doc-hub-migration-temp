@@ -7836,8 +7836,6 @@ async function generateSingleDocument(
                   hits.push({ idx: hm.index, len: hm[0].length, kind: "handlebars", rPr: hm[1] || "" });
                 }
                 hits.sort((a, b) => a.idx - b.idx);
-                const labels = ["YES", "NO", "Unknown"];
-                let labelsInjected = 0;
                 for (let gIdx = 0; gIdx < Math.min(3, hits.length); gIdx++) {
                   const h = hits[gIdx];
                   const want = states[gIdx] ? "\u2611" : "\u2610";
@@ -7864,21 +7862,9 @@ async function generateSingleDocument(
                   if (needReplace) {
                     inserts.push({ at: -end, html: `${replacement}|||REPLACE|||${start}` });
                   }
-                  const tailEndCap = Math.min(xml.length, end + 400);
-                  const pEnd = xml.indexOf("</w:p>", end);
-                  const tailEnd = pEnd > 0 ? Math.min(pEnd, tailEndCap) : tailEndCap;
-                  const tail = xml.slice(end, tailEnd).replace(/<[^>]+>/g, "").toUpperCase();
-                  const lbl = labels[gIdx];
-                  if (!tail.includes(lbl.toUpperCase())) {
-                    const labelRun =
-                      `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
-                      `<w:t xml:space="preserve"> ${xmlEsc(lbl)}   </w:t></w:r>`;
-                    inserts.push({ at: end, html: labelRun });
-                    labelsInjected += 1;
-                  }
                 }
                 debugLog(
-                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"} labelsInjected=${labelsInjected}`,
+                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"}`,
                 );
               }
 
