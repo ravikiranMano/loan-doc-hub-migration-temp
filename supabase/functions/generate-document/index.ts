@@ -5009,6 +5009,10 @@ async function generateSingleDocument(
             continue;
           }
           let xml = decoder.decode(bytes);
+          const remainingDynamicHits = (xml.match(REMAINING_DYNAMIC_TOKEN_RE) || []).slice(0, 20);
+          if (remainingDynamicHits.length > 0) {
+            console.log(`[generate-document] RE851D Remaining parsed placeholder keys in ${filename}: ${remainingDynamicHits.join(", ")}`);
+          }
           if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)")) {
             out[filename] = bytes;
             continue;
