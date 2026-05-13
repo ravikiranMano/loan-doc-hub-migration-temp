@@ -5767,8 +5767,8 @@ async function generateSingleDocument(
                 const s = String(raw).trim().toLowerCase();
                 return ["true", "yes", "y", "1", "checked", "on"].includes(s);
               };
-              const yesAlias = fieldValues.get(`pr_li_currentDelinqu_${pIdx}_yes`);
-              const bareAlias = fieldValues.get(`pr_li_currentDelinqu_${pIdx}`);
+              const yesAlias = fieldValues.get(`pr_li_remainUnpaid_${pIdx}_yes`);
+              const bareAlias = fieldValues.get(`pr_li_remainUnpaid_${pIdx}`);
               const isYes = yesAlias
                 ? truthy(yesAlias.rawValue)
                 : truthy(bareAlias?.rawValue);
