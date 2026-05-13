@@ -1,44 +1,48 @@
-## Issue confirmed
+## Plan: stabilize RE851D document generation
 
-Generation is failing after the RE851D post-render passes with:
+### What I found
+- The uploaded `RE851D-V12.1-4.docx` starts XML-balanced, but it contains malformed dynamic expressions that can break paragraph/run boundaries during generation.
+- Concrete template issues present in `word/document.xml` include:
+  - Unsupported encumbrance placeholders using `(N)`, `(S)`, `{N}`, `{S}`.
+  - Malformed balloon conditionals like `{{#ifpr_li_ant_balloonYes_(N)_(S)}}` with missing whitespace after `#if`.
+  - One incomplete closing tag: `{{/if}`.
+  - Broken eq syntax such as `{{#if (eq pr_p_performeBy_N"Broker")}}`.
+- The current generator already has RE851D-specific logic, but the normalization is too narrow for mixed-case/underscore encumbrance fields and does not safely sanitize all malformed control fragments before merge evaluation.
 
-```text
-DOCX_INTEGRITY: word/document.xml has unbalanced <w:p> tags (open=1739, close=1744)
-```
+### Changes to implement
 
-The uploaded RE851D template itself is XML-well-formed, but it contains malformed placeholder/control syntax that becomes unsafe during generation:
+1. **Add a RE851D template-sanitization pass before rendering**
+   - Normalize unsupported index syntax:
+     - `pr_li_rem_*_(N)_(S)` → `pr_li_rem_*_N_S`
+     - `pr_li_ant_*_{N}_{S}` → `pr_li_ant_*_N_S`
+   - Use a broader field-name matcher that handles camelCase, underscores, and mixed field names.
+   - Normalize malformed control openers:
+     - `{{#ifpr_li_ant_balloonYes_(N)_(S)}}` → `{{#if pr_li_ant_balloonYes_N_S}}`
+   - Convert incomplete `{{/if}` fragments to valid `{{/if}}` only when safe, or strip them when they are orphaned.
 
-- Unsupported encumbrance placeholders like `{{pr_li_rem_priority_(N)_(S)}}` and `{{pr_li_ant_priority_{N}_{S}}}`.
-- Broken balloon conditional fragments like `{{#if ... pr_li_ant_balloonYes_(N)_(S)}}{{else}}☐{{/if}}`, including one incomplete `{{/if`.
-- Some conditional expressions with spacing errors, e.g. `{{#if (eq pr_p_performeBy_N"Broker")}}`.
-- Template text/control fragments are mixed with Word paragraph/table XML inside the same runs, so a replacement pass can leave extra closing paragraphs.
+2. **Harden conditional parsing for malformed-but-recoverable inline expressions**
+   - Update the tag parser to tolerate missing whitespace in simple `#if` openers only when the field key is otherwise valid.
+   - Normalize `(eq FIELD"Value")` into `(eq FIELD "Value")` before condition evaluation.
+   - Keep this scoped and conservative so unrelated templates are not affected.
 
-## Plan
-
-1. **Harden RE851D template pre-normalization**
-   - Extend the existing RE851D preprocessing in `generate-document` to normalize all unsupported `{N}/{S}` and `(N)/(S)` encumbrance tag variants before merge replacement.
-   - Include mixed-case field names and non-simple field names currently missed by the existing `[A-Za-z]+` matcher.
-   - Normalize malformed `#if (eq FIELD"Value")` spacing to valid `#if (eq FIELD "Value")` for RE851D-safe field families.
-
-2. **Sanitize malformed balloon conditionals before post-render passes**
-   - Add a RE851D-only cleanup for balloon checkbox runs that removes broken `{{#if ...}}`, `{{else}}`, and incomplete `{{/if` fragments when they reference `pr_li_rem_balloon*` or `pr_li_ant_balloon*`.
-   - Preserve the visible checkbox glyphs so the existing balloon safety pass can still force the correct Yes/No/Unknown state.
-
-3. **Fix the unsafe post-render replacement ordering**
-   - In the RE851D encumbrance post-render pass, apply replacements before insertions, or recompute insertion offsets after replacements.
-   - This prevents replacements from shifting later insertion positions and cutting into Word XML, which matches the observed extra `</w:p>` count.
+3. **Make RE851D balloon checkbox cleanup deterministic**
+   - For malformed anticipated/remaining encumbrance balloon checkbox rows, remove broken `{{#if...}}`, `{{else}}`, and `{{/if...}}` control text while preserving visible checkbox glyphs.
+   - Let the existing post-render encumbrance safety pass set the actual Yes/No/Unknown checkbox state from `pr_li_ant_*` / `pr_li_rem_*` values.
 
 4. **Improve final integrity diagnostics**
-   - When final validation fails, log a compact count of unbalanced tags and a small XML context around the first suspicious paragraph/table boundary.
-   - Keep the user-facing error clean, but make future failures diagnosable from logs.
+   - When validation fails, log the unbalanced tag type, open/close counts, and a compact nearby XML/text snippet around suspicious paragraph/table boundaries.
+   - Keep the user-facing error concise, but make future backend logs actionable.
 
 5. **Validate with the uploaded template**
-   - Add or run a focused test/diagnostic using `RE851D-V12.1-3.docx` against the same normalization and final validation path.
-   - Confirm `word/document.xml` passes balance checks and the generated DOCX opens without XML parsing errors.
+   - Add a focused diagnostic/test path for `RE851D-V12.1-4.docx` using the same normalization and integrity validation logic.
+   - Confirm `word/document.xml` remains well-formed and has balanced `<w:p>`, `<w:r>`, `<w:t>`, `<w:tc>`, `<w:tr>`, `<w:tbl>`, and `<w:sdt>` tags after processing.
 
-## Files expected to change
-
+### Files expected to change
 - `supabase/functions/generate-document/index.ts`
-- Potentially `supabase/functions/_shared/tag-parser.ts` only if the shared parser needs a narrow generic guard for incomplete control tags.
+- `supabase/functions/_shared/tag-parser.ts`
+- Possibly one focused test/diagnostic file under `supabase/functions/_shared/` or `supabase/functions/generate-document/`
 
-No database/schema changes are needed.
+### What will not change
+- No database/schema changes.
+- No UI changes.
+- No broad refactor of document generation beyond the RE851D-safe normalization and integrity safeguards.
