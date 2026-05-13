@@ -877,6 +877,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
               fundingDate: data.fundingDate || '',
               lenderAccount: data.lenderId,
               lenderName: data.lenderFullName,
+              lenderEmail: data.lenderEmail || '',
+              lenderPhone: data.lenderPhone || '',
               lenderRate,
               originalAmount: safeParse(data.fundingAmount),
               principalBalance: safeParse(data.principalBalance || data.fundingAmount),
