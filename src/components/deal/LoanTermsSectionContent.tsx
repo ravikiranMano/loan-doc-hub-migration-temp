@@ -8,6 +8,7 @@ import { LoanTermsServicingForm } from './LoanTermsServicingForm';
 import { LoanHistoryViewer } from './LoanHistoryViewer';
 import { LoanTrustLedger } from './LoanTrustLedger';
 import { DealSectionTab } from './DealSectionTab';
+import { EscrowImpoundForm } from './EscrowImpoundForm';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 
