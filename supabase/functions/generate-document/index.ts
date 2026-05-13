@@ -3268,11 +3268,18 @@ async function generateSingleDocument(
             "currently_delinquent_amount", "currentlyDelinquentAmount",
           );
           const remBalNum = parseMoney(remBalRaw);
-          const currentDelinq = Number.isFinite(remBalNum) && remBalNum > 0;
+          // RE851A "Currently Delinquent" YES/NO is driven by the explicit UI
+          // checkbox (lien.currently_delinquent) — NOT by remaining balance.
+          // The balance-derived flag is preserved as `remainUnpaid` for the
+          // RE851D "Do any of these payments remain unpaid?" safety pass.
+          const remainUnpaid = Number.isFinite(remBalNum) && remBalNum > 0;
+          const currentDelinq = truthy(
+            getLienVal(prefix, "currently_delinquent", "currentlyDelinquent"),
+          );
           // Spec: Q1 = paid_off (slt_paid_off checkbox)
           const paidOff = truthy(getLienVal(prefix, "slt_paid_off", "sltPaidOff"));
           const source = getLienVal(prefix, "source_of_payment", "sourceOfPayment").trim();
-          debugLog(`[generate-document] RE851D lien delinquency src ${prefix}: paidByLoan="${paidByLoanRaw}" howMany="${howManyRaw}" remBal="${remBalRaw}" paidOff=${paidOff} has60=${has60} currentDelinq=${currentDelinq} source="${source}" (Q1 uses anyPaidOff per property)`);
+          debugLog(`[generate-document] RE851D lien delinquency src ${prefix}: paidByLoan="${paidByLoanRaw}" howMany="${howManyRaw}" remBal="${remBalRaw}" paidOff=${paidOff} has60=${has60} uiCurrentlyDelinquent=${currentDelinq} remainUnpaid=${remainUnpaid} source="${source}" (Q1 uses anyPaidOff per property)`);
 
           // Per-lien-index aliases
           const setBool = (k: string, v: boolean) =>
