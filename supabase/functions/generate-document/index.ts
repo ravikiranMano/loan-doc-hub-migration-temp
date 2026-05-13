@@ -120,6 +120,15 @@ async function generateSingleDocument(
     result.templateName = template.name;
     const isTemplate885 = /885/i.test(template.name || "");
     const isTemplate851D = /851d/i.test(template.name || "");
+    // "Lien Mappings" template reuses the RE851D encumbrance pipeline
+    // (bucketing + publishSection already runs for ALL templates; here we
+    // also enable the indexed-tag rewrite, valid-key extension, addendum
+    // appender, and authoring-noise strip so pr_li_* _N_S tags resolve and
+    // overflow liens (3+) get appended). Strictly additive: no other
+    // RE851D-only behavior (multi-property checkboxes, taxes, Q1–Q6,
+    // safety passes, etc.) is enabled here.
+    const isLienMappingTemplate = /lien[_\s-]?mapping/i.test(template.name || "");
+    const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate;
     const t885Total = performance.now();
     const tDataFetchStart = performance.now();
     const tDataMappingStart = performance.now();
