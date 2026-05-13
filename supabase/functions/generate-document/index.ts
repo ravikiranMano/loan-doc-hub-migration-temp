@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx, validateContentXmlPart, repairTableCellParagraphs } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
@@ -7836,8 +7836,6 @@ async function generateSingleDocument(
                   hits.push({ idx: hm.index, len: hm[0].length, kind: "handlebars", rPr: hm[1] || "" });
                 }
                 hits.sort((a, b) => a.idx - b.idx);
-                const labels = ["YES", "NO", "Unknown"];
-                let labelsInjected = 0;
                 for (let gIdx = 0; gIdx < Math.min(3, hits.length); gIdx++) {
                   const h = hits[gIdx];
                   const want = states[gIdx] ? "\u2611" : "\u2610";
@@ -7864,21 +7862,9 @@ async function generateSingleDocument(
                   if (needReplace) {
                     inserts.push({ at: -end, html: `${replacement}|||REPLACE|||${start}` });
                   }
-                  const tailEndCap = Math.min(xml.length, end + 400);
-                  const pEnd = xml.indexOf("</w:p>", end);
-                  const tailEnd = pEnd > 0 ? Math.min(pEnd, tailEndCap) : tailEndCap;
-                  const tail = xml.slice(end, tailEnd).replace(/<[^>]+>/g, "").toUpperCase();
-                  const lbl = labels[gIdx];
-                  if (!tail.includes(lbl.toUpperCase())) {
-                    const labelRun =
-                      `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
-                      `<w:t xml:space="preserve"> ${xmlEsc(lbl)}   </w:t></w:r>`;
-                    inserts.push({ at: end, html: labelRun });
-                    labelsInjected += 1;
-                  }
                 }
                 debugLog(
-                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"} labelsInjected=${labelsInjected}`,
+                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"}`,
                 );
               }
 
@@ -7921,8 +7907,12 @@ async function generateSingleDocument(
                       // Strip orphan {{else}} / {{/if}} markers that flanked
                       // those fragments (only when balloon residue triggered
                       // this branch — confined to this <w:t>).
+                      cleaned = cleaned.replace(/\{\{\s*#if\s*\}\}/g, "");
+                      cleaned = cleaned.replace(/\b#if\b/g, "");
                       cleaned = cleaned.replace(/\{\{\s*else\s*\}\}/g, "");
                       cleaned = cleaned.replace(/\{\{\s*\/if\s*\}\}/g, "");
+                      cleaned = cleaned.replace(/\belse\b/g, "");
+                      cleaned = cleaned.replace(/\/?if\b/g, "");
                       // Strip bare token text variants:
                       //   pr_li_ant_balloonYes_(N)_(S)
                       //   pr_li_ant_balloonNo_2_1
@@ -8045,6 +8035,13 @@ async function generateSingleDocument(
               __xmlStrCache[k] = repaired.xml;
               debugLog(
                 `[generate-document] RE851D post-render flush: repaired ${repaired.repaired} <w:tc> in ${k}`,
+              );
+            }
+            const sdtRepaired = repairOrphanedSdtOpen(__xmlStrCache[k]);
+            if (sdtRepaired.repaired > 0) {
+              __xmlStrCache[k] = sdtRepaired.xml;
+              debugLog(
+                `[generate-document] RE851D post-render flush: removed ${sdtRepaired.repaired} orphaned <w:sdt> opener in ${k}`,
               );
             }
             // Validate the FINAL XML before re-encoding — fail loudly rather

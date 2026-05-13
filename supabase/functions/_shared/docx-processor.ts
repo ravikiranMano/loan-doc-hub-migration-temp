@@ -462,6 +462,26 @@ export function validateContentXmlPart(partName: string, xml: string): void {
   }
 }
 
+export function repairOrphanedSdtOpen(xml: string): { xml: string; repaired: number } {
+  const openRe = /<w:sdt\b[^>]*>/g;
+  const closeRe = /<\/w:sdt>/g;
+  const events: Array<{ pos: number; end: number; kind: 'open' | 'close' }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = openRe.exec(xml)) !== null) events.push({ pos: m.index, end: m.index + m[0].length, kind: 'open' });
+  while ((m = closeRe.exec(xml)) !== null) events.push({ pos: m.index, end: m.index + m[0].length, kind: 'close' });
+  events.sort((a, b) => a.pos - b.pos);
+  const stack: Array<{ pos: number; end: number }> = [];
+  for (const ev of events) {
+    if (ev.kind === 'open') stack.push({ pos: ev.pos, end: ev.end });
+    else stack.pop();
+  }
+  if (stack.length !== 1) return { xml, repaired: 0 };
+  const orphan = stack[0];
+  const nextStructural = xml.slice(orphan.end, orphan.end + 400);
+  if (!/^\s*(?:<w:sdtPr\b|<w:sdtContent\b)/.test(nextStructural)) return { xml, repaired: 0 };
+  return { xml: xml.slice(0, orphan.pos) + xml.slice(orphan.end), repaired: 1 };
+}
+
 /**
  * OOXML requires every <w:tc> (table cell) to contain at least one <w:p>.
  * Post-render safety passes can splice runs in/out and occasionally leave
