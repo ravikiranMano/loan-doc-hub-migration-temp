@@ -234,10 +234,22 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
   };
 
   const handleLenderSelect = (id: string, lenderId: string, lenderName: string) => {
-    // Auto-fill from funding records
+    // Auto-fill from funding records. Pro Rata uses the sum-of-funding
+    // denominator so it matches the grid display.
     const fundingMatch = fundingRecords.find(
       (r) => r.lenderAccount === lenderId || r.lenderName === lenderName
     );
+    let matchProRata: number | undefined;
+    if (fundingMatch) {
+      const totalFunded = fundingRecords.reduce(
+        (s, r) => s + (Number(r.principalBalance) || 0), 0
+      );
+      if (totalFunded > 0) {
+        matchProRata = parseFloat(
+          ((Number(fundingMatch.principalBalance) || 0) / totalFunded * 100).toFixed(4)
+        );
+      }
+    }
     setLenders((prev) =>
       prev.map((l) =>
         l.id === id
@@ -248,7 +260,9 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
               currentBalance: fundingMatch
                 ? formatCurrencyDisplay(String(fundingMatch.principalBalance))
                 : l.currentBalance,
-              proRata: fundingMatch ? formatPercentDisplay(fundingMatch.pctOwned, 4) : l.proRata,
+              proRata: fundingMatch
+                ? formatPercentDisplay(matchProRata ?? fundingMatch.pctOwned, 4)
+                : l.proRata,
               lenderRate: fundingMatch ? formatPercentDisplay(fundingMatch.lenderRate, 3) : l.lenderRate,
               payment: fundingMatch
                 ? formatCurrencyDisplay(String(fundingMatch.regularPayment))
