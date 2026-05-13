@@ -3721,6 +3721,40 @@ async function generateSingleDocument(
               set(`pr_p_additionalEncumbrance_${pIdx}_no_glyph`,  isYes ? "☐" : "☑", "text");
               debugLog(`[generate-document] RE851D additional-encumbrance PROP#${pIdx}: rem=${remN} ant=${antN} → ${isYes ? "YES" : "NO"}`);
             }
+
+            // ── Global (non-indexed) Additional Encumbrances aliases ──
+            // Aggregate across all properties: if ANY property exceeds 2 remaining
+            // OR 2 anticipated liens, OR the totals across all properties exceed
+            // 2 in either bucket, force the global YES checkbox. Otherwise NO.
+            // Tags: {{pr_li_additionalEncumbranceYes}} / {{pr_li_additionalEncumbranceNo}}
+            // (plus _glyph variants and pr_p_* mirrors for legacy templates).
+            let totalRem = 0;
+            let totalAnt = 0;
+            let anyPropOver = false;
+            for (const pIdx of allPropIdx) {
+              const remN = perPropRem[pIdx]?.length ?? 0;
+              const antN = perPropAnt[pIdx]?.length ?? 0;
+              totalRem += remN;
+              totalAnt += antN;
+              if (remN > 2 || antN > 2) anyPropOver = true;
+            }
+            const globalYes = anyPropOver || totalRem > 2 || totalAnt > 2;
+            const setG = (k: string, v: string, dt: string) =>
+              fieldValues.set(k, { rawValue: v, dataType: dt });
+            setG("pr_li_additionalEncumbranceYes",        globalYes ? "true"  : "false", "boolean");
+            setG("pr_li_additionalEncumbranceNo",         globalYes ? "false" : "true",  "boolean");
+            setG("pr_li_additionalEncumbranceYes_glyph",  globalYes ? "☑"     : "☐",     "text");
+            setG("pr_li_additionalEncumbranceNo_glyph",   globalYes ? "☐"     : "☑",     "text");
+            setG("pr_li_additionalEncumbrance_yes",       globalYes ? "true"  : "false", "boolean");
+            setG("pr_li_additionalEncumbrance_no",        globalYes ? "false" : "true",  "boolean");
+            setG("pr_li_additionalEncumbrance_yes_glyph", globalYes ? "☑"     : "☐",     "text");
+            setG("pr_li_additionalEncumbrance_no_glyph",  globalYes ? "☐"     : "☑",     "text");
+            // pr_p_* mirrors (legacy template variants)
+            setG("pr_p_additionalEncumbranceYes",         globalYes ? "true"  : "false", "boolean");
+            setG("pr_p_additionalEncumbranceNo",          globalYes ? "false" : "true",  "boolean");
+            setG("pr_p_additionalEncumbranceYes_glyph",   globalYes ? "☑"     : "☐",     "text");
+            setG("pr_p_additionalEncumbranceNo_glyph",    globalYes ? "☐"     : "☑",     "text");
+            debugLog(`[generate-document] RE851D additional-encumbrance GLOBAL: totalRem=${totalRem} totalAnt=${totalAnt} anyPropOver=${anyPropOver} → ${globalYes ? "YES" : "NO"}`);
           }
         }
 
