@@ -1,27 +1,48 @@
-## Plan
+## Plan to fix RE851D generation performance
 
-1. **Remove the corrupting RE851D balloon-label insertion path**
-   - The latest logs show the final XML now fails with `unbalanced <w:r>` and the diagnostic window contains `</w:r>w:r>... NO #if`.
-   - That points to the RE851D post-render encumbrance balloon pass inserting a synthetic `YES / NO / Unknown` label run at an unsafe run boundary.
-   - Keep the checkbox/glyph forcing logic, but stop injecting new label runs there. The template already contains those labels; this avoids creating malformed Word run XML.
+### What I found
+- The app already returns a `generation_jobs` job ID immediately and uses background processing, but the heavy work still runs inside the same backend function CPU budget.
+- Recent logs show the generic DOCX merge phase is relatively fast, but RE851D still times out after rendering because the function performs many RE851D-specific template rewrites and post-render safety passes over a ~4.4MB `word/document.xml`.
+- The uploaded RE851D template still contains generic `_N` placeholders, unsupported `(N)_(S)` encumbrance placeholders, and conditionals; the backend currently compensates with expensive runtime scans.
 
-2. **Tighten the RE851D balloon cleanup**
-   - Keep cleanup limited to `<w:t>` text nodes.
-   - Strip leftover balloon Handlebars fragments like `#if`, `else`, `/if`, and `pr_li_*_balloon*` text after glyph forcing so the document does not display template syntax.
-   - Do not alter surrounding paragraphs, tables, or runs beyond those text bodies.
+### Implementation steps
 
-3. **Reduce CPU risk on the failing flow**
-   - Avoid unnecessary extra insert/edit work in the large RE851D post-render section.
-   - Preserve the existing final integrity check, but the pass should now have fewer edits and avoid the malformed run that triggers retries/timeouts.
+1. **Add a RE851D flat variable builder**
+   - Create a dedicated backend helper in `generate-document/index.ts` for RE851D that builds all required `*_1` through `*_5` keys before DOCX rendering.
+   - Populate every missing property slot with safe defaults:
+     - text/amount fields: `''`
+     - unchecked glyph fields: `☐`
+     - mutually exclusive yes/no glyphs: deterministic `☑` / `☐` where applicable.
+   - Include the known RE851D families already referenced by the template: property values, property tax fields, property type glyphs, occupancy glyphs, lien delinquency glyphs, source-of-information glyphs, encumbrance rows, and additional-property glyphs.
 
-4. **Validate against the actual failing case**
-   - Deploy `generate-document` after the code change.
-   - Invoke generation for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` and template `43492f94-60ad-44c3-a8c2-24dabf36eac7`.
-   - Confirm logs no longer show `DOCX_INTEGRITY` or `CPU Time exceeded` and that a new successful `generated_documents` record appears.
+2. **Pre-resolve RE851D conditionals into values before render**
+   - Convert known RE851D conditional logic into flat keys such as:
+     - `pr_p_occupancyYesGlyph_1..5`
+     - `pr_p_occupancyNoGlyph_1..5`
+     - `pr_p_performedByBrokerText_1..5`
+     - property tax delinquent yes/no glyphs.
+   - Add these keys to the render data so the generic renderer does not need to evaluate repeated `{{#if (eq ...)}}` blocks for RE851D.
 
-5. **Clear/handle stale running jobs if needed**
-   - If the existing `running` job remains stale from the prior CPU-killed attempt, mark or let the next request mark it failed via the existing stale-job sweep so the UI can reflect the new result.
+3. **Normalize the RE851D template once before rendering**
+   - Keep the existing `_N` expansion, but make it a single deterministic pre-render pass.
+   - Also translate legacy encumbrance placeholders like `_(N)_(S)` into concrete `_property_slot` keys before the merge engine sees them.
+   - Replace known RE851D inline checkbox conditionals with direct flat glyph placeholders or already-resolved literal glyphs.
 
-<presentation-actions>
-<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
-</presentation-actions>
+4. **Reduce or bypass expensive RE851D post-render safety passes**
+   - Once glyphs and conditionals are pre-resolved, remove the need for repeated full-document scans for owner-occupied, multiple-properties, remain-unpaid, cure-delinquency, 60-day, encumbrance-of-record, and attachment checkbox fixes.
+   - Keep a lightweight final validation/repair pass only, so malformed XML is still caught before upload.
+   - Leave existing non-RE851D behavior unchanged.
+
+5. **Add short-lived generation caching**
+   - Use a 5-minute cache key based on `dealId + templateId + template version/file path + outputType`.
+   - If the same RE851D document was generated successfully moments ago, return the cached/generated document result instead of recomputing.
+   - Prefer using existing `generated_documents` records where possible; add a minimal cache table only if needed for reliable template-version matching.
+
+6. **Tighten timeout and job handling**
+   - Keep async job behavior, but add a 60-second logical timeout guard around the generation task so failures are recorded cleanly instead of leaving jobs stuck as `running`.
+   - Note: this does not raise the backend CPU limit; the real fix is the RE851D fast path above.
+
+7. **Validate with the uploaded RE851D template**
+   - Run a local/template-level DOCX inspection against `RE851D-V12.1-5.docx` to verify placeholders normalize correctly.
+   - Confirm generated `word/document.xml` is well-formed and no unresolved `_N`, `(N)`, or broken conditional markers remain.
+   - Check logs show the RE851D render path avoids the repeated post-render scans and completes before the CPU limit.
