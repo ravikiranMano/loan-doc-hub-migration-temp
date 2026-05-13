@@ -29,7 +29,7 @@ function cleanupWordXml(xml: string): string {
 
   // 1. Strip mc:Fallback blocks first — biggest win on templates with many
   //    text boxes / shapes (RE851D V12 was ~63% of file size).
-  out = out.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+  out = out.replace(/<mc:Fallback\b[^>]*>[\s\S]*?<\/mc:Fallback>/g, "");
 
   // 2. Unwrap mc:AlternateContent that now contains only an mc:Choice.
   //    Iterate until stable to handle nested AlternateContent.
