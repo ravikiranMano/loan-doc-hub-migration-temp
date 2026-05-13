@@ -2964,7 +2964,9 @@ async function generateSingleDocument(
         if (cbEntries && cbEntries.length > 0) {
           const sorted = [...cbEntries].sort((a, b) => a.index - b.index);
           const firstVal = sorted[0].value;
-          const formatted = formatCurrency(firstVal);
+          const firstNum = parseFloat(String(firstVal).replace(/[^0-9.-]/g, ""));
+          const rawCurrency = Number.isFinite(firstNum) ? firstNum.toFixed(2) : firstVal;
+          const formatted = formatCurrency(rawCurrency);
           const aliases = [
             "pr_li_lienCurrenBalanc",
             "pr_p_currentBalanc",
@@ -2972,7 +2974,7 @@ async function generateSingleDocument(
             "li_lt_currentBalance",
           ];
           for (const alias of aliases) {
-            fieldValues.set(alias, { rawValue: formatted, dataType: "currency" });
+            fieldValues.set(alias, { rawValue: rawCurrency, dataType: "currency" });
           }
           debugLog(`[generate-document] Forced 1st-lien-only current_balance for aliases [${aliases.join(", ")}]: ${formatted} (raw=${firstVal})`);
         }
