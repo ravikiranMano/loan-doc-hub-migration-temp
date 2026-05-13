@@ -4284,7 +4284,7 @@ async function generateSingleDocument(
           const original = decoder.decode(data);
           // Cheap exit: skip parts with no detectable noise.
           if (
-            !original.includes("<mc:Fallback>") &&
+            !original.includes("<mc:Fallback") &&
             !/\sw:rsid[A-Za-z]*="/.test(original) &&
             !original.includes("<w:proofErr") &&
             !original.includes("<w:lastRenderedPageBreak") &&
