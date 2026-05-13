@@ -43,6 +43,8 @@ import { formatCurrencyDisplay } from '@/lib/numericInputFilter';
 const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: 'lenderAccount', label: 'Lender ID', visible: true },
   { id: 'lenderName', label: 'Name', visible: true },
+  { id: 'lenderEmail', label: 'Email', visible: true },
+  { id: 'lenderPhone', label: 'Phone', visible: true },
   { id: 'originalAmount', label: 'Funding Amount', visible: true },
   { id: 'currentBalance', label: 'Current Balance', visible: true },
   
