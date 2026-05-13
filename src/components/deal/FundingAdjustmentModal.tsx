@@ -129,8 +129,29 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
       setDescription('');
       setDescriptionType('');
 
-      // Pre-populate lender rows from existing funding records
+      // Pre-populate lender rows from existing funding records.
+      // Pro Rata is recomputed locally as principalBalance / SUM(principalBalance)
+      // so it always reflects funded totals, not the original loan amount. The
+      // funding record flagged with `roundingAdjustment` absorbs the fractional
+      // residual so the column totals 100.0000%.
       if (fundingRecords.length > 0) {
+        const totalFunded = fundingRecords.reduce(
+          (s, r) => s + (Number(r.principalBalance) || 0), 0
+        );
+        const adjIdx = fundingRecords.findIndex(r => (r as any).roundingAdjustment);
+        const proRataMap = new Map<string, number>();
+        if (totalFunded > 0) {
+          let sumOthers = 0;
+          fundingRecords.forEach((r, i) => {
+            if (i === adjIdx) return;
+            const pct = parseFloat(((Number(r.principalBalance) || 0) / totalFunded * 100).toFixed(4));
+            proRataMap.set(r.id, pct);
+            sumOthers += pct;
+          });
+          if (adjIdx >= 0) {
+            proRataMap.set(fundingRecords[adjIdx].id, parseFloat((100 - sumOthers).toFixed(4)));
+          }
+        }
         setLenders(
           fundingRecords.map((r) => ({
             id: `adj-${r.id}`,
@@ -138,7 +159,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
             name: r.lenderName,
             currentBalance: formatCurrencyDisplay(String(r.principalBalance)),
             adjustment: '',
-            proRata: formatPercentDisplay(r.pctOwned, 4),
+            proRata: formatPercentDisplay(proRataMap.get(r.id) ?? r.pctOwned, 4),
             lenderRate: formatPercentDisplay(r.lenderRate, 3),
             payment: formatCurrencyDisplay(String(r.regularPayment)),
           }))
