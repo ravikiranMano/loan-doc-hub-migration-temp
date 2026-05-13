@@ -3336,7 +3336,7 @@ async function generateSingleDocument(
           if (pm) {
             const pIdx = parseInt(pm[1], 10);
             if (!perProp[pIdx]) {
-              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null, sourceOfInfoText: "", sourceOfInfoPriorityFound: false };
+              perProp[pIdx] = { paidByLoan: false, delinq60: false, howMany: 0, currentDelinq: false, remainUnpaid: false, source: [], hasLien: false, allPaidOff: true, anyPaidOff: false, sourceInfoFirst: "", sourceInfoFirstLienIdx: null, sourceOfInfoText: "", sourceOfInfoPriorityFound: false };
             }
             const b = perProp[pIdx];
             b.hasLien = true;
@@ -3345,6 +3345,7 @@ async function generateSingleDocument(
             if (paidByLoan) b.paidByLoan = true;
             if (has60) b.delinq60 = true;
             if (currentDelinq) b.currentDelinq = true;
+            if (remainUnpaid) b.remainUnpaid = true;
             if (Number.isFinite(howManyNum) && howManyNum > 0) b.howMany += howManyNum;
             if (source) b.source.push(source);
             if (b.sourceInfoFirstLienIdx === null) {
