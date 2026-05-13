@@ -4287,7 +4287,7 @@ async function generateSingleDocument(
           ) {
             continue;
           }
-          let cleaned = original.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
+          let cleaned = original.replace(/<mc:Fallback\b[^>]*>[\s\S]*?<\/mc:Fallback>/g, "");
           // Single AlternateContent unwrap pass — Word emits at most one
           // Fallback per Choice so iterating to fixpoint costs >300ms on
           // large templates and yields no further reduction.
