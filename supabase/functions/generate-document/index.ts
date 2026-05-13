@@ -7453,7 +7453,7 @@ async function generateSingleDocument(
     // matching "set forth in an attachment" YES checkbox (NO if false), then
     // append an Addendum section at the end of word/document.xml listing the
     // overflow liens (3rd onward) split by Remaining vs Anticipated.
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       try {
         // Re-derive per-property remaining/anticipated lien lists from fieldValues.
         const lienPrefixesAEA = new Set<string>();
