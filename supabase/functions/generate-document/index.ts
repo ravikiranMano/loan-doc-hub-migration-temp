@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
@@ -8266,9 +8266,32 @@ async function generateSingleDocument(
                 `[generate-document] RE851D post-render flush: removed ${sdtRepaired.repaired} orphaned <w:sdt> opener in ${k}`,
               );
             }
+            // Heal unclosed <w:rPr> blocks left behind by post-render regex
+            // replacements (root cause of "expected </w:rPr> before </w:p>").
+            const rPrRepaired = repairUnclosedRunProperties(__xmlStrCache[k]);
+            if (rPrRepaired.repaired > 0) {
+              __xmlStrCache[k] = rPrRepaired.xml;
+              console.log(
+                `[generate-document] RE851D post-render flush: closed ${rPrRepaired.repaired} unclosed <w:rPr> in ${k}`,
+              );
+            }
             // Validate the FINAL XML before re-encoding — fail loudly rather
             // than upload a corrupt DOCX that Word will refuse to open.
-            validateContentXmlPart(k, __xmlStrCache[k]);
+            try {
+              validateContentXmlPart(k, __xmlStrCache[k]);
+            } catch (vErr) {
+              const vMsg = vErr instanceof Error ? vErr.message : String(vErr);
+              const offMatch = vMsg.match(/offset (\d+)/);
+              if (offMatch) {
+                const off = parseInt(offMatch[1], 10);
+                const ctxStart = Math.max(0, off - 240);
+                const ctxEnd = Math.min(__xmlStrCache[k].length, off + 80);
+                console.error(
+                  `[generate-document] DOCX integrity context for ${k} @${off}: …${__xmlStrCache[k].slice(ctxStart, ctxEnd).replace(/\s+/g, " ")}…`,
+                );
+              }
+              throw vErr;
+            }
             flushZip[k] = [flushEncoder.encode(__xmlStrCache[k]), { level: 0 }];
           } else {
             flushZip[k] = [v, { level: 0 }];
