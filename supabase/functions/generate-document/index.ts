@@ -3319,6 +3319,24 @@ async function generateSingleDocument(
             dataType: "currency",
           });
           debugLog(`[generate-document] Published pr_li_totalLienPlusLoan = ${result.toFixed(2)}`);
+
+          // ── Calculated field: pr_li_totalLienLoanToValue ──
+          // (pr_li_totalLienPlusLoan / pr_pd_estimateValue) expressed as a percentage.
+          const estimate = toNum(
+            fieldValues.get("pr_pd_estimateValue")?.rawValue
+              ?? fieldValues.get("pr_p_appraiseValue")?.rawValue
+              ?? fieldValues.get("property1.appraise_value")?.rawValue
+          );
+          if (estimate > 0) {
+            const ltv = (result / estimate) * 100;
+            fieldValues.set("pr_li_totalLienLoanToValue", {
+              rawValue: `${ltv.toFixed(2)}%`,
+              dataType: "percentage",
+            });
+            debugLog(`[generate-document] Published pr_li_totalLienLoanToValue = ${ltv.toFixed(2)}% (${result}/${estimate})`);
+          } else {
+            debugLog(`[generate-document] Skipped pr_li_totalLienLoanToValue: estimate=${estimate}`);
+          }
         }
       }
 
