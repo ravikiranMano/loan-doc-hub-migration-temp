@@ -1,12 +1,41 @@
-Root cause: the RE851D template is still too large/noisy for the current backend function CPU budget. The actual DOCX merge render is fast (~127ms), but the function is killed immediately after that because it also runs several RE851D-specific pre/post-processing passes on a ~4.4MB `word/document.xml`. The uploaded template contains heavy Word authoring noise (`mc:Fallback`, `rsid`, `proofErr`) and fragmented placeholders, so updating field mappings alone will not fix it.
+## Plan to restore RE851D document generation
 
-Plan:
-1. Route template uploads through the existing `upload-template` backend function instead of direct browser-to-storage uploads, so cleanup runs before the template is saved.
-2. Tighten the template cleanup to fully remove authoring bloat and preserve merge tags, reducing RE851D runtime work before generation.
-3. Add timing logs around RE851D pre-processing, post-render flush, storage upload, and document record creation so future failures show the exact stage.
-4. Add a safer stale-job sweep on the documents page so old `Running` jobs are marked failed even when the user does not start a new retry.
-5. Deploy the changed backend functions and validate by checking that generation no longer reaches the CPU kill point.
+### Goal
+Make RE851D generate a downloadable DOCX again while keeping the Word-openability protection that prevents corrupt files from being marked as successful.
 
-Technical notes:
-- Files to update: `src/pages/admin/TemplateManagementPage.tsx`, `src/pages/csr/DealDocumentsPage.tsx`, `supabase/functions/upload-template/index.ts`, `supabase/functions/generate-document/index.ts`, and likely `supabase/config.toml` to expose the upload function.
-- No schema change is required unless the stale-job sweep needs a backend endpoint; if a database change becomes necessary, I will keep it separate for approval.
+### What I found
+- The latest RE851D jobs now fail before upload with:
+  - `word/document.xml is not well-formed XML`
+  - `expected </w:rPr> before </w:p> at offset 343087`
+- This is happening after the RE851D post-render safety passes, not during the initial template render.
+- The prior fix correctly prevents bad DOCX files from being saved as “success,” but generation now needs a repair pass for this specific malformed run/property block.
+- Other documents can still generate; I saw a recent `re851a` success, so the failure is scoped to RE851D.
+
+### Implementation steps
+1. **Add a targeted malformed-run repair before final validation**
+   - In the RE851D post-render flush step, run a small repair pass only on dirty Word content XML parts.
+   - Repair the exact invalid shape: a paragraph closes while Word XML is still inside `<w:rPr>`.
+   - The repair will close the dangling `<w:rPr>` before `</w:p>` rather than disabling validation.
+
+2. **Improve integrity diagnostics without exposing noisy user-facing errors**
+   - Keep the strict final XML check.
+   - Add a short internal context log around the failing offset so future XML issues can be diagnosed quickly.
+   - Keep the UI failure message concise.
+
+3. **Re-run RE851D generation for the current deal/template**
+   - Trigger the same single-document generation for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` and template `RE851D`.
+   - Confirm the job reaches `success` and creates a new `generated_documents` record.
+
+4. **Validate the generated DOCX structure**
+   - Download the newly generated DOCX from storage.
+   - Parse `word/document.xml` locally to confirm it is well-formed.
+   - Confirm no old `mc:Fallback` orphan issue remains.
+
+### Technical details
+- Files to update:
+  - `supabase/functions/_shared/docx-processor.ts`
+  - `supabase/functions/generate-document/index.ts`
+- No database schema changes.
+- No frontend/UI changes.
+- No changes to field mapping or document data persistence.
+- The existing safety validation stays enabled; the fix repairs malformed XML before the validation gate instead of bypassing it.
