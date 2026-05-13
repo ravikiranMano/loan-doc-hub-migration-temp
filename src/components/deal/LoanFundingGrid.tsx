@@ -193,7 +193,7 @@ interface LoanFundingGridProps {
   onDeleteHistoryRecord?: (record: { id: string }) => void;
 }
 
-const SEARCH_FIELDS = ['lenderAccount', 'lenderName'];
+const SEARCH_FIELDS = ['lenderAccount', 'lenderName', 'lenderEmail', 'lenderPhone'];
 
 const buildFundingFilterOptions = (records: FundingRecord[]): FilterOption[] => {
   const uniqueAccounts = [...new Set(records.map(r => r.lenderAccount).filter(Boolean))];
