@@ -7907,8 +7907,12 @@ async function generateSingleDocument(
                       // Strip orphan {{else}} / {{/if}} markers that flanked
                       // those fragments (only when balloon residue triggered
                       // this branch — confined to this <w:t>).
+                      cleaned = cleaned.replace(/\{\{\s*#if\s*\}\}/g, "");
+                      cleaned = cleaned.replace(/\b#if\b/g, "");
                       cleaned = cleaned.replace(/\{\{\s*else\s*\}\}/g, "");
                       cleaned = cleaned.replace(/\{\{\s*\/if\s*\}\}/g, "");
+                      cleaned = cleaned.replace(/\belse\b/g, "");
+                      cleaned = cleaned.replace(/\/?if\b/g, "");
                       // Strip bare token text variants:
                       //   pr_li_ant_balloonYes_(N)_(S)
                       //   pr_li_ant_balloonNo_2_1
