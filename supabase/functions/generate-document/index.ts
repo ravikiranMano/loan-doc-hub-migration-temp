@@ -4347,7 +4347,7 @@ async function generateSingleDocument(
     // remain blank. We rewrite each occurrence by document order, capped at 5
     // (the spec's maximum properties per RE851D). Strictly scoped to known
     // RE851D placeholder families — no other tags are touched.
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       try {
         // Full set of _N families that appear inside PROPERTY #K blocks.
         const RE851D_INDEXED_TAGS = [
