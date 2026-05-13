@@ -2228,6 +2228,36 @@ async function generateSingleDocument(
       }
     }
 
+    // Auto-compute ln_p_proRataPayment for RE851A when it has not been saved yet.
+    // The app-side calculation engine computes calculated dictionary fields before save,
+    // but document generation must also publish this runtime alias so templates render
+    // {{ln_p_proRataPayment}} from the saved input fields alone.
+    {
+      const existingProRataPayment = fieldValues.get("ln_p_proRataPayment");
+      if (!existingProRataPayment || existingProRataPayment.rawValue === undefined || existingProRataPayment.rawValue === null || existingProRataPayment.rawValue === "") {
+        const numFromKeysPR = (...keys: string[]): number | null => {
+          for (const k of keys) {
+            const raw = fieldValues.get(k)?.rawValue;
+            if (raw === undefined || raw === null || raw === "") continue;
+            const n = parseFloat(String(raw).replace(/[^0-9.-]/g, ""));
+            if (!isNaN(n)) return n;
+          }
+          return null;
+        };
+        const estimatedBalloon = numFromKeysPR("ln_p_estimateBallooPaymen", "loan_terms.estimated_balloon_payment");
+        const regularPayment = numFromKeysPR("ln_p_regularPaymen", "loan_terms.regular_payment");
+        const proRata = numFromKeysPR("loan_terms.pro_rata", "ln_p_proRata");
+
+        if (estimatedBalloon !== null && regularPayment !== null && proRata !== null && proRata !== 0) {
+          const proRataPayment = (estimatedBalloon + regularPayment) / proRata;
+          const proRataStr = proRataPayment.toFixed(2);
+          fieldValues.set("ln_p_proRataPayment", { rawValue: proRataStr, dataType: "currency" });
+          fieldValues.set("loan_terms.pro_rata_payment", { rawValue: proRataStr, dataType: "currency" });
+          debugLog(`[generate-document] Auto-computed ln_p_proRataPayment = ${proRataStr} (estimatedBalloon=${estimatedBalloon}, regularPayment=${regularPayment}, proRata=${proRata})`);
+        }
+      }
+    }
+
     // ── Auto-compute Monthly Payment (P&I) — ln_monthlyPayment_PI ──
     // Standard US amortization: P * r / (1 - (1+r)^-n) where r = annualRate/12/100, n = term months.
     // Edge cases: zero rate → P/n; zero term → 0. Null inputs treated as 0.
