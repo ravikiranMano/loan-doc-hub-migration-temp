@@ -25,6 +25,9 @@ interface FundingDetailFormProps {
   onChange: (data: FundingFormData) => void;
   totalPayment?: string;
   loanAmount?: string;
+  /** Sum of funding amounts across sibling records (excluding this row). When
+   *  provided, Pro Rata is computed as fundingAmount / (siblingTotal + fundingAmount). */
+  siblingFundingTotal?: number;
 }
 
 export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
@@ -32,6 +35,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
   onChange,
   totalPayment = '',
   loanAmount = '',
+  siblingFundingTotal,
 }) => {
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
   const [interestFromOpen, setInterestFromOpen] = useState(false);
@@ -58,17 +62,21 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     onChange({ ...data, interestFrom: date ? format(date, 'yyyy-MM-dd') : '' });
   }, [data, onChange]);
 
-  // Auto-compute Percent Owned = Funding Amount / Loan Amount * 100 (no cap – show error)
+  // Auto-compute Percent Owned = Funding Amount / Total Funded * 100. Total
+  // Funded = sum of all lender funding amounts. Falls back to loan amount only
+  // when sibling totals aren't supplied (preserves legacy behavior).
   React.useEffect(() => {
     const fa = safeParseFloat(data.fundingAmount);
-    const la = safeParseFloat(loanAmount);
-    if (la > 0 && fa > 0) {
-      const computed = roundPctForStorage(fa / la * 100);
+    const denom = typeof siblingFundingTotal === 'number'
+      ? (siblingFundingTotal + fa)
+      : safeParseFloat(loanAmount);
+    if (denom > 0 && fa > 0) {
+      const computed = roundPctForStorage(fa / denom * 100);
       if (computed !== data.percentOwned) {
         onChange({ ...data, percentOwned: computed });
       }
     }
-  }, [data.fundingAmount, loanAmount]);
+  }, [data.fundingAmount, loanAmount, siblingFundingTotal]);
 
   // Regular Payment = Loan Amount × Rate / 12 (always based on TOTAL LOAN)
   React.useEffect(() => {

@@ -41,7 +41,7 @@ interface AddFundingModalProps {
   loanAmount?: string;
   loanPrincipalBalance?: string;
   remainingPayments?: number;
-  existingRecords?: Array<{ id: string; roundingError: boolean; pctOwned: number }>;
+  existingRecords?: Array<{ id: string; roundingError: boolean; pctOwned: number; originalAmount?: number }>;
   editingRecordId?: string;
 }
 
@@ -373,19 +373,24 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     }
   }, [formData.lenderRate, formData.rateLenderValue]);
 
-  // Auto-compute Percent Owned
+  // Auto-compute Percent Owned = this row's funding amount / SUM of all
+  // funding amounts (current row + sibling records, excluding the row being
+  // edited so it doesn't get double-counted).
   React.useEffect(() => {
     const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-    const la = parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
-    if (la > 0 && fa > 0) {
-      const computed = roundPctForStorage(fa / la * 100);
+    const siblingTotal = (existingRecords || [])
+      .filter(r => r.id !== editingRecordId)
+      .reduce((s, r) => s + (Number(r.originalAmount) || 0), 0);
+    const totalFunded = siblingTotal + fa;
+    if (totalFunded > 0 && fa > 0) {
+      const computed = roundPctForStorage(fa / totalFunded * 100);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
     } else if (fa === 0 && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.fundingAmount, loanAmount]);
+  }, [formData.fundingAmount, existingRecords, editingRecordId]);
 
   // Auto-default Current Balance from Original Funding minus disbursements (only when not manually edited)
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);

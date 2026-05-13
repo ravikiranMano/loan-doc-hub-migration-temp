@@ -330,24 +330,44 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return map;
   }, [fundingRecords, remainingPayments, noteRate]);
 
-  // Pro Rata rounding: if a record is flagged with `roundingAdjustment`,
-  // absorb the fractional difference between the sum of pctOwned values and
-  // exactly 100% into that record so the column total equals 100%.
+  // Pro Rata: derived from each lender's funding amount over the SUM of all
+  // funding amounts (not the original loan amount). Rounded to 4 decimals.
+  // The lender flagged with `roundingAdjustment` absorbs only the fractional
+  // residual so the column always totals 100.0000%.
   const computedPctOwned = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
-    fundingRecords.forEach(r => map.set(r.id, Number(r.pctOwned) || 0));
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    if (adjIdx < 0) return map;
-    const sum = fundingRecords.reduce(
-      (acc, r) => acc.plus(new Decimal(Number(r.pctOwned) || 0)),
+    const totalFunded = fundingRecords.reduce(
+      (acc, r) => acc.plus(new Decimal(Number(r.originalAmount) || 0)),
       new Decimal(0)
     );
-    const diff = new Decimal(100).minus(sum);
-    if (diff.isZero()) return map;
-    const adjRec = fundingRecords[adjIdx];
-    const adjusted = new Decimal(Number(adjRec.pctOwned) || 0).plus(diff).toNumber();
-    map.set(adjRec.id, adjusted);
+    if (totalFunded.lte(0)) {
+      fundingRecords.forEach(r => map.set(r.id, 0));
+      return map;
+    }
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    let sumOthers = new Decimal(0);
+    fundingRecords.forEach((r, i) => {
+      if (i === adjIdx) return;
+      const pct = new Decimal(Number(r.originalAmount) || 0)
+        .div(totalFunded)
+        .times(100)
+        .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
+      map.set(r.id, pct.toNumber());
+      sumOthers = sumOthers.plus(pct);
+    });
+    if (adjIdx >= 0) {
+      const adjRec = fundingRecords[adjIdx];
+      const adjPct = new Decimal(100).minus(sumOthers)
+        .toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
+        .toNumber();
+      map.set(adjRec.id, adjPct);
+      const total = Array.from(map.values()).reduce((a, b) => a + b, 0);
+      if (Math.abs(total - 100) > 0.0001) {
+        // eslint-disable-next-line no-console
+        console.error('Pro Rata total is not 100%:', total);
+      }
+    }
     return map;
   }, [fundingRecords]);
 
@@ -915,7 +935,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
         })()}
         remainingPayments={remainingPayments}
-        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned }))}
+        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount }))}
         editingRecordId={selectedRecord?.id}
       />
 
