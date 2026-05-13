@@ -2602,13 +2602,18 @@ export function replaceMergeTags(
       debugLog(`[tag-parser] Tag ${tag.tagName}: canonical=${canonicalKey}, ultimate=${ultimateKey}`);
     }
 
-    // Dedup: if another merge tag already resolved to same ultimate key, blank this one
-    if (resolvedDataKeys.has(ultimateKeyLower)) {
+    // Dedup: if another merge tag already resolved to same ultimate key, blank this one.
+    // Exception: RE851A repeats pr_li_sourceOfPayment in mixed field syntaxes; blanking
+    // the later occurrence leaves the visible "If NO, source of funds..." line empty.
+    const allowRepeatedTextTag = is851A && ultimateKeyLower === "pr_li_sourceofpayment";
+    if (!allowRepeatedTextTag && resolvedDataKeys.has(ultimateKeyLower)) {
       debugLog(`[tag-parser] Dedup: skipping ${tag.tagName} (ultimate ${ultimateKey} already resolved)`);
       tagReplacementMap.set(tag.fullMatch, "");
       continue;
     }
-    resolvedDataKeys.add(ultimateKeyLower);
+    if (!allowRepeatedTextTag) {
+      resolvedDataKeys.add(ultimateKeyLower);
+    }
 
     // Use ultimateKey for data lookup (gets multi-property value when available)
     const resolved = getFieldData(ultimateKey, fieldValues) || getFieldData(canonicalKey, fieldValues);
