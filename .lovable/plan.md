@@ -1,74 +1,61 @@
+## Problem
+
+In the RE851A template, the merge tag `{{br_p_address}}` renders blank (no value) even when the deal has a primary borrower with a street address.
+
 ## Root cause
 
-The "Lien Mapping Only" template (`templates.name = "Lien Mapping Only"`) is authored with **bare placeholder text** like
+The borrower-detail form writes the **street** into the deal under the UI key `borrower.address.street`, which the legacy key map (`src/lib/legacyKeyMap.ts:32`) translates to the field_dictionary entry `br_p_address`. There are three independent paths in `supabase/functions/generate-document/index.ts` that should publish `br_p_address` into the merge map:
 
+1. **Deal section values** (lines ~366–449) — for each `field_values` row, sets `fieldValues.set(fieldDict.field_key, …)`. Works only if the deal saved a row for the `br_p_address` field_dictionary id.
+2. **Participant contact injection** `injectContact(...)` (line 548–551) — sets `${shortPrefix}_address` from `cd["address.street"]` only when shortPrefix is `"br_p"` (primary borrower). Runs `setIfEmpty`, so it fills only when the section path didn't.
+3. **Composite address autocompute** (lines ~2580–2595) — builds the joined `Borrower.Address` / `borrower.address` strings, but never writes back to the short key `br_p_address`.
+
+`br_p_address` ends up empty in three real cases:
+- The borrower form saved the street under a non-canonical UI key (`borrower.address.street`) but legacy resolution at save time stored it under a different composite (`borrower::<other_dict_id>`), so the load step does not produce a row keyed to the `br_p_address` dictionary id.
+- The deal has no `borrower::*` section row for street yet (legacy data) and the participant contact's `contact_data["address.street"]` is missing/empty (street typed only into the deal form, not the contact card).
+- A non-primary borrower contact is the source of the address, so `shortPrefix === "br_p"` injection skips it.
+
+In all three cases, the existing `borrower.address.street` value sits in `fieldValues` (set by the section loader as a dot-notation key from the bridged composite) but is never copied to `br_p_address`, so the tag stays blank.
+
+## Fix (scoped, backend only)
+
+In `supabase/functions/generate-document/index.ts`, add a small **post-load publisher** for `br_p_address` immediately after the existing "Auto-compute Borrower.Address" block (~line 2595). No schema changes, no template changes, no other field touched.
+
+```text
+After the existing autocompute of borrower.address (full string):
+
+  if (!fieldValues.get("br_p_address")?.rawValue) {
+    const street =
+      fieldValues.get("borrower.address.street")?.rawValue ||
+      fieldValues.get("borrower1.address.street")?.rawValue ||
+      fieldValues.get("borrower.street")?.rawValue ||
+      fieldValues.get("br_p_street")?.rawValue ||
+      // last-resort: pull from primary borrower contact_data already loaded above
+      primaryBorrowerContactData?.["address.street"];
+    if (street && String(street).trim() !== "") {
+      fieldValues.set("br_p_address", { rawValue: String(street), dataType: "text" });
+      debugLog(`[generate-document] Auto-published br_p_address = "${street}"`);
+    }
+  }
 ```
-pr_li_rem_priority_{P}_{S}
-pr_li_rem_interestRate_{P}_{S}
-…
-```
 
-instead of the handlebar form `{{pr_li_rem_priority_1_1}}`. Two things go wrong as a result:
-
-1. The merge-tag parser (`supabase/functions/_shared/tag-parser.ts`) only resolves text wrapped in `{{ … }}` (or Word merge fields). Bare text is left untouched and prints verbatim.
-2. The existing indexed `_N_S` rewrite (`supabase/functions/generate-document/index.ts` lines 4350–4546) and the post-render publisher only target the indexed numeric form `_N` / `_N_S`; the literal `{P}` / `{S}` tokens never become indices, so even with the recent `isEncumbrancePipeline` gate the data publishers have nothing to bind to.
-
-Since this template has no `PROPERTY #K` headings (it's the standalone single-property liens block) the indexed rewrite would also leave `_N` as `_N` for it.
-
-## Fix (single, additive pre-pass for `isLienMappingTemplate` only)
-
-All work lives inside `supabase/functions/generate-document/index.ts`. No DB schema, no template edits, no changes to the tag-parser, post-render publisher, addendum appender, or any other template's behavior.
-
-### 1. Add a "literal `{P}` / `{S}` → handlebar tag" pre-pass
-
-Insert a new block immediately **before** the existing indexed `_N_S` rewrite at line 4350, gated by `isLienMappingTemplate`:
-
-- Unzip `templateBuffer` once with `fflate` (mirroring lines 4544–4547) — already needed by the next pass, so factor the unzip/repack so both passes share one round-trip.
-- For `word/document.xml` (and any `header*.xml` / `footer*.xml`):
-  - Run a tag-parser-style "merge adjacent runs" consolidation (reuse the existing helper from `tag-parser.ts`; it's already exported and used elsewhere) so a literal split across `<w:r>` boundaries is matched.
-  - Scan each `<w:t … >…</w:t>` body for the regex
-    ```
-    pr_li_(rem|ant)_([A-Za-z_]+?)(?:_\{P\})?_\{S\}
-    ```
-    and the `_{P}` only variant
-    ```
-    pr_li_(rem|ant)_([A-Za-z_]+?)_\{P\}(?!_\{S\})
-    ```
-    Only act on `<field>` values inside the existing `ENC_REM_BASES` / `ENC_ANT_BASES` allow-list (lines 5780–5788) plus their snake_case aliases. Everything outside the allow-list is left alone.
-  - For each matched literal, compute:
-    - `P` = current PROPERTY index from the surrounding `PROPERTY #K` anchor (reuse `findAnchorOffsets` from line 4556) → defaults to `1` when no PROPERTY anchor exists (the standalone Lien Mapping case).
-    - `S` = next slot index for `(P, family, fieldBase)`, starting at `1` and incremented per occurrence in document order. Tracked in a `Map<string, number>` keyed by `${P}|${family}|${fieldBase}`.
-  - Replace the literal in place with `{{pr_li_<family>_<fieldBase>_<P>_<S>}}` (using underscored numeric form). The `<w:t>` keeps `xml:space="preserve"` and any sibling formatting runs.
-  - Emit a single counter to `debugLog` for visibility.
-
-Result: by the time control reaches the existing indexed `_N_S` rewrite, the `{P}/{S}` literals no longer exist; the tags are already concrete `{{pr_li_rem_priority_1_1}}` etc. The downstream pipeline runs unchanged:
-
-- The indexed `_N_S` rewrite (line 4350) becomes a no-op for this template.
-- The `effectiveValidFieldKeys` extension (line 5722) already seeds `pr_li_rem_<base>_<P>_<S>` / `pr_li_ant_<base>_<P>_<S>` for `P=1..5, S=1..10`, so resolver priority-1 direct match succeeds.
-- The post-render publisher (already gated by `isEncumbrancePipeline`) emits per-slot values for all four collections (Remaining / Anticipated / overflow Remaining / overflow Anticipated) — no change.
-- The addendum / overflow appender (line 7456, also gated) auto-appends a Page-2 block when `S > 2`, reusing the same tag families with incremented `_S`.
-
-### 2. Balloon Yes/No/Unknown safety pass
-
-The existing label-anchored safety pass (the "balloon glyph flip") at lines ~8047–8105 is gated by template name elsewhere. Verify it runs for `isLienMappingTemplate` (currently `isEncumbrancePipeline` is checked at lines 4275, 4350, 5722, 7456, but the balloon-glyph pass at ~8047 is checked separately). If it isn't, broaden that single gate to `isEncumbrancePipeline`. Strictly a one-line gate change, no logic change.
-
-### 3. No new field_dictionary rows required
-
-Every source field already exists. The `effectiveValidFieldKeys` extension at line 5772–5796 covers `_P`, `_P_S` resolution. No DB migration.
-
-## Files touched
-
-- `supabase/functions/generate-document/index.ts` — add the new pre-pass (~80 lines, gated by `isLienMappingTemplate`); optionally widen the balloon-glyph gate.
-
-## Out of scope
-
-- No changes to `_shared/tag-parser.ts`, `_shared/docx-processor.ts`, `_shared/field-resolver.ts`, or any other template.
-- No DB schema, no `field_dictionary` rows, no template-file edits.
-- No layout/style changes to the generated DOCX.
+This mirrors the existing safety pattern used for `Borrower.Address` and `Lender.Address` (lines 2580–2612) but targets the short-form merge tag specifically. It runs after both the section loader and `injectContact`, so it only fires when nothing else has resolved `br_p_address`.
 
 ## Verification
 
-1. Generate the document for a deal with the "Lien Mapping Only" template and a property that has 1 Remaining lien + 0 Anticipated → main slot `_1_1` populated; `_1_2` blank; addendum not appended.
-2. Same with 3 Remaining + 2 Anticipated → main shows slots 1–2; addendum appended with `_1_3`; Anticipated slots 1–2 populated.
-3. Generate RE851D for the same deal → identical output to current (regression check); the new pre-pass is gated by `isLienMappingTemplate` and is a no-op there.
-4. Generate any other template (RE885, RE851A, etc.) → byte-identical to current.
+1. Generate RE851A on a deal where the borrower street was entered in the deal form only → `{{br_p_address}}` renders the street.
+2. Generate RE851A on a deal where the street exists only in the contact card → `{{br_p_address}}` renders the street.
+3. Regression: generate RE851A on a deal that already has `br_p_address` populated via section row → output unchanged.
+4. Regression: generate RE851D and any other template with `{{br_p_address}}` → identical to current behaviour for the populated case.
+5. Inspect edge function logs for the new `Auto-published br_p_address` debug line to confirm which path resolved it.
+
+## Out of scope
+
+- No changes to `field_dictionary`, `legacyKeyMap.ts`, `field_resolver.ts`, `tag-parser.ts`, or any UI form.
+- No changes to other `br_p_*` keys, `borrower.address` composite, or co-borrower address.
+- No schema migration.
+- No template layout/style change.
+
+## Files to change
+
+- `supabase/functions/generate-document/index.ts` — add ~10 lines after the existing borrower-address autocompute block.
