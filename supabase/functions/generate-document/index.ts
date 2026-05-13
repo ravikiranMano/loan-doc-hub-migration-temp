@@ -3147,6 +3147,8 @@ async function generateSingleDocument(
           const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
           return Number.isFinite(n) ? n : 0;
         };
+        const hasValue = (v: unknown): boolean =>
+          v !== undefined && v !== null && String(v).trim() !== "";
 
         const perLien: Record<string, { cb?: unknown; pd?: unknown }> = {};
         for (const [key, val] of fieldValues.entries()) {
@@ -3158,6 +3160,23 @@ async function generateSingleDocument(
             (perLien[idx] ||= {}).cb = val?.rawValue;
           } else if (field === "existing_paydown_amount" || field === "existingPaydownAmount") {
             (perLien[idx] ||= {}).pd = val?.rawValue;
+          }
+        }
+
+        // Some RE851A deals persist the current lien balance only as the bare
+        // dictionary key (for example property1::pr_li_lienCurrenBalanc), not as
+        // lien1.current_balance. Seed lien #1 from that value so calculated
+        // document-only fields still resolve without requiring a UI resave.
+        if (Object.keys(perLien).length === 0) {
+          const cbRaw = fieldValues.get("pr_li_lienCurrenBalanc")?.rawValue
+            ?? fieldValues.get("pr_p_currentBalanc")?.rawValue
+            ?? fieldValues.get("property1.lien_current_balance")?.rawValue;
+          if (hasValue(cbRaw)) {
+            const pdRaw = fieldValues.get("li_lt_existingPaydownAmount")?.rawValue
+              ?? fieldValues.get("li_bp_existingPaydownAmount")?.rawValue
+              ?? fieldValues.get("lien1.existing_paydown_amount")?.rawValue
+              ?? fieldValues.get("lien.existing_paydown_amount")?.rawValue;
+            perLien["1"] = { cb: cbRaw, pd: pdRaw };
           }
         }
 
@@ -3206,6 +3225,8 @@ async function generateSingleDocument(
           const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
           return Number.isFinite(n) ? n : 0;
         };
+        const hasValue = (v: unknown): boolean =>
+          v !== undefined && v !== null && String(v).trim() !== "";
 
         const perLien: Record<string, { cb?: unknown; bap?: unknown }> = {};
         for (const [key, val] of fieldValues.entries()) {
@@ -3219,6 +3240,17 @@ async function generateSingleDocument(
           const m2 = key.match(/^pr_li_balanceAfterPaydown_(\d+)$/);
           if (m2) {
             (perLien[m2[1]] ||= {}).bap = val?.rawValue;
+          }
+        }
+
+        if (Object.keys(perLien).length === 0) {
+          const cbRaw = fieldValues.get("pr_li_lienCurrenBalanc")?.rawValue
+            ?? fieldValues.get("pr_p_currentBalanc")?.rawValue
+            ?? fieldValues.get("property1.lien_current_balance")?.rawValue;
+          const bapRaw = fieldValues.get("pr_li_balanceAfterPaydown_1")?.rawValue
+            ?? fieldValues.get("pr_li_balanceAfterPaydown")?.rawValue;
+          if (hasValue(cbRaw) || hasValue(bapRaw)) {
+            perLien["1"] = { cb: cbRaw, bap: bapRaw };
           }
         }
 
@@ -3268,15 +3300,20 @@ async function generateSingleDocument(
           const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
           return Number.isFinite(n) ? n : 0;
         };
+        const sumCurrencyLines = (v: unknown): number => {
+          if (typeof v === "string" && v.includes("\n")) {
+            return v.split("\n").reduce((sum, part) => sum + toNum(part), 0);
+          }
+          return toNum(v);
+        };
         const tlb = fieldValues.get("pr_li_totalLienBalance")?.rawValue;
-        const loan = fieldValues.get("ln_p_loanAmount")?.rawValue;
+        const loan = fieldValues.get("ln_p_loanAmount")?.rawValue
+          ?? fieldValues.get("loan_terms.loan_amount")?.rawValue;
         const hasAny =
           (tlb !== undefined && tlb !== null && String(tlb).trim() !== "") ||
           (loan !== undefined && loan !== null && String(loan).trim() !== "");
         if (hasAny) {
-          // For aggregated multi-lien totalLienBalance (newline-joined string), use first line as scalar.
-          const tlbScalar = typeof tlb === "string" && tlb.includes("\n") ? tlb.split("\n")[0] : tlb;
-          const result = toNum(tlbScalar) + toNum(loan);
+          const result = sumCurrencyLines(tlb) + toNum(loan);
           fieldValues.set("pr_li_totalLienPlusLoan", {
             rawValue: result.toFixed(2),
             dataType: "currency",
