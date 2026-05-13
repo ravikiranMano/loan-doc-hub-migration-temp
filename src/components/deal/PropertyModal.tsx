@@ -32,6 +32,7 @@ interface PropertyModalProps {
   isEdit?: boolean;
   borrowerAddress?: { street: string; city: string; state: string; zipCode: string };
   borrowerOptions?: string[];
+  borrowerParticipants?: Array<{ name: string; street: string; city: string; state: string; zipCode: string }>;
 }
 
 const PROPERTY_TYPE_OPTIONS = [
