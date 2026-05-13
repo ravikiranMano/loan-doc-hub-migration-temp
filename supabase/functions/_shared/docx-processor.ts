@@ -503,6 +503,57 @@ export function repairOrphanedSdtOpen(xml: string): { xml: string; repaired: num
 }
 
 /**
+ * Repair unclosed <w:rPr> blocks left behind by post-render safety passes.
+ *
+ * Symptom: validateContentXmlPart reports
+ *   "expected </w:rPr> before </w:p> at offset N"
+ * Cause: a regex-based replacement consumed (or failed to emit) the closing
+ *   </w:rPr> tag, so the parser sees </w:p> while w:rPr is still open.
+ *
+ * Strategy: walk the XML element-by-element with a small stack. Whenever we
+ * encounter a closing tag that is NOT </w:rPr> while <w:rPr> is on top of
+ * the stack, inject the missing </w:rPr> right before that closing tag and
+ * pop the stack. Strictly conservative — only acts on a w:rPr / non-w:rPr
+ * mismatch, never reorders or removes anything else.
+ */
+export function repairUnclosedRunProperties(xml: string): { xml: string; repaired: number } {
+  const tagRe = /<(!\[CDATA\[[\s\S]*?\]\]|!--[\s\S]*?--|\?[^>]*\?|\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?)>/g;
+  type Open = { name: string; tagStart: number };
+  const stack: Open[] = [];
+  const inserts: Array<{ at: number; text: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(xml)) !== null) {
+    const body = m[1].trim();
+    if (!body || body.startsWith("?") || body.startsWith("!--") || body.startsWith("![CDATA")) continue;
+    if (body.startsWith("/")) {
+      const closeName = body.slice(1).trim().split(/\s+/)[0];
+      // Heal w:rPr/non-w:rPr mismatches by closing rPr first.
+      while (stack.length > 0 && stack[stack.length - 1].name === "w:rPr" && closeName !== "w:rPr") {
+        inserts.push({ at: m.index, text: "</w:rPr>" });
+        stack.pop();
+      }
+      if (stack.length > 0 && stack[stack.length - 1].name === closeName) {
+        stack.pop();
+      } else {
+        // Unbalanced in some other way — bail out without modifying.
+        return { xml, repaired: 0 };
+      }
+    } else if (!body.endsWith("/")) {
+      const name = body.split(/\s+/)[0];
+      stack.push({ name, tagStart: m.index });
+    }
+  }
+  if (inserts.length === 0) return { xml, repaired: 0 };
+  // Apply inserts from end to start so offsets stay valid.
+  inserts.sort((a, b) => b.at - a.at);
+  let out = xml;
+  for (const ins of inserts) {
+    out = out.slice(0, ins.at) + ins.text + out.slice(ins.at);
+  }
+  return { xml: out, repaired: inserts.length };
+}
+
+/**
  * OOXML requires every <w:tc> (table cell) to contain at least one <w:p>.
  * Post-render safety passes can splice runs in/out and occasionally leave
  * a cell without a paragraph; insert an empty <w:p/> so Word can open the
