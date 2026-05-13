@@ -3260,6 +3260,31 @@ async function generateSingleDocument(
         }
       }
 
+      // ── Calculated field: pr_li_totalLienPlusLoan ──
+      // pr_li_totalLienBalance + ln_p_loanAmount (single scalar).
+      {
+        const toNum = (v: unknown): number => {
+          if (v === null || v === undefined || v === "") return 0;
+          const n = parseFloat(String(v).replace(/[$,\s]/g, ""));
+          return Number.isFinite(n) ? n : 0;
+        };
+        const tlb = fieldValues.get("pr_li_totalLienBalance")?.rawValue;
+        const loan = fieldValues.get("ln_p_loanAmount")?.rawValue;
+        const hasAny =
+          (tlb !== undefined && tlb !== null && String(tlb).trim() !== "") ||
+          (loan !== undefined && loan !== null && String(loan).trim() !== "");
+        if (hasAny) {
+          // For aggregated multi-lien totalLienBalance (newline-joined string), use first line as scalar.
+          const tlbScalar = typeof tlb === "string" && tlb.includes("\n") ? tlb.split("\n")[0] : tlb;
+          const result = toNum(tlbScalar) + toNum(loan);
+          fieldValues.set("pr_li_totalLienPlusLoan", {
+            rawValue: result.toFixed(2),
+            dataType: "currency",
+          });
+          debugLog(`[generate-document] Published pr_li_totalLienPlusLoan = ${result.toFixed(2)}`);
+        }
+      }
+
       // ── RE851D Delinquency mapping: publish pr_li_*_N aliases per lien index
       // AND per-property index (aggregated when multiple liens belong to one property).
       // Source UI fields live on each lienK.* record; template uses _N expansion.
