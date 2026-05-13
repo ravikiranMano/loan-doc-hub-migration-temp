@@ -8,6 +8,7 @@ import { LoanTermsServicingForm } from './LoanTermsServicingForm';
 import { LoanHistoryViewer } from './LoanHistoryViewer';
 import { LoanTrustLedger } from './LoanTrustLedger';
 import { DealSectionTab } from './DealSectionTab';
+import { EscrowImpoundForm } from './EscrowImpoundForm';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 
@@ -118,16 +119,13 @@ export const LoanTermsSectionContent: React.FC<LoanTermsSectionContentProps> = (
       case 'escrow_impound':
         return (
           <div className="p-4">
-            <DealSectionTab
+            <EscrowImpoundForm
               fields={escrowFields}
               values={values}
               onValueChange={onValueChange}
-              missingRequiredFields={escrowFields.filter(f => f.is_required && !values[f.field_key])}
               showValidation={showValidation}
+              disabled={disabled}
               calculationResults={calculationResults}
-              hideValidationStatus
-              hidePlaceholders
-              gridColumnsClass="grid-cols-2"
             />
           </div>
         );
