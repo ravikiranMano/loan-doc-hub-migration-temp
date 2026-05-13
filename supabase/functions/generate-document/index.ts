@@ -4383,11 +4383,21 @@ async function generateSingleDocument(
         const rePropOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}(?!_\\{S\\})`, "g");
 
         let totalRewrites = 0;
+        const rewrittenKeys = new Set<string>();
         let touched = false;
         for (const part of PARTS) {
           const data = decompressed[part];
           if (!data) continue;
-          const original = decoder.decode(data);
+          const originalRaw = decoder.decode(data);
+          // Normalize first so placeholders authored as {{ pr_li_... }} and
+          // split across Word runs are consolidated before this template-only
+          // resolver runs. This is scoped to the Lien Mapping template only.
+          let original = originalRaw;
+          try {
+            original = normalizeWordXml(originalRaw, template.name || "");
+          } catch (_normErr) {
+            original = originalRaw;
+          }
           if (!original.includes("{P}") && !original.includes("{S}")) continue;
           const slotCounter = new Map<string, number>();
           const nextSlot = (p: number, fam: string, base: string): number => {
@@ -4403,19 +4413,36 @@ async function generateSingleDocument(
               if (!body.includes("{P}") && !body.includes("{S}")) return _m;
               let out = body;
               const P = 1;
-              out = out.replace(reFull, (_full, fam: string, base: string) => {
+              // Consume optional existing {{ }} delimiters as part of the same
+              // replacement. The prior pass replaced only the inner field name,
+              // turning {{pr_li_rem_priority_{P}_{S}}} into nested
+              // {{{{pr_li_rem_priority_1_1}}}}, which the parser could not
+              // resolve and therefore printed as raw text.
+              out = out.replace(new RegExp(`\\{\\{\\s*${reFull.source}\\s*\\}\\}|${reFull.source}`, "g"), (_full, fam1: string, base1: string, fam2: string, base2: string) => {
                 partRewrites++;
+                const fam = fam1 || fam2;
+                const base = base1 || base2;
                 const s = nextSlot(P, fam, base);
-                return `{{pr_li_${fam}_${base}_${P}_${s}}}`;
+                const key = `pr_li_${fam}_${base}_${P}_${s}`;
+                rewrittenKeys.add(key);
+                return `{{${key}}}`;
               });
-              out = out.replace(reSlotOnly, (_full, fam: string, base: string) => {
+              out = out.replace(new RegExp(`\\{\\{\\s*${reSlotOnly.source}\\s*\\}\\}|${reSlotOnly.source}`, "g"), (_full, fam1: string, base1: string, fam2: string, base2: string) => {
                 partRewrites++;
+                const fam = fam1 || fam2;
+                const base = base1 || base2;
                 const s = nextSlot(P, fam, base);
-                return `{{pr_li_${fam}_${base}_${P}_${s}}}`;
+                const key = `pr_li_${fam}_${base}_${P}_${s}`;
+                rewrittenKeys.add(key);
+                return `{{${key}}}`;
               });
-              out = out.replace(rePropOnly, (_full, fam: string, base: string) => {
+              out = out.replace(new RegExp(`\\{\\{\\s*${rePropOnly.source}\\s*\\}\\}|${rePropOnly.source}`, "g"), (_full, fam1: string, base1: string, fam2: string, base2: string) => {
                 partRewrites++;
-                return `{{pr_li_${fam}_${base}_${P}}}`;
+                const fam = fam1 || fam2;
+                const base = base1 || base2;
+                const key = `pr_li_${fam}_${base}_${P}`;
+                rewrittenKeys.add(key);
+                return `{{${key}}}`;
               });
               return open + out + close;
             },
@@ -4431,7 +4458,7 @@ async function generateSingleDocument(
             fflate.zipSync(decompressed as fflate.Zippable, { level: 0 }),
           );
           console.log(
-            `[generate-document] Lien Mappings: rewrote ${totalRewrites} {P}/{S} placeholder(s) in ${Math.round(performance.now() - tLien)}ms`,
+            `[generate-document] Lien Mappings: rewrote ${totalRewrites} {P}/{S} placeholder(s), registered keys=[${[...rewrittenKeys].slice(0, 40).join(", ")}] in ${Math.round(performance.now() - tLien)}ms`,
           );
         }
       } catch (lienErr) {
