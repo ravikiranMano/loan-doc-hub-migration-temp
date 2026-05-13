@@ -92,6 +92,8 @@ export interface FundingFormData {
   borrower: string;
   lenderId: string;
   lenderFullName: string;
+  lenderEmail?: string;
+  lenderPhone?: string;
   lenderRate: string;
   fundingAmount: string;
   baseFee: string;
