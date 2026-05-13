@@ -4424,9 +4424,11 @@ async function generateSingleDocument(
         // Longest-first so e.g. "balloonAmount" wins over "balloon".
         FIELD_BASES.sort((a, b) => b.length - a.length);
         const fieldAlt = FIELD_BASES.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-        const reFull = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}_\\{S\\}`, "g");
+        // Property-index placeholder accepts both {P} (legacy) and {N} (new
+        // standard for Remaining lien mappings). Slot index always {S}.
+        const reFull = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{[PN]\\}_\\{S\\}`, "g");
         const reSlotOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{S\\}`, "g");
-        const rePropOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{P\\}(?!_\\{S\\})`, "g");
+        const rePropOnly = new RegExp(`pr_li_(rem|ant)_(${fieldAlt})_\\{[PN]\\}(?!_\\{S\\})`, "g");
 
         let totalRewrites = 0;
         const rewrittenKeys = new Set<string>();
