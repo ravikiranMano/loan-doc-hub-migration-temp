@@ -120,6 +120,15 @@ async function generateSingleDocument(
     result.templateName = template.name;
     const isTemplate885 = /885/i.test(template.name || "");
     const isTemplate851D = /851d/i.test(template.name || "");
+    // "Lien Mappings" template reuses the RE851D encumbrance pipeline
+    // (bucketing + publishSection already runs for ALL templates; here we
+    // also enable the indexed-tag rewrite, valid-key extension, addendum
+    // appender, and authoring-noise strip so pr_li_* _N_S tags resolve and
+    // overflow liens (3+) get appended). Strictly additive: no other
+    // RE851D-only behavior (multi-property checkboxes, taxes, Q1–Q6,
+    // safety passes, etc.) is enabled here.
+    const isLienMappingTemplate = /lien[_\s-]?mapping/i.test(template.name || "");
+    const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate;
     const t885Total = performance.now();
     const tDataFetchStart = performance.now();
     const tDataMappingStart = performance.now();
@@ -4263,7 +4272,7 @@ async function generateSingleDocument(
     // rsid* attributes, <w:proofErr/>, <w:lastRenderedPageBreak/>, and
     // _GoBack bookmarks. Paragraphs, runs, tables, sections, styles, SDTs,
     // drawings, hyperlinks, and merge tags are preserved unchanged.
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       try {
         const tStrip = performance.now();
         const decompressed = fflate.unzipSync(templateBuffer);
@@ -4338,7 +4347,7 @@ async function generateSingleDocument(
     // remain blank. We rewrite each occurrence by document order, capped at 5
     // (the spec's maximum properties per RE851D). Strictly scoped to known
     // RE851D placeholder families — no other tags are touched.
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       try {
         // Full set of _N families that appear inside PROPERTY #K blocks.
         const RE851D_INDEXED_TAGS = [
@@ -5710,7 +5719,7 @@ async function generateSingleDocument(
     // direct match and removes any chance of the resolver returning a different
     // ultimate key for our publisher-set values. Template-gated.
     let effectiveValidFieldKeys = validFieldKeys;
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       effectiveValidFieldKeys = new Set(validFieldKeys);
       const SUFFIXED_BASES = [
         "ln_p_expectedEncumbrance", "ln_p_remainingEncumbrance",
@@ -7444,7 +7453,7 @@ async function generateSingleDocument(
     // matching "set forth in an attachment" YES checkbox (NO if false), then
     // append an Addendum section at the end of word/document.xml listing the
     // overflow liens (3rd onward) split by Remaining vs Anticipated.
-    if (/851d/i.test(template.name || "")) {
+    if (isEncumbrancePipeline) {
       try {
         // Re-derive per-property remaining/anticipated lien lists from fieldValues.
         const lienPrefixesAEA = new Set<string>();
