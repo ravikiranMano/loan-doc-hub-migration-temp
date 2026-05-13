@@ -119,6 +119,7 @@ async function generateSingleDocument(
 
     result.templateName = template.name;
     const isTemplate885 = /885/i.test(template.name || "");
+    const isTemplate851D = /851d/i.test(template.name || "");
     const t885Total = performance.now();
     const tDataFetchStart = performance.now();
     const tDataMappingStart = performance.now();
@@ -139,6 +140,10 @@ async function generateSingleDocument(
     try {
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
+
+      if (isTemplate851D) {
+        throw new Error("RE851D cache bypassed so XML integrity fixes always regenerate the DOCX");
+      }
 
       const { data: cachedDocs } = await supabase
         .from("generated_documents")
