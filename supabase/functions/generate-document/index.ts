@@ -4446,7 +4446,7 @@ async function generateSingleDocument(
           } catch (_normErr) {
             original = originalRaw;
           }
-          if (!original.includes("{P}") && !original.includes("{S}")) continue;
+          if (!original.includes("{P}") && !original.includes("{N}") && !original.includes("{S}")) continue;
           const slotCounter = new Map<string, number>();
           const nextSlot = (p: number, fam: string, base: string): number => {
             const k = `${p}|${fam}|${base}`;
