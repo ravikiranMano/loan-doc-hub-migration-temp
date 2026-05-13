@@ -2594,6 +2594,29 @@ async function generateSingleDocument(
       }
     }
 
+    // Auto-publish br_p_address (RE851A short-form merge tag for borrower street)
+    // Falls back across every place the street might have been loaded so the tag
+    // never renders blank when a street value exists somewhere in the deal.
+    {
+      const existing = fieldValues.get("br_p_address")?.rawValue;
+      if (existing === undefined || existing === null || String(existing).trim() === "") {
+        const primaryBorrowerCd = primaryBorrower?.contact_id
+          ? (contactRowsByUuid.get(primaryBorrower.contact_id)?.contact_data || {})
+          : {};
+        const street =
+          fieldValues.get("borrower.address.street")?.rawValue ||
+          fieldValues.get("borrower1.address.street")?.rawValue ||
+          fieldValues.get("borrower.street")?.rawValue ||
+          fieldValues.get("br_p_street")?.rawValue ||
+          primaryBorrowerCd["address.street"] ||
+          primaryBorrowerCd["primary_address.street"];
+        if (street && String(street).trim() !== "") {
+          fieldValues.set("br_p_address", { rawValue: String(street), dataType: "text" });
+          debugLog(`[generate-document] Auto-published br_p_address = "${street}"`);
+        }
+      }
+    }
+
     // Auto-compute Lender.Address from component fields if not already set
     const existingLenderAddr = fieldValues.get("Lender.Address") || fieldValues.get("lender.address");
     if (!existingLenderAddr || !existingLenderAddr.rawValue) {
