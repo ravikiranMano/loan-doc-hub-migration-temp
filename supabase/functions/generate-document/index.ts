@@ -3611,6 +3611,20 @@ async function generateSingleDocument(
           publishSection("pr_li_rem", perPropRem);
           publishSection("pr_li_ant", perPropAnt);
 
+          const remCollectionLog = Object.entries(perPropRem)
+            .map(([pIdx, rows]) => `P${pIdx}=${rows.length}`)
+            .join(", ") || "none";
+          const remResolvedSamples: string[] = [];
+          for (const [pIdx, rows] of Object.entries(perPropRem)) {
+            rows.slice(0, 2).forEach((_row, sIdx0) => {
+              const s = sIdx0 + 1;
+              const sampleKeys = ["priority", "interestRate", "beneficiary", "balloonYes", "balloonNo", "balloonUnknown"];
+              remResolvedSamples.push(
+                `P${pIdx}S${s}{${sampleKeys.map((name) => `${name}=${String(fieldValues.get(`pr_li_rem_${name}_${pIdx}_${s}`)?.rawValue ?? "").slice(0, 40)}`).join(",")}}`
+              );
+            });
+          }
+          console.log(`[generate-document] RE851D Remaining Encumbrance data before render: collections=${remCollectionLog}; resolved=[${remResolvedSamples.slice(0, 8).join(" | ")}]`);
           debugLog(`[generate-document] RE851D encumbrance mapping: rem props=${Object.keys(perPropRem).length}, ant props=${Object.keys(perPropAnt).length}`);
 
           // ── RE851D Additional Encumbrances Attachment YES/NO ──
