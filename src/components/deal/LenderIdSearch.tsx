@@ -45,7 +45,7 @@ export const LenderIdSearch: React.FC<LenderIdSearchProps> = ({
     try {
       let qb = supabase
         .from('contacts')
-        .select('contact_id, full_name, contact_data')
+        .select('contact_id, full_name, contact_data, email, phone')
         .eq('contact_type', 'lender');
 
       if (searchTerm && searchTerm.length >= 1) {
