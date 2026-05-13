@@ -8570,6 +8570,27 @@ async function generateSingleDocument(
       }
     }
 
+    if (isTemplate851D) {
+      try {
+        const renderedZip = fflate.unzipSync(processedDocx);
+        const decoder = new TextDecoder("utf-8");
+        const unresolved: string[] = [];
+        for (const [name, bytes] of Object.entries(renderedZip)) {
+          if (!(name === "word/document.xml" || name.startsWith("word/header") || name.startsWith("word/footer") || name.startsWith("word/footnotes") || name.startsWith("word/endnotes"))) continue;
+          const xml = decoder.decode(bytes as Uint8Array);
+          const hits = xml.match(/\{\{\s*pr_li_rem_[^{}<]*(?:\{N\}|\{S\}|\{P\})[^{}<]*\}\}|pr_li_rem_[A-Za-z]+_(?:\{N\}_\{S\}|\{P\}_\{S\}|\(N\)_\(S\)|\(P\)_\(S\)|N_S)/g) || [];
+          hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
+        }
+        if (unresolved.length > 0) {
+          console.warn(`[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: ${unresolved.slice(0, 30).join(" | ")}`);
+        } else {
+          console.log("[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: none");
+        }
+      } catch (scanErr) {
+        console.warn("[generate-document] RE851D unresolved Remaining scan skipped:", scanErr instanceof Error ? scanErr.message : String(scanErr));
+      }
+    }
+
     // 6. Calculate version number
     const { data: existingDocs } = await supabase
       .from("generated_documents")
