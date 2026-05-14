@@ -9039,22 +9039,19 @@ async function generateSingleDocument(
                 const isYes = truthy(fieldValues.get(yesK)?.rawValue);
                 const isNo = truthy(fieldValues.get(noK)?.rawValue);
                 const isUnk = truthy(fieldValues.get(unkK)?.rawValue) || (!isYes && !isNo);
-                const states = [isYes, isNo, isUnk];
-                // Find the next 3 checkbox controls within window in raw xml order.
-                // Templates may use either glyph runs (☐/☑/☒) OR image-based runs
-                // (a <w:r> containing a <w:drawing>). Match either.
+                // Mutually-exclusive winner: Yes > No > Unknown (defaults to Unknown
+                // when no value persisted). Each of the three checkbox slots is
+                // anchored to the visible label that follows it (YES / NO /
+                // UNKNOWN) so a template that emits two glyphs per option (one
+                // per Handlebars branch — true-branch ☑ + else-branch ☐ as
+                // separate runs) cannot misalign the forced state.
+                const winner: "yes" | "no" | "unk" = isYes ? "yes" : isNo ? "no" : "unk";
+                const wantFor = (l: "yes" | "no" | "unk") => (l === winner ? "\u2611" : "\u2610");
+
+                // Collect all checkbox-bearing runs in window order.
                 const slice = xml.slice(rawWinStart, rawWinEnd);
                 const glyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([\u2610\u2611\u2612])(<\/w:t>\s*<\/w:r>)/g;
                 const drawingRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:drawing\b[\s\S]*?<\/w:drawing>\s*<\/w:r>/g;
-                // Some authored RE851D templates encode balloon checkboxes as
-                // inline Handlebars conditionals inside a single <w:t> run, e.g.
-                //   <w:r><w:t>{{#if pr_li_ant_balloonYes_(N)_(S)}}☒{{else}}☐{{/if}}</w:t></w:r>
-                // The plain glyph regex above can't match these (the run holds
-                // both ☒ and ☐), so the ANT section's checkbox state was never
-                // forced and every box rendered as ☐. Treat those runs as
-                // checkbox slots too — in document order — so the YES/NO/UNKNOWN
-                // selection logic that already works for the REM section also
-                // applies here.
                 const handlebarsRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>([\s\S]*?)<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>([^<]*\{\{[^{}]*?pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown)[^{}]*?\}\}[^<]*)<\/w:t>\s*<\/w:r>/g;
                 type Hit = { idx: number; len: number; kind: "glyph" | "drawing" | "handlebars"; cur?: string; pre?: string; post?: string; rPr?: string };
                 const hits: Hit[] = [];
@@ -9071,35 +9068,85 @@ async function generateSingleDocument(
                   hits.push({ idx: hm.index, len: hm[0].length, kind: "handlebars", rPr: hm[1] || "" });
                 }
                 hits.sort((a, b) => a.idx - b.idx);
-                for (let gIdx = 0; gIdx < Math.min(3, hits.length); gIdx++) {
-                  const h = hits[gIdx];
-                  const want = states[gIdx] ? "\u2611" : "\u2610";
-                  const start = rawWinStart + h.idx;
-                  const end = start + h.len;
-                  let needReplace = false;
-                  let replacement = "";
+
+                // Build a list of (label, raw-position) anchors in document order.
+                const labelAnchors: { label: "yes" | "no" | "unk"; rawIdx: number }[] = [];
+                const labelRe = /\b(YES|NO|UNKNOWN)\b/gi;
+                labelRe.lastIndex = winVisStart;
+                let lblM: RegExpExecArray | null;
+                while ((lblM = labelRe.exec(txt)) !== null && lblM.index < winVisEnd) {
+                  const w = lblM[1].toUpperCase();
+                  const lbl: "yes" | "no" | "unk" = w === "YES" ? "yes" : w === "NO" ? "no" : "unk";
+                  const rawIdx = map[lblM.index] ?? -1;
+                  if (rawIdx >= 0) labelAnchors.push({ label: lbl, rawIdx });
+                }
+                // Keep only the first occurrence of each label (closest to
+                // BALLOON PAYMENT?), so a stray YES/NO/UNKNOWN further down
+                // the cell does not capture the wrong glyph slot.
+                const seen = new Set<string>();
+                const dedupedAnchors = labelAnchors.filter(a => {
+                  if (seen.has(a.label)) return false;
+                  seen.add(a.label);
+                  return true;
+                });
+
+                const buildReplacement = (h: Hit, want: string): string => {
                   if (h.kind === "glyph") {
-                    if (h.cur !== want) {
-                      needReplace = true;
-                      replacement = `${h.pre}${want}${h.post}`;
-                    }
-                  } else if (h.kind === "handlebars") {
-                    // Replace the whole Handlebars-bearing run with a clean
-                    // single-glyph run, preserving original <w:rPr> formatting.
-                    needReplace = true;
-                    const rPr = h.rPr ? `<w:rPr>${h.rPr}</w:rPr>` : "";
-                    replacement = `<w:r>${rPr}<w:t xml:space="preserve">${want}</w:t></w:r>`;
-                  } else {
-                    // Always swap drawing → glyph run so the rendered state matches.
-                    needReplace = true;
-                    replacement = `<w:r><w:rPr><w:rFonts w:ascii="Segoe UI Symbol" w:hAnsi="Segoe UI Symbol" w:cs="Segoe UI Symbol"/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${want}</w:t></w:r>`;
+                    return `${h.pre}${want}${h.post}`;
                   }
-                  if (needReplace) {
-                    inserts.push({ at: -end, html: `${replacement}|||REPLACE|||${start}` });
+                  if (h.kind === "handlebars") {
+                    const rPr = h.rPr ? `<w:rPr>${h.rPr}</w:rPr>` : "";
+                    return `<w:r>${rPr}<w:t xml:space="preserve">${want}</w:t></w:r>`;
+                  }
+                  return `<w:r><w:rPr><w:rFonts w:ascii="Segoe UI Symbol" w:hAnsi="Segoe UI Symbol" w:cs="Segoe UI Symbol"/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${want}</w:t></w:r>`;
+                };
+
+                if (dedupedAnchors.length > 0) {
+                  // Anchor each label to the LAST checkbox-bearing run that
+                  // appears before it (and after the previous label boundary).
+                  // All other runs in that span are stripped so duplicate
+                  // branch glyphs (true + else) collapse to a single forced
+                  // checkbox per option.
+                  let prevRawBoundary = rawWinStart;
+                  for (const anchor of dedupedAnchors) {
+                    const labelRawAbs = anchor.rawIdx;
+                    const want = wantFor(anchor.label);
+                    const candidates = hits.filter(h => {
+                      const hStart = rawWinStart + h.idx;
+                      const hEnd = hStart + h.len;
+                      return hStart >= prevRawBoundary && hEnd <= labelRawAbs;
+                    });
+                    if (candidates.length > 0) {
+                      const chosen = candidates[candidates.length - 1];
+                      const chosenStart = rawWinStart + chosen.idx;
+                      const chosenEnd = chosenStart + chosen.len;
+                      inserts.push({ at: -chosenEnd, html: `${buildReplacement(chosen, want)}|||REPLACE|||${chosenStart}` });
+                      // Strip every other candidate (duplicate branch glyphs).
+                      for (const other of candidates) {
+                        if (other === chosen) continue;
+                        const oStart = rawWinStart + other.idx;
+                        const oEnd = oStart + other.len;
+                        inserts.push({ at: -oEnd, html: `|||REPLACE|||${oStart}` });
+                      }
+                    }
+                    prevRawBoundary = labelRawAbs;
+                  }
+                } else {
+                  // Fallback: legacy positional mapping (3 hits → Yes/No/Unk
+                  // in document order). Only triggers when the cell has no
+                  // visible YES/NO/UNKNOWN labels (e.g. label-less templates).
+                  const states = [isYes && winner === "yes", isNo && winner === "no", winner === "unk"];
+                  for (let gIdx = 0; gIdx < Math.min(3, hits.length); gIdx++) {
+                    const h = hits[gIdx];
+                    const want = states[gIdx] ? "\u2611" : "\u2610";
+                    const start = rawWinStart + h.idx;
+                    const end = start + h.len;
+                    if (h.kind === "glyph" && h.cur === want) continue;
+                    inserts.push({ at: -end, html: `${buildReplacement(h, want)}|||REPLACE|||${start}` });
                   }
                 }
                 debugLog(
-                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${isYes ? "YES" : isNo ? "NO" : "UNK"}`,
+                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${winner.toUpperCase()} (anchors=${dedupedAnchors.map(a => a.label).join(",") || "none"}, hits=${hits.length})`,
                 );
               }
 
