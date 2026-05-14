@@ -280,6 +280,7 @@ serve(async (req) => {
         ok: true,
         templatePath,
         paragraphsRightAligned,
+        paragraphsTrimmed,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
