@@ -3280,26 +3280,64 @@ async function generateSingleDocument(
         const estimateRaw = readFirst("pr_pd_estimateValue", "pr_p_appraiseValue", "property1.appraise_value");
         const loanAmtRaw = readFirst("ln_p_loanAmount", "loan_terms.loan_amount");
 
-        // Sum across all liens (lien1.current_balance, lien2.current_balance, …)
+        // Group lien fields by index so we can compute current-balance and
+        // anticipated-amount sums using the same sources the UI/bridge use.
+        // Anticipated amount source order (per bridge at ~line 3172):
+        //   new_remaining_balance → anticipated_amount
+        // Anticipated amount only counts when lien is flagged anticipated=true,
+        // so each lien contributes EITHER its current balance (existing) OR its
+        // anticipated amount (new) — never both — preventing double-subtraction.
+        const perLien: Record<string, { cb?: unknown; nrb?: unknown; antAmt?: unknown; ant?: unknown; thisLoan?: unknown }> = {};
+        for (const [key, val] of fieldValues.entries()) {
+          const m = key.match(/^lien(\d*)\.(.+)$/);
+          if (!m) continue;
+          const idx = m[1] || "0";
+          const field = m[2];
+          if (!perLien[idx]) perLien[idx] = {};
+          if (field === "current_balance") perLien[idx].cb = val?.rawValue;
+          else if (field === "new_remaining_balance" || field === "newRemainingBalance") perLien[idx].nrb = val?.rawValue;
+          else if (field === "anticipated_amount" || field === "anticipatedAmount") perLien[idx].antAmt = val?.rawValue;
+          else if (field === "anticipated") perLien[idx].ant = val?.rawValue;
+          else if (field === "this_loan" || field === "thisLoan") perLien[idx].thisLoan = val?.rawValue;
+        }
+        const isTrueVal = (v: unknown): boolean => {
+          if (v === null || v === undefined) return false;
+          const s = String(v).toLowerCase().trim();
+          return s === "true" || s === "1" || s === "yes";
+        };
+        // Dedupe semantics: drop synthetic index 0 when any indexed lien (>=1) exists.
+        const allIdx = Object.keys(perLien);
+        const hasIdx = allIdx.some((i) => i !== "0");
+        const orderedIdx = hasIdx ? allIdx.filter((i) => i !== "0") : allIdx;
+
         let lienBalSum = 0;
         let antAmtSum = 0;
         let lienBalCount = 0;
         let antAmtCount = 0;
-        for (const [key, val] of fieldValues.entries()) {
-          const m = key.match(/^lien(\d*)\.(.+)$/);
-          if (!m) continue;
-          const field = m[2];
-          if (field === "current_balance") {
-            lienBalSum += toNum(val.rawValue);
-            lienBalCount++;
-          } else if (field === "anticipated_amount") {
-            antAmtSum += toNum(val.rawValue);
-            antAmtCount++;
+        for (const i of orderedIdx) {
+          const rec = perLien[i] || {};
+          const isAnticipated = isTrueVal(rec.ant);
+          const isThisLoan = isTrueVal(rec.thisLoan);
+          // Skip "this loan" lien — its amount is already covered by ln_p_loanAmount.
+          if (isThisLoan) continue;
+          if (isAnticipated) {
+            const ant = toNum(rec.nrb) || toNum(rec.antAmt);
+            if (ant > 0) {
+              antAmtSum += ant;
+              antAmtCount++;
+            }
+          } else {
+            const cb = toNum(rec.cb);
+            if (cb > 0) {
+              lienBalSum += cb;
+              lienBalCount++;
+            }
           }
         }
 
         const estimateNum = toNum(estimateRaw);
         const loanAmtNum = toNum(loanAmtRaw);
+        // Net Property Value = estimate − loan − Σ(current balances) − Σ(anticipated amounts)
         const netVal = estimateNum - loanAmtNum - lienBalSum - antAmtSum;
 
         fieldValues.set("pr_netPropertyValue", { rawValue: netVal.toFixed(2), dataType: "currency" });
