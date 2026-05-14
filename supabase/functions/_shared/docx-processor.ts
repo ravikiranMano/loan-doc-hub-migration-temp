@@ -615,6 +615,40 @@ export function repairUnclosedParagraphsBeforeStructuralClose(
   return { xml: out, repaired: inserts.length };
 }
 
+export function repairStraySdtClosingPair(xml: string): { xml: string; repaired: number } {
+  const tagRe = /<(!\[CDATA\[[\s\S]*?\]\]|!--[\s\S]*?--|\?[^>]*\?|\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?)>/g;
+  const stack: string[] = [];
+  const removals: Array<{ start: number; end: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(xml)) !== null) {
+    const body = m[1].trim();
+    if (!body || body.startsWith("?") || body.startsWith("!--") || body.startsWith("![CDATA")) continue;
+    if (body.startsWith("/")) {
+      const closeName = body.slice(1).trim().split(/\s+/)[0];
+      if (stack[stack.length - 1] === closeName) {
+        stack.pop();
+        continue;
+      }
+      const after = xml.slice(m.index + m[0].length);
+      const nextSdtClose = after.match(/^\s*<\/w:sdt>/);
+      if (closeName === "w:sdtContent" && stack[stack.length - 1] !== "w:sdtContent" && nextSdtClose) {
+        const end = m.index + m[0].length + nextSdtClose[0].length;
+        removals.push({ start: m.index, end });
+        tagRe.lastIndex = end;
+        continue;
+      }
+      return { xml, repaired: 0 };
+    } else if (!body.endsWith("/")) {
+      stack.push(body.split(/\s+/)[0]);
+    }
+  }
+  if (removals.length === 0) return { xml, repaired: 0 };
+  removals.sort((a, b) => b.start - a.start);
+  let out = xml;
+  for (const r of removals) out = out.slice(0, r.start) + out.slice(r.end);
+  return { xml: out, repaired: removals.length };
+}
+
 /**
  * OOXML requires every <w:tc> (table cell) to contain at least one <w:p>.
  * Post-render safety passes can splice runs in/out and occasionally leave
