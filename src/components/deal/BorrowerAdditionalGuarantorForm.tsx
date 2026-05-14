@@ -17,6 +17,7 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { STATE_OPTIONS } from '@/lib/usStates';
 import { BORROWER_GUARANTOR_KEYS } from '@/lib/fieldKeyMap';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 const FORD_DROPDOWN_OPTIONS = [
   'Spouse, Kids, Grandkids', 'Big Dream', 'Sports Teams', 'Hobbies / Collections',
