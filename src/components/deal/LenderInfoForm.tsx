@@ -286,31 +286,26 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
             {wrapField('capacity', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Capacity</Label>
-              <Select
-                value={getValue('capacity') || undefined}
+              <SearchableSelect
+                value={getValue('capacity')}
                 onValueChange={(value) => handleChange('capacity', value)}
+                options={[
+                  'Trustee',
+                  'Successor Trustee',
+                  'Authorized Signer',
+                  'President',
+                  'CEO',
+                  'Power of Attorney',
+                  'Member',
+                  'Manager',
+                  'Partner',
+                  'Other',
+                ]}
+                searchPlaceholder="Search capacity..."
+                placeholder="Select capacity"
                 disabled={disabled}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Select capacity" />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-[100]">
-                  {[
-                    'Trustee',
-                    'Successor Trustee',
-                    'Authorized Signer',
-                    'President',
-                    'CEO',
-                    'Power of Attorney',
-                    'Member',
-                    'Manager',
-                    'Partner',
-                    'Other',
-                  ].map((opt) => (
-                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                triggerClassName="h-8"
+              />
             </div>)}
 
             {wrapField('email', <div className="flex items-center gap-3">
