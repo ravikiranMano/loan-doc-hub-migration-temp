@@ -384,10 +384,13 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
             {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
               <div key={idx} className="grid grid-cols-2 gap-1">
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS[dropdownKey]}>
-                  <Select value={getValue(dropdownKey)} onValueChange={(v) => handleChange(dropdownKey, v)} disabled={disabled}>
-                    <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{FORD_DROPDOWN_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={getValue(dropdownKey)}
+                    onValueChange={(v) => handleChange(dropdownKey, v)}
+                    options={FORD_DROPDOWN_OPTIONS.map(o => o.value)}
+                    searchPlaceholder="Search FORD..."
+                    disabled={disabled}
+                  />
                 </DirtyFieldWrapper>
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS[inputKey]}>
                   <Input value={getValue(inputKey)} onChange={(e) => handleChange(inputKey, e.target.value)} disabled={disabled} className="h-7 text-sm" />
