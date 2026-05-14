@@ -2075,6 +2075,7 @@ async function generateSingleDocument(
           "pr_p_zoning", "pr_p_floodZone", "pr_p_pledgedEquity",
           "pr_p_delinquHowMany",
           "pr_p_performedBy", "pr_p_performeBy",
+          "pr_p_appraiserName", "pr_p_appraiserAddress",
           "pr_p_netMonthlyIncome", "pr_p_incomeGenerating", "pr_p_grossAnnualIncome",
           "ln_p_loanToValueRatio",
           "propertytax_annual_payment", "propertytax.annual_payment",
