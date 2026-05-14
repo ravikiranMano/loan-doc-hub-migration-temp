@@ -179,7 +179,9 @@ function processXml(xml: string): {
   nbspInserted: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, pairsMerged: 0, blanksRemoved: 0 };
+  if (paras.length === 0) {
+    return { xml, pairsMerged: 0, blanksRemoved: 0, nbspInserted: 0 };
+  }
 
   // Track which paragraphs are dropped, and which are rewritten.
   const drop = new Set<number>();
@@ -187,17 +189,17 @@ function processXml(xml: string): {
 
   let pairsMerged = 0;
   let blanksRemoved = 0;
+  let nbspInserted = 0;
 
+  // Pass 1: merge separate YES + NO paragraphs into one.
   for (let i = 0; i < paras.length; i++) {
     if (drop.has(i)) continue;
     const a = paras[i];
     const yesFam = detectFamily(a.stripped, "yes");
     if (!yesFam) continue;
-    // Idempotency: skip if A already contains the matching no-glyph.
+    // If A already contains the matching no-glyph, no merge needed.
     if (new RegExp(`pr_li_${yesFam}_N_no_glyph`).test(a.stripped)) continue;
 
-    // Walk forward to find the matching NO paragraph, skipping blank
-    // paragraphs and stopping at any non-blank, non-matching content.
     let j = i + 1;
     const intermediates: number[] = [];
     let matched = -1;
@@ -207,12 +209,10 @@ function processXml(xml: string): {
       const noFam = detectFamily(pj.stripped, "no");
       if (noFam === yesFam) { matched = j; break; }
       if (jStripped === "") { intermediates.push(j); j++; continue; }
-      // Non-blank, non-matching paragraph — abort merge for this YES.
       break;
     }
     if (matched < 0) continue;
 
-    // Merge: A.text + NBSP + B.runs.  Drop intermediates and B.
     const aXml = rewrite.get(i) ?? a.text;
     const bXml = paras[matched].text;
     rewrite.set(i, mergeParagraphs(aXml, bXml));
@@ -224,11 +224,30 @@ function processXml(xml: string): {
     pairsMerged++;
   }
 
-  if (rewrite.size === 0 && drop.size === 0) {
-    return { xml, pairsMerged: 0, blanksRemoved: 0 };
+  // Pass 2: for every paragraph that now contains a same-family yes/no pair
+  // (whether merged just now or already inline in the source template),
+  // convert the literal space(s) between "YES" and the no-glyph tag into
+  // a non-breaking space so Word cannot wrap the NO checkbox onto its own
+  // line.
+  for (let i = 0; i < paras.length; i++) {
+    if (drop.has(i)) continue;
+    const current = rewrite.get(i) ?? paras[i].text;
+    const stripped = current.replace(/<[^>]+>/g, "");
+    const yes = detectFamily(stripped, "yes");
+    if (!yes) continue;
+    if (!new RegExp(`pr_li_${yes}_N_no_glyph`).test(stripped)) continue;
+    const { xml: nx, replaced } = nbspBetweenYesAndNo(current);
+    if (replaced > 0) {
+      rewrite.set(i, nx);
+      nbspInserted += replaced;
+    }
   }
 
-  // Rebuild the XML in document order, applying rewrites and skipping drops.
+  if (rewrite.size === 0 && drop.size === 0) {
+    return { xml, pairsMerged: 0, blanksRemoved: 0, nbspInserted: 0 };
+  }
+
+  // Rebuild XML in document order, applying rewrites and skipping drops.
   const out: string[] = [];
   let cursor = 0;
   for (let i = 0; i < paras.length; i++) {
@@ -236,12 +255,11 @@ function processXml(xml: string): {
     if (!rewrite.has(i) && !drop.has(i)) continue;
     out.push(xml.slice(cursor, p.start));
     if (rewrite.has(i)) out.push(rewrite.get(i)!);
-    // dropped paragraphs emit nothing
     cursor = p.end;
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), pairsMerged, blanksRemoved };
+  return { xml: out.join(""), pairsMerged, blanksRemoved, nbspInserted };
 }
 
 serve(async (req) => {
