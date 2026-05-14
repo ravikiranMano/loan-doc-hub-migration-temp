@@ -235,22 +235,23 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
                 <Input
                   type="text"
                   inputMode="decimal"
-                  value={displayRate}
+                  value={focusedRateField === 'lender' ? displayRate : (formatPercentDisplay(displayRate || '', 3) || '')}
+                  onFocus={() => setFocusedRateField('lender')}
                   onChange={(e) => {
                     let v = e.target.value.replace(/[^0-9.]/g, '');
                     const parts = v.split('.');
                     if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                     const [intPart, decPart] = v.split('.');
-                    if (decPart && decPart.length > 2) v = `${intPart}.${decPart.slice(0, 2)}`;
+                    if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                     onChange({ ...data, lenderRate: v, rateLenderValue: v });
                   }}
                   onBlur={(e) => {
+                    setFocusedRateField(null);
                     const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                     if (!raw) return;
-                    const [intPart, decPart = ''] = raw.split('.');
-                    const truncated = `${intPart || '0'}.${(decPart + '00').slice(0, 2)}`;
-                    if (truncated !== data.lenderRate) {
-                      onChange({ ...data, lenderRate: truncated, rateLenderValue: truncated });
+                    const stored = roundPctForStorage(raw);
+                    if (stored && stored !== data.lenderRate) {
+                      onChange({ ...data, lenderRate: stored, rateLenderValue: stored });
                     }
                   }}
                   disabled={lenderRateDisabled}
@@ -280,22 +281,23 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
                 <Input
                   type="text"
                   inputMode="decimal"
-                  value={overrideVal}
+                  value={focusedRateField === 'override' ? overrideVal : (formatPercentDisplay(overrideVal || '', 3) || '')}
+                  onFocus={() => setFocusedRateField('override')}
                   onChange={(e) => {
                     let v = e.target.value.replace(/[^0-9.]/g, '');
                     const parts = v.split('.');
                     if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                     const [intPart, decPart] = v.split('.');
-                    if (decPart && decPart.length > 2) v = `${intPart}.${decPart.slice(0, 2)}`;
+                    if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                     onChange({ ...data, lenderRateOverrideValue: v, rateLenderValue: v });
                   }}
                   onBlur={(e) => {
+                    setFocusedRateField(null);
                     const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                     if (!raw) return;
-                    const [intPart, decPart = ''] = raw.split('.');
-                    const truncated = `${intPart || '0'}.${(decPart + '00').slice(0, 2)}`;
-                    if (truncated !== overrideVal) {
-                      onChange({ ...data, lenderRateOverrideValue: truncated, rateLenderValue: truncated });
+                    const stored = roundPctForStorage(raw);
+                    if (stored && stored !== overrideVal) {
+                      onChange({ ...data, lenderRateOverrideValue: stored, rateLenderValue: stored });
                     }
                   }}
                   disabled={!isOn}
