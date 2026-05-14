@@ -331,18 +331,22 @@ export function applyTransform(value: string | number | null, transform: string)
   }
 }
 
-export function formatByDataType(value: string | number | null, dataType: string): string {
+export function formatByDataType(
+  value: string | number | null,
+  dataType: string,
+  fieldKey?: string | null,
+): string {
   if (value === null || value === undefined) return "";
 
   switch (dataType) {
     case "currency":
       return formatCurrency(value);
     case "percentage":
-      return formatPercentage(value, 4);
+      // Category-aware: stored at 4dp; display rule depends on field key.
+      return fieldKey ? formatPercentByFieldKey(fieldKey, value) : formatPercentage(value, 4);
     case "date":
       return formatDateMMDDYYYY(String(value));
     case "number": {
-      // For plain integers with 5+ digits and no decimals, return as-is (likely an identifier like loan/account number)
       const numStr = String(value);
       if (/^\d{5,}$/.test(numStr.trim())) return numStr.trim();
       return formatNumber(value);
