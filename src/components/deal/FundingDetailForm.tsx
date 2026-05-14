@@ -191,7 +191,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
         <div className="flex items-center gap-2">
           <Label className={cn("text-sm shrink-0", percentOwnedError ? "text-destructive font-medium" : "text-muted-foreground")}>Percent Owned</Label>
           <div className="relative w-28">
-            <Input type="text" inputMode="decimal" value={data.percentOwned || ''} disabled className={cn("h-7 text-sm pr-6 opacity-50 bg-muted", percentOwnedError && "border-destructive")} placeholder="0.00" />
+            <Input type="text" inputMode="decimal" value={formatPercentDisplay(data.percentOwned || '', 4)} disabled className={cn("h-7 text-sm pr-6 opacity-50 bg-muted", percentOwnedError && "border-destructive")} placeholder="0.00" />
             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
           </div>
         </div>
@@ -202,7 +202,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
           <Label className="text-sm text-muted-foreground shrink-0">Regular Payment</Label>
           <div className="relative w-28">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>
-            <Input type="text" inputMode="decimal" value={data.regularPayment || ''} disabled className="h-7 text-sm pl-6 opacity-50 bg-muted" placeholder="0.00" />
+            <Input type="text" inputMode="decimal" value={formatCurrencyDisplay(data.regularPayment || '')} disabled className="h-7 text-sm pl-6 opacity-50 bg-muted" placeholder="0.00" />
           </div>
         </div>
       </div>
