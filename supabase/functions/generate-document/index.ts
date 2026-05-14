@@ -6307,6 +6307,8 @@ async function generateSingleDocument(
         "pr_pt_annualTaxes",
         "pr_pt_actual", "pr_pt_actual_glyph",
         "pr_pt_estimated", "pr_pt_estimated_glyph",
+        "pr_pt_delinquent_yes_glyph", "pr_pt_delinquent_no_glyph",
+        "pr_pt_delinquentAmount", "pr_pt_delinquent",
         // Lien-derived per-property aliases used by the questionnaire blocks.
         "pr_li_delinquencyPaidByLoan", "pr_li_delinquencyPaidByLoan_yes",
         "pr_li_delinquencyPaidByLoan_no", "pr_li_delinquencyPaidByLoan_yes_glyph",
