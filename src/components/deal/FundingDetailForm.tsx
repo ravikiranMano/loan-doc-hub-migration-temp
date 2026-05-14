@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { numericKeyDown, numericPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
-import { roundPctForStorage, roundDollarForStorage } from '@/lib/precisionFormat';
+import { roundPctForStorage, roundDollarForStorage, formatPercentDisplay } from '@/lib/precisionFormat';
 
 /** Strip commas/$ before parseFloat so formatted values parse correctly */
 const safeParseFloat = (v: string | undefined): number => {
@@ -39,6 +39,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
 }) => {
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
   const [interestFromOpen, setInterestFromOpen] = useState(false);
+  const [focusedRateField, setFocusedRateField] = useState<null | 'lender' | 'override'>(null);
   const [fundingDate, setFundingDate] = useState<Date | undefined>(
     data.fundingDate ? new Date(data.fundingDate) : undefined
   );
@@ -191,7 +192,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
         <div className="flex items-center gap-2">
           <Label className={cn("text-sm shrink-0", percentOwnedError ? "text-destructive font-medium" : "text-muted-foreground")}>Percent Owned</Label>
           <div className="relative w-28">
-            <Input type="text" inputMode="decimal" value={data.percentOwned || ''} disabled className={cn("h-7 text-sm pr-6 opacity-50 bg-muted", percentOwnedError && "border-destructive")} placeholder="0.00" />
+            <Input type="text" inputMode="decimal" value={formatPercentDisplay(data.percentOwned || '', 4)} disabled className={cn("h-7 text-sm pr-6 opacity-50 bg-muted", percentOwnedError && "border-destructive")} placeholder="0.00" />
             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
           </div>
         </div>
@@ -202,7 +203,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
           <Label className="text-sm text-muted-foreground shrink-0">Regular Payment</Label>
           <div className="relative w-28">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>
-            <Input type="text" inputMode="decimal" value={data.regularPayment || ''} disabled className="h-7 text-sm pl-6 opacity-50 bg-muted" placeholder="0.00" />
+            <Input type="text" inputMode="decimal" value={formatCurrencyDisplay(data.regularPayment || '')} disabled className="h-7 text-sm pl-6 opacity-50 bg-muted" placeholder="0.00" />
           </div>
         </div>
       </div>
@@ -234,22 +235,23 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
                 <Input
                   type="text"
                   inputMode="decimal"
-                  value={displayRate}
+                  value={focusedRateField === 'lender' ? displayRate : (formatPercentDisplay(displayRate || '', 3) || '')}
+                  onFocus={() => setFocusedRateField('lender')}
                   onChange={(e) => {
                     let v = e.target.value.replace(/[^0-9.]/g, '');
                     const parts = v.split('.');
                     if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                     const [intPart, decPart] = v.split('.');
-                    if (decPart && decPart.length > 2) v = `${intPart}.${decPart.slice(0, 2)}`;
+                    if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                     onChange({ ...data, lenderRate: v, rateLenderValue: v });
                   }}
                   onBlur={(e) => {
+                    setFocusedRateField(null);
                     const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                     if (!raw) return;
-                    const [intPart, decPart = ''] = raw.split('.');
-                    const truncated = `${intPart || '0'}.${(decPart + '00').slice(0, 2)}`;
-                    if (truncated !== data.lenderRate) {
-                      onChange({ ...data, lenderRate: truncated, rateLenderValue: truncated });
+                    const stored = roundPctForStorage(raw);
+                    if (stored && stored !== data.lenderRate) {
+                      onChange({ ...data, lenderRate: stored, rateLenderValue: stored });
                     }
                   }}
                   disabled={lenderRateDisabled}
@@ -279,22 +281,23 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
                 <Input
                   type="text"
                   inputMode="decimal"
-                  value={overrideVal}
+                  value={focusedRateField === 'override' ? overrideVal : (formatPercentDisplay(overrideVal || '', 3) || '')}
+                  onFocus={() => setFocusedRateField('override')}
                   onChange={(e) => {
                     let v = e.target.value.replace(/[^0-9.]/g, '');
                     const parts = v.split('.');
                     if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                     const [intPart, decPart] = v.split('.');
-                    if (decPart && decPart.length > 2) v = `${intPart}.${decPart.slice(0, 2)}`;
+                    if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                     onChange({ ...data, lenderRateOverrideValue: v, rateLenderValue: v });
                   }}
                   onBlur={(e) => {
+                    setFocusedRateField(null);
                     const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                     if (!raw) return;
-                    const [intPart, decPart = ''] = raw.split('.');
-                    const truncated = `${intPart || '0'}.${(decPart + '00').slice(0, 2)}`;
-                    if (truncated !== overrideVal) {
-                      onChange({ ...data, lenderRateOverrideValue: truncated, rateLenderValue: truncated });
+                    const stored = roundPctForStorage(raw);
+                    if (stored && stored !== overrideVal) {
+                      onChange({ ...data, lenderRateOverrideValue: stored, rateLenderValue: stored });
                     }
                   }}
                   disabled={!isOn}
