@@ -312,6 +312,7 @@ serve(async (req) => {
           templatePath,
           pairsMerged: 0,
           blanksRemoved: 0,
+          nbspInserted: 0,
           message:
             "Template already has YES/NO pairs inline — no changes written.",
         }),
@@ -342,6 +343,7 @@ serve(async (req) => {
         templatePath,
         pairsMerged,
         blanksRemoved,
+        nbspInserted,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
