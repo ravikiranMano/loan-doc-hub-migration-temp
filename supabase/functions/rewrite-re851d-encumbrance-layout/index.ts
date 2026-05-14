@@ -72,11 +72,9 @@ function familyFor(stripped: string): Family | null {
 }
 
 /**
- * Ensure the paragraph's <w:pPr> contains:
- *   - <w:jc w:val="right"/>
- *   - <w:keepLines/>
- * Adds <w:pPr> if missing, replaces an existing <w:jc> if present.
- * Idempotent.
+ * Ensure the checkbox paragraph's <w:pPr> contains <w:keepLines/> and does
+ * NOT contain forced right alignment. The reference template relies on a
+ * narrow second column for placement, not paragraph-level right justification.
  */
 /**
  * Add <w:keepNext/> to the paragraph's <w:pPr>. Idempotent.
@@ -96,25 +94,19 @@ function addKeepNext(pXml: string): { xml: string; changed: boolean } {
   };
 }
 
-function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
+function keepCheckboxRow(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
   if (!open) return { xml: pXml, changed: false };
-  const JC   = `<w:jc w:val="right"/>`;
   const KEEP = `<w:keepLines/>`;
   const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
   if (!pprMatch) {
-    const pPr = `<w:pPr>${KEEP}${JC}</w:pPr>`;
+    const pPr = `<w:pPr>${KEEP}</w:pPr>`;
     return { xml: pXml.replace(open[0], `${open[0]}${pPr}`), changed: true };
   }
   let inner = pprMatch[1];
   let mutated = false;
   if (/<w:jc\b[^>]*\/>/.test(inner)) {
-    if (!/<w:jc[^>]*w:val="right"/.test(inner)) {
-      inner = inner.replace(/<w:jc\b[^>]*\/>/, JC);
-      mutated = true;
-    }
-  } else {
-    inner = inner + JC;
+    inner = inner.replace(/<w:jc\b[^>]*\/>/g, "");
     mutated = true;
   }
   if (!/<w:keepLines\s*\/>/.test(inner)) {
