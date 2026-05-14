@@ -343,7 +343,11 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
   const selectedPropertyOwner = values[`${selectedPropertyPrefix}.property_owner`] || '';
   const primaryBorrowerAddress = useMemo(() => {
     if (borrowerParticipants.length > 0) {
-      const match = borrowerParticipants.find(b => b.name === selectedPropertyOwner)
+      const hasAddr = (b: typeof borrowerParticipants[number]) =>
+        !!(b.street || b.city || b.state || b.zipCode);
+      const match =
+        borrowerParticipants.find(b => b.name === selectedPropertyOwner)
+        || borrowerParticipants.find(hasAddr)
         || borrowerParticipants[0];
       return { street: match.street, city: match.city, state: match.state, zipCode: match.zipCode };
     }
