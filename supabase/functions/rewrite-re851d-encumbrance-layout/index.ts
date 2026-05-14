@@ -1,30 +1,21 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// Goal: render every YES/NO checkbox pair on the SAME line as its question,
-// right-aligned to the page/cell margin, matching the reference template
-// `re851d - LPDS Multi-property.docx`.
+// The RE851D document body uses a multi-column section: question text
+// flows in the LEFT column, YES/NO checkbox glyphs flow in the RIGHT
+// column. A previous pass already merged each YES + NO into a single
+// paragraph (joined by `&#160;`), but they still render LEFT-aligned
+// inside the right column, which produces the broken look in the
+// generated document.
 //
-// For each of the 4 question families, in every property section:
+// This rewrite right-aligns those merged YES/NO paragraphs so the
+// checkbox pair snaps to the column's right edge, matching the
+// reference layout in `re851d - LPDS Multi-property.docx`. We also
+// add `<w:keepLines/>` so a YES/NO row never wraps internally.
 //
-//   QUESTION PHRASE                    → FAMILY
-//   "encumbrances of record"           → encumbranceOfRecord
-//   "60 days late"                     → delinqu60day
-//   "remain unpaid"                    → currentDelinqu
-//   "cure the delinquency"             → delinquencyPaidByLoan
-//
-// We locate the question paragraph, then absorb the matching YES + NO runs
-// (whether they currently live in two separate paragraphs or in one already
-// merged paragraph below the question) into the question paragraph. Layout:
-//
-//   <question text> <TAB>  {{...yes_glyph}} YES &#160; {{...no_glyph}} NO
-//
-// A right-aligned tab stop on the question's <w:pPr> pulls the checkbox
-// glyphs to the right margin. <w:keepLines/> stops Word from breaking the
-// question text away from its checkboxes.
-//
-// Strictly scoped — only the four question paragraphs (× N properties) are
-// touched. Idempotent: a question paragraph that already contains a matching
-// `_yes_glyph` is skipped.
+// Strictly scoped — only paragraphs whose stripped text contains BOTH
+// `pr_li_<family>_N_yes_glyph` and `pr_li_<family>_N_no_glyph` for one
+// of the four families are touched. Idempotent: if `<w:jc w:val="right"/>`
+// is already present, the paragraph is left alone.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -39,18 +30,18 @@ const corsHeaders = {
 const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
 
 const FAMILIES = [
-  { family: "encumbranceOfRecord", phrase: /encumbrances of record/i },
-  { family: "delinqu60day",        phrase: /60 days late/i },
-  { family: "currentDelinqu",      phrase: /remain unpaid/i },
-  { family: "delinquencyPaidByLoan", phrase: /cure the delinquency/i },
+  "encumbranceOfRecord",
+  "delinqu60day",
+  "currentDelinqu",
+  "delinquencyPaidByLoan",
 ] as const;
-type Family = (typeof FAMILIES)[number]["family"];
+type Family = (typeof FAMILIES)[number];
 
 interface Para {
   start: number;
   end: number;
-  text: string;     // raw XML
-  stripped: string; // text content with tags removed
+  text: string;
+  stripped: string;
 }
 
 function splitParagraphs(xml: string): Para[] {
@@ -69,192 +60,91 @@ function splitParagraphs(xml: string): Para[] {
   return out;
 }
 
-function hasGlyph(stripped: string, family: Family, kind: "yes" | "no"): boolean {
-  return new RegExp(`pr_li_${family}_N_${kind}_glyph`).test(stripped);
+function familyFor(stripped: string): Family | null {
+  for (const f of FAMILIES) {
+    if (
+      new RegExp(`pr_li_${f}_N_yes_glyph`).test(stripped) &&
+      new RegExp(`pr_li_${f}_N_no_glyph`).test(stripped)
+    ) {
+      return f;
+    }
+  }
+  return null;
 }
 
 /**
- * Extract the inner runs of a paragraph (everything inside <w:p>...</w:p>
- * except its <w:pPr>). Returns "" if the paragraph cannot be parsed.
+ * Ensure the paragraph's <w:pPr> contains:
+ *   - <w:jc w:val="right"/>
+ *   - <w:keepLines/>
+ * Adds <w:pPr> if missing, replaces an existing <w:jc> if present.
+ * Idempotent.
  */
-function paragraphInnerRuns(pXml: string): string {
-  const inner = pXml.match(/^<w:p\b[^>]*?>([\s\S]*)<\/w:p>$/);
-  if (!inner) return "";
-  return inner[1].replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, "");
-}
-
-/**
- * Get the last <w:rPr> block in an XML chunk, to clone for our injected runs
- * so font/size match.
- */
-function lastRPr(xml: string): string {
-  const all = [...xml.matchAll(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g)];
-  return all.length ? all[all.length - 1][0] : "";
-}
-
-/**
- * Ensure the question paragraph has:
- *   - a right-aligned tab stop at ~6.5" (9360 twips) for the checkbox column
- *   - <w:keepLines/> so question + checkboxes never split across pages
- *
- * Operates on the <w:pPr> block. Adds <w:pPr> if missing. Idempotent.
- */
-function injectQuestionPPr(pXml: string): string {
-  const TAB_XML = `<w:tabs><w:tab w:val="right" w:leader="none" w:pos="9360"/></w:tabs>`;
-  const KEEP   = `<w:keepLines/>`;
+function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
-  if (!open) return pXml;
+  if (!open) return { xml: pXml, changed: false };
+  const JC   = `<w:jc w:val="right"/>`;
+  const KEEP = `<w:keepLines/>`;
   const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
   if (!pprMatch) {
-    const pPr = `<w:pPr>${KEEP}${TAB_XML}</w:pPr>`;
-    return pXml.replace(open[0], `${open[0]}${pPr}`);
+    const pPr = `<w:pPr>${KEEP}${JC}</w:pPr>`;
+    return { xml: pXml.replace(open[0], `${open[0]}${pPr}`), changed: true };
   }
   let inner = pprMatch[1];
-  // Replace existing <w:tabs>...</w:tabs> with one that includes our right tab.
-  if (/<w:tabs\b/.test(inner)) {
-    inner = inner.replace(/<w:tabs\b[^>]*>[\s\S]*?<\/w:tabs>/, TAB_XML);
+  let mutated = false;
+  if (/<w:jc\b[^>]*\/>/.test(inner)) {
+    if (!/<w:jc[^>]*w:val="right"/.test(inner)) {
+      inner = inner.replace(/<w:jc\b[^>]*\/>/, JC);
+      mutated = true;
+    }
   } else {
-    inner = TAB_XML + inner;
+    inner = inner + JC;
+    mutated = true;
   }
   if (!/<w:keepLines\s*\/>/.test(inner)) {
     inner = KEEP + inner;
+    mutated = true;
   }
-  return pXml.replace(pprMatch[0], `<w:pPr>${inner}</w:pPr>`);
-}
-
-/**
- * Append a TAB run + the YES/NO checkbox runs into the question paragraph,
- * before its closing </w:p>. The YES and NO runs come from the source
- * paragraphs; a single non-breaking-space run sits between them.
- */
-function appendCheckboxRuns(
-  questionXml: string,
-  yesInner: string,
-  noInner: string,
-): string {
-  const rPr = lastRPr(questionXml + yesInner);
-  const tabRun  = `<w:r>${rPr}<w:tab/></w:r>`;
-  const nbspRun = `<w:r>${rPr}<w:t xml:space="preserve">\u00A0</w:t></w:r>`;
-  const injected = `${tabRun}${yesInner}${nbspRun}${noInner}`;
-  return questionXml.replace(/<\/w:p>\s*$/, `${injected}</w:p>`);
+  if (!mutated) return { xml: pXml, changed: false };
+  return {
+    xml: pXml.replace(pprMatch[0], `<w:pPr>${inner}</w:pPr>`),
+    changed: true,
+  };
 }
 
 function processXml(xml: string): {
   xml: string;
-  questionsRewritten: number;
-  paragraphsDropped: number;
+  paragraphsRightAligned: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) {
-    return { xml, questionsRewritten: 0, paragraphsDropped: 0 };
-  }
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0 };
 
-  const drop = new Set<number>();
   const rewrite = new Map<number, string>();
-
-  let questionsRewritten = 0;
+  let count = 0;
 
   for (let i = 0; i < paras.length; i++) {
-    if (drop.has(i)) continue;
-    const q = paras[i];
-
-    // Identify which family this question (if any) belongs to.
-    const fam = FAMILIES.find(f => f.phrase.test(q.stripped));
+    const p = paras[i];
+    const fam = familyFor(p.stripped);
     if (!fam) continue;
-
-    // Idempotency: question already absorbed the YES glyph for this family.
-    if (hasGlyph(q.stripped, fam.family, "yes")) continue;
-
-    // Look ahead up to ~8 paragraphs for source paragraphs containing
-    // _yes_glyph and _no_glyph for the SAME family. They may be:
-    //   (a) one paragraph with both glyphs (already-inline merge), or
-    //   (b) two paragraphs, possibly with blanks between them.
-    let yesIdx = -1;
-    let noIdx  = -1;
-    let inlineIdx = -1;
-    const intermediates: number[] = [];
-
-    for (let j = i + 1; j < paras.length && j <= i + 8; j++) {
-      if (drop.has(j)) continue;
-      const pj = paras[j];
-      const sj = pj.stripped;
-      const hasYes = hasGlyph(sj, fam.family, "yes");
-      const hasNo  = hasGlyph(sj, fam.family, "no");
-      if (hasYes && hasNo) { inlineIdx = j; break; }
-      if (hasYes && yesIdx < 0) { yesIdx = j; continue; }
-      if (hasNo  && noIdx  < 0 && yesIdx >= 0) { noIdx = j; break; }
-      // Track strictly-blank intermediates we'd be willing to delete.
-      if (sj.trim() === "") { intermediates.push(j); continue; }
-      // Any other glyph family / non-blank content → stop walking; we won't
-      // grab tags from a different question's row.
-      const otherFamilyHit = FAMILIES.some(f =>
-        f.family !== fam.family &&
-        (hasGlyph(sj, f.family, "yes") || hasGlyph(sj, f.family, "no"))
-      );
-      if (otherFamilyHit) break;
-      // Non-empty unrelated text (e.g. another question line) → stop.
-      break;
-    }
-
-    let yesInner = "";
-    let noInner  = "";
-    const sourcesToDrop: number[] = [];
-
-    if (inlineIdx >= 0) {
-      // Single source paragraph already has both glyphs inline.
-      // Splice the runs as-is (preserves the existing NBSP between them).
-      yesInner = paragraphInnerRuns(paras[inlineIdx].text);
-      sourcesToDrop.push(inlineIdx);
-    } else if (yesIdx >= 0 && noIdx >= 0) {
-      yesInner = paragraphInnerRuns(paras[yesIdx].text);
-      noInner  = paragraphInnerRuns(paras[noIdx].text);
-      sourcesToDrop.push(yesIdx, noIdx);
-    } else {
-      continue; // no matching checkbox sources — skip this question
-    }
-
-    // Compose the new question paragraph.
-    let newQ = injectQuestionPPr(q.text);
-    if (inlineIdx >= 0) {
-      // For inline source we already have YES + NBSP + NO inside yesInner.
-      const rPr = lastRPr(newQ + yesInner);
-      const tabRun = `<w:r>${rPr}<w:tab/></w:r>`;
-      newQ = newQ.replace(/<\/w:p>\s*$/, `${tabRun}${yesInner}</w:p>`);
-    } else {
-      newQ = appendCheckboxRuns(newQ, yesInner, noInner);
-    }
-
-    rewrite.set(i, newQ);
-    for (const k of sourcesToDrop) drop.add(k);
-    // Also drop blank paragraphs strictly between the question and the
-    // last consumed source (so we don't leave gaps).
-    const lastSrc = Math.max(...sourcesToDrop);
-    for (const k of intermediates) {
-      if (k > i && k < lastSrc) drop.add(k);
-    }
-    questionsRewritten++;
+    const { xml: nx, changed } = rightAlignAndKeep(p.text);
+    if (!changed) continue;
+    rewrite.set(i, nx);
+    count++;
   }
 
-  if (rewrite.size === 0 && drop.size === 0) {
-    return { xml, questionsRewritten: 0, paragraphsDropped: 0 };
-  }
+  if (rewrite.size === 0) return { xml, paragraphsRightAligned: 0 };
 
   const out: string[] = [];
   let cursor = 0;
   for (let i = 0; i < paras.length; i++) {
+    if (!rewrite.has(i)) continue;
     const p = paras[i];
-    if (!rewrite.has(i) && !drop.has(i)) continue;
     out.push(xml.slice(cursor, p.start));
-    if (rewrite.has(i)) out.push(rewrite.get(i)!);
+    out.push(rewrite.get(i)!);
     cursor = p.end;
   }
   out.push(xml.slice(cursor));
 
-  return {
-    xml: out.join(""),
-    questionsRewritten,
-    paragraphsDropped: drop.size,
-  };
+  return { xml: out.join(""), paragraphsRightAligned: count };
 }
 
 serve(async (req) => {
@@ -298,38 +188,15 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    const url = new URL(req.url);
-    if (url.searchParams.get("inspect") === "1") {
-      const paras = splitParagraphs(originalXml);
-      // Walk back/forward to find textbox/cell wrappers around each interesting paragraph.
-      function context(idx: number): any {
-        const p = paras[idx];
-        const before = originalXml.slice(Math.max(0, p.start - 400), p.start);
-        const after  = originalXml.slice(p.end, p.end + 200);
-        return {
-          idx,
-          stripped: p.stripped.slice(0, 80),
-          before_tail: before.slice(-300),
-          after_head: after.slice(0, 200),
-        };
-      }
-      const ids = [346, 348, 349, 353, 357, 359, 360, 361];
-      return new Response(JSON.stringify({ ctx: ids.map(context) }, null, 2), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { xml: newXml, questionsRewritten, paragraphsDropped } =
-      processXml(originalXml);
+    const { xml: newXml, paragraphsRightAligned } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
-          questionsRewritten: 0,
-          paragraphsDropped: 0,
-          message: "Template already laid out — no changes written.",
+          paragraphsRightAligned: 0,
+          message: "Template already right-aligned — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -356,8 +223,7 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         templatePath,
-        questionsRewritten,
-        paragraphsDropped,
+        paragraphsRightAligned,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
