@@ -767,12 +767,12 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* Capacity */}
               <div className="flex items-center gap-2">
                 <Label className="w-[100px] shrink-0 text-xs">Capacity</Label>
-                <Select value={form['capacity'] || ''} onValueChange={(v) => set('capacity', v)}>
-                  <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-background border border-border z-[200]">
-                    {BORROWER_CAPACITY_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={form['capacity'] || ''}
+                  onValueChange={(v) => set('capacity', v)}
+                  options={BORROWER_CAPACITY_OPTIONS as unknown as string[]}
+                  searchPlaceholder="Search capacity..."
+                />
               </div>
 
               {/* Email */}
