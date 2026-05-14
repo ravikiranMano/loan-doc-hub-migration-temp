@@ -8467,11 +8467,22 @@ async function generateSingleDocument(
             let am: RegExpExecArray | null;
             let scanned = 0;
             const forcedProps: number[] = [];
+            // When property anchors are missing from the visible-text projection
+            // (template uses a layout the anchor scanner doesn't detect), the
+            // single fallback region attributes EVERY anchor to property 1,
+            // leaving properties 2..N stuck on NO. Detect this case and assign
+            // each anchor occurrence its ordinal property index instead.
+            const anchorsHaveOrdinalFallback =
+              propRanges.length === 1 && propRanges[0].k === 1 && propAnchors.length === 0;
+            let anchorOrdinal = 0;
             while ((am = anchorReTxt.exec(txtAEA)) !== null) {
               scanned++;
+              anchorOrdinal++;
               const aStartXml = projAEA.map[am.index];
               const region = propRanges.find((p) => aStartXml >= p.start && aStartXml < p.end);
-              const propK = region ? region.k : 1;
+              const propK = anchorsHaveOrdinalFallback
+                ? anchorOrdinal
+                : (region ? region.k : 1);
               const winStartXml = Math.max(region ? region.start : 0, aStartXml - 600);
               const winEndXml   = Math.min(region ? region.end : xml.length, aStartXml + 1500);
 
