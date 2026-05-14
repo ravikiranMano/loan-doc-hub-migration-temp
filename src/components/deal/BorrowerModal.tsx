@@ -17,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { BorrowerData } from './BorrowersTableView';
 
 interface BorrowerModalProps {
