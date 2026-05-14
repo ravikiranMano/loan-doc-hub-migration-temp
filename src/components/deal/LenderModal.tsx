@@ -103,21 +103,13 @@ export const LenderModal: React.FC<LenderModalProps> = ({ open, onOpenChange, le
             {/* Lender Type dropdown - full width */}
             <div className="flex items-center gap-2">
               <Label className="w-[100px] shrink-0 text-xs">Lender Type</Label>
-              <Select
+              <SearchableSelect
                 value={formData.type}
                 onValueChange={(value) => handleChange('type', value)}
-              >
-                <SelectTrigger className="h-7 text-xs flex-1">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LENDER_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={LENDER_TYPE_OPTIONS.map(o => o.value)}
+                placeholder="Select type"
+                searchPlaceholder="Search lender type..."
+              />
             </div>
 
             <div>
