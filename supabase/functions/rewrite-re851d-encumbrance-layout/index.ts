@@ -300,21 +300,21 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     if (url.searchParams.get("inspect") === "1") {
-      // Show XML window around indices 340..365 to understand cell structure.
       const paras = splitParagraphs(originalXml);
-      const start = paras[340]?.start ?? 0;
-      const end   = paras[365]?.end   ?? originalXml.length;
-      const slice = originalXml.slice(start, end);
-      return new Response(JSON.stringify({
-        len: slice.length,
-        // Count tags to infer cell structure
-        tcOpens:  (slice.match(/<w:tc\b/g) || []).length,
-        tcCloses: (slice.match(/<\/w:tc>/g) || []).length,
-        trOpens:  (slice.match(/<w:tr\b/g) || []).length,
-        trCloses: (slice.match(/<\/w:tr>/g) || []).length,
-        // First 4000 chars of slice
-        head: slice.slice(0, 4000),
-      }, null, 2), {
+      // Walk back/forward to find textbox/cell wrappers around each interesting paragraph.
+      function context(idx: number): any {
+        const p = paras[idx];
+        const before = originalXml.slice(Math.max(0, p.start - 400), p.start);
+        const after  = originalXml.slice(p.end, p.end + 200);
+        return {
+          idx,
+          stripped: p.stripped.slice(0, 80),
+          before_tail: before.slice(-300),
+          after_head: after.slice(0, 200),
+        };
+      }
+      const ids = [346, 348, 349, 353, 357, 359, 360, 361];
+      return new Response(JSON.stringify({ ctx: ids.map(context) }, null, 2), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
