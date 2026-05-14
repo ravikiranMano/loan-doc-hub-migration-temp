@@ -952,12 +952,12 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   <div className="space-y-1">
                     {([['ford.1', 'ford.2'], ['ford.3', 'ford.4'], ['ford.5', 'ford.6'], ['ford.7', 'ford.8']] as const).map(([dropdownKey, inputKey], idx) => (
                       <div key={idx} className="grid grid-cols-2 gap-1">
-                        <Select value={form[dropdownKey] || ''} onValueChange={(v) => set(dropdownKey, v)}>
-                          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent className="bg-background border border-border z-[200]">
-                            {BORROWER_FORD_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                          value={form[dropdownKey] || ''}
+                          onValueChange={(v) => set(dropdownKey, v)}
+                          options={BORROWER_FORD_OPTIONS as unknown as string[]}
+                          searchPlaceholder="Search FORD..."
+                        />
                         <Input value={form[inputKey] || ''} onChange={(e) => set(inputKey, e.target.value)} className="h-7 text-xs" />
                       </div>
                     ))}
