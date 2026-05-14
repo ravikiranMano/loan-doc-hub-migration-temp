@@ -174,7 +174,7 @@ function processXml(xml: string): {
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), paragraphsRightAligned: count };
+  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed };
 }
 
 serve(async (req) => {
