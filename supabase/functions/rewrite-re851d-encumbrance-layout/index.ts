@@ -182,7 +182,7 @@ function processXml(xml: string): {
     if (!fam) continue;
     cbIndices.push(i);
     let cur = p.text;
-    const a = rightAlignAndKeep(cur);
+    const a = keepCheckboxRow(cur);
     if (a.changed) { cur = a.xml; aligned++; }
     const t = trimTrailingWhitespace(cur);
     if (t.changed) { cur = t.xml; trimmed++; }
@@ -212,10 +212,6 @@ function processXml(xml: string): {
     }
   }
 
-  if (rewrite.size === 0) {
-    return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
-  }
-
   const sortedIdx = Array.from(rewrite.keys()).sort((a, b) => a - b);
   const out: string[] = [];
   let cursor = 0;
@@ -227,7 +223,16 @@ function processXml(xml: string): {
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed, paragraphsKeptWithNext: keptWithNext };
+  const rewrittenXml = rewrite.size === 0 ? xml : out.join("");
+  const columns = normalizeCheckboxColumns(rewrittenXml);
+
+  return {
+    xml: columns.xml,
+    paragraphsRightAligned: aligned,
+    paragraphsTrimmed: trimmed,
+    paragraphsKeptWithNext: keptWithNext,
+    columnSectionsNormalized: columns.changed,
+  };
 }
 
 serve(async (req) => {
