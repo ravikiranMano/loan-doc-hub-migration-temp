@@ -448,6 +448,43 @@ async function generateSingleDocument(
       }
     }
 
+    // ── RE851A: publish primary-property description ──
+    // RE851A is single-property and the per-property RE851D publisher does not
+    // run for this template. CSR saves the Property Description under composite
+    // keys (property{N}::<dict_id> for pr_p_descript), so the bare "pr_p_descript"
+    // / "pr_p_descript_1" merge tags can resolve blank depending on forEach
+    // ordering. Publish them deterministically from the lowest property index
+    // present, falling back to the canonical "description" field if needed.
+    if (/851a/i.test(template?.name || "")) {
+      // Discover lowest propertyN.description bridged value
+      let descSource = "";
+      let descValue = "";
+      const propIdxRe = /^property(\d+)\.description$/;
+      const candidates: Array<{ idx: number; key: string; val: string }> = [];
+      for (const [k, v] of fieldValues.entries()) {
+        const m = k.match(propIdxRe);
+        if (m && v && v.rawValue !== undefined && v.rawValue !== null && String(v.rawValue) !== "") {
+          candidates.push({ idx: parseInt(m[1], 10), key: k, val: String(v.rawValue) });
+        }
+      }
+      candidates.sort((a, b) => a.idx - b.idx);
+      if (candidates.length > 0) {
+        descSource = candidates[0].key;
+        descValue = candidates[0].val;
+      } else {
+        const bare = fieldValues.get("description");
+        if (bare && bare.rawValue !== undefined && bare.rawValue !== null && String(bare.rawValue) !== "") {
+          descSource = "description";
+          descValue = String(bare.rawValue);
+        }
+      }
+      if (descValue) {
+        fieldValues.set("pr_p_descript", { rawValue: descValue, dataType: "text" });
+        fieldValues.set("pr_p_descript_1", { rawValue: descValue, dataType: "text" });
+        console.log(`[RE851A] published pr_p_descript="${descValue}" (source=${descSource})`);
+      }
+    }
+
     // ── Participant-based contact lookup ──
     // Fetch participants from deal_participants, then resolve their contact records
     {
