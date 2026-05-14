@@ -29,6 +29,7 @@ import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } 
 import { toast } from 'sonner';
 import { US_STATES } from '@/lib/usStates';
 import { LenderInfoForm } from '@/components/deal/LenderInfoForm';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface CreateContactModalProps {
   open: boolean;
