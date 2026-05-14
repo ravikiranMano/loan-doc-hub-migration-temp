@@ -1,27 +1,30 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// Goal (per latest user spec):
-//   Merge each YES/NO checkbox pair onto a SINGLE paragraph (one line) with a
-//   non-breaking space between "YES" and the no-glyph tag, so Word cannot
-//   wrap or stack the two checkboxes vertically.
+// Goal: render every YES/NO checkbox pair on the SAME line as its question,
+// right-aligned to the page/cell margin, matching the reference template
+// `re851d - LPDS Multi-property.docx`.
 //
-// Pairs handled (each in 5 property sections):
-//   {{pr_li_encumbranceOfRecord_N_yes_glyph}} YES   ←┐ merge into one
-//   {{pr_li_encumbranceOfRecord_N_no_glyph}} NO     ←┘ paragraph
-//   …delinqu60day…
-//   …currentDelinqu…
-//   …delinquencyPaidByLoan…
+// For each of the 4 question families, in every property section:
 //
-// Strictly scoped — only paragraphs that contain a `_yes_glyph` (or its
-// matching `_no_glyph`) for one of the four families are touched. Any
-// intervening blank paragraphs between the YES paragraph and the NO
-// paragraph are removed so the pair sits on the same line.
+//   QUESTION PHRASE                    → FAMILY
+//   "encumbrances of record"           → encumbranceOfRecord
+//   "60 days late"                     → delinqu60day
+//   "remain unpaid"                    → currentDelinqu
+//   "cure the delinquency"             → delinquencyPaidByLoan
 //
-// Idempotent: if a paragraph already contains both `_yes_glyph` and
-// `_no_glyph` for the same family, no change is made.
+// We locate the question paragraph, then absorb the matching YES + NO runs
+// (whether they currently live in two separate paragraphs or in one already
+// merged paragraph below the question) into the question paragraph. Layout:
 //
-// POST body: { templatePath?: string }
-//   templatePath defaults to "1778746922135_RE851D-V12.1.docx".
+//   <question text> <TAB>  {{...yes_glyph}} YES &#160; {{...no_glyph}} NO
+//
+// A right-aligned tab stop on the question's <w:pPr> pulls the checkbox
+// glyphs to the right margin. <w:keepLines/> stops Word from breaking the
+// question text away from its checkboxes.
+//
+// Strictly scoped — only the four question paragraphs (× N properties) are
+// touched. Idempotent: a question paragraph that already contains a matching
+// `_yes_glyph` is skipped.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -36,12 +39,12 @@ const corsHeaders = {
 const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
 
 const FAMILIES = [
-  "encumbranceOfRecord",
-  "delinqu60day",
-  "currentDelinqu",
-  "delinquencyPaidByLoan",
+  { family: "encumbranceOfRecord", phrase: /encumbrances of record/i },
+  { family: "delinqu60day",        phrase: /60 days late/i },
+  { family: "currentDelinqu",      phrase: /remain unpaid/i },
+  { family: "delinquencyPaidByLoan", phrase: /cure the delinquency/i },
 ] as const;
-type Family = (typeof FAMILIES)[number];
+type Family = (typeof FAMILIES)[number]["family"];
 
 interface Para {
   start: number;
@@ -66,188 +69,176 @@ function splitParagraphs(xml: string): Para[] {
   return out;
 }
 
-function detectFamily(stripped: string, kind: "yes" | "no"): Family | null {
-  for (const f of FAMILIES) {
-    const re = new RegExp(`pr_li_${f}_N_${kind}_glyph`);
-    if (re.test(stripped)) return f;
-  }
-  return null;
+function hasGlyph(stripped: string, family: Family, kind: "yes" | "no"): boolean {
+  return new RegExp(`pr_li_${family}_N_${kind}_glyph`).test(stripped);
 }
 
 /**
- * Merge paragraph B's inner content into paragraph A, separated by a
- * non-breaking-space run. We splice B's runs (everything inside the
- * outer <w:p>...</w:p>, EXCLUDING B's <w:pPr>) just before A's </w:p>.
+ * Extract the inner runs of a paragraph (everything inside <w:p>...</w:p>
+ * except its <w:pPr>). Returns "" if the paragraph cannot be parsed.
+ */
+function paragraphInnerRuns(pXml: string): string {
+  const inner = pXml.match(/^<w:p\b[^>]*?>([\s\S]*)<\/w:p>$/);
+  if (!inner) return "";
+  return inner[1].replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, "");
+}
+
+/**
+ * Get the last <w:rPr> block in an XML chunk, to clone for our injected runs
+ * so font/size match.
+ */
+function lastRPr(xml: string): string {
+  const all = [...xml.matchAll(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g)];
+  return all.length ? all[all.length - 1][0] : "";
+}
+
+/**
+ * Ensure the question paragraph has:
+ *   - a right-aligned tab stop at ~6.5" (9360 twips) for the checkbox column
+ *   - <w:keepLines/> so question + checkboxes never split across pages
  *
- * The non-breaking space is inserted as its own run that copies A's last
- * run-properties (rPr) when available, so font/size match.
+ * Operates on the <w:pPr> block. Adds <w:pPr> if missing. Idempotent.
  */
-function mergeParagraphs(aXml: string, bXml: string): string {
-  // Strip B's wrapping <w:p ...> ... </w:p> AND B's leading <w:pPr>.
-  const bInnerMatch = bXml.match(/^<w:p\b[^>]*?>([\s\S]*)<\/w:p>$/);
-  if (!bInnerMatch) return aXml; // safety
-  let bInner = bInnerMatch[1];
-  // Drop B's <w:pPr>...</w:pPr> if present (paragraph-level props belong
-  // to the paragraph wrapper, which is being discarded).
-  bInner = bInner.replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, "");
-
-  // Try to find a recent <w:rPr> in A to clone for the NBSP run, so the
-  // glyph spacing/font matches surrounding text.
-  let rPrClone = "";
-  const lastRPr = [...aXml.matchAll(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g)].pop();
-  if (lastRPr) rPrClone = lastRPr[0];
-
-  const nbspRun =
-    `<w:r>${rPrClone}<w:t xml:space="preserve">\u00A0</w:t></w:r>`;
-
-  // Insert NBSP run + B's inner runs immediately before A's closing </w:p>.
-  return aXml.replace(/<\/w:p>\s*$/, `${nbspRun}${bInner}</w:p>`);
+function injectQuestionPPr(pXml: string): string {
+  const TAB_XML = `<w:tabs><w:tab w:val="right" w:leader="none" w:pos="9360"/></w:tabs>`;
+  const KEEP   = `<w:keepLines/>`;
+  const open = pXml.match(/^<w:p\b[^>]*?>/);
+  if (!open) return pXml;
+  const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
+  if (!pprMatch) {
+    const pPr = `<w:pPr>${KEEP}${TAB_XML}</w:pPr>`;
+    return pXml.replace(open[0], `${open[0]}${pPr}`);
+  }
+  let inner = pprMatch[1];
+  // Replace existing <w:tabs>...</w:tabs> with one that includes our right tab.
+  if (/<w:tabs\b/.test(inner)) {
+    inner = inner.replace(/<w:tabs\b[^>]*>[\s\S]*?<\/w:tabs>/, TAB_XML);
+  } else {
+    inner = TAB_XML + inner;
+  }
+  if (!/<w:keepLines\s*\/>/.test(inner)) {
+    inner = KEEP + inner;
+  }
+  return pXml.replace(pprMatch[0], `<w:pPr>${inner}</w:pPr>`);
 }
 
 /**
- * Build a tag-stripped view that maps each plain-text char back to its XML
- * offset. Lets us rewrite specific characters (e.g. spaces) without parsing
- * the full DOCX run model.
+ * Append a TAB run + the YES/NO checkbox runs into the question paragraph,
+ * before its closing </w:p>. The YES and NO runs come from the source
+ * paragraphs; a single non-breaking-space run sits between them.
  */
-function buildStrippedIndex(xml: string): { text: string; map: number[] } {
-  const text: string[] = [];
-  const map: number[] = [];
-  for (let i = 0; i < xml.length; i++) {
-    const ch = xml[i];
-    if (ch === "<") {
-      const close = xml.indexOf(">", i);
-      if (close === -1) break;
-      i = close;
-      continue;
-    }
-    text.push(ch);
-    map.push(i);
-  }
-  return { text: text.join(""), map };
-}
-
-/**
- * Within a paragraph that already contains both `_yes_glyph` and `_no_glyph`
- * of the same family, replace the literal space(s) between `YES` and the
- * `{{pr_li_<fam>_N_no_glyph}}` opener with a non-breaking space (`&#160;`).
- * This prevents Word from wrapping the NO checkbox onto its own line in
- * narrow cells. Idempotent — already-NBSP spaces are skipped.
- */
-function nbspBetweenYesAndNo(pXml: string): { xml: string; replaced: number } {
-  const { text, map } = buildStrippedIndex(pXml);
-  // Find every "YES" (plus following spaces) immediately preceding a
-  // matching `{{pr_li_<fam>_N_no_glyph` opener for one of our families.
-  const re = new RegExp(
-    `\\bYES(\\s+)\\{\\{\\s*pr_li_(?:${FAMILIES.join("|")})_N_no_glyph`,
-    "g",
-  );
-  // Collect (xmlPos, len) ranges of the gap-spaces to convert.
-  const ranges: Array<{ xmlStart: number; xmlEnd: number }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const gapStartStripped = m.index + 3; // after "YES"
-    const gapEndStripped = gapStartStripped + m[1].length;
-    if (gapStartStripped >= map.length) continue;
-    const xmlStart = map[gapStartStripped];
-    const xmlEnd = map[gapEndStripped - 1] + 1;
-    // Only rewrite if the gap is a contiguous span of plain spaces in xml.
-    let allSpaces = true;
-    for (let k = xmlStart; k < xmlEnd; k++) {
-      if (pXml[k] !== " ") { allSpaces = false; break; }
-    }
-    if (!allSpaces) continue;
-    ranges.push({ xmlStart, xmlEnd });
-  }
-  if (ranges.length === 0) return { xml: pXml, replaced: 0 };
-  // Replace each range with a single NBSP entity (collapses multiple
-  // intermediate spaces into one non-breaking glue char).
-  const out: string[] = [];
-  let cursor = 0;
-  for (const r of ranges) {
-    out.push(pXml.slice(cursor, r.xmlStart));
-    out.push("&#160;");
-    cursor = r.xmlEnd;
-  }
-  out.push(pXml.slice(cursor));
-  return { xml: out.join(""), replaced: ranges.length };
+function appendCheckboxRuns(
+  questionXml: string,
+  yesInner: string,
+  noInner: string,
+): string {
+  const rPr = lastRPr(questionXml + yesInner);
+  const tabRun  = `<w:r>${rPr}<w:tab/></w:r>`;
+  const nbspRun = `<w:r>${rPr}<w:t xml:space="preserve">\u00A0</w:t></w:r>`;
+  const injected = `${tabRun}${yesInner}${nbspRun}${noInner}`;
+  return questionXml.replace(/<\/w:p>\s*$/, `${injected}</w:p>`);
 }
 
 function processXml(xml: string): {
   xml: string;
-  pairsMerged: number;
-  blanksRemoved: number;
-  nbspInserted: number;
+  questionsRewritten: number;
+  paragraphsDropped: number;
 } {
   const paras = splitParagraphs(xml);
   if (paras.length === 0) {
-    return { xml, pairsMerged: 0, blanksRemoved: 0, nbspInserted: 0 };
+    return { xml, questionsRewritten: 0, paragraphsDropped: 0 };
   }
 
-  // Track which paragraphs are dropped, and which are rewritten.
   const drop = new Set<number>();
   const rewrite = new Map<number, string>();
 
-  let pairsMerged = 0;
-  let blanksRemoved = 0;
-  let nbspInserted = 0;
+  let questionsRewritten = 0;
 
-  // Pass 1: merge separate YES + NO paragraphs into one.
   for (let i = 0; i < paras.length; i++) {
     if (drop.has(i)) continue;
-    const a = paras[i];
-    const yesFam = detectFamily(a.stripped, "yes");
-    if (!yesFam) continue;
-    // If A already contains the matching no-glyph, no merge needed.
-    if (new RegExp(`pr_li_${yesFam}_N_no_glyph`).test(a.stripped)) continue;
+    const q = paras[i];
 
-    let j = i + 1;
+    // Identify which family this question (if any) belongs to.
+    const fam = FAMILIES.find(f => f.phrase.test(q.stripped));
+    if (!fam) continue;
+
+    // Idempotency: question already absorbed the YES glyph for this family.
+    if (hasGlyph(q.stripped, fam.family, "yes")) continue;
+
+    // Look ahead up to ~8 paragraphs for source paragraphs containing
+    // _yes_glyph and _no_glyph for the SAME family. They may be:
+    //   (a) one paragraph with both glyphs (already-inline merge), or
+    //   (b) two paragraphs, possibly with blanks between them.
+    let yesIdx = -1;
+    let noIdx  = -1;
+    let inlineIdx = -1;
     const intermediates: number[] = [];
-    let matched = -1;
-    while (j < paras.length && j <= i + 6) {
+
+    for (let j = i + 1; j < paras.length && j <= i + 8; j++) {
+      if (drop.has(j)) continue;
       const pj = paras[j];
-      const jStripped = pj.stripped.trim();
-      const noFam = detectFamily(pj.stripped, "no");
-      if (noFam === yesFam) { matched = j; break; }
-      if (jStripped === "") { intermediates.push(j); j++; continue; }
+      const sj = pj.stripped;
+      const hasYes = hasGlyph(sj, fam.family, "yes");
+      const hasNo  = hasGlyph(sj, fam.family, "no");
+      if (hasYes && hasNo) { inlineIdx = j; break; }
+      if (hasYes && yesIdx < 0) { yesIdx = j; continue; }
+      if (hasNo  && noIdx  < 0 && yesIdx >= 0) { noIdx = j; break; }
+      // Track strictly-blank intermediates we'd be willing to delete.
+      if (sj.trim() === "") { intermediates.push(j); continue; }
+      // Any other glyph family / non-blank content → stop walking; we won't
+      // grab tags from a different question's row.
+      const otherFamilyHit = FAMILIES.some(f =>
+        f.family !== fam.family &&
+        (hasGlyph(sj, f.family, "yes") || hasGlyph(sj, f.family, "no"))
+      );
+      if (otherFamilyHit) break;
+      // Non-empty unrelated text (e.g. another question line) → stop.
       break;
     }
-    if (matched < 0) continue;
 
-    const aXml = rewrite.get(i) ?? a.text;
-    const bXml = paras[matched].text;
-    rewrite.set(i, mergeParagraphs(aXml, bXml));
-    drop.add(matched);
+    let yesInner = "";
+    let noInner  = "";
+    const sourcesToDrop: number[] = [];
+
+    if (inlineIdx >= 0) {
+      // Single source paragraph already has both glyphs inline.
+      // Splice the runs as-is (preserves the existing NBSP between them).
+      yesInner = paragraphInnerRuns(paras[inlineIdx].text);
+      sourcesToDrop.push(inlineIdx);
+    } else if (yesIdx >= 0 && noIdx >= 0) {
+      yesInner = paragraphInnerRuns(paras[yesIdx].text);
+      noInner  = paragraphInnerRuns(paras[noIdx].text);
+      sourcesToDrop.push(yesIdx, noIdx);
+    } else {
+      continue; // no matching checkbox sources — skip this question
+    }
+
+    // Compose the new question paragraph.
+    let newQ = injectQuestionPPr(q.text);
+    if (inlineIdx >= 0) {
+      // For inline source we already have YES + NBSP + NO inside yesInner.
+      const rPr = lastRPr(newQ + yesInner);
+      const tabRun = `<w:r>${rPr}<w:tab/></w:r>`;
+      newQ = newQ.replace(/<\/w:p>\s*$/, `${tabRun}${yesInner}</w:p>`);
+    } else {
+      newQ = appendCheckboxRuns(newQ, yesInner, noInner);
+    }
+
+    rewrite.set(i, newQ);
+    for (const k of sourcesToDrop) drop.add(k);
+    // Also drop blank paragraphs strictly between the question and the
+    // last consumed source (so we don't leave gaps).
+    const lastSrc = Math.max(...sourcesToDrop);
     for (const k of intermediates) {
-      drop.add(k);
-      blanksRemoved++;
+      if (k > i && k < lastSrc) drop.add(k);
     }
-    pairsMerged++;
-  }
-
-  // Pass 2: for every paragraph that now contains a same-family yes/no pair
-  // (whether merged just now or already inline in the source template),
-  // convert the literal space(s) between "YES" and the no-glyph tag into
-  // a non-breaking space so Word cannot wrap the NO checkbox onto its own
-  // line.
-  for (let i = 0; i < paras.length; i++) {
-    if (drop.has(i)) continue;
-    const current = rewrite.get(i) ?? paras[i].text;
-    const stripped = current.replace(/<[^>]+>/g, "");
-    const yes = detectFamily(stripped, "yes");
-    if (!yes) continue;
-    if (!new RegExp(`pr_li_${yes}_N_no_glyph`).test(stripped)) continue;
-    const { xml: nx, replaced } = nbspBetweenYesAndNo(current);
-    if (replaced > 0) {
-      rewrite.set(i, nx);
-      nbspInserted += replaced;
-    }
+    questionsRewritten++;
   }
 
   if (rewrite.size === 0 && drop.size === 0) {
-    return { xml, pairsMerged: 0, blanksRemoved: 0, nbspInserted: 0 };
+    return { xml, questionsRewritten: 0, paragraphsDropped: 0 };
   }
 
-  // Rebuild XML in document order, applying rewrites and skipping drops.
   const out: string[] = [];
   let cursor = 0;
   for (let i = 0; i < paras.length; i++) {
@@ -259,7 +250,11 @@ function processXml(xml: string): {
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), pairsMerged, blanksRemoved, nbspInserted };
+  return {
+    xml: out.join(""),
+    questionsRewritten,
+    paragraphsDropped: drop.size,
+  };
 }
 
 serve(async (req) => {
@@ -268,7 +263,7 @@ serve(async (req) => {
   }
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let templatePath = DEFAULT_TEMPLATE_PATH;
@@ -303,18 +298,17 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    const { xml: newXml, pairsMerged, blanksRemoved, nbspInserted } = processXml(originalXml);
+    const { xml: newXml, questionsRewritten, paragraphsDropped } =
+      processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
-          pairsMerged: 0,
-          blanksRemoved: 0,
-          nbspInserted: 0,
-          message:
-            "Template already has YES/NO pairs inline — no changes written.",
+          questionsRewritten: 0,
+          paragraphsDropped: 0,
+          message: "Template already laid out — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -341,9 +335,8 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         templatePath,
-        pairsMerged,
-        blanksRemoved,
-        nbspInserted,
+        questionsRewritten,
+        paragraphsDropped,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
