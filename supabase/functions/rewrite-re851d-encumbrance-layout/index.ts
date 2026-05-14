@@ -300,24 +300,21 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     if (url.searchParams.get("inspect") === "1") {
+      // Show XML window around indices 340..365 to understand cell structure.
       const paras = splitParagraphs(originalXml);
-      const sample: any[] = [];
-      for (let i = 0; i < paras.length; i++) {
-        const s = paras[i].stripped;
-        const famHit = FAMILIES.find(f => f.phrase.test(s));
-        const yesHit = FAMILIES.find(f => hasGlyph(s, f.family, "yes"));
-        const noHit  = FAMILIES.find(f => hasGlyph(s, f.family, "no"));
-        if (famHit || yesHit || noHit) {
-          sample.push({
-            i,
-            q: famHit?.family,
-            y: yesHit?.family,
-            n: noHit?.family,
-            t: s.slice(0, 80),
-          });
-        }
-      }
-      return new Response(JSON.stringify({ sample }, null, 2), {
+      const start = paras[340]?.start ?? 0;
+      const end   = paras[365]?.end   ?? originalXml.length;
+      const slice = originalXml.slice(start, end);
+      return new Response(JSON.stringify({
+        len: slice.length,
+        // Count tags to infer cell structure
+        tcOpens:  (slice.match(/<w:tc\b/g) || []).length,
+        tcCloses: (slice.match(/<\/w:tc>/g) || []).length,
+        trOpens:  (slice.match(/<w:tr\b/g) || []).length,
+        trCloses: (slice.match(/<\/w:tr>/g) || []).length,
+        // First 4000 chars of slice
+        head: slice.slice(0, 4000),
+      }, null, 2), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
