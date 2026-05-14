@@ -1,22 +1,27 @@
 ## Plan
 
-1. **Stop the corruption at the source**
-   - Update only the RE851D encumbrance balloon-payment post-render pass in `supabase/functions/generate-document/index.ts`.
-   - Keep the existing field keys and business logic unchanged.
-   - Change the balloon replacement logic so it never replaces an existing `<w:sdt>`/content-control block or spans across paragraph/control boundaries.
-   - Only rewrite safe standalone checkbox glyph runs (`☑`, `☐`, `☒`) and strip duplicate raw Handlebars balloon-token text runs.
+1. **Confirm the active RE851D template target**
+   - Use the active `templates` record for RE851D, currently `1778782063756_RE851D-V13.5.docx`.
+   - Avoid the stale V12 default path used by the existing one-shot rewrite function.
 
-2. **Remove risky XML “healing” dependency**
-   - Keep final validation, but avoid relying on broad repair logic to make corrupted XML pass.
-   - Add a small targeted guard before applying queued RE851D encumbrance edits: if a replacement boundary is not exactly a complete `<w:r>...</w:r>` text run, skip it instead of splicing XML.
+2. **Update the stored RE851D DOCX template**
+   - Run the existing RE851D template rewrite function against the active V13.5 template path, or adjust its default/fallback so it targets the active `templates.file_path` instead of the old V12 file.
+   - Replace appraiser conditionals in all property slots with plain merge tags:
+     - Name: `{{pr_p_appraiserName_1}}` through `{{pr_p_appraiserName_5}}`
+     - Address: `{{pr_p_appraiserAddress_1}}` through `{{pr_p_appraiserAddress_5}}`
+   - Do not add any new `{{#if}}` logic to the DOCX template.
 
-3. **Preserve expected output**
-   - For every BALLOON PAYMENT? row, force exactly one checked option based on existing published booleans:
-     - `pr_li_*_balloonYes_N_S`
-     - `pr_li_*_balloonNo_N_S`
-     - `pr_li_*_balloonUnknown_N_S`
-   - Output remains: `☑ YES ☐ NO ☐ UNKNOWN` (or the matching option), with no literal `#if` / `{{...}}` text.
+3. **Keep server-side pre-resolution intact**
+   - Preserve the existing `generate-document` logic that sets:
+     - `pr_p_appraiserName_N = "BPO Performed by Broker"` when performed by Broker, otherwise entered appraiser name or blank.
+     - `pr_p_appraiserAddress_N = "N/A"` when performed by Broker, otherwise joined appraiser address or blank.
+   - Make only minimal comments/code cleanup if needed; no data model or business logic changes.
 
-4. **Validate with the same failure signal**
-   - Run the targeted document-generation function test/invocation for the failing deal/template if available.
-   - Confirm logs no longer show `expected </w:p> before </w:sdtContent>` and final `word/document.xml` integrity validation passes.
+4. **Deploy and verify**
+   - Deploy any changed backend function if needed.
+   - Invoke the rewrite against the active RE851D template.
+   - Generate RE851D for the current deal/template and inspect the output/logs to confirm:
+     - No raw `#if`/`{{#if}}` appears.
+     - Broker property renders `BPO Performed by Broker` and `N/A`.
+     - Non-Broker or empty property slots render blank appraiser name/address.
+     - All five property sections remain independent.
