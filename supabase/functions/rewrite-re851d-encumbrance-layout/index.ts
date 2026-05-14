@@ -303,7 +303,7 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    const { xml: newXml, pairsMerged, blanksRemoved } = processXml(originalXml);
+    const { xml: newXml, pairsMerged, blanksRemoved, nbspInserted } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
