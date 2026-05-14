@@ -1312,18 +1312,61 @@ async function generateSingleDocument(
       // Used to route propertytax{N} rows to their associated property by the
       // tax row's `.property` field (which carries the property's address).
       const normAddr = (s: string) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
-      // Per-property candidate strings: full address + street/city/zip components
-      // so the bridge can match labels that wrap or strip the address.
-      type PropCandidate = { idx: number; full: string; street: string; city: string; zip: string };
+      // Per-property candidate strings: full label/address + components so tax
+      // rows can be routed by the Property Tax `.property` dropdown selection.
+      type PropCandidate = { idx: number; label: string; desc: string; full: string; street: string; city: string; state: string; zip: string };
       const propCandidates: PropCandidate[] = [];
       const addressToPropIndex = new Map<string, number>();
       for (const pi of sortedPropIndices) {
+        const desc = normAddr(String(fieldValues.get(`property${pi}.description`)?.rawValue || ""));
         const full = normAddr(String(fieldValues.get(`property${pi}.address`)?.rawValue || ""));
         const street = normAddr(String(fieldValues.get(`property${pi}.street`)?.rawValue || ""));
         const city = normAddr(String(fieldValues.get(`property${pi}.city`)?.rawValue || ""));
+        const state = normAddr(String(fieldValues.get(`property${pi}.state`)?.rawValue || ""));
         const zip = normAddr(String(fieldValues.get(`property${pi}.zip`)?.rawValue || ""));
-        propCandidates.push({ idx: pi, full, street, city, zip });
+        const label = normAddr([desc, [street, city, state, zip].filter(Boolean).join(", ")].filter(Boolean).join(" - "));
+        propCandidates.push({ idx: pi, label, desc, full, street, city, state, zip });
         if (full && !addressToPropIndex.has(full)) addressToPropIndex.set(full, pi);
+        if (label && !addressToPropIndex.has(label)) addressToPropIndex.set(label, pi);
+      }
+
+      const resolvePropertyTaxPropertyIndex = (propertyLabelRaw: string): number | undefined => {
+        const taxNorm = normAddr(propertyLabelRaw);
+        if (!taxNorm) return undefined;
+        const sortedCandidates = [...propCandidates].sort((a, b) => a.idx - b.idx);
+        const exact = addressToPropIndex.get(taxNorm);
+        if (exact) return exact;
+        for (const c of sortedCandidates) {
+          if (c.label && taxNorm === c.label) return c.idx;
+          if (c.full && taxNorm === c.full) return c.idx;
+        }
+        for (const c of sortedCandidates) {
+          if (c.desc && taxNorm.includes(c.desc) && ((c.street && taxNorm.includes(c.street)) || (c.zip && taxNorm.includes(c.zip)))) {
+            return c.idx;
+          }
+        }
+        return undefined;
+      };
+
+      const propertyTaxIndices = new Set<number>();
+      for (const [key] of fieldValues.entries()) {
+        const m = key.match(/^propertytax(\d+)\./);
+        if (m) propertyTaxIndices.add(parseInt(m[1], 10));
+      }
+      for (let taxIdx = 1; taxIdx <= 10; taxIdx++) {
+        if (fieldValues.has(`propertytax${taxIdx}.property`)) propertyTaxIndices.add(taxIdx);
+      }
+      const propertyTaxToProperty = new Map<number, number>();
+      const propertyToTax = new Map<number, number>();
+      for (const taxIdx of [...propertyTaxIndices].sort((a, b) => a - b)) {
+        const propLabel = String(fieldValues.get(`propertytax${taxIdx}.property`)?.rawValue || "");
+        const propIdx = resolvePropertyTaxPropertyIndex(propLabel);
+        if (!propIdx) continue;
+        propertyTaxToProperty.set(taxIdx, propIdx);
+        if (!propertyToTax.has(propIdx)) propertyToTax.set(propIdx, taxIdx);
+      }
+      if (propertyTaxToProperty.size > 0) {
+        debugLog(`[RE851D] propertytax→property mapping: ${[...propertyTaxToProperty.entries()].map(([taxIdx, propIdx]) => `${taxIdx}→${propIdx}`).join(", ")}`);
       }
 
       // ── RE851D: Pre-bridge propertytax{srcIdx} → propertytax{destIdx} by address match ──
@@ -1335,20 +1378,15 @@ async function generateSingleDocument(
       // Only copies when destination key is empty.
       {
         const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information", "tax_confidence"];
-        const srcIndices = new Set<number>();
-        for (const [k] of fieldValues.entries()) {
-          const m = k.match(/^propertytax(\d+)\./);
-          if (m) srcIndices.add(parseInt(m[1], 10));
-        }
         const bridgeLog: string[] = [];
         const unmatchedLog: string[] = [];
         const sortedCandidates = [...propCandidates].sort((a, b) => a.idx - b.idx);
-        for (const srcIdx of srcIndices) {
+        for (const srcIdx of propertyTaxIndices) {
           const propAddrRaw = String(fieldValues.get(`propertytax${srcIdx}.property`)?.rawValue || "");
           if (!propAddrRaw) continue;
           const taxNorm = normAddr(propAddrRaw);
 
-          let destIdx: number | undefined = addressToPropIndex.get(taxNorm);
+          let destIdx: number | undefined = propertyTaxToProperty.get(srcIdx) || addressToPropIndex.get(taxNorm);
           // (b) property full ⊂ tax string
           if (!destIdx) {
             for (const c of sortedCandidates) {
@@ -1489,12 +1527,14 @@ async function generateSingleDocument(
           debugLog(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
         // RE851D ARE TAXES DELINQUENT? — per-property publisher.
-        // Source of truth: propertytax{N}.delinquent (UI checkbox).
-        // Fallback: property{N}.delinquent (legacy). Strict per-index — no
-        // cross-property fallback. Always emits ☑/☐ glyphs (never blank).
+        // Source of truth: the propertytax{T} row linked by its `.property`
+        // dropdown to property{N}. Fallback: property{N}.delinquent (legacy).
+        // Do not fall back to positional propertytax{N}: tax row order can differ
+        // from property order. Always emits ☑/☐ glyphs (never blank).
         {
+          const taxIdx = propertyToTax.get(idx);
           const delinqRaw =
-            fieldValues.get(`propertytax${idx}.delinquent`)?.rawValue ??
+            (taxIdx !== undefined ? fieldValues.get(`propertytax${taxIdx}.delinquent`)?.rawValue : undefined) ??
             fieldValues.get(`${prefix}.delinquent`)?.rawValue;
           const s = String(delinqRaw ?? "").trim().toLowerCase();
           const isDelinq = s === "true" || s === "1" || s === "yes" || s === "y" || s === "on" || s === "checked" || s === "☑" || s === "☒";
@@ -1504,14 +1544,14 @@ async function generateSingleDocument(
           let amountStr = "";
           if (isDelinq) {
             const amtRaw =
-              fieldValues.get(`propertytax${idx}.delinquent_amount`)?.rawValue ??
+              (taxIdx !== undefined ? fieldValues.get(`propertytax${taxIdx}.delinquent_amount`)?.rawValue : undefined) ??
               fieldValues.get(`${prefix}.delinquent_amount`)?.rawValue;
             if (amtRaw !== undefined && amtRaw !== null && String(amtRaw) !== "") {
               amountStr = String(amtRaw);
             }
           }
           fieldValues.set(`pr_pt_delinquentAmount_${idx}`, { rawValue: amountStr, dataType: "currency" });
-          debugLog(`[RE851D] pr_pt_delinquent idx=${idx} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
+          debugLog(`[RE851D] pr_pt_delinquent idx=${idx} taxIdx=${taxIdx ?? "legacy"} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
         }
         // Delinquent payment count
         const delinqV =

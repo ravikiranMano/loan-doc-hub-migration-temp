@@ -1,91 +1,67 @@
-## Goal
-Replace `{{#if propertytax.delinquent}}` conditionals in the RE851D template with pre-resolved, per-property tags so the renderer never evaluates conditionals and each of 5 property slots is independent.
+## Diagnosis (DL-2026-0250)
 
-## New template tags (per property index N = 1..5)
-- `{{pr_pt_delinquent_yes_glyph_N}}` → "☑" or "☐"
-- `{{pr_pt_delinquent_no_glyph_N}}`  → "☑" or "☐"
-- `{{pr_pt_delinquentAmount_N}}`     → currency string when delinquent=true, else ""
+The "ARE TAXES DELINQUENT?" YES/NO renders against the wrong property because the per-property publisher reads `propertytax{idx}.delinquent` positionally. Each Property Tax record actually carries a `propertytax{N}.property` dropdown that binds it to a specific Property by display string (e.g. `"Test property 2 - MG Road, Noida, CA, 98454"`).
 
-(The DOCX template itself will be updated separately by the user — this plan covers the server-side publisher so the tags resolve correctly once the template uses them.)
+For this deal:
 
-## Code changes — single file
-`supabase/functions/generate-document/index.ts`
+| Tax record | Linked property | delinquent | amount |
+|---|---|---|---|
+| propertytax1 | Property **2** | true  | 6578  |
+| propertytax2 | Property **1** | false | —     |
+| propertytax3 | Property **4** | true  | 23844 |
+| propertytax4 | Property **5** | false | —     |
+| (none)       | Property **3** | —     | —     |
 
-### 1. Per-property publisher (extend existing block at ~lines 1410–1490)
+So `pr_pt_delinquent_2` must come from `propertytax1`, not `propertytax2`. Same problem affects `pr_pt_delinquentAmount_${idx}` and the YES/NO glyph aliases.
 
-Inside the existing `for (const idx of realPropertyIndices)` loop — right after the existing `pr_pt_actual_${idx}` / `pr_pt_estimated_${idx}` publisher (~line 1490) — add:
+## Code change — single file
 
-```ts
-// RE851D ARE TAXES DELINQUENT? — per-property publisher.
-// Source of truth: propertytax{N}.delinquent (UI checkbox).
-// Fallbacks: property{N}.delinquent (legacy). Strict per-index — no
-// cross-property fallback. Always emits ☑/☐ glyphs (never blank).
-{
-  const delinqRaw =
-    fieldValues.get(`propertytax${idx}.delinquent`)?.rawValue ??
-    fieldValues.get(`${prefix}.delinquent`)?.rawValue;
-  const isDelinq = truthy(delinqRaw); // existing helper used elsewhere in file
-  fieldValues.set(`pr_pt_delinquent_${idx}`,            { rawValue: isDelinq ? "true" : "false", dataType: "boolean" });
-  fieldValues.set(`pr_pt_delinquent_yes_glyph_${idx}`,  { rawValue: isDelinq ? "☑" : "☐",        dataType: "text" });
-  fieldValues.set(`pr_pt_delinquent_no_glyph_${idx}`,   { rawValue: isDelinq ? "☐" : "☑",        dataType: "text" });
+`supabase/functions/generate-document/index.ts`, lines 1491–1515 (per-property delinquent publisher only — no other publisher is touched).
 
-  let amountStr = "";
-  if (isDelinq) {
-    const amtRaw =
-      fieldValues.get(`propertytax${idx}.delinquent_amount`)?.rawValue ??
-      fieldValues.get(`${prefix}.delinquent_amount`)?.rawValue;
-    if (amtRaw !== undefined && amtRaw !== null && String(amtRaw) !== "") {
-      amountStr = String(amtRaw); // formatting layer renders as currency via dataType
-    }
-  }
-  fieldValues.set(`pr_pt_delinquentAmount_${idx}`, {
-    rawValue: amountStr,
-    dataType: "currency",
-  });
-}
-```
+### 1. Build a one-time `propertyIndexByTaxIndex` map (once, before the per-property loop)
 
-### 2. Empty-slot defaults (anti-fallback shield)
+For tax indices 1..N (scan up to 10 to be safe), read `propertytax{T}.property` (string) and match it against each `property{P}` record using a normalized fingerprint built from the same fields the UI uses to render the dropdown label:
+- `property{P}.description`, `property{P}.street`, `property{P}.city`, `property{P}.state`, `property{P}.zip`
 
-For indices 1..5 NOT in `realPropertyIndices`, defaults must be `☐ YES / ☑ NO / "" amount`. Add a small loop right after the existing `realPropertyIndices` loop closes:
+Match strategy (in order, all case-insensitive, whitespace-collapsed):
+1. Exact match of full label `"{description} - {street}, {city}, {state}, {zip}"`.
+2. Substring match where label contains `description` AND (`street` OR `zip`) of a property — disambiguates partial labels.
+3. If still unresolved, leave that tax record unmapped (do NOT fall back to positional — that's the current bug).
+
+Result: `Map<taxIdx:number, propertyIdx:number>` plus the inverse `Map<propertyIdx, taxIdx>`.
+
+Add a debugLog summarizing the resolved mapping (e.g. `[RE851D] propertytax→property mapping: {1→2, 2→1, 3→4, 4→5}`).
+
+### 2. Rewrite the per-property delinquent publisher (lines 1491–1515)
+
+Inside the existing `for (const idx of realPropertyIndices)` loop, replace the block that currently reads `propertytax${idx}.delinquent` with a lookup via the inverse map:
 
 ```ts
-for (let i = 1; i <= 5; i++) {
-  if (realPropertyIndices.includes(i)) continue;
-  fieldValues.set(`pr_pt_delinquent_yes_glyph_${i}`, { rawValue: "☐", dataType: "text" });
-  fieldValues.set(`pr_pt_delinquent_no_glyph_${i}`,  { rawValue: "☑", dataType: "text" });
-  fieldValues.set(`pr_pt_delinquentAmount_${i}`,     { rawValue: "",  dataType: "currency" });
-  fieldValues.set(`pr_pt_delinquent_${i}`,           { rawValue: "false", dataType: "boolean" });
-}
+const taxIdx = propertyToTax.get(idx); // number | undefined
+const delinqRaw = taxIdx !== undefined
+  ? fieldValues.get(`propertytax${taxIdx}.delinquent`)?.rawValue
+  : fieldValues.get(`${prefix}.delinquent`)?.rawValue; // legacy property{N}.delinquent fallback only
 ```
 
-### 3. Register suffixed keys in valid-field-key list (~lines 4891 and 6270)
+Same change for `propertytax${taxIdx}.delinquent_amount`. The `${prefix}.delinquent` / `${prefix}.delinquent_amount` legacy fallbacks remain in place for back-compat with deals that have no tax dropdown set.
 
-Add in the `_N` aliases block at ~line 4891 (longest first so `_yes_glyph` wins over bare):
-```
-"pr_pt_delinquent_yes_glyph_N", "pr_pt_delinquent_no_glyph_N",
-"pr_pt_delinquentAmount_N",
-"pr_pt_delinquent_N",
-```
+The glyph emission, empty-slot defaults loop (lines 1920–1928), `_N` key registration (line 4929), and `SUFFIXED_BASES` (line 6310) remain unchanged — they already handle missing/false correctly.
 
-Add to `SUFFIXED_BASES` at ~line 6270 so `effectiveValidFieldKeys` gets `_1`..`_5`:
-```
-"pr_pt_delinquent_yes_glyph", "pr_pt_delinquent_no_glyph",
-"pr_pt_delinquentAmount", "pr_pt_delinquent",
-```
-
-### 4. Deploy `generate-document` edge function.
-
-## Out of scope
-- DOCX template edits (user updates separately to replace `{{#if propertytax.delinquent}}…` with the three new tags).
-- No schema, UI, or field-dictionary changes.
-- No changes to existing `pr_pt_actual` / `pr_pt_estimated` / `pr_pt_annualTaxes` publishers.
-- No conditionals retained in template — all glyphs pre-resolved server-side.
+### 3. No other publishers, schema, UI, template, or DOCX changes.
 
 ## Verification
-1. Deploy `generate-document`.
-2. Regenerate RE851D for a deal with mixed property tax delinquent flags:
-   - Property 1 delinquent=true, amount=1234.56  → "☑ YES   ☐ NO" + "$ 1,234.56"
-   - Property 2 delinquent=false                  → "☐ YES   ☑ NO" + "$ "
-   - Property 3 (no record)                       → "☐ YES   ☑ NO" + "$ "
-3. Confirm no `{{#if}}` survives in the rendered output and no CPU-timeout warnings appear in `generate-document` edge logs.
+
+After deploy and regeneration of RE851D for DL-2026-0250:
+- PROPERTY #1 (Sunset Plaza)  → ☐ YES   ☑ NO  (from propertytax2)
+- PROPERTY #2 (Test property 2) → ☑ YES   ☐ NO  + amount $6,578.00  (from propertytax1)
+- PROPERTY #3 (Property 3)    → ☐ YES   ☑ NO  (no tax record)
+- PROPERTY #4 (Property 4)    → ☑ YES   ☐ NO  + amount $23,844.00  (from propertytax3)
+- PROPERTY #5 (Property 5)    → ☐ YES   ☑ NO  (from propertytax4)
+
+Edge function logs should show the `propertytax→property mapping` debugLog with the resolved map.
+
+## Out of scope
+
+- UI / Property Tax form changes.
+- Schema, field_dictionary, or DOCX template edits.
+- Any other publisher (annual_payment, actual/estimated confidence, etc.) — those will be revisited in a follow-up if the user reports the same wrong-property symptom there. This change is strictly limited to delinquent + delinquent_amount.
