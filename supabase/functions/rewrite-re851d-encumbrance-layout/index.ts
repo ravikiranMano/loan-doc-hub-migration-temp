@@ -301,7 +301,7 @@ serve(async (req) => {
       });
     }
 
-    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext } = processXml(originalXml);
+    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext, columnSectionsNormalized } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
@@ -311,7 +311,8 @@ serve(async (req) => {
           paragraphsRightAligned: 0,
           paragraphsTrimmed: 0,
           paragraphsKeptWithNext: 0,
-          message: "Template already right-aligned, trimmed, and kept-with-next — no changes written.",
+          columnSectionsNormalized: 0,
+          message: "Template already normalized — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -341,6 +342,7 @@ serve(async (req) => {
         paragraphsRightAligned,
         paragraphsTrimmed,
         paragraphsKeptWithNext,
+        columnSectionsNormalized,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
