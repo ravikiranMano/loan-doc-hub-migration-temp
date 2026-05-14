@@ -138,4 +138,94 @@ export function allocateDollarsByPercent(
   return dollars.mul(pct).div(100).toFixed(2);
 }
 
+// ============================================================================
+// Category-aware display helpers (platform-wide standard)
+// ----------------------------------------------------------------------------
+// All helpers smart-trim trailing zeros beyond the 2nd decimal and append the
+// appropriate unit. Storage precision is always 4dp for percent / 2dp for $;
+// these helpers operate on the stored value, never on a re-rounded display
+// string.
+// ============================================================================
+
+/** Interest-style rates (Note, Default, Interest Guarantee, Deferred). Max 3dp. */
+export function formatInterestRate(value: string | number | null | undefined): string {
+  const s = formatPercentDisplay(value, 3);
+  return s === '' ? '' : `${s}%`;
+}
+
+/** Pro-rata / funding / lender allocation %. Max 4dp. */
+export function formatProRata(value: string | number | null | undefined): string {
+  const s = formatPercentDisplay(value, 4);
+  return s === '' ? '' : `${s}%`;
+}
+
+/** LTV / CLTV / Protective Equity / generic ratio %. Max 2dp. */
+export function formatRatio(value: string | number | null | undefined): string {
+  const s = formatPercentDisplay(value, 2);
+  return s === '' ? '' : `${s}%`;
+}
+
+/** Late Charge %. Max 3dp. */
+export function formatLateChargePct(value: string | number | null | undefined): string {
+  const s = formatPercentDisplay(value, 3);
+  return s === '' ? '' : `${s}%`;
+}
+
+/** Dollar amounts. Always exactly 2dp with `$` and thousand separators. */
+export function formatDollar(value: string | number | null | undefined): string {
+  const d = toDecimal(value);
+  if (d === null) return '';
+  const fixed = d.toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+  const sign = intPart.startsWith('-') ? '-' : '';
+  const absInt = sign ? intPart.slice(1) : intPart;
+  const withCommas = absInt.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${sign}$${withCommas}.${decPart}`;
+}
+
+// ----------------------------------------------------------------------------
+// Field-key -> category resolver
+// ----------------------------------------------------------------------------
+
+export type PercentCategory = 'interestRate' | 'proRata' | 'ratio' | 'lateChargePct';
+
+/** Resolve a field key to its percentage category. Defaults to interestRate (3dp). */
+export function resolvePercentCategory(fieldKey: string | null | undefined): PercentCategory {
+  if (!fieldKey) return 'interestRate';
+  const k = fieldKey.toLowerCase();
+  if (/(^|_)(ltv|cltv)(_|$)/.test(k) || k.includes('protective_equity') || k.includes('protectiveequity')) {
+    return 'ratio';
+  }
+  if (k.includes('late_charge') && (k.includes('pct') || k.includes('percent') || k.includes('rate'))) {
+    return 'lateChargePct';
+  }
+  if (
+    k.includes('pro_rata') ||
+    k.includes('prorata') ||
+    k.includes('funding_pct') ||
+    k.includes('pct_owned') ||
+    k.includes('pctowned') ||
+    k.includes('allocation_pct') ||
+    k.includes('allocationpct')
+  ) {
+    return 'proRata';
+  }
+  // Note rate, default rate, interest guarantee, deferred interest, etc.
+  return 'interestRate';
+}
+
+/** Format a percent value using the category resolved from a field key. */
+export function formatPercentByFieldKey(
+  fieldKey: string | null | undefined,
+  value: string | number | null | undefined
+): string {
+  switch (resolvePercentCategory(fieldKey)) {
+    case 'ratio': return formatRatio(value);
+    case 'proRata': return formatProRata(value);
+    case 'lateChargePct': return formatLateChargePct(value);
+    case 'interestRate':
+    default: return formatInterestRate(value);
+  }
+}
+
 export { Decimal };

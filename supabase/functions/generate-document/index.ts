@@ -5883,7 +5883,7 @@ async function generateSingleDocument(
               } else {
                 let rendered = "";
                 if (v && v.rawValue !== null && v.rawValue !== undefined) {
-                  rendered = formatByDataType(v.rawValue, v.dataType);
+                  rendered = formatByDataType(v.rawValue, v.dataType, lookupKey);
                   if (v.dataType === "currency" && rendered.startsWith("$")) {
                     rendered = rendered.substring(1);
                   }
@@ -8679,7 +8679,7 @@ async function generateSingleDocument(
         const fmtVal = (key: string): string => {
           const v = fieldValues.get(key);
           if (!v || v.rawValue === null || v.rawValue === undefined || String(v.rawValue).trim() === "") return "";
-          let r = formatByDataType(v.rawValue, v.dataType);
+          let r = formatByDataType(v.rawValue, v.dataType, key);
           // Cells already contain leading "$" / trailing "%" glyphs — strip ours so we
           // don't duplicate them.
           if (v.dataType === "currency" && r.startsWith("$")) r = r.substring(1).trim();
