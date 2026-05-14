@@ -1,35 +1,22 @@
 ## Plan
 
-1. **Normalize broken RE851D template text before rendering**
-   - In the existing RE851D pre-render sanitization block in `supabase/functions/generate-document/index.ts`, add a small helper scoped to Word text runs that:
-     - collapses multiline/split Handlebars expressions inside `{{ ... }}` into one-line expressions,
-     - repairs malformed closes like `{{/if}` to `{{/if}}`,
-     - repairs broken RE851D encumbrance field suffixes such as `_N_S`, `_(N)_(S)`, `(N)(S)`, and split `S)` variants,
-     - keeps this limited to RE851D/document-template text and existing field families only.
+1. **Stop the corruption at the source**
+   - Update only the RE851D encumbrance balloon-payment post-render pass in `supabase/functions/generate-document/index.ts`.
+   - Keep the existing field keys and business logic unchanged.
+   - Change the balloon replacement logic so it never replaces an existing `<w:sdt>`/content-control block or spans across paragraph/control boundaries.
+   - Only rewrite safe standalone checkbox glyph runs (`☑`, `☐`, `☒`) and strip duplicate raw Handlebars balloon-token text runs.
 
-2. **Replace the broken Balloon Payment row safely**
-   - Add a targeted RE851D cleanup around `BALLOON PAYMENT?` rows so any broken/raw balloon Handlebars fragments are reduced to clean checkbox output without changing business logic.
-   - Use the already-published boolean fields (`pr_li_rem_*` / `pr_li_ant_*`) and existing post-render winner logic to force exactly one of YES / NO / UNKNOWN.
-   - Avoid inserting literal malformed expressions and avoid hardcoded `☒`.
+2. **Remove risky XML “healing” dependency**
+   - Keep final validation, but avoid relying on broad repair logic to make corrupted XML pass.
+   - Add a small targeted guard before applying queued RE851D encumbrance edits: if a replacement boundary is not exactly a complete `<w:r>...</w:r>` text run, skip it instead of splicing XML.
 
-3. **Clean the known corrupted phrase**
-   - Add a narrow replacement for `Additional remaininARE TAXES DELINQUENT?g` to `Additional remaining, expected, or anticipated encumbrances...` during RE851D XML sanitization.
+3. **Preserve expected output**
+   - For every BALLOON PAYMENT? row, force exactly one checked option based on existing published booleans:
+     - `pr_li_*_balloonYes_N_S`
+     - `pr_li_*_balloonNo_N_S`
+     - `pr_li_*_balloonUnknown_N_S`
+   - Output remains: `☑ YES ☐ NO ☐ UNKNOWN` (or the matching option), with no literal `#if` / `{{...}}` text.
 
-4. **Fix the actual integrity error shown in logs**
-   - Recent backend logs show the current failure is:
-     - `expected </w:p> before </w:sdtContent>`
-     - context shows nested/duplicated checkbox SDT wrappers: `</w:sdtContent></w:sdt></w:sdtContent></w:sdt>`.
-   - Add a conservative final repair in `supabase/functions/_shared/docx-processor.ts` to unwrap/remove invalid nested checkbox SDT structure when it appears inside an outer SDT content block, preserving the visible checkbox glyph and surrounding runs.
-   - Call that repair in the existing RE851D final flush before `validateContentXmlPart`.
-
-5. **Add targeted regression coverage**
-   - Add or extend a Deno test under `supabase/functions/_shared` that validates:
-     - multiline Handlebars are normalized,
-     - `{{/if}` is repaired/removed correctly,
-     - broken balloon field keys normalize to usable keys,
-     - nested SDT corruption no longer fails `validateContentXmlPart` after repair.
-
-6. **Validate with the real function path**
-   - Run the focused edge-function tests.
-   - Deploy the changed backend functions.
-   - Trigger or inspect `generate-document` for the RE851D template again and confirm no `word/document.xml` integrity failure appears in logs.
+4. **Validate with the same failure signal**
+   - Run the targeted document-generation function test/invocation for the failing deal/template if available.
+   - Confirm logs no longer show `expected </w:p> before </w:sdtContent>` and final `word/document.xml` integrity validation passes.

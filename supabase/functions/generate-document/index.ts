@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose, repairStraySdtClosingPair } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
@@ -9048,23 +9048,33 @@ async function generateSingleDocument(
                 const winner: "yes" | "no" | "unk" = isYes ? "yes" : isNo ? "no" : "unk";
                 const wantFor = (l: "yes" | "no" | "unk") => (l === winner ? "\u2611" : "\u2610");
 
-                // Collect all checkbox-bearing runs in window order.
+                // Collect only standalone checkbox-bearing text runs in window order.
+                // Do NOT target glyphs that already live inside native Word SDT
+                // checkbox content controls: replacing/removing the inner <w:r>
+                // of an SDT can leave malformed <w:sdtContent> nesting in the
+                // final word/document.xml. Existing SDTs are left structurally
+                // untouched by this pass.
                 const slice = xml.slice(rawWinStart, rawWinEnd);
                 const glyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([\u2610\u2611\u2612])(<\/w:t>\s*<\/w:r>)/g;
-                const drawingRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:drawing\b[\s\S]*?<\/w:drawing>\s*<\/w:r>/g;
                 const handlebarsRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>([\s\S]*?)<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>([^<]*\{\{[^{}]*?pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown)[^{}]*?\}\}[^<]*)<\/w:t>\s*<\/w:r>/g;
-                type Hit = { idx: number; len: number; kind: "glyph" | "drawing" | "handlebars"; cur?: string; pre?: string; post?: string; rPr?: string };
+                type Hit = { idx: number; len: number; kind: "glyph" | "handlebars"; cur?: string; pre?: string; post?: string; rPr?: string };
                 const hits: Hit[] = [];
+                const insideExistingSdt = (absStart: number): boolean => {
+                  const lastContentOpen = xml.lastIndexOf("<w:sdtContent", absStart);
+                  const lastContentClose = xml.lastIndexOf("</w:sdtContent>", absStart);
+                  if (lastContentOpen > lastContentClose) return true;
+                  const lastPrOpen = xml.lastIndexOf("<w:sdtPr", absStart);
+                  const lastPrClose = xml.lastIndexOf("</w:sdtPr>", absStart);
+                  return lastPrOpen > lastPrClose;
+                };
                 let gm: RegExpExecArray | null;
                 while ((gm = glyphRunRe.exec(slice)) !== null) {
+                  if (insideExistingSdt(rawWinStart + gm.index)) continue;
                   hits.push({ idx: gm.index, len: gm[0].length, kind: "glyph", pre: gm[1], cur: gm[2], post: gm[3] });
-                }
-                let dm: RegExpExecArray | null;
-                while ((dm = drawingRunRe.exec(slice)) !== null) {
-                  hits.push({ idx: dm.index, len: dm[0].length, kind: "drawing" });
                 }
                 let hm: RegExpExecArray | null;
                 while ((hm = handlebarsRunRe.exec(slice)) !== null) {
+                  if (insideExistingSdt(rawWinStart + hm.index)) continue;
                   hits.push({ idx: hm.index, len: hm[0].length, kind: "handlebars", rPr: hm[1] || "" });
                 }
                 hits.sort((a, b) => a.idx - b.idx);
@@ -9268,8 +9278,10 @@ async function generateSingleDocument(
           // Boundary safety: an edit must start at a safe XML position. For
           // pure inserts (start === end) the position must be either at end-of-
           // doc, immediately before a `<`, or immediately after a `>`.
-          // For replacements, start must point at `<` AND end must be one
-          // past `>`. This prevents a stale offset from splicing inside an
+          // For replacements, start must point at `<`, end must be one past
+          // `>`, and the replaced fragment must be exactly one safe text run
+          // (`<w:r>...</w:r>`) or one text node (`<w:t>...</w:t>`). This
+          // prevents a stale offset from splicing inside an
           // attribute (e.g. `<w:color w:v|`) and producing the malformed
           // `</w:rPr> before </w:p>` failure observed on RE851D.
           const isSafeBoundary = (e: { start: number; end: number }): boolean => {
@@ -9280,7 +9292,9 @@ async function generateSingleDocument(
               const prev = e.start > 0 ? xml.charAt(e.start - 1) : "";
               return ch === "<" || prev === ">";
             }
-            return xml.charAt(e.start) === "<" && xml.charAt(e.end - 1) === ">";
+            if (xml.charAt(e.start) !== "<" || xml.charAt(e.end - 1) !== ">") return false;
+            const frag = xml.slice(e.start, e.end);
+            return /^<w:r\b[^>]*>[\s\S]*<\/w:r>$/.test(frag) || /^<w:t\b[^>]*>[\s\S]*<\/w:t>$/.test(frag);
           };
           for (const e of edits) {
             if (e.start < cursor) {
@@ -9372,6 +9386,13 @@ async function generateSingleDocument(
               __xmlStrCache[k] = pRepaired.xml;
               console.log(
                 `[generate-document] RE851D post-render flush: closed ${pRepaired.repaired} unclosed <w:p> before structural close in ${k}`,
+              );
+            }
+            const straySdtRepaired = repairStraySdtClosingPair(__xmlStrCache[k]);
+            if (straySdtRepaired.repaired > 0) {
+              __xmlStrCache[k] = straySdtRepaired.xml;
+              console.log(
+                `[generate-document] RE851D post-render flush: removed ${straySdtRepaired.repaired} stray </w:sdtContent></w:sdt> pair(s) in ${k}`,
               );
             }
             // Validate the FINAL XML before re-encoding — fail loudly rather
