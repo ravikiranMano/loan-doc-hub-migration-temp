@@ -1,32 +1,60 @@
 ## Findings
 
-The mismatch is caused by the RE851D encumbrance rewrite using the wrong column geometry. The generated document currently changes the checkbox area to two equal-width columns:
+The generated `RE851D_v89` is still mismatching the reference for the first two encumbrance rows because the checkbox paragraphs are being placed inside the wrong section-flow position.
+
+Reference structure around the two affected rows:
 
 ```text
-left column 5723 / right column 5723
+Question: Are there any encumbrances...
+blank spacer
+Question A: Over the last 12 months...
+YES/NO row for encumbrance-of-record
+blank spacer
+YES/NO row for 60-days-late
+blank section-break paragraph that starts the two-column area
 ```
 
-The original reference uses a narrow right checkbox column:
+Generated structure currently has extra/incorrect paragraph artifacts:
 
 ```text
-left column 9398 / gutter 73 / right column 2049
+Question: Are there any encumbrances...
+blank spacer
+Question A: Over the last 12 months...   [extra trailing spaces]
+YES/NO row appears too early / in wrong flow
+extra blank keepNext/keepLines paragraph
+extra blank keepLines paragraph
+extra blank paragraph
+YES/NO row carries the section break itself
 ```
 
-That is why the generated YES/NO rows float around the page and sometimes appear far right or mid-page instead of lining up next to the dotted question rows.
+That is why the first two YES/NO rows do not visually match `re851d - LPDS Multi-property`.
 
 ## Plan
 
 1. Update only `supabase/functions/rewrite-re851d-encumbrance-layout/index.ts`.
-2. Stop forcing `<w:jc w:val="right"/>` on checkbox paragraphs; the reference does not right-align those paragraphs inside the checkbox column.
-3. Normalize the RE851D encumbrance section column breaks to match the original template exactly:
-   - full-width text section for question rows,
-   - two-column checkbox section with `w:w="9398"`, `w:space="73"`, and `w:w="2049"`,
-   - return to full-width section after each checkbox pair group.
-4. Preserve current field keys and checkbox values exactly; no business logic changes.
-5. Keep the existing keep-with-next/keep-lines behavior, but apply it without changing the original visual geometry.
-6. Deploy the updated backend function and run it against the RE851D template path.
-7. Generate/inspect a fresh RE851D output and compare the encumbrance pages against the uploaded reference, confirming:
-   - question text stays full width with dotted leaders,
-   - YES/NO pairs sit in the narrow right column like the original,
-   - no orphaned floating checkbox rows,
-   - all five property sections use the same layout.
+2. Keep all field keys and checkbox logic unchanged.
+3. Stop attaching the two-column `<w:sectPr>` to a visible YES/NO checkbox paragraph.
+4. Move/normalize that section break onto a blank paragraph immediately after the second YES/NO row, matching the reference document.
+5. For only the two affected checkbox families:
+   - `pr_li_encumbranceOfRecord_N`
+   - `pr_li_delinqu60day_N`
+   normalize the paragraph sequence to match the reference:
+   ```text
+   encumbrance question
+   blank spacer
+   60-days-late question
+   encumbrance YES/NO row
+   blank spacer
+   60-days-late YES/NO row
+   blank section-break paragraph
+   ```
+6. Remove generated-only formatting artifacts from these rows:
+   - trailing whitespace after the 60-days-late question
+   - `keepNext`/`keepLines` added to blank spacer rows
+   - section properties on visible checkbox rows
+7. Preserve existing formatting for later encumbrance rows unless they are part of the same repeated property section and need the same reference-safe normalization.
+8. After implementation, compare the DOCX XML for generated vs reference around all 5 property encumbrance sections to confirm:
+   - the two visible YES/NO rows are in the same paragraph order as the reference,
+   - the two-column section break is on the blank paragraph,
+   - no orphaned visible checkbox row carries section properties,
+   - no business logic or tag names changed.
