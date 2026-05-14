@@ -292,7 +292,7 @@ serve(async (req) => {
       });
     }
 
-    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed } = processXml(originalXml);
+    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
@@ -301,7 +301,8 @@ serve(async (req) => {
           templatePath,
           paragraphsRightAligned: 0,
           paragraphsTrimmed: 0,
-          message: "Template already right-aligned and trimmed — no changes written.",
+          paragraphsKeptWithNext: 0,
+          message: "Template already right-aligned, trimmed, and kept-with-next — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -330,6 +331,7 @@ serve(async (req) => {
         templatePath,
         paragraphsRightAligned,
         paragraphsTrimmed,
+        paragraphsKeptWithNext,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
