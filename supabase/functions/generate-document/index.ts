@@ -1488,6 +1488,31 @@ async function generateSingleDocument(
           // even when DOC_GEN_DEBUG is off.
           debugLog(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
+        // RE851D ARE TAXES DELINQUENT? — per-property publisher.
+        // Source of truth: propertytax{N}.delinquent (UI checkbox).
+        // Fallback: property{N}.delinquent (legacy). Strict per-index — no
+        // cross-property fallback. Always emits ☑/☐ glyphs (never blank).
+        {
+          const delinqRaw =
+            fieldValues.get(`propertytax${idx}.delinquent`)?.rawValue ??
+            fieldValues.get(`${prefix}.delinquent`)?.rawValue;
+          const s = String(delinqRaw ?? "").trim().toLowerCase();
+          const isDelinq = s === "true" || s === "1" || s === "yes" || s === "y" || s === "on" || s === "checked" || s === "☑" || s === "☒";
+          fieldValues.set(`pr_pt_delinquent_${idx}`,           { rawValue: isDelinq ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`pr_pt_delinquent_yes_glyph_${idx}`, { rawValue: isDelinq ? "☑" : "☐",        dataType: "text" });
+          fieldValues.set(`pr_pt_delinquent_no_glyph_${idx}`,  { rawValue: isDelinq ? "☐" : "☑",        dataType: "text" });
+          let amountStr = "";
+          if (isDelinq) {
+            const amtRaw =
+              fieldValues.get(`propertytax${idx}.delinquent_amount`)?.rawValue ??
+              fieldValues.get(`${prefix}.delinquent_amount`)?.rawValue;
+            if (amtRaw !== undefined && amtRaw !== null && String(amtRaw) !== "") {
+              amountStr = String(amtRaw);
+            }
+          }
+          fieldValues.set(`pr_pt_delinquentAmount_${idx}`, { rawValue: amountStr, dataType: "currency" });
+          debugLog(`[RE851D] pr_pt_delinquent idx=${idx} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
+        }
         // Delinquent payment count
         const delinqV =
           fieldValues.get(`${prefix}.delinquent_how_many`) ||
