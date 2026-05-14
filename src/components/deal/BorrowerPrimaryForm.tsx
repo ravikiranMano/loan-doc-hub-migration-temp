@@ -219,12 +219,13 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
           </InlineField>
 
           <InlineField label="Capacity" fieldKey={FIELD_KEYS.capacity}>
-            <Select value={getValue('capacity')} onValueChange={(value) => handleChange('capacity', value)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                {CAPACITY_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={getValue('capacity')}
+              onValueChange={(value) => handleChange('capacity', value)}
+              options={CAPACITY_OPTIONS}
+              searchPlaceholder="Search capacity..."
+              disabled={disabled}
+            />
           </InlineField>
 
           <InlineField label="Email" fieldKey={FIELD_KEYS.email}>
