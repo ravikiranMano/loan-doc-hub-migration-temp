@@ -1482,6 +1482,36 @@ async function generateSingleDocument(
             fieldValues.set(`pr_p_performeBy_${idx}`, { rawValue: perfRaw.rawValue, dataType: dt });
           }
         }
+        // RE851D — pre-resolve per-property appraiser name/address so the
+        // template can use plain {{pr_p_appraiserName_N}} / {{pr_p_appraiserAddress_N}}
+        // merge tags instead of unsupported {{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}
+        // conditionals (which currently leak raw into the rendered document).
+        // Rule: performedBy === "Broker" → name="BPO Performed by Broker", address="N/A".
+        //       Otherwise → name=property{N}.appraiser_name (or ""), address=joined
+        //       appraiser_street/city/state/zip (or "").
+        {
+          const performedBy = String(
+            fieldValues.get(`property${idx}.appraisal_performed_by`)?.rawValue ?? ""
+          ).trim();
+          const isBroker = performedBy.toLowerCase() === "broker";
+
+          const nameRaw = String(
+            fieldValues.get(`property${idx}.appraiser_name`)?.rawValue ?? ""
+          ).trim();
+          const addrParts = [
+            fieldValues.get(`property${idx}.appraiser_street`)?.rawValue,
+            fieldValues.get(`property${idx}.appraiser_city`)?.rawValue,
+            fieldValues.get(`property${idx}.appraiser_state`)?.rawValue,
+            fieldValues.get(`property${idx}.appraiser_zip`)?.rawValue,
+          ].map((v) => String(v ?? "").trim()).filter(Boolean);
+          const addrRaw = addrParts.join(", ");
+
+          const nameOut = isBroker ? "BPO Performed by Broker" : nameRaw;
+          const addrOut = isBroker ? "N/A" : addrRaw;
+
+          fieldValues.set(`pr_p_appraiserName_${idx}`,    { rawValue: nameOut, dataType: "text" });
+          fieldValues.set(`pr_p_appraiserAddress_${idx}`, { rawValue: addrOut, dataType: "text" });
+        }
         // Annual property tax (UI: propertytax.annual_payment) per property
         const taxV =
           fieldValues.get(`${prefix}.annual_property_taxes`) ||
