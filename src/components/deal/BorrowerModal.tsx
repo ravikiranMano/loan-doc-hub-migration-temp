@@ -144,7 +144,15 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
             <div className="space-y-1">
               <div className="font-semibold text-xs text-foreground pb-1 mb-1.5">Name</div>
               {renderInlineField('borrowerId', 'Borrower ID')}
-              {renderInlineSelect('borrowerType', 'Borrower Type', BORROWER_TYPE_OPTIONS, 'Select')}
+              <div className="flex items-center gap-2">
+                <Label className="w-[140px] shrink-0 text-xs">Borrower Type</Label>
+                <SearchableSelect
+                  value={String(formData.borrowerType || '')}
+                  onValueChange={(v) => handleFieldChange('borrowerType', v)}
+                  options={BORROWER_TYPE_OPTIONS}
+                  searchPlaceholder="Search borrower type..."
+                />
+              </div>
               <div>
                 {renderInlineField('fullName', 'Full Name')}
                 <p className="text-[10px] text-muted-foreground pl-[148px] leading-tight">If Entity, Use Entity</p>
