@@ -8612,7 +8612,7 @@ async function generateSingleDocument(
                 ? anchorOrdinal
                 : (region ? region.k : 1);
               const winStartXml = Math.max(region ? region.start : 0, aStartXml - 600);
-              const winEndXml   = Math.min(region ? region.end : xml.length, aStartXml + 1500);
+              const winEndXml   = region ? region.end : xml.length;
 
               // Find next Yes / No labels in visible text after the anchor.
               yesReTxt.lastIndex = am.index + am[0].length;
