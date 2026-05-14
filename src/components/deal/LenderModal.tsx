@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { LenderData } from './LendersTableView';
 
 const LENDER_TYPE_OPTIONS = [
@@ -102,21 +103,13 @@ export const LenderModal: React.FC<LenderModalProps> = ({ open, onOpenChange, le
             {/* Lender Type dropdown - full width */}
             <div className="flex items-center gap-2">
               <Label className="w-[100px] shrink-0 text-xs">Lender Type</Label>
-              <Select
+              <SearchableSelect
                 value={formData.type}
                 onValueChange={(value) => handleChange('type', value)}
-              >
-                <SelectTrigger className="h-7 text-xs flex-1">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LENDER_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={LENDER_TYPE_OPTIONS.map(o => o.value)}
+                placeholder="Select type"
+                searchPlaceholder="Search lender type..."
+              />
             </div>
 
             <div>

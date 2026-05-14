@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 import { US_STATES } from '@/lib/usStates';
 
@@ -232,22 +233,15 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
             {wrapField('type', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender Type</Label>
-              <Select
+              <SearchableSelect
                 value={getValue('type')}
                 onValueChange={(value) => handleChange('type', value)}
+                options={LENDER_TYPE_OPTIONS.map(o => o.value)}
+                searchPlaceholder="Search lender type..."
+                placeholder="Select type"
                 disabled={disabled}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LENDER_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                triggerClassName="h-8"
+              />
             </div>)}
 
             {wrapField('fullName', <div className="flex items-center gap-3">
@@ -292,31 +286,26 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
             {wrapField('capacity', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Capacity</Label>
-              <Select
-                value={getValue('capacity') || undefined}
+              <SearchableSelect
+                value={getValue('capacity')}
                 onValueChange={(value) => handleChange('capacity', value)}
+                options={[
+                  'Trustee',
+                  'Successor Trustee',
+                  'Authorized Signer',
+                  'President',
+                  'CEO',
+                  'Power of Attorney',
+                  'Member',
+                  'Manager',
+                  'Partner',
+                  'Other',
+                ]}
+                searchPlaceholder="Search capacity..."
+                placeholder="Select capacity"
                 disabled={disabled}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Select capacity" />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-[100]">
-                  {[
-                    'Trustee',
-                    'Successor Trustee',
-                    'Authorized Signer',
-                    'President',
-                    'CEO',
-                    'Power of Attorney',
-                    'Member',
-                    'Manager',
-                    'Partner',
-                    'Other',
-                  ].map((opt) => (
-                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                triggerClassName="h-8"
+              />
             </div>)}
 
             {wrapField('email', <div className="flex items-center gap-3">
@@ -656,10 +645,15 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
               <DirtyFieldWrapper key={idx} fieldKey={FIELD_KEYS[dropdownKey]}>
                 <div className="grid grid-cols-2 gap-2">
-                  <Select value={getValue(dropdownKey)} onValueChange={(v) => handleChange(dropdownKey, v)} disabled={disabled}>
-                    <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{FORD_DROPDOWN_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={getValue(dropdownKey)}
+                    onValueChange={(v) => handleChange(dropdownKey, v)}
+                    options={FORD_DROPDOWN_OPTIONS.map(o => o.value)}
+                    placeholder="Select"
+                    searchPlaceholder="Search..."
+                    disabled={disabled}
+                    triggerClassName="h-8"
+                  />
                   <Input value={getValue(inputKey)} onChange={(e) => handleChange(inputKey, e.target.value)} disabled={disabled} className="h-8" />
                 </div>
               </DirtyFieldWrapper>
