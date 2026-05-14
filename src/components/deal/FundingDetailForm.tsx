@@ -39,6 +39,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
 }) => {
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
   const [interestFromOpen, setInterestFromOpen] = useState(false);
+  const [focusedRateField, setFocusedRateField] = useState<null | 'lender' | 'override'>(null);
   const [fundingDate, setFundingDate] = useState<Date | undefined>(
     data.fundingDate ? new Date(data.fundingDate) : undefined
   );
