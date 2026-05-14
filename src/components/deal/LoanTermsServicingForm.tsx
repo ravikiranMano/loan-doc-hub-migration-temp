@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { AddFundingModal, FundingFormData } from './AddFundingModal';
 import { AddServiceModal, AddServiceFormData } from './AddServiceModal';
 import type { FieldDefinition } from '@/hooks/useDealFields';
+import { formatPercentDisplay } from '@/lib/precisionFormat';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { US_STATES } from '@/lib/usStates';
