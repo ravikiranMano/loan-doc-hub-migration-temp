@@ -29,6 +29,7 @@ import { hasAtLeastOneFieldFilled, validatePhoneFields, hasValidContactEmails } 
 import { toast } from 'sonner';
 import { US_STATES } from '@/lib/usStates';
 import { LenderInfoForm } from '@/components/deal/LenderInfoForm';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface CreateContactModalProps {
   open: boolean;
@@ -726,12 +727,13 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* Borrower Type - required */}
               <div className="flex items-center gap-2">
                 <Label className="w-[100px] shrink-0 text-xs">Borrower Type</Label>
-                <Select value={form['borrower_type'] || ''} onValueChange={(v) => { set('borrower_type', v); clrBErr('borrower_type'); }}>
-                  <SelectTrigger className={cn("h-7 text-xs flex-1", borrowerErrors['borrower_type'] && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-background border border-border z-[200]">
-                    {BORROWER_TYPE_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={form['borrower_type'] || ''}
+                  onValueChange={(v) => { set('borrower_type', v); clrBErr('borrower_type'); }}
+                  options={BORROWER_TYPE_OPTIONS as unknown as string[]}
+                  searchPlaceholder="Search borrower type..."
+                  hasError={!!borrowerErrors['borrower_type']}
+                />
               </div>
               {borrowerErrors['borrower_type'] && <p className="text-[10px] text-destructive ml-[108px]">{borrowerErrors['borrower_type']}</p>}
 
@@ -765,12 +767,12 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* Capacity */}
               <div className="flex items-center gap-2">
                 <Label className="w-[100px] shrink-0 text-xs">Capacity</Label>
-                <Select value={form['capacity'] || ''} onValueChange={(v) => set('capacity', v)}>
-                  <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent className="bg-background border border-border z-[200]">
-                    {BORROWER_CAPACITY_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={form['capacity'] || ''}
+                  onValueChange={(v) => set('capacity', v)}
+                  options={BORROWER_CAPACITY_OPTIONS as unknown as string[]}
+                  searchPlaceholder="Search capacity..."
+                />
               </div>
 
               {/* Email */}
