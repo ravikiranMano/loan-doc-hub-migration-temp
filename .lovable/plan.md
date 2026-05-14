@@ -1,45 +1,53 @@
 ## Goal
-Make every YES/NO checkbox pair in the RE851D ENCUMBRANCE INFORMATION section render on the SAME line as its question, right-aligned to the page/cell margin — matching the reference layout in `re851d - LPDS Multi-property.docx`. Logic, field keys, and checkbox evaluation are unchanged.
+Match the original `re851d - LPDS Multi-property.docx` layout for the ENCUMBRANCE INFORMATION section: each question stays on its own left-aligned line with dotted fill, and its YES/NO checkbox pair stays on a separate right-aligned line directly underneath — never split across a page break.
 
-## What's wrong now
-The previous rewrite already merges YES + NO into one paragraph and glues them with a non-breaking space. But the merged paragraph is its own line BELOW the question text, so the checkboxes appear under the question instead of to the right of it. In narrow table cells the pair can also still wrap.
+## What's already correct (do not redo)
+The existing `rewrite-re851d-encumbrance-layout` function already:
+- Keeps the YES/NO merged into one paragraph (single line, joined by `&#160;`)
+- Right-aligns that paragraph (`<w:jc w:val="right"/>`)
+- Adds `<w:keepLines/>` so the YES/NO pair never wraps
+- Trims trailing whitespace so glyphs snap to the right margin
 
-## Fix (formatting only, in `rewrite-re851d-encumbrance-layout/index.ts`)
+The reference document confirms the structure we want: question paragraph → separate checkbox paragraph(s) → next sub-question. We do NOT want to merge the checkboxes back into the question paragraph.
 
-For each of the 4 families (`encumbranceOfRecord`, `delinqu60day`, `currentDelinqu`, `delinquencyPaidByLoan`) across all property indices N:
+## What's still broken
+The page-break / orphan-checkbox issue ("☐ YES ☑" appearing alone at the top of the next page with no question above it) happens because the QUESTION paragraph has no "keep with next" set, so Word is free to break between the question and its YES/NO line.
 
-1. **Locate the question paragraph** that immediately precedes the YES paragraph (the paragraph whose stripped text contains the question phrase, e.g. "encumbrances of record", "60 days late", "remain unpaid", "cure the delinquency"/"paid by this loan").
-2. **Append the YES + NBSP + NO runs into that question paragraph**, preceded by a single TAB run (`<w:r><w:tab/></w:r>`).
-3. **Add a right-aligned tab stop** to the question paragraph's `<w:pPr>` so the checkboxes snap to the right margin:
-   ```xml
-   <w:tabs><w:tab w:val="right" w:leader="none" w:pos="9360"/></w:tabs>
-   ```
-   - `9360` twips = 6.5" (US Letter content width). Inside table cells we still target the same value; Word clamps tabs at the cell's right edge, which gives the right-aligned look in both contexts.
-4. **Add `<w:keepLines/>`** to the question paragraph so Word never breaks the question text away from its checkboxes.
-5. **Drop the now-empty YES paragraph and the NO paragraph** (and any blank paragraphs between question/YES/NO).
-6. **Idempotency:** if the question paragraph already contains a `_yes_glyph` tag for that family, skip — the rewrite has already been applied.
-7. **Strict scoping:** only paragraphs matched by the question-phrase regex AND followed within ≤6 paragraphs by a YES paragraph for the same family are touched. Nothing else in the document is modified.
+## Fix (one targeted change in `supabase/functions/rewrite-re851d-encumbrance-layout/index.ts`)
 
-## Reference matching
-The structure produced will mirror `re851d - LPDS Multi-property.docx`:
+Extend the existing rewrite to also walk BACKWARD from each merged YES/NO paragraph and add `<w:keepNext/>` to the paragraph(s) that must stay glued to it:
+
+For each merged checkbox paragraph (the 4 families × 5 properties = 20 paragraphs we already touch):
+1. Look at the immediately preceding paragraph.
+2. If it's another merged YES/NO paragraph for the same family group (e.g. the `encumbranceOfRecord` line right above the `delinqu60day` line), add `<w:keepNext/>` to it AND keep walking up to the question paragraph above that one.
+3. Otherwise, add `<w:keepNext/>` to that single preceding question paragraph.
+4. Idempotent: skip if `<w:keepNext/>` is already present.
+5. Also ensure the merged checkbox paragraph itself has `<w:keepNext/>` when it is followed by ANOTHER merged checkbox paragraph (the encumbrance-of-record line must keep with the 60-days-late line which must keep with whatever question follows).
+
+Mapping per the user's spec and confirmed against the reference XML (paragraphs 331–348 in `re851d - LPDS Multi-property.docx`):
 
 ```text
-Question text ...........................................[TAB→right] ☐ YES &nbsp; ☐ NO
+Q  "Are there any encumbrances of record …"        ← add keepNext
+Q  "Over the last 12 months … 60 days late?"       ← add keepNext
+CB ☐ YES ☐ NO  (encumbranceOfRecord_N)             ← add keepNext  (already right-aligned + keepLines)
+CB ☐ YES ☐ NO  (delinqu60day_N)                    (already right-aligned + keepLines)
+Q  "If YES, how many?  ____"
+Q  "Do any of these payments remain unpaid? …"     ← add keepNext
+Q  "If YES, will the proceeds … cure the delinquency?"  ← add keepNext
+CB ☐ YES ☐ NO  (currentDelinqu_N)                  ← add keepNext  (already right-aligned + keepLines)
+CB ☐ YES ☐ NO  (delinquencyPaidByLoan_N)           (already right-aligned + keepLines)
+Q  "If NO, source of funds …"
 ```
 
-A single paragraph, with a right-tab stop pulling the checkbox glyphs to the right margin, and `keepLines` preventing splits.
+So the rule is simple: walking up from each `delinqu60day` and `delinquencyPaidByLoan` checkbox paragraph, set `<w:keepNext/>` on every paragraph encountered until we've covered the two questions above it (and the intermediate merged checkbox line for the other family).
 
 ## Out of scope
-- No changes to field keys, glyph resolution, or which box gets checked.
+- No changes to question wording, dotted-fill text, indentation, tab stops, list numbering, or the `If YES, how many?` / `If NO, source of funds` paragraphs.
 - No `{{#if}}` conditionals.
-- No schema/UI changes.
-- No changes to other sections, tables, or paragraphs.
+- No changes to field keys, glyph resolution, schema, UI, or any other section of the document.
 
 ## Deploy + verify
 1. Deploy `rewrite-re851d-encumbrance-layout`.
 2. Invoke once against `1778746922135_RE851D-V12.1.docx`.
-3. Unpack the rewritten DOCX and confirm:
-   - Each of the 4 question paragraphs (× 5 properties) contains: question text → `<w:tab/>` → `_yes_glyph` tag → YES → `&#160;` → `_no_glyph` tag → NO, all in one `<w:p>`.
-   - Each such paragraph's `<w:pPr>` has `<w:tabs><w:tab w:val="right" .../></w:tabs>` and `<w:keepLines/>`.
-   - No orphan YES-only or NO-only paragraphs remain for these families.
-4. Regenerate RE851D for `DL-2026-0250` and visually confirm the layout matches the reference attachment for every property.
+3. Unzip the rewritten DOCX and confirm: each of the 4 question paragraphs (and the intermediate `encumbranceOfRecord` / `currentDelinqu` checkbox paragraphs) has `<w:keepNext/>` in its `<w:pPr>`, for all 5 property slots = 30 paragraphs newly marked.
+4. Regenerate RE851D for `DL-2026-0250`. Visually confirm in the PDF/Word output that no question is ever separated from its YES/NO line by a page break, for every property — matching the reference attachment exactly.

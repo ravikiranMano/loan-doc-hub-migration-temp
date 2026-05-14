@@ -79,6 +79,24 @@ function familyFor(stripped: string): Family | null {
  * Adds <w:pPr> if missing, replaces an existing <w:jc> if present.
  * Idempotent.
  */
+/**
+ * Add <w:keepNext/> to the paragraph's <w:pPr>. Idempotent.
+ */
+function addKeepNext(pXml: string): { xml: string; changed: boolean } {
+  const open = pXml.match(/^<w:p\b[^>]*?>/);
+  if (!open) return { xml: pXml, changed: false };
+  const KN = `<w:keepNext/>`;
+  const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
+  if (!pprMatch) {
+    return { xml: pXml.replace(open[0], `${open[0]}<w:pPr>${KN}</w:pPr>`), changed: true };
+  }
+  if (/<w:keepNext\s*\/>/.test(pprMatch[1])) return { xml: pXml, changed: false };
+  return {
+    xml: pXml.replace(pprMatch[0], `<w:pPr>${KN}${pprMatch[1]}</w:pPr>`),
+    changed: true,
+  };
+}
+
 function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
   if (!open) return { xml: pXml, changed: false };
@@ -141,18 +159,24 @@ function processXml(xml: string): {
   xml: string;
   paragraphsRightAligned: number;
   paragraphsTrimmed: number;
+  paragraphsKeptWithNext: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
 
   const rewrite = new Map<number, string>();
+  const cbIndices: number[] = [];
   let aligned = 0;
   let trimmed = 0;
+  let keptWithNext = 0;
 
+  // Pass 1: right-align + trim each merged checkbox paragraph, and remember
+  // its index so pass 2 can glue the question(s) above it with keepNext.
   for (let i = 0; i < paras.length; i++) {
     const p = paras[i];
     const fam = familyFor(p.stripped);
     if (!fam) continue;
+    cbIndices.push(i);
     let cur = p.text;
     const a = rightAlignAndKeep(cur);
     if (a.changed) { cur = a.xml; aligned++; }
@@ -161,12 +185,37 @@ function processXml(xml: string): {
     if (cur !== p.text) rewrite.set(i, cur);
   }
 
-  if (rewrite.size === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
+  // Pass 2: anti-orphan. For each checkbox paragraph mark up to two preceding
+  // paragraphs with <w:keepNext/> so Word never breaks the question away from
+  // its YES/NO row. Also mark the checkbox paragraph itself with keepNext when
+  // it is immediately followed by ANOTHER checkbox paragraph (the
+  // encumbranceOfRecord+delinqu60day pair, and the
+  // currentDelinqu+delinquencyPaidByLoan pair).
+  const cbSet = new Set(cbIndices);
+  const targets = new Set<number>();
+  for (const i of cbIndices) {
+    if (i - 1 >= 0) targets.add(i - 1);
+    if (i - 2 >= 0) targets.add(i - 2);
+    if (cbSet.has(i + 1)) targets.add(i);
+  }
+  for (const idx of targets) {
+    const p = paras[idx];
+    const base = rewrite.get(idx) ?? p.text;
+    const k = addKeepNext(base);
+    if (k.changed) {
+      rewrite.set(idx, k.xml);
+      keptWithNext++;
+    }
+  }
 
+  if (rewrite.size === 0) {
+    return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
+  }
+
+  const sortedIdx = Array.from(rewrite.keys()).sort((a, b) => a - b);
   const out: string[] = [];
   let cursor = 0;
-  for (let i = 0; i < paras.length; i++) {
-    if (!rewrite.has(i)) continue;
+  for (const i of sortedIdx) {
     const p = paras[i];
     out.push(xml.slice(cursor, p.start));
     out.push(rewrite.get(i)!);
@@ -174,7 +223,7 @@ function processXml(xml: string): {
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed };
+  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed, paragraphsKeptWithNext: keptWithNext };
 }
 
 serve(async (req) => {
@@ -243,7 +292,7 @@ serve(async (req) => {
       });
     }
 
-    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed } = processXml(originalXml);
+    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
@@ -252,7 +301,8 @@ serve(async (req) => {
           templatePath,
           paragraphsRightAligned: 0,
           paragraphsTrimmed: 0,
-          message: "Template already right-aligned and trimmed — no changes written.",
+          paragraphsKeptWithNext: 0,
+          message: "Template already right-aligned, trimmed, and kept-with-next — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -281,6 +331,7 @@ serve(async (req) => {
         templatePath,
         paragraphsRightAligned,
         paragraphsTrimmed,
+        paragraphsKeptWithNext,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
