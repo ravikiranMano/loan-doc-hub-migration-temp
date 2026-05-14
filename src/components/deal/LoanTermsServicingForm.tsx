@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { AddFundingModal, FundingFormData } from './AddFundingModal';
 import { AddServiceModal, AddServiceFormData } from './AddServiceModal';
 import type { FieldDefinition } from '@/hooks/useDealFields';
+import { formatPercentDisplay } from '@/lib/precisionFormat';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { US_STATES } from '@/lib/usStates';
@@ -753,7 +754,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
                               ? (CURRENCY_COLS.has(col.key)
                                   ? totals[col.key].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                   : PERCENT_COLS.has(col.key)
-                                    ? totals[col.key].toFixed(2) + '%'
+                                    ? formatPercentDisplay(totals[col.key], 4) + '%'
                                     : totals[col.key].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
                               : '—'}
                           </span>

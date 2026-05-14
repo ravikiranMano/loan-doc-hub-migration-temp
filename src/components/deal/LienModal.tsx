@@ -215,7 +215,7 @@ export const LienModal: React.FC<LienModalProps> = ({ open, onOpenChange, lien, 
     <div className="flex items-center gap-2">
       <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
       <div className="relative flex-1">
-        <Input value={formData[field]} onChange={(e) => handleChange(field, sanitizeInterestInput(e.target.value))} onBlur={() => { const v = normalizeInterestOnBlur(formData[field], 2); if (v !== formData[field]) handleChange(field, v); }} className={`h-7 text-xs text-right pr-6 ${forceDisabled ? 'opacity-50 bg-muted' : ''}`} inputMode="decimal" placeholder="0.00" disabled={forceDisabled} />
+        <Input value={formData[field]} onChange={(e) => handleChange(field, sanitizeInterestInput(e.target.value))} onBlur={() => { const v = normalizeInterestOnBlur(formData[field], 3); if (v !== formData[field]) handleChange(field, v); }} className={`h-7 text-xs text-right pr-6 ${forceDisabled ? 'opacity-50 bg-muted' : ''}`} inputMode="decimal" placeholder="0.00" disabled={forceDisabled} />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
       </div>
     </div>
