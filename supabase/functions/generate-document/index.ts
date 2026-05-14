@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose, repairStraySdtClosingPair } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
@@ -9386,6 +9386,13 @@ async function generateSingleDocument(
               __xmlStrCache[k] = pRepaired.xml;
               console.log(
                 `[generate-document] RE851D post-render flush: closed ${pRepaired.repaired} unclosed <w:p> before structural close in ${k}`,
+              );
+            }
+            const straySdtRepaired = repairStraySdtClosingPair(__xmlStrCache[k]);
+            if (straySdtRepaired.repaired > 0) {
+              __xmlStrCache[k] = straySdtRepaired.xml;
+              console.log(
+                `[generate-document] RE851D post-render flush: removed ${straySdtRepaired.repaired} stray </w:sdtContent></w:sdt> pair(s) in ${k}`,
               );
             }
             // Validate the FINAL XML before re-encoding — fail loudly rather
