@@ -9201,6 +9201,8 @@ async function generateSingleDocument(
                     cleaned = cleaned.replace(/\belse\b/g, "");
                     cleaned = cleaned.replace(/\/?if\b/g, "");
                     cleaned = cleaned.replace(balloonTokenRe, "");
+                    cleaned = cleaned.replace(/\{\{[^{}]*?\}\}/g, "");
+                    cleaned = cleaned.replace(/\{\{|\}\}/g, "");
                     cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
                     if (cleaned === text) continue;
                     const absStart = rawSecStart + wm.index;
