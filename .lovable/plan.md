@@ -1,103 +1,60 @@
-## Goal
+# RE851D appraiser fields — permanent fix
 
-Make the RE851D "NAME OF APPRAISER" and "ADDRESS OF APPRAISER" fields render the correct per-property value, with no raw `{{#if}}` syntax leaking into the document. Fix is server-side only in `supabase/functions/generate-document/index.ts` — no DOCX template, schema, UI, or field_dictionary changes.
+## Problem recap
 
-## Why a server-side fix (not a template edit)
+In v76 of `DL-2026-0250` the `ADDRESS OF APPRAISER` field still renders raw `#if (eq pr_p_performeBy_N "Broker")N/A` for every property, while `NAME OF APPRAISER` resolves correctly for some properties. The runtime XML-rewrite added previously catches *some* of the `{{#if}}` blocks but not all — almost certainly because the `{{#if (eq pr_p_performeBy_N "Broker")}}` opener for the address line is split across multiple `<w:r>` runs in the template, and the regex sees fragments that no longer look like a single contiguous merge tag.
 
-The template currently contains:
+The user's directive is explicit: **the template itself must stop containing `{{#if}}` syntax.** The runtime rewrite should remain only as a safety net.
 
-```
-{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{/if}}
-{{#if (eq pr_p_performeBy_N  "Broker")}}N/A{{/if}}
-```
+## Fix in two parts
 
-`pr_p_performeBy_N` is a literal `_N` placeholder (per the existing pattern around lines 5863–5870), and the `{{#if}}` helper isn't a supported construct in our renderer — that's why the raw conditional prints. We will:
+### Part A — Permanently rewrite the stored RE851D template (one-shot)
 
-1. Pre-resolve two new per-property variables and publish them to `fieldValues`.
-2. Rewrite the two `{{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}` blocks in the XML to plain `{{pr_p_appraiserName_N}}` / `{{pr_p_appraiserAddress_N}}` merge tags before the renderer runs.
+Add a small admin-only Edge Function `rewrite-re851d-template` that:
 
-This mirrors how the existing `pr_p_performeBy_N` targeted safety rewrite (line 5863) already handles fragmented conditional XML.
+1. Downloads `templates/1778746922135_RE851D-V12.1.docx` (service role).
+2. Unzips with `fflate`, decodes `word/document.xml`.
+3. Performs a fragment-tolerant rewrite. For each `{{#if (eq pr_p_perform(e|ed)By_(N|1..5) "Broker")}}…{{/if}}` block whose payload (after stripping `<...>` tags and whitespace) is exactly `BPO Performed by Broker` → replace the entire block with `{{pr_p_appraiserName_N}}`. If payload is exactly `N/A` → replace with `{{pr_p_appraiserAddress_N}}`. Use the same "build a tag-stripped index, find matches there, map back to XML offsets" technique already used elsewhere in the project so split-run cases are handled.
+4. Verifies that **zero** `pr_p_performeBy`-referencing `{{#if}}` opener literals remain in the stripped text. Logs the count rewritten (expected: 10 = 5 properties × 2 fields).
+5. Repacks with `fflate.zipSync` and uploads back to the same storage path with `upsert: true` (templates bucket; same `file_path` on the `templates` row, no DB change needed).
+6. Returns `{ rewrittenBlocks, remainingIfBlocks }` so we can confirm before regenerating.
 
-## Code change — single file
+Then we invoke this function once for the current template and immediately regenerate RE851D for `DL-2026-0250` to confirm.
 
-`supabase/functions/generate-document/index.ts`
+The function is idempotent — running it again on an already-rewritten template is a no-op (0 rewrites).
 
-### 1. Per-property publisher (extend the block at lines 1466–1484)
+### Part B — Strengthen the runtime safety net in `generate-document/index.ts`
 
-Inside the existing `for (const idx of realPropertyIndices)` loop, right after the `pr_p_performedBy_${idx}` block, add:
+Even after Part A, leave a defensive pass so any future template that still has `{{#if (eq pr_p_perform(e|ed)By …)}}` syntax (different version uploads, etc.) keeps working. Two refinements at the existing block (lines ~5896–5949):
 
-```ts
-// RE851D — pre-resolve appraiser name/address per property so the
-// template can use plain {{pr_p_appraiserName_N}} / {{pr_p_appraiserAddress_N}}
-// instead of {{#if}} conditionals (which the renderer does not support).
-{
-  const performedBy = String(
-    fieldValues.get(`property${idx}.appraisal_performed_by`)?.rawValue ?? ""
-  ).trim();
-  const isBroker = performedBy.toLowerCase() === "broker";
+1. **Tag-stripped scan.** Build `xmlText = xml.replace(/<[^>]+>/g, "")` plus an offset map, run the appraiser-conditional regex against `xmlText`, then map matched ranges back to original XML offsets. This catches the address-line fragmentation that the current contiguous-XML regex misses.
+2. **Smart-quote tolerance.** Allow `"` / `"` / `"` around `Broker` (`["\u201C\u201D]`).
+3. **Payload match.** Keep the strict allow-list (`BPO Performed by Broker` / `N/A`) so unrelated `{{#if}}` blocks (other templates) are never touched.
+4. **Anti-regression assert.** After all rewrites, count any surviving `#if (eq pr_p_perform` substrings in the stripped text and `debugLog` the count — makes future breakage visible in logs immediately.
 
-  const nameRaw = String(
-    fieldValues.get(`property${idx}.appraiser_name`)?.rawValue ?? ""
-  );
-  const addrParts = [
-    fieldValues.get(`property${idx}.appraiser_street`)?.rawValue,
-    fieldValues.get(`property${idx}.appraiser_city`)?.rawValue,
-    fieldValues.get(`property${idx}.appraiser_state`)?.rawValue,
-    fieldValues.get(`property${idx}.appraiser_zip`)?.rawValue,
-  ].map(v => String(v ?? "").trim()).filter(Boolean);
-  const addrRaw = addrParts.join(", ");
+No change to: `buildPropertyVariables` publisher (already publishes `pr_p_appraiserName_N` / `pr_p_appraiserAddress_N` correctly per property, with empty string for unused slots), `SUFFIXED_BASES`, `RE851D_INDEXED_TAGS`, anti-fallback shield, or the existing `pr_p_performeBy_N` safety pass.
 
-  const nameOut = isBroker ? "BPO Performed by Broker" : nameRaw;
-  const addrOut = isBroker ? "N/A" : addrRaw;
+## Files touched
 
-  fieldValues.set(`pr_p_appraiserName_${idx}`,    { rawValue: nameOut, dataType: "text" });
-  fieldValues.set(`pr_p_appraiserAddress_${idx}`, { rawValue: addrOut, dataType: "text" });
-}
-```
+- **NEW** `supabase/functions/rewrite-re851d-template/index.ts` (~120 lines, service-role guard, single POST handler).
+- **EDIT** `supabase/functions/generate-document/index.ts` — only the appraiser-conditional rewrite block at lines ~5896–5949 (Part B refinements).
 
-### 2. Default empty for unused slots (extend the loop near line 1920–1928)
-
-Add `pr_p_appraiserName_${n}` and `pr_p_appraiserAddress_${n}` to the slot-defaulting loop so slots 1–5 with no property publish `""` rather than leaving the merge tag unresolved.
-
-### 3. Register the new keys for `_N` resolution
-
-Add `"pr_p_appraiserName_N"` and `"pr_p_appraiserAddress_N"` to the `_N` key list around line 4913, and add `"pr_p_appraiserName"`, `"pr_p_appraiserAddress"` to `SUFFIXED_BASES` around line 6326. This is what the anti-fallback shield uses to keep slot N strictly per-property.
-
-### 4. XML rewrite — strip the `{{#if}}` blocks, anchored to the existing performeBy safety pass
-
-In the same region as the existing `pr_p_performeBy_N` safety rewrite (around line 5863), add a pass that runs on the normalized XML before the renderer. For N = 1..5, replace:
-
-```
-{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{/if}}
-```
-
-with `{{pr_p_appraiserName_N}}`, and:
-
-```
-{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{/if}}
-```
-
-with `{{pr_p_appraiserAddress_N}}`. Use the same fragment-tolerant approach already in use there (collapse run boundaries, allow `performeBy` and `performedBy`, allow extra whitespace, allow either `"` or `"`/`"`). Do not touch any other `{{#if}}` usage — match strictly on these two literal payloads (`BPO Performed by Broker` and `N/A`) so we don't affect unrelated conditionals.
-
-Add a `debugLog` summarizing how many of the 10 expected blocks were rewritten per render.
+No DB migrations, no UI changes, no field_dictionary changes, no other template changes.
 
 ## Verification
 
-After deploy, regenerate RE851D for DL-2026-0250:
-
-| Property | performedBy | Expected NAME | Expected ADDRESS |
-|---|---|---|---|
-| 1 | Broker | BPO Performed by Broker | N/A |
-| 2 | Appraiser (with name/addr) | <appraiser name> | <street, city, state, zip> |
-| 3 | Broker | BPO Performed by Broker | N/A |
-| 4 | Broker | BPO Performed by Broker | N/A |
-| 5 | (empty slot) | (blank) | (blank) |
-
-No `{{#if`, no `pr_p_performeBy_`, and no `pr_p_appraiser*` placeholders should remain in the unresolved-placeholders log line.
+1. Deploy both functions.
+2. Invoke `rewrite-re851d-template` once. Confirm response: `rewrittenBlocks: 10, remainingIfBlocks: 0`.
+3. Regenerate RE851D for `DL-2026-0250` (v77+).
+4. Inspect generated docx — for all 5 property blocks:
+   - Property 1 (`Public Record`): NAME blank, ADDRESS blank.
+   - Property 2 (`Broker`): NAME = `BPO Performed by Broker`, ADDRESS = `N/A`.
+   - Property 3 (`Appraiser` with name/addr): NAME = appraiser name, ADDRESS = joined street/city/state/zip.
+   - Properties 4 / 5: per their `appraisal_performed_by` value, or blank if unused slot.
+5. Grep the generated `document.xml` for `#if (eq pr_p_perform` and `pr_p_performeBy` literals — must be zero.
 
 ## Out of scope
 
-- DOCX template edits (handled by XML rewrite instead).
-- UI / Property form / field_dictionary / schema.
-- Any other `{{#if}}` block in any template.
-- The existing `pr_p_performeBy_N` publisher and its safety pass — left intact for back-compat with other places the variable is referenced standalone.
+- Other `{{#if}}` blocks in any template (servicing, amortization, payable-frequency, etc.) — left intact, those have their own dedicated handlers.
+- The `pr_p_performeBy_N` publisher and its existing safety rewrite — kept for back-compat with anywhere the variable is referenced standalone.
+- DOCX template UI / re-upload workflow.
