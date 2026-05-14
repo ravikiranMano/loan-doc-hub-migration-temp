@@ -1527,12 +1527,14 @@ async function generateSingleDocument(
           debugLog(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
         // RE851D ARE TAXES DELINQUENT? — per-property publisher.
-        // Source of truth: propertytax{N}.delinquent (UI checkbox).
-        // Fallback: property{N}.delinquent (legacy). Strict per-index — no
-        // cross-property fallback. Always emits ☑/☐ glyphs (never blank).
+        // Source of truth: the propertytax{T} row linked by its `.property`
+        // dropdown to property{N}. Fallback: property{N}.delinquent (legacy).
+        // Do not fall back to positional propertytax{N}: tax row order can differ
+        // from property order. Always emits ☑/☐ glyphs (never blank).
         {
+          const taxIdx = propertyToTax.get(idx);
           const delinqRaw =
-            fieldValues.get(`propertytax${idx}.delinquent`)?.rawValue ??
+            (taxIdx !== undefined ? fieldValues.get(`propertytax${taxIdx}.delinquent`)?.rawValue : undefined) ??
             fieldValues.get(`${prefix}.delinquent`)?.rawValue;
           const s = String(delinqRaw ?? "").trim().toLowerCase();
           const isDelinq = s === "true" || s === "1" || s === "yes" || s === "y" || s === "on" || s === "checked" || s === "☑" || s === "☒";
@@ -1542,14 +1544,14 @@ async function generateSingleDocument(
           let amountStr = "";
           if (isDelinq) {
             const amtRaw =
-              fieldValues.get(`propertytax${idx}.delinquent_amount`)?.rawValue ??
+              (taxIdx !== undefined ? fieldValues.get(`propertytax${taxIdx}.delinquent_amount`)?.rawValue : undefined) ??
               fieldValues.get(`${prefix}.delinquent_amount`)?.rawValue;
             if (amtRaw !== undefined && amtRaw !== null && String(amtRaw) !== "") {
               amountStr = String(amtRaw);
             }
           }
           fieldValues.set(`pr_pt_delinquentAmount_${idx}`, { rawValue: amountStr, dataType: "currency" });
-          debugLog(`[RE851D] pr_pt_delinquent idx=${idx} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
+          debugLog(`[RE851D] pr_pt_delinquent idx=${idx} taxIdx=${taxIdx ?? "legacy"} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
         }
         // Delinquent payment count
         const delinqV =
