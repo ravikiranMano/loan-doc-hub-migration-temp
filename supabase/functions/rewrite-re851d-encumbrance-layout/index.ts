@@ -148,13 +148,17 @@ function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean }
 
 function normalizeCheckboxColumns(xml: string): { xml: string; changed: number } {
   let changed = 0;
-  const out = xml.replace(
-    /<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[^>]*>\s*<w:col\b(?=[^>]*w:w="5723")[^>]*\/>\s*<w:col\b(?=[^>]*w:w="5723")[^>]*\/>\s*<\/w:cols>/g,
-    () => {
+  const out = xml.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, (sect) => {
+    if (!/<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[\s\S]*?<w:col\b(?=[^>]*w:w="5723")[\s\S]*?<w:col\b(?=[^>]*w:w="5723")/.test(sect)) {
+      return sect;
+    }
+    let next = sect.replace(/<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[^>]*>\s*<w:col\b[^>]*\/>\s*<w:col\b[^>]*\/>\s*<\/w:cols>/, REFERENCE_CHECKBOX_COLUMNS);
+    next = next.replace(/(<w:pgMar\b[^>]*\bw:top=")\d+("[^>]*\/?>)/, "$1640$2");
+    if (next !== sect) {
       changed++;
-      return REFERENCE_CHECKBOX_COLUMNS;
-    },
-  );
+    }
+    return next;
+  });
   return { xml: out, changed };
 }
 
