@@ -23,7 +23,7 @@ import type {
   FieldValueData,
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
-import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties } from "../_shared/docx-processor.ts";
+import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose } from "../_shared/docx-processor.ts";
 import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
@@ -9359,6 +9359,19 @@ async function generateSingleDocument(
               __xmlStrCache[k] = rPrRepaired.xml;
               console.log(
                 `[generate-document] RE851D post-render flush: closed ${rPrRepaired.repaired} unclosed <w:rPr> in ${k}`,
+              );
+            }
+            // Heal unclosed <w:p> blocks that leak past structural boundaries
+            // (root cause of "expected </w:p> before </w:sdtContent>" — the
+            // current RE851D failure mode where post-render glyph/handlebars
+            // run replacements consumed a </w:p> they shouldn't have).
+            const pRepaired = repairUnclosedParagraphsBeforeStructuralClose(
+              __xmlStrCache[k],
+            );
+            if (pRepaired.repaired > 0) {
+              __xmlStrCache[k] = pRepaired.xml;
+              console.log(
+                `[generate-document] RE851D post-render flush: closed ${pRepaired.repaired} unclosed <w:p> before structural close in ${k}`,
               );
             }
             // Validate the FINAL XML before re-encoding — fail loudly rather
