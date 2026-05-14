@@ -245,10 +245,12 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     state: string;
     zipCode: string;
   }>>([]);
+  const [borrowerParticipantsLoading, setBorrowerParticipantsLoading] = useState(!!routeDealId);
 
   useEffect(() => {
     if (!routeDealId) return;
     let cancelled = false;
+    setBorrowerParticipantsLoading(true);
     (async () => {
       try {
         const { data: parts } = await supabase
@@ -280,6 +282,8 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
         if (!cancelled) setBorrowerParticipants(list);
       } catch (e) {
         console.error('Failed to load borrower participants', e);
+      } finally {
+        if (!cancelled) setBorrowerParticipantsLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -665,6 +669,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
             calculationResults={calculationResults}
             borrowerOptions={borrowerOptions}
             borrowerAddress={primaryBorrowerAddress}
+            borrowerAddressLoading={borrowerParticipantsLoading}
           />
         );
       case 'legal_description':
