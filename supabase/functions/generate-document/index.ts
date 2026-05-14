@@ -1312,19 +1312,41 @@ async function generateSingleDocument(
       // Used to route propertytax{N} rows to their associated property by the
       // tax row's `.property` field (which carries the property's address).
       const normAddr = (s: string) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
-      // Per-property candidate strings: full address + street/city/zip components
-      // so the bridge can match labels that wrap or strip the address.
-      type PropCandidate = { idx: number; full: string; street: string; city: string; zip: string };
+      // Per-property candidate strings: full label/address + components so tax
+      // rows can be routed by the Property Tax `.property` dropdown selection.
+      type PropCandidate = { idx: number; label: string; desc: string; full: string; street: string; city: string; state: string; zip: string };
       const propCandidates: PropCandidate[] = [];
       const addressToPropIndex = new Map<string, number>();
       for (const pi of sortedPropIndices) {
+        const desc = normAddr(String(fieldValues.get(`property${pi}.description`)?.rawValue || ""));
         const full = normAddr(String(fieldValues.get(`property${pi}.address`)?.rawValue || ""));
         const street = normAddr(String(fieldValues.get(`property${pi}.street`)?.rawValue || ""));
         const city = normAddr(String(fieldValues.get(`property${pi}.city`)?.rawValue || ""));
+        const state = normAddr(String(fieldValues.get(`property${pi}.state`)?.rawValue || ""));
         const zip = normAddr(String(fieldValues.get(`property${pi}.zip`)?.rawValue || ""));
-        propCandidates.push({ idx: pi, full, street, city, zip });
+        const label = normAddr([desc, [street, city, state, zip].filter(Boolean).join(", ")].filter(Boolean).join(" - "));
+        propCandidates.push({ idx: pi, label, desc, full, street, city, state, zip });
         if (full && !addressToPropIndex.has(full)) addressToPropIndex.set(full, pi);
+        if (label && !addressToPropIndex.has(label)) addressToPropIndex.set(label, pi);
       }
+
+      const resolvePropertyTaxPropertyIndex = (propertyLabelRaw: string): number | undefined => {
+        const taxNorm = normAddr(propertyLabelRaw);
+        if (!taxNorm) return undefined;
+        const sortedCandidates = [...propCandidates].sort((a, b) => a.idx - b.idx);
+        const exact = addressToPropIndex.get(taxNorm);
+        if (exact) return exact;
+        for (const c of sortedCandidates) {
+          if (c.label && taxNorm === c.label) return c.idx;
+          if (c.full && taxNorm === c.full) return c.idx;
+        }
+        for (const c of sortedCandidates) {
+          if (c.desc && taxNorm.includes(c.desc) && ((c.street && taxNorm.includes(c.street)) || (c.zip && taxNorm.includes(c.zip)))) {
+            return c.idx;
+          }
+        }
+        return undefined;
+      };
 
       // ── RE851D: Pre-bridge propertytax{srcIdx} → propertytax{destIdx} by address match ──
       // Match strategy (first match wins, ties → lowest property index):
