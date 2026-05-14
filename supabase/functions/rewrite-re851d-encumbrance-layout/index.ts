@@ -146,14 +146,27 @@ function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean }
   return { xml: out, changed };
 }
 
+function normalizeCheckboxColumns(xml: string): { xml: string; changed: number } {
+  let changed = 0;
+  const out = xml.replace(
+    /<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[^>]*>\s*<w:col\b(?=[^>]*w:w="5723")[^>]*\/>\s*<w:col\b(?=[^>]*w:w="5723")[^>]*\/>\s*<\/w:cols>/g,
+    () => {
+      changed++;
+      return REFERENCE_CHECKBOX_COLUMNS;
+    },
+  );
+  return { xml: out, changed };
+}
+
 function processXml(xml: string): {
   xml: string;
   paragraphsRightAligned: number;
   paragraphsTrimmed: number;
   paragraphsKeptWithNext: number;
+  columnSectionsNormalized: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0, columnSectionsNormalized: 0 };
 
   const rewrite = new Map<number, string>();
   const cbIndices: number[] = [];
