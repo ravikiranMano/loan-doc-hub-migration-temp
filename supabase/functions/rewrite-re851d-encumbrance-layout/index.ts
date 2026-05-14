@@ -1,18 +1,38 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// The RE851D document body uses a temporary multi-column section: question
-// text stays in the full-width text flow, then YES/NO checkbox glyphs flow in
-// a narrow RIGHT column. Earlier attempts changed that geometry to two equal
-// columns and right-aligned checkbox paragraphs, which made checkbox rows
-// float mid-page or far right instead of matching the source template.
+// Goal: make each per-property "encumbrance" group exactly match the reference
+// document `re851d - LPDS Multi-property.docx`, which is:
 //
-// This rewrite restores the reference column geometry (9398 / 73 / 2049),
-// removes forced paragraph right-alignment, and keeps checkbox rows together.
+//   p_Q1   "Are there any encumbrances of record..."   ind=360, before=93
+//   p_S1   (blank spacer)                              before=68
+//   p_Q2   "Over the last 12 months, were any payments more than 60 days late?"
+//          ind=718 hanging=358, tabs=718
+//   p_YN1  encumbrance YES/NO                          ind=86,  tabs=986, before=93
+//   p_S2   (blank spacer)                              before=68
+//   p_YN2  60-day YES/NO                               ind=86,  tabs=986
+//   p_END  (blank carrying continuous 2-col sectPr)
 //
-// Strictly scoped — only paragraphs whose stripped text contains BOTH
-// `pr_li_<family>_N_yes_glyph` and `pr_li_<family>_N_no_glyph` for one
-// of the four families are touched. Idempotent: if `<w:jc w:val="right"/>`
-// is already present, the paragraph is left alone.
+// The current generated output has, for the FIRST property only, an EXTRA
+// empty paragraph between YN1 and the S2 spacer, and BOTH YN paragraphs
+// are missing `<w:ind w:left="86"/>`. The previous rewrite added
+// `keepNext`/`keepLines` to neighbouring blanks which made the layout
+// noisier without fixing the alignment.
+//
+// This rewrite, scoped strictly to YES/NO paragraphs of
+//   pr_li_encumbranceOfRecord_N
+//   pr_li_delinqu60day_N
+// does the following:
+//   1. Adds `<w:ind w:left="86"/>` to YN paragraphs of those two families
+//      when missing.
+//   2. Trims trailing whitespace-only runs from those YN paragraphs (so the
+//      visible "NO" is not pushed off-edge by stray spaces).
+//   3. Removes prior `keepNext` noise the older rewrite injected on
+//      blank/question paragraphs adjacent to YN paragraphs.
+//   4. For the first property pattern only, removes a single redundant
+//      empty paragraph that sits BETWEEN YN1 and the S2 spacer, so the
+//      flow matches every other property and the reference document.
+//   5. Leaves all checkbox SDT logic, tag names, and section properties
+//      untouched.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -26,15 +46,8 @@ const corsHeaders = {
 
 const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
 
-const FAMILIES = [
-  "encumbranceOfRecord",
-  "delinqu60day",
-  "currentDelinqu",
-  "delinquencyPaidByLoan",
-] as const;
+const FAMILIES = ["encumbranceOfRecord", "delinqu60day"] as const;
 type Family = (typeof FAMILIES)[number];
-
-const REFERENCE_CHECKBOX_COLUMNS = `<w:cols w:num="2" w:space="720" w:equalWidth="0"><w:col w:w="9398" w:space="73"/><w:col w:w="2049"/></w:cols>`;
 
 interface Para {
   start: number;
@@ -71,58 +84,46 @@ function familyFor(stripped: string): Family | null {
   return null;
 }
 
-/**
- * Ensure the checkbox paragraph's <w:pPr> contains <w:keepLines/> and does
- * NOT contain forced right alignment. The reference template relies on a
- * narrow second column for placement, not paragraph-level right justification.
- */
-/**
- * Add <w:keepNext/> to the paragraph's <w:pPr>. Idempotent.
- */
-function addKeepNext(pXml: string): { xml: string; changed: boolean } {
-  const open = pXml.match(/^<w:p\b[^>]*?>/);
-  if (!open) return { xml: pXml, changed: false };
-  const KN = `<w:keepNext/>`;
-  const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
-  if (!pprMatch) {
-    return { xml: pXml.replace(open[0], `${open[0]}<w:pPr>${KN}</w:pPr>`), changed: true };
-  }
-  if (/<w:keepNext\s*\/>/.test(pprMatch[1])) return { xml: pXml, changed: false };
-  return {
-    xml: pXml.replace(pprMatch[0], `<w:pPr>${KN}${pprMatch[1]}</w:pPr>`),
-    changed: true,
-  };
+function isVisuallyEmpty(p: Para): boolean {
+  // No visible text, no checkbox SDT, no drawing, no tab character, no break.
+  if (p.stripped.trim().length > 0) return false;
+  if (/<w:sdt\b/.test(p.text)) return false;
+  if (/<w:drawing\b/.test(p.text)) return false;
+  if (/<w:tab\s*\/>/.test(p.text)) return false;
+  if (/<w:br\b/.test(p.text)) return false;
+  return true;
 }
 
-function removeKeepNext(pXml: string): { xml: string; changed: boolean } {
-  const next = pXml.replace(/<w:keepNext\s*\/>/g, "");
-  return { xml: next, changed: next !== pXml };
+function paragraphCarriesSectPr(p: Para): boolean {
+  return /<w:sectPr\b/.test(p.text);
 }
 
-function keepCheckboxRow(pXml: string): { xml: string; changed: boolean } {
+/**
+ * Ensure pPr contains `<w:ind w:left="86"/>`. If an `<w:ind ...>` already
+ * exists, leave it alone (other properties already have correct indents).
+ * Idempotent.
+ */
+function ensureCheckboxIndent(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
   if (!open) return { xml: pXml, changed: false };
-  const KEEP = `<w:keepLines/>`;
+  const IND = `<w:ind w:left="86"/>`;
   const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
   if (!pprMatch) {
-    const pPr = `<w:pPr>${KEEP}</w:pPr>`;
-    return { xml: pXml.replace(open[0], `${open[0]}${pPr}`), changed: true };
+    return {
+      xml: pXml.replace(open[0], `${open[0]}<w:pPr>${IND}</w:pPr>`),
+      changed: true,
+    };
   }
+  if (/<w:ind\b[^>]*\/>/.test(pprMatch[1])) {
+    return { xml: pXml, changed: false };
+  }
+  // Insert <w:ind/> after <w:tabs/> if present, else at start of pPr inner.
   let inner = pprMatch[1];
-  let mutated = false;
-  if (/<w:jc\b[^>]*\/>/.test(inner)) {
-    inner = inner.replace(/<w:jc\b[^>]*\/>/g, "");
-    mutated = true;
+  if (/<w:tabs\b[^>]*>[\s\S]*?<\/w:tabs>/.test(inner)) {
+    inner = inner.replace(/(<\/w:tabs>)/, `$1${IND}`);
+  } else {
+    inner = IND + inner;
   }
-  if (/<w:keepNext\s*\/>/.test(inner)) {
-    inner = inner.replace(/<w:keepNext\s*\/>/g, "");
-    mutated = true;
-  }
-  if (!/<w:keepLines\s*\/>/.test(inner)) {
-    inner = KEEP + inner;
-    mutated = true;
-  }
-  if (!mutated) return { xml: pXml, changed: false };
   return {
     xml: pXml.replace(pprMatch[0], `<w:pPr>${inner}</w:pPr>`),
     changed: true,
@@ -130,141 +131,168 @@ function keepCheckboxRow(pXml: string): { xml: string; changed: boolean } {
 }
 
 /**
- * Strip trailing whitespace inside the LAST non-empty <w:t> of a paragraph,
- * and drop trailing all-whitespace runs after it. Trailing spaces would
- * otherwise be rendered as right-aligned spaces, pushing the visible
- * "NO" left of the right margin.
+ * Drop trailing whitespace-only runs and strip trailing whitespace inside the
+ * last <w:t>. Trailing spaces would otherwise widen the rendered checkbox row.
  */
 function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean } {
   let out = pXml;
   let changed = false;
-  // Drop trailing whitespace-only runs (one at a time, idempotent).
   for (let safety = 0; safety < 5; safety++) {
-    const re = /<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:t\b[^>]*>\s*<\/w:t>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>(?=\s*<\/w:p>)/;
+    const re =
+      /<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:t\b[^>]*>\s*<\/w:t>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>(?=\s*<\/w:p>)/;
     if (!re.test(out)) break;
     out = out.replace(re, "");
     changed = true;
   }
-  // Strip trailing whitespace inside the last <w:t> before </w:p>.
-  out = out.replace(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>(?:(?!<w:t\b)[\s\S])*?<\/w:p>\s*$)/, (full, open, inner, tail) => {
-    const trimmed = inner.replace(/\s+$/, "");
-    if (trimmed === inner) return full;
-    changed = true;
-    return open + trimmed + tail;
-  });
-  return { xml: out, changed };
-}
-
-const QUESTION_SNIPPETS = [
-  "Are there any encumbrances of record against the securing property at this time?",
-  "Over the last 12 months, were any payments more than 60 days late?",
-  "Do any of these payments remain unpaid?",
-  "If YES, will the proceeds of the subject loan be used to cure the delinquency?",
-];
-
-function stripLeadingBreakRuns(pXml: string): { xml: string; changed: boolean } {
-  const stripped = pXml.replace(/<[^>]+>/g, "");
-  if (!QUESTION_SNIPPETS.some((snippet) => stripped.includes(snippet))) {
-    return { xml: pXml, changed: false };
-  }
-  const next = pXml.replace(
-    /^(<w:p\b[^>]*>(?:\s*<w:pPr[\s\S]*?<\/w:pPr>)?)(?:\s*<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:br\b[^>]*\/?>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>)+/,
-    "$1",
+  out = out.replace(
+    /(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>(?:(?!<w:t\b)[\s\S])*?<\/w:p>\s*$)/,
+    (full, open, inner, tail) => {
+      const trimmed = inner.replace(/\s+$/, "");
+      if (trimmed === inner) return full;
+      changed = true;
+      return open + trimmed + tail;
+    },
   );
-  return { xml: next, changed: next !== pXml };
+  return { xml: out, changed };
 }
 
-function normalizeCheckboxColumns(xml: string): { xml: string; changed: number } {
-  let changed = 0;
-  const out = xml.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, (sect) => {
-    if (!/<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[\s\S]*?<w:col\b(?=[^>]*w:w="5723")[\s\S]*?<w:col\b(?=[^>]*w:w="5723")/.test(sect)) {
-      return sect;
-    }
-    let next = sect.replace(/<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[^>]*>\s*<w:col\b[^>]*\/>\s*<w:col\b[^>]*\/>\s*<\/w:cols>/, REFERENCE_CHECKBOX_COLUMNS);
-    next = next.replace(/(<w:pgMar\b[^>]*\bw:top=")\d+("[^>]*\/?>)/, "$1640$2");
-    if (next !== sect) {
-      changed++;
-    }
-    return next;
-  });
-  return { xml: out, changed };
+/**
+ * Remove `<w:keepNext/>` and `<w:keepLines/>` from a paragraph's pPr — these
+ * were added by an earlier rewrite and now produce visible vertical drift in
+ * property 1 that the reference layout does not have.
+ */
+function stripKeepArtifacts(pXml: string): { xml: string; changed: boolean } {
+  const next = pXml
+    .replace(/<w:keepNext\s*\/>/g, "")
+    .replace(/<w:keepLines\s*\/>/g, "");
+  return { xml: next, changed: next !== pXml };
 }
 
 function processXml(xml: string): {
   xml: string;
-  paragraphsRightAligned: number;
+  paragraphsIndented: number;
   paragraphsTrimmed: number;
-  paragraphsKeptWithNext: number;
-  columnSectionsNormalized: number;
+  paragraphsStripped: number;
+  redundantParagraphsRemoved: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0, columnSectionsNormalized: 0 };
+  if (paras.length === 0) {
+    return {
+      xml,
+      paragraphsIndented: 0,
+      paragraphsTrimmed: 0,
+      paragraphsStripped: 0,
+      redundantParagraphsRemoved: 0,
+    };
+  }
 
   const rewrite = new Map<number, string>();
-  const cbIndices: number[] = [];
-  let aligned = 0;
+  const removeIdx = new Set<number>();
+  let indented = 0;
   let trimmed = 0;
-  let keptWithNext = 0;
+  let stripped = 0;
+  let removed = 0;
 
-  // Pass 1: right-align + trim each merged checkbox paragraph, and remember
-  // its index so pass 2 can glue the question(s) above it with keepNext.
+  // Find all YN paragraphs.
+  const ynIndices: number[] = [];
   for (let i = 0; i < paras.length; i++) {
-    const p = paras[i];
-    const fam = familyFor(p.stripped);
-    if (!fam) continue;
-    cbIndices.push(i);
-    let cur = p.text;
-    const a = keepCheckboxRow(cur);
-    if (a.changed) { cur = a.xml; aligned++; }
-    const t = trimTrailingWhitespace(cur);
-    if (t.changed) { cur = t.xml; trimmed++; }
-    if (cur !== p.text) rewrite.set(i, cur);
+    if (familyFor(paras[i].stripped)) ynIndices.push(i);
   }
 
-  // Pass 2: remove prior keep-next artifacts and strip stray leading line-break
-  // runs from question paragraphs. The original template controls placement via
-  // section breaks/columns; keepNext forced large question groups to jump pages.
-  const cbSet = new Set(cbIndices);
-  const targets = new Set<number>();
-  for (const i of cbIndices) {
-    if (i - 1 >= 0) targets.add(i - 1);
-    if (i - 2 >= 0) targets.add(i - 2);
-    if (cbSet.has(i + 1)) targets.add(i);
-  }
-  for (const idx of targets) {
-    const p = paras[idx];
-    const base = rewrite.get(idx) ?? p.text;
-    let cur = base;
-    const k = removeKeepNext(cur);
-    if (k.changed) {
-      cur = k.xml;
-      keptWithNext++;
+  // 1+2: Indent and trim each YN paragraph.
+  for (const i of ynIndices) {
+    let cur = paras[i].text;
+    const a = ensureCheckboxIndent(cur);
+    if (a.changed) {
+      cur = a.xml;
+      indented++;
     }
-    const b = stripLeadingBreakRuns(cur);
-    if (b.changed) cur = b.xml;
-    if (cur !== base) rewrite.set(idx, cur);
+    const t = trimTrailingWhitespace(cur);
+    if (t.changed) {
+      cur = t.xml;
+      trimmed++;
+    }
+    if (cur !== paras[i].text) rewrite.set(i, cur);
   }
 
-  const sortedIdx = Array.from(rewrite.keys()).sort((a, b) => a - b);
+  // 3: strip keepNext/keepLines from any paragraph whose pPr has it within
+  // the encumbrance window (1 paragraph before YN1 .. YN2). Pair YN
+  // paragraphs into (encumbrance, delinqu60day) groups in document order.
+  for (let k = 0; k < ynIndices.length; k += 2) {
+    const yn1 = ynIndices[k];
+    const yn2 = ynIndices[k + 1];
+    if (yn2 == null) break;
+    // Window covers question paragraphs above YN1 and any paragraphs up to YN2.
+    const winStart = Math.max(0, yn1 - 3);
+    const winEnd = yn2;
+    for (let j = winStart; j <= winEnd; j++) {
+      const base = rewrite.get(j) ?? paras[j].text;
+      const s = stripKeepArtifacts(base);
+      if (s.changed) {
+        rewrite.set(j, s.xml);
+        stripped++;
+      }
+    }
+
+    // 4: between YN1 and YN2 the reference has exactly ONE blank spacer
+    // paragraph. If there are more visually-empty paragraphs in that gap
+    // (and they don't carry sectPr or any meaningful content), remove the
+    // extras (keep the FIRST one which inherits original spacer formatting
+    // closest to the reference).
+    const between: number[] = [];
+    for (let j = yn1 + 1; j < yn2; j++) {
+      if (isVisuallyEmpty(paras[j]) && !paragraphCarriesSectPr(paras[j])) {
+        between.push(j);
+      }
+    }
+    if (between.length > 1) {
+      // Keep the one with `before="68"` if present (matches reference spacer);
+      // otherwise keep the first.
+      let keepIdx = between.findIndex((j) =>
+        /<w:spacing\b[^>]*w:before="68"/.test(paras[j].text),
+      );
+      if (keepIdx < 0) keepIdx = 0;
+      for (let m = 0; m < between.length; m++) {
+        if (m === keepIdx) continue;
+        removeIdx.add(between[m]);
+        removed++;
+      }
+    }
+  }
+
+  if (rewrite.size === 0 && removeIdx.size === 0) {
+    return {
+      xml,
+      paragraphsIndented: indented,
+      paragraphsTrimmed: trimmed,
+      paragraphsStripped: stripped,
+      redundantParagraphsRemoved: removed,
+    };
+  }
+
+  // Assemble new XML.
   const out: string[] = [];
   let cursor = 0;
-  for (const i of sortedIdx) {
-    const p = paras[i];
-    out.push(xml.slice(cursor, p.start));
-    out.push(rewrite.get(i)!);
-    cursor = p.end;
+  for (let i = 0; i < paras.length; i++) {
+    if (removeIdx.has(i)) {
+      out.push(xml.slice(cursor, paras[i].start));
+      cursor = paras[i].end;
+      continue;
+    }
+    if (rewrite.has(i)) {
+      out.push(xml.slice(cursor, paras[i].start));
+      out.push(rewrite.get(i)!);
+      cursor = paras[i].end;
+    }
   }
   out.push(xml.slice(cursor));
 
-  const rewrittenXml = rewrite.size === 0 ? xml : out.join("");
-  const columns = normalizeCheckboxColumns(rewrittenXml);
-
   return {
-    xml: columns.xml,
-    paragraphsRightAligned: aligned,
+    xml: out.join(""),
+    paragraphsIndented: indented,
     paragraphsTrimmed: trimmed,
-    paragraphsKeptWithNext: keptWithNext,
-    columnSectionsNormalized: columns.changed,
+    paragraphsStripped: stripped,
+    redundantParagraphsRemoved: removed,
   };
 }
 
@@ -274,7 +302,7 @@ serve(async (req) => {
   }
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let templatePath = DEFAULT_TEMPLATE_PATH;
@@ -283,7 +311,9 @@ serve(async (req) => {
       if (body && typeof body.templatePath === "string" && body.templatePath.trim()) {
         templatePath = body.templatePath.trim();
       }
-    } catch (_) { /* default */ }
+    } catch (_) {
+      /* default */
+    }
 
     const dl = await supabase.storage.from("templates").download(templatePath);
     if (dl.error || !dl.data) {
@@ -292,7 +322,10 @@ serve(async (req) => {
           error: `download failed: ${dl.error?.message || "no data"}`,
           templatePath,
         }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
     const inputBytes = new Uint8Array(await dl.data.arrayBuffer());
@@ -302,80 +335,54 @@ serve(async (req) => {
     if (!docXmlBytes) {
       return new Response(
         JSON.stringify({ error: "word/document.xml missing from template" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
     const decoder = new TextDecoder("utf-8");
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    const url = new URL(req.url);
-    if (url.searchParams.get("inspect") === "1") {
-      const paras = splitParagraphs(originalXml);
-      const counts: Record<string, number> = {};
-      const samples: Array<{ i: number; pPr: string; text: string }> = [];
-      for (let i = 0; i < paras.length; i++) {
-        const s = paras[i].stripped;
-        for (const f of FAMILIES) {
-          const yes = new RegExp(`pr_li_${f}_N_yes_glyph`).test(s);
-          const no  = new RegExp(`pr_li_${f}_N_no_glyph`).test(s);
-          if (yes || no) {
-            const k = `${f}:${yes ? "Y" : ""}${no ? "N" : ""}`;
-            counts[k] = (counts[k] || 0) + 1;
-            if (samples.length < 6) {
-              const ppr = paras[i].text.match(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/);
-              samples.push({ i, pPr: ppr?.[0] || "(none)", text: s.slice(0, 100) });
-            }
-          }
-        }
-      }
-      return new Response(JSON.stringify({ counts, samples }, null, 2), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const result = processXml(originalXml);
 
-    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext, columnSectionsNormalized } = processXml(originalXml);
-
-    if (newXml === originalXml) {
+    if (result.xml === originalXml) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
-          paragraphsRightAligned: 0,
-          paragraphsTrimmed: 0,
-          paragraphsKeptWithNext: 0,
-          columnSectionsNormalized: 0,
+          ...result,
+          xml: undefined,
           message: "Template already normalized — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    decompressed["word/document.xml"] = encoder.encode(newXml);
+    decompressed["word/document.xml"] = encoder.encode(result.xml);
     const repacked = fflate.zipSync(decompressed as fflate.Zippable);
 
-    const up = await supabase.storage
-      .from("templates")
-      .upload(templatePath, repacked, {
-        contentType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        upsert: true,
-      });
+    const up = await supabase.storage.from("templates").upload(templatePath, repacked, {
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true,
+    });
     if (up.error) {
-      return new Response(
-        JSON.stringify({ error: `upload failed: ${up.error.message}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ error: `upload failed: ${up.error.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(
       JSON.stringify({
         ok: true,
         templatePath,
-        paragraphsRightAligned,
-        paragraphsTrimmed,
-        paragraphsKeptWithNext,
-        columnSectionsNormalized,
+        paragraphsIndented: result.paragraphsIndented,
+        paragraphsTrimmed: result.paragraphsTrimmed,
+        paragraphsStripped: result.paragraphsStripped,
+        redundantParagraphsRemoved: result.redundantParagraphsRemoved,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
@@ -384,7 +391,10 @@ serve(async (req) => {
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
