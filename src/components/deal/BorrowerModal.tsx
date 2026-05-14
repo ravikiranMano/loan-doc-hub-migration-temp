@@ -163,7 +163,15 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
               </div>
               {renderInlineField('middleName', 'Middle')}
               {renderInlineField('lastName', 'Last')}
-              {renderInlineSelect('capacity', 'Capacity', CAPACITY_OPTIONS, 'Select')}
+              <div className="flex items-center gap-2">
+                <Label className="w-[140px] shrink-0 text-xs">Capacity</Label>
+                <SearchableSelect
+                  value={String(formData.capacity || '')}
+                  onValueChange={(v) => handleFieldChange('capacity', v)}
+                  options={CAPACITY_OPTIONS}
+                  searchPlaceholder="Search capacity..."
+                />
+              </div>
               <div className="flex items-center gap-2">
                 <Label className="w-[140px] shrink-0 text-xs">Email</Label>
                 <EmailInput value={String(formData.email || '')} onValueChange={(v) => handleFieldChange('email', v)} className="h-7 text-xs" />
