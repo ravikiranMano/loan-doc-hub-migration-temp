@@ -554,6 +554,68 @@ export function repairUnclosedRunProperties(xml: string): { xml: string; repaire
 }
 
 /**
+ * Repair unclosed <w:p> blocks that leak past structural boundaries
+ * (</w:sdtContent>, </w:sdt>, </w:tc>, </w:tr>, </w:tbl>, </w:body>) due to
+ * post-render mutations that consumed/dropped a paragraph close. Mirrors
+ * `repairUnclosedRunProperties` but for paragraphs against the closer set
+ * that would otherwise produce
+ *   "expected </w:p> before </w:sdtContent>" (or </w:tc>, etc.)
+ * integrity failures. Conservative: only injects </w:p>; never reorders
+ * or removes anything; bails out on any other unbalanced shape.
+ */
+export function repairUnclosedParagraphsBeforeStructuralClose(
+  xml: string,
+): { xml: string; repaired: number } {
+  const tagRe = /<(!\[CDATA\[[\s\S]*?\]\]|!--[\s\S]*?--|\?[^>]*\?|\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?)>/g;
+  const PARAGRAPH_CLOSERS = new Set([
+    "w:sdtContent",
+    "w:sdt",
+    "w:tc",
+    "w:tr",
+    "w:tbl",
+    "w:body",
+  ]);
+  type Open = { name: string };
+  const stack: Open[] = [];
+  const inserts: Array<{ at: number; text: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(xml)) !== null) {
+    const body = m[1].trim();
+    if (!body || body.startsWith("?") || body.startsWith("!--") || body.startsWith("![CDATA")) continue;
+    if (body.startsWith("/")) {
+      const closeName = body.slice(1).trim().split(/\s+/)[0];
+      // Heal: if w:p is on top but the next close is a structural boundary,
+      // close the paragraph(s) first.
+      while (
+        stack.length > 0 &&
+        stack[stack.length - 1].name === "w:p" &&
+        closeName !== "w:p" &&
+        PARAGRAPH_CLOSERS.has(closeName)
+      ) {
+        inserts.push({ at: m.index, text: "</w:p>" });
+        stack.pop();
+      }
+      if (stack.length > 0 && stack[stack.length - 1].name === closeName) {
+        stack.pop();
+      } else {
+        // Unbalanced in some other way — bail without modifying.
+        return { xml, repaired: 0 };
+      }
+    } else if (!body.endsWith("/")) {
+      const name = body.split(/\s+/)[0];
+      stack.push({ name });
+    }
+  }
+  if (inserts.length === 0) return { xml, repaired: 0 };
+  inserts.sort((a, b) => b.at - a.at);
+  let out = xml;
+  for (const ins of inserts) {
+    out = out.slice(0, ins.at) + ins.text + out.slice(ins.at);
+  }
+  return { xml: out, repaired: inserts.length };
+}
+
+/**
  * OOXML requires every <w:tc> (table cell) to contain at least one <w:p>.
  * Post-render safety passes can splice runs in/out and occasionally leave
  * a cell without a paragraph; insert an empty <w:p/> so Word can open the
