@@ -79,6 +79,24 @@ function familyFor(stripped: string): Family | null {
  * Adds <w:pPr> if missing, replaces an existing <w:jc> if present.
  * Idempotent.
  */
+/**
+ * Add <w:keepNext/> to the paragraph's <w:pPr>. Idempotent.
+ */
+function addKeepNext(pXml: string): { xml: string; changed: boolean } {
+  const open = pXml.match(/^<w:p\b[^>]*?>/);
+  if (!open) return { xml: pXml, changed: false };
+  const KN = `<w:keepNext/>`;
+  const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
+  if (!pprMatch) {
+    return { xml: pXml.replace(open[0], `${open[0]}<w:pPr>${KN}</w:pPr>`), changed: true };
+  }
+  if (/<w:keepNext\s*\/>/.test(pprMatch[1])) return { xml: pXml, changed: false };
+  return {
+    xml: pXml.replace(pprMatch[0], `<w:pPr>${KN}${pprMatch[1]}</w:pPr>`),
+    changed: true,
+  };
+}
+
 function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
   if (!open) return { xml: pXml, changed: false };
