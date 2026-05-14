@@ -17,6 +17,7 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { STATE_OPTIONS } from '@/lib/usStates';
 import { BORROWER_GUARANTOR_KEYS } from '@/lib/fieldKeyMap';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 const FORD_DROPDOWN_OPTIONS = [
   'Spouse, Kids, Grandkids', 'Big Dream', 'Sports Teams', 'Hobbies / Collections',
@@ -134,10 +135,13 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
           </InlineField>
 
           <InlineField label="Borrower Type" fieldKey={FIELD_KEYS.borrowerType}>
-            <Select value={getValue('borrowerType')} onValueChange={(value) => handleChange('borrowerType', value)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{BORROWER_TYPE_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
-            </Select>
+            <SearchableSelect
+              value={getValue('borrowerType')}
+              onValueChange={(value) => handleChange('borrowerType', value)}
+              options={BORROWER_TYPE_OPTIONS}
+              searchPlaceholder="Search borrower type..."
+              disabled={disabled}
+            />
           </InlineField>
 
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.fullName}>
@@ -169,12 +173,13 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
           </InlineField>
 
           <InlineField label="Capacity" fieldKey={FIELD_KEYS.capacity}>
-            <Select value={getValue('capacity')} onValueChange={(value) => handleChange('capacity', value)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                {CAPACITY_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={getValue('capacity')}
+              onValueChange={(value) => handleChange('capacity', value)}
+              options={CAPACITY_OPTIONS}
+              searchPlaceholder="Search capacity..."
+              disabled={disabled}
+            />
           </InlineField>
 
           <InlineField label="Email" fieldKey={FIELD_KEYS.email}>
@@ -302,10 +307,13 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
           <div className="pt-2">
             <h4 className="font-semibold text-sm text-foreground pb-1">FORD</h4>
             <div className="grid grid-cols-2 gap-2">
-              <Select value={getValue('ford1')} onValueChange={(v) => handleChange('ford1', v)} disabled={disabled}>
-                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{FORD_DROPDOWN_OPTIONS.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}</SelectContent>
-              </Select>
+              <SearchableSelect
+                value={getValue('ford1')}
+                onValueChange={(v) => handleChange('ford1', v)}
+                options={FORD_DROPDOWN_OPTIONS}
+                searchPlaceholder="Search FORD..."
+                disabled={disabled}
+              />
               <Input value={getValue('ford2')} onChange={(e) => handleChange('ford2', e.target.value)} disabled={disabled} className="h-7 text-sm" />
             </div>
           </div>

@@ -18,6 +18,7 @@ import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import BorrowerIdSearch from './BorrowerIdSearch';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 const FORD_DROPDOWN_OPTIONS = [
   { value: 'Spouse, Kids, Grandkids', label: 'Spouse, Kids, Grandkids' },
@@ -186,10 +187,13 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
           </InlineField>
 
           <InlineField label="Borrower Type" fieldKey={FIELD_KEYS.borrowerType}>
-            <Select value={getValue('borrowerType')} onValueChange={(value) => handleChange('borrowerType', value)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{BORROWER_TYPE_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
-            </Select>
+            <SearchableSelect
+              value={getValue('borrowerType')}
+              onValueChange={(value) => handleChange('borrowerType', value)}
+              options={BORROWER_TYPE_OPTIONS}
+              searchPlaceholder="Search borrower type..."
+              disabled={disabled}
+            />
           </InlineField>
 
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.fullName}>
@@ -215,12 +219,13 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
           </InlineField>
 
           <InlineField label="Capacity" fieldKey={FIELD_KEYS.capacity}>
-            <Select value={getValue('capacity')} onValueChange={(value) => handleChange('capacity', value)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                {CAPACITY_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={getValue('capacity')}
+              onValueChange={(value) => handleChange('capacity', value)}
+              options={CAPACITY_OPTIONS}
+              searchPlaceholder="Search capacity..."
+              disabled={disabled}
+            />
           </InlineField>
 
           <InlineField label="Email" fieldKey={FIELD_KEYS.email}>
@@ -379,10 +384,13 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
             {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
               <div key={idx} className="grid grid-cols-2 gap-1">
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS[dropdownKey]}>
-                  <Select value={getValue(dropdownKey)} onValueChange={(v) => handleChange(dropdownKey, v)} disabled={disabled}>
-                    <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>{FORD_DROPDOWN_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={getValue(dropdownKey)}
+                    onValueChange={(v) => handleChange(dropdownKey, v)}
+                    options={FORD_DROPDOWN_OPTIONS.map(o => o.value)}
+                    searchPlaceholder="Search FORD..."
+                    disabled={disabled}
+                  />
                 </DirtyFieldWrapper>
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS[inputKey]}>
                   <Input value={getValue(inputKey)} onChange={(e) => handleChange(inputKey, e.target.value)} disabled={disabled} className="h-7 text-sm" />

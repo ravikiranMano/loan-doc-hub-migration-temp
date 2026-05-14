@@ -17,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { BorrowerData } from './BorrowersTableView';
 
 interface BorrowerModalProps {
@@ -143,7 +144,15 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
             <div className="space-y-1">
               <div className="font-semibold text-xs text-foreground pb-1 mb-1.5">Name</div>
               {renderInlineField('borrowerId', 'Borrower ID')}
-              {renderInlineSelect('borrowerType', 'Borrower Type', BORROWER_TYPE_OPTIONS, 'Select')}
+              <div className="flex items-center gap-2">
+                <Label className="w-[140px] shrink-0 text-xs">Borrower Type</Label>
+                <SearchableSelect
+                  value={String(formData.borrowerType || '')}
+                  onValueChange={(v) => handleFieldChange('borrowerType', v)}
+                  options={BORROWER_TYPE_OPTIONS}
+                  searchPlaceholder="Search borrower type..."
+                />
+              </div>
               <div>
                 {renderInlineField('fullName', 'Full Name')}
                 <p className="text-[10px] text-muted-foreground pl-[148px] leading-tight">If Entity, Use Entity</p>
@@ -154,7 +163,15 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
               </div>
               {renderInlineField('middleName', 'Middle')}
               {renderInlineField('lastName', 'Last')}
-              {renderInlineSelect('capacity', 'Capacity', CAPACITY_OPTIONS, 'Select')}
+              <div className="flex items-center gap-2">
+                <Label className="w-[140px] shrink-0 text-xs">Capacity</Label>
+                <SearchableSelect
+                  value={String(formData.capacity || '')}
+                  onValueChange={(v) => handleFieldChange('capacity', v)}
+                  options={CAPACITY_OPTIONS}
+                  searchPlaceholder="Search capacity..."
+                />
+              </div>
               <div className="flex items-center gap-2">
                 <Label className="w-[140px] shrink-0 text-xs">Email</Label>
                 <EmailInput value={String(formData.email || '')} onValueChange={(v) => handleFieldChange('email', v)} className="h-7 text-xs" />
@@ -271,10 +288,12 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
               <div className="space-y-1">
                 {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
                   <div key={idx} className="grid grid-cols-2 gap-1">
-                    <Select value={String(formData[dropdownKey] || '')} onValueChange={(v) => handleFieldChange(dropdownKey, v)}>
-                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>{FORD_DROPDOWN_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={String(formData[dropdownKey] || '')}
+                      onValueChange={(v) => handleFieldChange(dropdownKey, v)}
+                      options={FORD_DROPDOWN_OPTIONS.map(o => o.value)}
+                      searchPlaceholder="Search FORD..."
+                    />
                     <Input value={String(formData[inputKey] || '')} onChange={(e) => handleFieldChange(inputKey, e.target.value)} className="h-7 text-xs" />
                   </div>
                 ))}
