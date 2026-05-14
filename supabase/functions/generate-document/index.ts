@@ -1348,6 +1348,27 @@ async function generateSingleDocument(
         return undefined;
       };
 
+      const propertyTaxIndices = new Set<number>();
+      for (const [key] of fieldValues.entries()) {
+        const m = key.match(/^propertytax(\d+)\./);
+        if (m) propertyTaxIndices.add(parseInt(m[1], 10));
+      }
+      for (let taxIdx = 1; taxIdx <= 10; taxIdx++) {
+        if (fieldValues.has(`propertytax${taxIdx}.property`)) propertyTaxIndices.add(taxIdx);
+      }
+      const propertyTaxToProperty = new Map<number, number>();
+      const propertyToTax = new Map<number, number>();
+      for (const taxIdx of [...propertyTaxIndices].sort((a, b) => a - b)) {
+        const propLabel = String(fieldValues.get(`propertytax${taxIdx}.property`)?.rawValue || "");
+        const propIdx = resolvePropertyTaxPropertyIndex(propLabel);
+        if (!propIdx) continue;
+        propertyTaxToProperty.set(taxIdx, propIdx);
+        if (!propertyToTax.has(propIdx)) propertyToTax.set(propIdx, taxIdx);
+      }
+      if (propertyTaxToProperty.size > 0) {
+        debugLog(`[RE851D] propertytax→property mapping: ${[...propertyTaxToProperty.entries()].map(([taxIdx, propIdx]) => `${taxIdx}→${propIdx}`).join(", ")}`);
+      }
+
       // ── RE851D: Pre-bridge propertytax{srcIdx} → propertytax{destIdx} by address match ──
       // Match strategy (first match wins, ties → lowest property index):
       //   a) exact normalized full-address match
@@ -1357,20 +1378,15 @@ async function generateSingleDocument(
       // Only copies when destination key is empty.
       {
         const TAX_FIELDS = ["annual_payment", "delinquent", "delinquent_amount", "source_of_information", "tax_confidence"];
-        const srcIndices = new Set<number>();
-        for (const [k] of fieldValues.entries()) {
-          const m = k.match(/^propertytax(\d+)\./);
-          if (m) srcIndices.add(parseInt(m[1], 10));
-        }
         const bridgeLog: string[] = [];
         const unmatchedLog: string[] = [];
         const sortedCandidates = [...propCandidates].sort((a, b) => a.idx - b.idx);
-        for (const srcIdx of srcIndices) {
+        for (const srcIdx of propertyTaxIndices) {
           const propAddrRaw = String(fieldValues.get(`propertytax${srcIdx}.property`)?.rawValue || "");
           if (!propAddrRaw) continue;
           const taxNorm = normAddr(propAddrRaw);
 
-          let destIdx: number | undefined = addressToPropIndex.get(taxNorm);
+          let destIdx: number | undefined = propertyTaxToProperty.get(srcIdx) || addressToPropIndex.get(taxNorm);
           // (b) property full ⊂ tax string
           if (!destIdx) {
             for (const c of sortedCandidates) {
