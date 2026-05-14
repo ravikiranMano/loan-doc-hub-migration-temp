@@ -221,12 +221,9 @@ function processXml(xml: string): {
     if (cur !== p.text) rewrite.set(i, cur);
   }
 
-  // Pass 2: anti-orphan. For each checkbox paragraph mark up to two preceding
-  // paragraphs with <w:keepNext/> so Word never breaks the question away from
-  // its YES/NO row. Also mark the checkbox paragraph itself with keepNext when
-  // it is immediately followed by ANOTHER checkbox paragraph (the
-  // encumbranceOfRecord+delinqu60day pair, and the
-  // currentDelinqu+delinquencyPaidByLoan pair).
+  // Pass 2: remove prior keep-next artifacts and strip stray leading line-break
+  // runs from question paragraphs. The original template controls placement via
+  // section breaks/columns; keepNext forced large question groups to jump pages.
   const cbSet = new Set(cbIndices);
   const targets = new Set<number>();
   for (const i of cbIndices) {
@@ -237,11 +234,15 @@ function processXml(xml: string): {
   for (const idx of targets) {
     const p = paras[idx];
     const base = rewrite.get(idx) ?? p.text;
-    const k = addKeepNext(base);
+    let cur = base;
+    const k = removeKeepNext(cur);
     if (k.changed) {
-      rewrite.set(idx, k.xml);
+      cur = k.xml;
       keptWithNext++;
     }
+    const b = stripLeadingBreakRuns(cur);
+    if (b.changed) cur = b.xml;
+    if (cur !== base) rewrite.set(idx, cur);
   }
 
   const sortedIdx = Array.from(rewrite.keys()).sort((a, b) => a - b);
