@@ -80,10 +80,23 @@ export function normalizeInterestOnBlur(value: string, decimals = 2): string {
   const num = parseFloat(stripped);
   if (isNaN(num) || num < 0) return '';
 
-  // Platform-wide standard: store all percent/rate values at 4 decimal places.
-  // Display-side formatters smart-trim to category-appropriate precision.
-  const safeDecimals = Math.max(4, decimals);
-  return num.toFixed(safeDecimals);
+  // Platform-wide percent/rate display standard:
+  //   - min 2 decimals
+  //   - max `decimals` decimals (caller-controlled: 3 for interest, 4 for pro-rata, etc.)
+  //   - suppress trailing zeros beyond the 2nd decimal place
+  // Numeric value is preserved at full precision when persisted (numeric column),
+  // so trimming the displayed string does not lose storage precision.
+  const safeMax = Math.max(2, Math.min(4, decimals));
+  let s = num.toFixed(safeMax);
+  if (safeMax > 2) {
+    const dot = s.indexOf('.');
+    if (dot !== -1) {
+      const head = s.slice(0, dot + 3);                // keep first 2 decimals
+      const tail = s.slice(dot + 3).replace(/0+$/, ''); // trim zeros beyond 2nd
+      s = tail ? head + tail : head;
+    }
+  }
+  return s;
 }
 
 /** Validation error message */
