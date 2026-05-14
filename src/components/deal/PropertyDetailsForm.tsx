@@ -36,6 +36,7 @@ interface PropertyDetailsFormProps {
   calculationResults?: Record<string, CalculationResult>;
   borrowerOptions?: string[];
   borrowerAddress?: { street: string; city: string; state: string; zipCode: string };
+  borrowerAddressLoading?: boolean;
 }
 
 const PROPERTY_TYPE_OPTIONS = [
@@ -63,6 +64,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   disabled = false,
   borrowerOptions: borrowerOptionsProp,
   borrowerAddress: borrowerAddressProp,
+  borrowerAddressLoading = false,
 }) => {
   const [datePickerStates, setDatePickerStates] = React.useState<Record<string, boolean>>({});
   const getFieldValue = (key: string) => values[key] || '';
@@ -225,7 +227,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
     if (!hasBorrowerSource && !hasSnapshot) {
       if (justChecked) {
-        toast.error('Primary Borrower not found in Participants');
+        if (!borrowerAddressLoading) toast.error('Primary Borrower not found in Participants');
       }
       return;
     }
@@ -248,7 +250,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     mappings.forEach(([dst, srcVal]) => {
       if (srcVal !== '' && getFieldValue(dst) !== srcVal) onValueChange(dst, srcVal);
     });
-  }, [isCopyBorrower, primaryBorrowerPrefix, borrowerStreet, borrowerCity, borrowerState, borrowerZip]);
+  }, [isCopyBorrower, primaryBorrowerPrefix, borrowerStreet, borrowerCity, borrowerState, borrowerZip, borrowerAddressLoading]);
 
   const parseDate = (val: string): Date | undefined => {
     if (!val) return undefined;
