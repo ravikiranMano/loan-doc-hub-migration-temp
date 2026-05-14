@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 import { US_STATES } from '@/lib/usStates';
 
