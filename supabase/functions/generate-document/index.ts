@@ -1482,6 +1482,36 @@ async function generateSingleDocument(
             fieldValues.set(`pr_p_performeBy_${idx}`, { rawValue: perfRaw.rawValue, dataType: dt });
           }
         }
+        // RE851D — pre-resolve per-property appraiser name/address so the
+        // template can use plain {{pr_p_appraiserName_N}} / {{pr_p_appraiserAddress_N}}
+        // merge tags instead of unsupported {{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}
+        // conditionals (which currently leak raw into the rendered document).
+        // Rule: performedBy === "Broker" → name="BPO Performed by Broker", address="N/A".
+        //       Otherwise → name=property{N}.appraiser_name (or ""), address=joined
+        //       appraiser_street/city/state/zip (or "").
+        {
+          const performedBy = String(
+            fieldValues.get(`property${idx}.appraisal_performed_by`)?.rawValue ?? ""
+          ).trim();
+          const isBroker = performedBy.toLowerCase() === "broker";
+
+          const nameRaw = String(
+            fieldValues.get(`property${idx}.appraiser_name`)?.rawValue ?? ""
+          ).trim();
+          const addrParts = [
+            fieldValues.get(`property${idx}.appraiser_street`)?.rawValue,
+            fieldValues.get(`property${idx}.appraiser_city`)?.rawValue,
+            fieldValues.get(`property${idx}.appraiser_state`)?.rawValue,
+            fieldValues.get(`property${idx}.appraiser_zip`)?.rawValue,
+          ].map((v) => String(v ?? "").trim()).filter(Boolean);
+          const addrRaw = addrParts.join(", ");
+
+          const nameOut = isBroker ? "BPO Performed by Broker" : nameRaw;
+          const addrOut = isBroker ? "N/A" : addrRaw;
+
+          fieldValues.set(`pr_p_appraiserName_${idx}`,    { rawValue: nameOut, dataType: "text" });
+          fieldValues.set(`pr_p_appraiserAddress_${idx}`, { rawValue: addrOut, dataType: "text" });
+        }
         // Annual property tax (UI: propertytax.annual_payment) per property
         const taxV =
           fieldValues.get(`${prefix}.annual_property_taxes`) ||
@@ -2045,6 +2075,7 @@ async function generateSingleDocument(
           "pr_p_zoning", "pr_p_floodZone", "pr_p_pledgedEquity",
           "pr_p_delinquHowMany",
           "pr_p_performedBy", "pr_p_performeBy",
+          "pr_p_appraiserName", "pr_p_appraiserAddress",
           "pr_p_netMonthlyIncome", "pr_p_incomeGenerating", "pr_p_grossAnnualIncome",
           "ln_p_loanToValueRatio",
           "propertytax_annual_payment", "propertytax.annual_payment",
@@ -5031,6 +5062,7 @@ async function generateSingleDocument(
           // aliases so PROPERTY #K blocks rewrite _N → _K and each property
           // renders its own appraisal_performed_by value.
           "pr_p_performedBy_N", "pr_p_performeBy_N",
+          "pr_p_appraiserName_N", "pr_p_appraiserAddress_N",
           // RE851D per-property income (Yes/No text + annual numeric).
           "pr_p_netMonthlyIncome_N", "pr_p_incomeGenerating_N", "pr_p_grossAnnualIncome_N",
           // RE851D "Is there Additional Securing Property?" per-property
@@ -5860,6 +5892,61 @@ async function generateSingleDocument(
             }
           }
 
+          // ── RE851D appraiser conditional → merge-tag rewrite ──
+          // The authored RE851D template contains:
+          //   {{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{/if}}
+          //   {{#if (eq pr_p_performeBy_N "Broker")}}N/A{{/if}}
+          // Our renderer prints these raw because (a) the literal `_N` survives
+          // and (b) the conditional helper does not always evaluate cleanly.
+          // We pre-publish per-property `pr_p_appraiserName_K` /
+          // `pr_p_appraiserAddress_K` values upstream; here we replace the entire
+          // {{#if … }}…{{/if}} block with the corresponding plain merge tag,
+          // anchored to the PROPERTY #K region the match sits in. Strictly
+          // scoped: only matches the two literal payloads ("BPO Performed by
+          // Broker" and "N/A") so unrelated conditionals are never touched.
+          {
+            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_N\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/g;
+            let acm: RegExpExecArray | null;
+            let appraiserBlocksRewritten = 0;
+            const appraiserPairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
+            while ((acm = apprCondRe.exec(xml)) !== null) {
+              const fullStart = acm.index;
+              const fullEnd = fullStart + acm[0].length;
+              if (isConsumed(fullStart, fullEnd)) continue;
+              const payload = String(acm[1] || "").replace(/<[^>]+>/g, "").trim();
+              let kind: "name" | "addr" | null = null;
+              if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
+              else if (/^N\/A$/i.test(payload)) kind = "addr";
+              if (kind === null) continue;
+              // Determine PROPERTY #K by region; fall back to occurrence order.
+              let pIdx: number | null = null;
+              for (const p of regions.props) {
+                if (fullStart >= p.range[0] && fullStart < p.range[1]) {
+                  pIdx = p.k;
+                  break;
+                }
+              }
+              if (pIdx === null) {
+                appraiserPairCounter[kind] += 1;
+                pIdx = Math.min(Math.max(appraiserPairCounter[kind], 1), 5);
+              }
+              const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
+              rewrites.push({
+                start: fullStart,
+                end: fullEnd,
+                replacement: `{{${tagBase}_${pIdx}}}`,
+              });
+              consumed.push([fullStart, fullEnd]);
+              totalRewrites++;
+              appraiserBlocksRewritten++;
+            }
+            if (appraiserBlocksRewritten > 0) {
+              try {
+                debugLog(`[generate-document] RE851D appraiser conditional rewrite: ${appraiserBlocksRewritten} {{#if pr_p_performeBy_N}} block(s) replaced with appraiserName/Address merge tags`);
+              } catch (_) { /* ignore */ }
+            }
+          }
+
           // ── RE851D pr_p_performeBy_N targeted safety rewrite ──
           // Some authored RE851D templates split the
           // `{{#if (eq pr_p_performeBy_N "Broker")}}` opener across multiple
@@ -6324,6 +6411,7 @@ async function generateSingleDocument(
         // aliases so the conditional resolver does an exact direct match per
         // PROPERTY #K block and never falls back to the unsuffixed field.
         "pr_p_performedBy", "pr_p_performeBy",
+        "pr_p_appraiserName", "pr_p_appraiserAddress",
         // Property identity / detail families used by RE851D PROPERTY #K blocks.
         "pr_p_address", "pr_p_street", "pr_p_city", "pr_p_state",
         "pr_p_zip", "pr_p_county", "pr_p_country", "pr_p_apn",
