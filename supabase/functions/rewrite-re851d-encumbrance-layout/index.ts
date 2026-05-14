@@ -111,27 +111,57 @@ function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
   };
 }
 
+/**
+ * Strip trailing whitespace inside the LAST non-empty <w:t> of a paragraph,
+ * and drop trailing all-whitespace runs after it. Trailing spaces would
+ * otherwise be rendered as right-aligned spaces, pushing the visible
+ * "NO" left of the right margin.
+ */
+function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean } {
+  let out = pXml;
+  let changed = false;
+  // Drop trailing whitespace-only runs (one at a time, idempotent).
+  for (let safety = 0; safety < 5; safety++) {
+    const re = /<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:t\b[^>]*>\s*<\/w:t>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>(?=\s*<\/w:p>)/;
+    if (!re.test(out)) break;
+    out = out.replace(re, "");
+    changed = true;
+  }
+  // Strip trailing whitespace inside the last <w:t> before </w:p>.
+  out = out.replace(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>(?:(?!<w:t\b)[\s\S])*?<\/w:p>\s*$)/, (full, open, inner, tail) => {
+    const trimmed = inner.replace(/\s+$/, "");
+    if (trimmed === inner) return full;
+    changed = true;
+    return open + trimmed + tail;
+  });
+  return { xml: out, changed };
+}
+
 function processXml(xml: string): {
   xml: string;
   paragraphsRightAligned: number;
+  paragraphsTrimmed: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, paragraphsRightAligned: 0 };
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
 
   const rewrite = new Map<number, string>();
-  let count = 0;
+  let aligned = 0;
+  let trimmed = 0;
 
   for (let i = 0; i < paras.length; i++) {
     const p = paras[i];
     const fam = familyFor(p.stripped);
     if (!fam) continue;
-    const { xml: nx, changed } = rightAlignAndKeep(p.text);
-    if (!changed) continue;
-    rewrite.set(i, nx);
-    count++;
+    let cur = p.text;
+    const a = rightAlignAndKeep(cur);
+    if (a.changed) { cur = a.xml; aligned++; }
+    const t = trimTrailingWhitespace(cur);
+    if (t.changed) { cur = t.xml; trimmed++; }
+    if (cur !== p.text) rewrite.set(i, cur);
   }
 
-  if (rewrite.size === 0) return { xml, paragraphsRightAligned: 0 };
+  if (rewrite.size === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
 
   const out: string[] = [];
   let cursor = 0;
