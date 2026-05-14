@@ -8467,11 +8467,22 @@ async function generateSingleDocument(
             let am: RegExpExecArray | null;
             let scanned = 0;
             const forcedProps: number[] = [];
+            // When property anchors are missing from the visible-text projection
+            // (template uses a layout the anchor scanner doesn't detect), the
+            // single fallback region attributes EVERY anchor to property 1,
+            // leaving properties 2..N stuck on NO. Detect this case and assign
+            // each anchor occurrence its ordinal property index instead.
+            const anchorsHaveOrdinalFallback =
+              propRanges.length === 1 && propRanges[0].k === 1 && propAnchors.length === 0;
+            let anchorOrdinal = 0;
             while ((am = anchorReTxt.exec(txtAEA)) !== null) {
               scanned++;
+              anchorOrdinal++;
               const aStartXml = projAEA.map[am.index];
               const region = propRanges.find((p) => aStartXml >= p.start && aStartXml < p.end);
-              const propK = region ? region.k : 1;
+              const propK = anchorsHaveOrdinalFallback
+                ? anchorOrdinal
+                : (region ? region.k : 1);
               const winStartXml = Math.max(region ? region.start : 0, aStartXml - 600);
               const winEndXml   = Math.min(region ? region.end : xml.length, aStartXml + 1500);
 
@@ -8542,6 +8553,20 @@ async function generateSingleDocument(
             };
             const pageBreakPara = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
 
+            // Render a 2-column key/value table so addendum lien details line
+            // up consistently (mirrors the main encumbrance grid layout).
+            const tableCell = (text: string, widthDxa: number, opts?: { bold?: boolean }) => {
+              const b = opts?.bold ? "<w:b/><w:bCs/>" : "";
+              return `<w:tc><w:tcPr><w:tcW w:w="${widthDxa}" w:type="dxa"/><w:tcMar><w:top w:w="40" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar></w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:rPr>${b}<w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${xmlEscA(text)}</w:t></w:r></w:p></w:tc>`;
+            };
+            const renderLienTable = (rows: Array<[string, string]>): string => {
+              const tblRows = rows
+                .filter(([, v]) => v !== "")
+                .map(([k, v]) => `<w:tr>${tableCell(k, 3000, { bold: true })}${tableCell(v, 6360)}</w:tr>`)
+                .join("");
+              return `<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:color="CCCCCC"/><w:insideV w:val="single" w:sz="4" w:color="CCCCCC"/></w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="6360"/></w:tblGrid>${tblRows}</w:tbl><w:p><w:pPr><w:spacing w:after="80"/></w:pPr></w:p>`;
+            };
+
             const renderLienLines = (lp: string): string => {
               const beneficiary = getLien(lp, "lien_holder", "lienHolder", "holder", "beneficiary");
               const priority    = getLien(lp, "lien_priority_now", "priority", "lien_priority_after");
@@ -8550,16 +8575,17 @@ async function generateSingleDocument(
               const rate        = getLien(lp, "interest_rate", "intRate");
               const pmt         = getLien(lp, "regular_payment", "regularPayment");
               const mat         = getLien(lp, "maturity_date", "matDate");
-              const lines: string[] = [];
-              if (priority)    lines.push(`Priority: ${priority}`);
-              if (beneficiary) lines.push(`Beneficiary: ${beneficiary}`);
-              if (orig)        lines.push(`Original Amount: ${fmtCurrencyA(orig)}`);
-              if (cur)         lines.push(`Approximate Principal Balance: ${fmtCurrencyA(cur)}`);
-              if (pmt)         lines.push(`Monthly Payment: ${fmtCurrencyA(pmt)}`);
-              if (rate)        lines.push(`Interest Rate: ${rate}${/%\s*$/.test(rate) ? "" : "%"}`);
-              if (mat)         lines.push(`Maturity Date: ${mat}`);
-              if (lines.length === 0) return para("(no details)");
-              return lines.map(l => para(l)).join("");
+              const rows: Array<[string, string]> = [
+                ["Priority", priority],
+                ["Beneficiary", beneficiary],
+                ["Original Amount", orig ? fmtCurrencyA(orig) : ""],
+                ["Approximate Principal Balance", cur ? fmtCurrencyA(cur) : ""],
+                ["Monthly Payment", pmt ? fmtCurrencyA(pmt) : ""],
+                ["Interest Rate", rate ? `${rate}${/%\s*$/.test(rate) ? "" : "%"}` : ""],
+                ["Maturity Date", mat],
+              ];
+              if (rows.every(([, v]) => !v)) return para("(no details)");
+              return renderLienTable(rows);
             };
 
             const sections: string[] = [];
