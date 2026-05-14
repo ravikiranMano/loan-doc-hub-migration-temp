@@ -5883,7 +5883,7 @@ async function generateSingleDocument(
               } else {
                 let rendered = "";
                 if (v && v.rawValue !== null && v.rawValue !== undefined) {
-                  rendered = formatByDataType(v.rawValue, v.dataType);
+                  rendered = formatByDataType(v.rawValue, v.dataType, lookupKey);
                   if (v.dataType === "currency" && rendered.startsWith("$")) {
                     rendered = rendered.substring(1);
                   }
