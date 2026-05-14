@@ -1,16 +1,13 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// The RE851D document body uses a multi-column section: question text
-// flows in the LEFT column, YES/NO checkbox glyphs flow in the RIGHT
-// column. A previous pass already merged each YES + NO into a single
-// paragraph (joined by `&#160;`), but they still render LEFT-aligned
-// inside the right column, which produces the broken look in the
-// generated document.
+// The RE851D document body uses a temporary multi-column section: question
+// text stays in the full-width text flow, then YES/NO checkbox glyphs flow in
+// a narrow RIGHT column. Earlier attempts changed that geometry to two equal
+// columns and right-aligned checkbox paragraphs, which made checkbox rows
+// float mid-page or far right instead of matching the source template.
 //
-// This rewrite right-aligns those merged YES/NO paragraphs so the
-// checkbox pair snaps to the column's right edge, matching the
-// reference layout in `re851d - LPDS Multi-property.docx`. We also
-// add `<w:keepLines/>` so a YES/NO row never wraps internally.
+// This rewrite restores the reference column geometry (9398 / 73 / 2049),
+// removes forced paragraph right-alignment, and keeps checkbox rows together.
 //
 // Strictly scoped — only paragraphs whose stripped text contains BOTH
 // `pr_li_<family>_N_yes_glyph` and `pr_li_<family>_N_no_glyph` for one
@@ -36,6 +33,8 @@ const FAMILIES = [
   "delinquencyPaidByLoan",
 ] as const;
 type Family = (typeof FAMILIES)[number];
+
+const REFERENCE_CHECKBOX_COLUMNS = `<w:cols w:num="2" w:space="720" w:equalWidth="0"><w:col w:w="9398" w:space="73"/><w:col w:w="2049"/></w:cols>`;
 
 interface Para {
   start: number;
