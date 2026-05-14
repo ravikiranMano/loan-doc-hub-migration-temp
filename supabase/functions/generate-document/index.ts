@@ -1917,6 +1917,15 @@ async function generateSingleDocument(
           }
         }
       }
+      // RE851D ARE TAXES DELINQUENT? — empty-slot defaults (anti-fallback shield).
+      // Slots without a property render as ☐ YES / ☑ NO with empty amount.
+      for (let i = 1; i <= 5; i++) {
+        if (realPropertyIndices.includes(i)) continue;
+        fieldValues.set(`pr_pt_delinquent_yes_glyph_${i}`, { rawValue: "☐", dataType: "text" });
+        fieldValues.set(`pr_pt_delinquent_no_glyph_${i}`,  { rawValue: "☑", dataType: "text" });
+        fieldValues.set(`pr_pt_delinquentAmount_${i}`,     { rawValue: "",  dataType: "currency" });
+        fieldValues.set(`pr_pt_delinquent_${i}`,           { rawValue: "false", dataType: "boolean" });
+      }
       // ── RE851D: per-property INCOME publisher ──
       // Source: property{idx}.net_monthly_income (already bridged above).
       // Derived per-index aliases (no cross-property fallback):
