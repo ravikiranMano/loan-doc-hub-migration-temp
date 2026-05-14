@@ -754,7 +754,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
                               ? (CURRENCY_COLS.has(col.key)
                                   ? totals[col.key].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                   : PERCENT_COLS.has(col.key)
-                                    ? totals[col.key].toFixed(2) + '%'
+                                    ? formatPercentDisplay(totals[col.key], 4) + '%'
                                     : totals[col.key].toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
                               : '—'}
                           </span>
