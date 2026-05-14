@@ -307,10 +307,13 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
           <div className="pt-2">
             <h4 className="font-semibold text-sm text-foreground pb-1">FORD</h4>
             <div className="grid grid-cols-2 gap-2">
-              <Select value={getValue('ford1')} onValueChange={(v) => handleChange('ford1', v)} disabled={disabled}>
-                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{FORD_DROPDOWN_OPTIONS.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}</SelectContent>
-              </Select>
+              <SearchableSelect
+                value={getValue('ford1')}
+                onValueChange={(v) => handleChange('ford1', v)}
+                options={FORD_DROPDOWN_OPTIONS}
+                searchPlaceholder="Search FORD..."
+                disabled={disabled}
+              />
               <Input value={getValue('ford2')} onChange={(e) => handleChange('ford2', e.target.value)} disabled={disabled} className="h-7 text-sm" />
             </div>
           </div>
