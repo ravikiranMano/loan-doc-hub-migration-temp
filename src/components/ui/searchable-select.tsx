@@ -41,7 +41,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           role="combobox"
           disabled={disabled}
           className={cn(
-            'h-7 w-full flex-1 justify-between text-sm font-normal px-3 py-0',
+            'h-7 w-full flex-1 justify-between text-sm font-normal px-3',
             !value && 'text-muted-foreground',
             hasError && 'border-destructive',
             triggerClassName
