@@ -4925,6 +4925,9 @@ async function generateSingleDocument(
           "pr_pt_annualTaxes_N",
           "pr_pt_actual_N_glyph", "pr_pt_actual_N",
           "pr_pt_estimated_N_glyph", "pr_pt_estimated_N",
+          // RE851D ARE TAXES DELINQUENT? per-property aliases. Longest first.
+          "pr_pt_delinquent_yes_glyph_N", "pr_pt_delinquent_no_glyph_N",
+          "pr_pt_delinquentAmount_N", "pr_pt_delinquent_N",
           // RE851D propertytax dotted-form _N tags. Order is critical: longer
           // matches FIRST so "delinquent_amount_N" wins before "delinquent_N".
           "propertytax.delinquent_amount_N",
