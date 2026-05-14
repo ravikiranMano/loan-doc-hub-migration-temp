@@ -82,7 +82,14 @@ function modifyPara(
   const insert = want.join("");
 
   if (/<w:pPr\b[^>]*>/.test(pXml)) {
-    // Insert just before </w:pPr>
+    // Insert before <w:rPr> if present (rPr must remain last child of pPr),
+    // otherwise insert before </w:pPr>.
+    if (/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>\s*<\/w:pPr>/.test(pXml)) {
+      return pXml.replace(
+        /(<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>\s*<\/w:pPr>)/,
+        insert + "$1",
+      );
+    }
     return pXml.replace(/<\/w:pPr>/, insert + "</w:pPr>");
   }
   // Create pPr right after opening <w:p ...>
