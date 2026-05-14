@@ -288,10 +288,12 @@ export const BorrowerModal: React.FC<BorrowerModalProps> = ({
               <div className="space-y-1">
                 {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
                   <div key={idx} className="grid grid-cols-2 gap-1">
-                    <Select value={String(formData[dropdownKey] || '')} onValueChange={(v) => handleFieldChange(dropdownKey, v)}>
-                      <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>{FORD_DROPDOWN_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={String(formData[dropdownKey] || '')}
+                      onValueChange={(v) => handleFieldChange(dropdownKey, v)}
+                      options={FORD_DROPDOWN_OPTIONS.map(o => o.value)}
+                      searchPlaceholder="Search FORD..."
+                    />
                     <Input value={String(formData[inputKey] || '')} onChange={(e) => handleFieldChange(inputKey, e.target.value)} className="h-7 text-xs" />
                   </div>
                 ))}
