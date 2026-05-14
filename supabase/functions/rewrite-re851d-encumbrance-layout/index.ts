@@ -243,7 +243,7 @@ serve(async (req) => {
       });
     }
 
-    const { xml: newXml, paragraphsRightAligned } = processXml(originalXml);
+    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
@@ -251,7 +251,8 @@ serve(async (req) => {
           ok: true,
           templatePath,
           paragraphsRightAligned: 0,
-          message: "Template already right-aligned — no changes written.",
+          paragraphsTrimmed: 0,
+          message: "Template already right-aligned and trimmed — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
