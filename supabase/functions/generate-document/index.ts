@@ -3929,7 +3929,10 @@ async function generateSingleDocument(
                   ["principalBalance", firstNonEmpty("current_balance", "currentBalance"), "currency"],
                   ["monthlyPayment", firstNonEmpty("regular_payment", "regularPayment"), "currency"],
                   ["maturityDate", firstNonEmpty("maturity_date", "matDate"), "date"],
-                  ["balloonAmount", firstNonEmpty("balloon_amount", "balloonAmount"), "currency"],
+                  // Balloon Amount only renders when Balloon Payment = YES.
+                  // When NO/Unknown, suppress the value so the template cell
+                  // stays blank instead of leaking the raw tag/placeholder.
+                  ["balloonAmount", isYes ? firstNonEmpty("balloon_amount", "balloonAmount") : "", "currency"],
                   // RE851D questionnaire XVI "Amount Owing" column (per-row).
                   ["amountOwing", amountOwingVal, "currency"],
                 ];
