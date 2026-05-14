@@ -159,18 +159,24 @@ function processXml(xml: string): {
   xml: string;
   paragraphsRightAligned: number;
   paragraphsTrimmed: number;
+  paragraphsKeptWithNext: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
 
   const rewrite = new Map<number, string>();
+  const cbIndices: number[] = [];
   let aligned = 0;
   let trimmed = 0;
+  let keptWithNext = 0;
 
+  // Pass 1: right-align + trim each merged checkbox paragraph, and remember
+  // its index so pass 2 can glue the question(s) above it with keepNext.
   for (let i = 0; i < paras.length; i++) {
     const p = paras[i];
     const fam = familyFor(p.stripped);
     if (!fam) continue;
+    cbIndices.push(i);
     let cur = p.text;
     const a = rightAlignAndKeep(cur);
     if (a.changed) { cur = a.xml; aligned++; }
@@ -179,12 +185,37 @@ function processXml(xml: string): {
     if (cur !== p.text) rewrite.set(i, cur);
   }
 
-  if (rewrite.size === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
+  // Pass 2: anti-orphan. For each checkbox paragraph mark up to two preceding
+  // paragraphs with <w:keepNext/> so Word never breaks the question away from
+  // its YES/NO row. Also mark the checkbox paragraph itself with keepNext when
+  // it is immediately followed by ANOTHER checkbox paragraph (the
+  // encumbranceOfRecord+delinqu60day pair, and the
+  // currentDelinqu+delinquencyPaidByLoan pair).
+  const cbSet = new Set(cbIndices);
+  const targets = new Set<number>();
+  for (const i of cbIndices) {
+    if (i - 1 >= 0) targets.add(i - 1);
+    if (i - 2 >= 0) targets.add(i - 2);
+    if (cbSet.has(i + 1)) targets.add(i);
+  }
+  for (const idx of targets) {
+    const p = paras[idx];
+    const base = rewrite.get(idx) ?? p.text;
+    const k = addKeepNext(base);
+    if (k.changed) {
+      rewrite.set(idx, k.xml);
+      keptWithNext++;
+    }
+  }
 
+  if (rewrite.size === 0) {
+    return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
+  }
+
+  const sortedIdx = Array.from(rewrite.keys()).sort((a, b) => a - b);
   const out: string[] = [];
   let cursor = 0;
-  for (let i = 0; i < paras.length; i++) {
-    if (!rewrite.has(i)) continue;
+  for (const i of sortedIdx) {
     const p = paras[i];
     out.push(xml.slice(cursor, p.start));
     out.push(rewrite.get(i)!);
@@ -192,7 +223,7 @@ function processXml(xml: string): {
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed };
+  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed, paragraphsKeptWithNext: keptWithNext };
 }
 
 serve(async (req) => {
