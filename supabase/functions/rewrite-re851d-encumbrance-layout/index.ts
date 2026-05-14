@@ -155,6 +155,25 @@ function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean }
   return { xml: out, changed };
 }
 
+const QUESTION_SNIPPETS = [
+  "Are there any encumbrances of record against the securing property at this time?",
+  "Over the last 12 months, were any payments more than 60 days late?",
+  "Do any of these payments remain unpaid?",
+  "If YES, will the proceeds of the subject loan be used to cure the delinquency?",
+];
+
+function stripLeadingBreakRuns(pXml: string): { xml: string; changed: boolean } {
+  const stripped = pXml.replace(/<[^>]+>/g, "");
+  if (!QUESTION_SNIPPETS.some((snippet) => stripped.includes(snippet))) {
+    return { xml: pXml, changed: false };
+  }
+  const next = pXml.replace(
+    /^(<w:p\b[^>]*>(?:\s*<w:pPr[\s\S]*?<\/w:pPr>)?)(?:\s*<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:br\b[^>]*\/?>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>)+/,
+    "$1",
+  );
+  return { xml: next, changed: next !== pXml };
+}
+
 function normalizeCheckboxColumns(xml: string): { xml: string; changed: number } {
   let changed = 0;
   const out = xml.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, (sect) => {
