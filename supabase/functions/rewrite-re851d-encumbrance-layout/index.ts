@@ -1,16 +1,13 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// The RE851D document body uses a multi-column section: question text
-// flows in the LEFT column, YES/NO checkbox glyphs flow in the RIGHT
-// column. A previous pass already merged each YES + NO into a single
-// paragraph (joined by `&#160;`), but they still render LEFT-aligned
-// inside the right column, which produces the broken look in the
-// generated document.
+// The RE851D document body uses a temporary multi-column section: question
+// text stays in the full-width text flow, then YES/NO checkbox glyphs flow in
+// a narrow RIGHT column. Earlier attempts changed that geometry to two equal
+// columns and right-aligned checkbox paragraphs, which made checkbox rows
+// float mid-page or far right instead of matching the source template.
 //
-// This rewrite right-aligns those merged YES/NO paragraphs so the
-// checkbox pair snaps to the column's right edge, matching the
-// reference layout in `re851d - LPDS Multi-property.docx`. We also
-// add `<w:keepLines/>` so a YES/NO row never wraps internally.
+// This rewrite restores the reference column geometry (9398 / 73 / 2049),
+// removes forced paragraph right-alignment, and keeps checkbox rows together.
 //
 // Strictly scoped — only paragraphs whose stripped text contains BOTH
 // `pr_li_<family>_N_yes_glyph` and `pr_li_<family>_N_no_glyph` for one
@@ -36,6 +33,8 @@ const FAMILIES = [
   "delinquencyPaidByLoan",
 ] as const;
 type Family = (typeof FAMILIES)[number];
+
+const REFERENCE_CHECKBOX_COLUMNS = `<w:cols w:num="2" w:space="720" w:equalWidth="0"><w:col w:w="9398" w:space="73"/><w:col w:w="2049"/></w:cols>`;
 
 interface Para {
   start: number;
@@ -73,11 +72,9 @@ function familyFor(stripped: string): Family | null {
 }
 
 /**
- * Ensure the paragraph's <w:pPr> contains:
- *   - <w:jc w:val="right"/>
- *   - <w:keepLines/>
- * Adds <w:pPr> if missing, replaces an existing <w:jc> if present.
- * Idempotent.
+ * Ensure the checkbox paragraph's <w:pPr> contains <w:keepLines/> and does
+ * NOT contain forced right alignment. The reference template relies on a
+ * narrow second column for placement, not paragraph-level right justification.
  */
 /**
  * Add <w:keepNext/> to the paragraph's <w:pPr>. Idempotent.
@@ -97,25 +94,28 @@ function addKeepNext(pXml: string): { xml: string; changed: boolean } {
   };
 }
 
-function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
+function removeKeepNext(pXml: string): { xml: string; changed: boolean } {
+  const next = pXml.replace(/<w:keepNext\s*\/>/g, "");
+  return { xml: next, changed: next !== pXml };
+}
+
+function keepCheckboxRow(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
   if (!open) return { xml: pXml, changed: false };
-  const JC   = `<w:jc w:val="right"/>`;
   const KEEP = `<w:keepLines/>`;
   const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
   if (!pprMatch) {
-    const pPr = `<w:pPr>${KEEP}${JC}</w:pPr>`;
+    const pPr = `<w:pPr>${KEEP}</w:pPr>`;
     return { xml: pXml.replace(open[0], `${open[0]}${pPr}`), changed: true };
   }
   let inner = pprMatch[1];
   let mutated = false;
   if (/<w:jc\b[^>]*\/>/.test(inner)) {
-    if (!/<w:jc[^>]*w:val="right"/.test(inner)) {
-      inner = inner.replace(/<w:jc\b[^>]*\/>/, JC);
-      mutated = true;
-    }
-  } else {
-    inner = inner + JC;
+    inner = inner.replace(/<w:jc\b[^>]*\/>/g, "");
+    mutated = true;
+  }
+  if (/<w:keepNext\s*\/>/.test(inner)) {
+    inner = inner.replace(/<w:keepNext\s*\/>/g, "");
     mutated = true;
   }
   if (!/<w:keepLines\s*\/>/.test(inner)) {
@@ -155,14 +155,50 @@ function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean }
   return { xml: out, changed };
 }
 
+const QUESTION_SNIPPETS = [
+  "Are there any encumbrances of record against the securing property at this time?",
+  "Over the last 12 months, were any payments more than 60 days late?",
+  "Do any of these payments remain unpaid?",
+  "If YES, will the proceeds of the subject loan be used to cure the delinquency?",
+];
+
+function stripLeadingBreakRuns(pXml: string): { xml: string; changed: boolean } {
+  const stripped = pXml.replace(/<[^>]+>/g, "");
+  if (!QUESTION_SNIPPETS.some((snippet) => stripped.includes(snippet))) {
+    return { xml: pXml, changed: false };
+  }
+  const next = pXml.replace(
+    /^(<w:p\b[^>]*>(?:\s*<w:pPr[\s\S]*?<\/w:pPr>)?)(?:\s*<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:br\b[^>]*\/?>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>)+/,
+    "$1",
+  );
+  return { xml: next, changed: next !== pXml };
+}
+
+function normalizeCheckboxColumns(xml: string): { xml: string; changed: number } {
+  let changed = 0;
+  const out = xml.replace(/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/g, (sect) => {
+    if (!/<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[\s\S]*?<w:col\b(?=[^>]*w:w="5723")[\s\S]*?<w:col\b(?=[^>]*w:w="5723")/.test(sect)) {
+      return sect;
+    }
+    let next = sect.replace(/<w:cols\b(?=[^>]*w:num="2")(?=[^>]*w:equalWidth="0")[^>]*>\s*<w:col\b[^>]*\/>\s*<w:col\b[^>]*\/>\s*<\/w:cols>/, REFERENCE_CHECKBOX_COLUMNS);
+    next = next.replace(/(<w:pgMar\b[^>]*\bw:top=")\d+("[^>]*\/?>)/, "$1640$2");
+    if (next !== sect) {
+      changed++;
+    }
+    return next;
+  });
+  return { xml: out, changed };
+}
+
 function processXml(xml: string): {
   xml: string;
   paragraphsRightAligned: number;
   paragraphsTrimmed: number;
   paragraphsKeptWithNext: number;
+  columnSectionsNormalized: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0, columnSectionsNormalized: 0 };
 
   const rewrite = new Map<number, string>();
   const cbIndices: number[] = [];
@@ -178,19 +214,16 @@ function processXml(xml: string): {
     if (!fam) continue;
     cbIndices.push(i);
     let cur = p.text;
-    const a = rightAlignAndKeep(cur);
+    const a = keepCheckboxRow(cur);
     if (a.changed) { cur = a.xml; aligned++; }
     const t = trimTrailingWhitespace(cur);
     if (t.changed) { cur = t.xml; trimmed++; }
     if (cur !== p.text) rewrite.set(i, cur);
   }
 
-  // Pass 2: anti-orphan. For each checkbox paragraph mark up to two preceding
-  // paragraphs with <w:keepNext/> so Word never breaks the question away from
-  // its YES/NO row. Also mark the checkbox paragraph itself with keepNext when
-  // it is immediately followed by ANOTHER checkbox paragraph (the
-  // encumbranceOfRecord+delinqu60day pair, and the
-  // currentDelinqu+delinquencyPaidByLoan pair).
+  // Pass 2: remove prior keep-next artifacts and strip stray leading line-break
+  // runs from question paragraphs. The original template controls placement via
+  // section breaks/columns; keepNext forced large question groups to jump pages.
   const cbSet = new Set(cbIndices);
   const targets = new Set<number>();
   for (const i of cbIndices) {
@@ -201,15 +234,15 @@ function processXml(xml: string): {
   for (const idx of targets) {
     const p = paras[idx];
     const base = rewrite.get(idx) ?? p.text;
-    const k = addKeepNext(base);
+    let cur = base;
+    const k = removeKeepNext(cur);
     if (k.changed) {
-      rewrite.set(idx, k.xml);
+      cur = k.xml;
       keptWithNext++;
     }
-  }
-
-  if (rewrite.size === 0) {
-    return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0, paragraphsKeptWithNext: 0 };
+    const b = stripLeadingBreakRuns(cur);
+    if (b.changed) cur = b.xml;
+    if (cur !== base) rewrite.set(idx, cur);
   }
 
   const sortedIdx = Array.from(rewrite.keys()).sort((a, b) => a - b);
@@ -223,7 +256,16 @@ function processXml(xml: string): {
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed, paragraphsKeptWithNext: keptWithNext };
+  const rewrittenXml = rewrite.size === 0 ? xml : out.join("");
+  const columns = normalizeCheckboxColumns(rewrittenXml);
+
+  return {
+    xml: columns.xml,
+    paragraphsRightAligned: aligned,
+    paragraphsTrimmed: trimmed,
+    paragraphsKeptWithNext: keptWithNext,
+    columnSectionsNormalized: columns.changed,
+  };
 }
 
 serve(async (req) => {
@@ -292,7 +334,7 @@ serve(async (req) => {
       });
     }
 
-    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext } = processXml(originalXml);
+    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed, paragraphsKeptWithNext, columnSectionsNormalized } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
@@ -302,7 +344,8 @@ serve(async (req) => {
           paragraphsRightAligned: 0,
           paragraphsTrimmed: 0,
           paragraphsKeptWithNext: 0,
-          message: "Template already right-aligned, trimmed, and kept-with-next — no changes written.",
+          columnSectionsNormalized: 0,
+          message: "Template already normalized — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -332,6 +375,7 @@ serve(async (req) => {
         paragraphsRightAligned,
         paragraphsTrimmed,
         paragraphsKeptWithNext,
+        columnSectionsNormalized,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
