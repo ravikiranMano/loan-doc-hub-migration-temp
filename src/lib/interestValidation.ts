@@ -80,7 +80,10 @@ export function normalizeInterestOnBlur(value: string, decimals = 2): string {
   const num = parseFloat(stripped);
   if (isNaN(num) || num < 0) return '';
 
-  return num.toFixed(decimals);
+  // Platform-wide standard: store all percent/rate values at 4 decimal places.
+  // Display-side formatters smart-trim to category-appropriate precision.
+  const safeDecimals = Math.max(4, decimals);
+  return num.toFixed(safeDecimals);
 }
 
 /** Validation error message */
