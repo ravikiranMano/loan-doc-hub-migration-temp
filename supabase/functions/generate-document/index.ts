@@ -6356,6 +6356,7 @@ async function generateSingleDocument(
         // aliases so the conditional resolver does an exact direct match per
         // PROPERTY #K block and never falls back to the unsuffixed field.
         "pr_p_performedBy", "pr_p_performeBy",
+        "pr_p_appraiserName", "pr_p_appraiserAddress",
         // Property identity / detail families used by RE851D PROPERTY #K blocks.
         "pr_p_address", "pr_p_street", "pr_p_city", "pr_p_state",
         "pr_p_zip", "pr_p_county", "pr_p_country", "pr_p_apn",
