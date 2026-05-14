@@ -5058,10 +5058,11 @@ async function generateSingleDocument(
           "pr_li_ant_balloonUnknown_N_S", "pr_li_ant_balloonUnknown_N",
           "pr_li_ant_amountOwing_N_S", "pr_li_ant_amountOwing_N",
           "pr_li_ant_amount_owing_N_S", "pr_li_ant_amount_owing_N",
-          // Per-property "Performed By" — both canonical and legacy-misspelled
-          // aliases so PROPERTY #K blocks rewrite _N → _K and each property
-          // renders its own appraisal_performed_by value.
-          "pr_p_performedBy_N", "pr_p_performeBy_N",
+          // Appraiser output is pre-resolved via pr_p_appraiserName_N /
+          // pr_p_appraiserAddress_N below. Do not generic-rewrite the raw
+          // performedBy token here; doing so consumes the inner token before the
+          // full conditional-block rewrite can replace the entire malformed
+          // `#if ... Broker` expression.
           "pr_p_appraiserName_N", "pr_p_appraiserAddress_N",
           // RE851D per-property income (Yes/No text + annual numeric).
           "pr_p_netMonthlyIncome_N", "pr_p_incomeGenerating_N", "pr_p_grossAnnualIncome_N",
@@ -5905,7 +5906,7 @@ async function generateSingleDocument(
           // scoped: only matches the two literal payloads ("BPO Performed by
           // Broker" and "N/A") so unrelated conditionals are never touched.
           {
-            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_N\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/g;
+            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))/g;
             let acm: RegExpExecArray | null;
             let appraiserBlocksRewritten = 0;
             const appraiserPairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
