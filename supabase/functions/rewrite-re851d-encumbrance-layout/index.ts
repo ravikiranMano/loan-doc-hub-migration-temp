@@ -1,27 +1,21 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// Goal (per latest user spec):
-//   Merge each YES/NO checkbox pair onto a SINGLE paragraph (one line) with a
-//   non-breaking space between "YES" and the no-glyph tag, so Word cannot
-//   wrap or stack the two checkboxes vertically.
+// The RE851D document body uses a multi-column section: question text
+// flows in the LEFT column, YES/NO checkbox glyphs flow in the RIGHT
+// column. A previous pass already merged each YES + NO into a single
+// paragraph (joined by `&#160;`), but they still render LEFT-aligned
+// inside the right column, which produces the broken look in the
+// generated document.
 //
-// Pairs handled (each in 5 property sections):
-//   {{pr_li_encumbranceOfRecord_N_yes_glyph}} YES   ←┐ merge into one
-//   {{pr_li_encumbranceOfRecord_N_no_glyph}} NO     ←┘ paragraph
-//   …delinqu60day…
-//   …currentDelinqu…
-//   …delinquencyPaidByLoan…
+// This rewrite right-aligns those merged YES/NO paragraphs so the
+// checkbox pair snaps to the column's right edge, matching the
+// reference layout in `re851d - LPDS Multi-property.docx`. We also
+// add `<w:keepLines/>` so a YES/NO row never wraps internally.
 //
-// Strictly scoped — only paragraphs that contain a `_yes_glyph` (or its
-// matching `_no_glyph`) for one of the four families are touched. Any
-// intervening blank paragraphs between the YES paragraph and the NO
-// paragraph are removed so the pair sits on the same line.
-//
-// Idempotent: if a paragraph already contains both `_yes_glyph` and
-// `_no_glyph` for the same family, no change is made.
-//
-// POST body: { templatePath?: string }
-//   templatePath defaults to "1778746922135_RE851D-V12.1.docx".
+// Strictly scoped — only paragraphs whose stripped text contains BOTH
+// `pr_li_<family>_N_yes_glyph` and `pr_li_<family>_N_no_glyph` for one
+// of the four families are touched. Idempotent: if `<w:jc w:val="right"/>`
+// is already present, the paragraph is left alone.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -46,8 +40,8 @@ type Family = (typeof FAMILIES)[number];
 interface Para {
   start: number;
   end: number;
-  text: string;     // raw XML
-  stripped: string; // text content with tags removed
+  text: string;
+  stripped: string;
 }
 
 function splitParagraphs(xml: string): Para[] {
@@ -66,200 +60,121 @@ function splitParagraphs(xml: string): Para[] {
   return out;
 }
 
-function detectFamily(stripped: string, kind: "yes" | "no"): Family | null {
+function familyFor(stripped: string): Family | null {
   for (const f of FAMILIES) {
-    const re = new RegExp(`pr_li_${f}_N_${kind}_glyph`);
-    if (re.test(stripped)) return f;
+    if (
+      new RegExp(`pr_li_${f}_N_yes_glyph`).test(stripped) &&
+      new RegExp(`pr_li_${f}_N_no_glyph`).test(stripped)
+    ) {
+      return f;
+    }
   }
   return null;
 }
 
 /**
- * Merge paragraph B's inner content into paragraph A, separated by a
- * non-breaking-space run. We splice B's runs (everything inside the
- * outer <w:p>...</w:p>, EXCLUDING B's <w:pPr>) just before A's </w:p>.
- *
- * The non-breaking space is inserted as its own run that copies A's last
- * run-properties (rPr) when available, so font/size match.
+ * Ensure the paragraph's <w:pPr> contains:
+ *   - <w:jc w:val="right"/>
+ *   - <w:keepLines/>
+ * Adds <w:pPr> if missing, replaces an existing <w:jc> if present.
+ * Idempotent.
  */
-function mergeParagraphs(aXml: string, bXml: string): string {
-  // Strip B's wrapping <w:p ...> ... </w:p> AND B's leading <w:pPr>.
-  const bInnerMatch = bXml.match(/^<w:p\b[^>]*?>([\s\S]*)<\/w:p>$/);
-  if (!bInnerMatch) return aXml; // safety
-  let bInner = bInnerMatch[1];
-  // Drop B's <w:pPr>...</w:pPr> if present (paragraph-level props belong
-  // to the paragraph wrapper, which is being discarded).
-  bInner = bInner.replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, "");
-
-  // Try to find a recent <w:rPr> in A to clone for the NBSP run, so the
-  // glyph spacing/font matches surrounding text.
-  let rPrClone = "";
-  const lastRPr = [...aXml.matchAll(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g)].pop();
-  if (lastRPr) rPrClone = lastRPr[0];
-
-  const nbspRun =
-    `<w:r>${rPrClone}<w:t xml:space="preserve">\u00A0</w:t></w:r>`;
-
-  // Insert NBSP run + B's inner runs immediately before A's closing </w:p>.
-  return aXml.replace(/<\/w:p>\s*$/, `${nbspRun}${bInner}</w:p>`);
+function rightAlignAndKeep(pXml: string): { xml: string; changed: boolean } {
+  const open = pXml.match(/^<w:p\b[^>]*?>/);
+  if (!open) return { xml: pXml, changed: false };
+  const JC   = `<w:jc w:val="right"/>`;
+  const KEEP = `<w:keepLines/>`;
+  const pprMatch = pXml.match(/<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/);
+  if (!pprMatch) {
+    const pPr = `<w:pPr>${KEEP}${JC}</w:pPr>`;
+    return { xml: pXml.replace(open[0], `${open[0]}${pPr}`), changed: true };
+  }
+  let inner = pprMatch[1];
+  let mutated = false;
+  if (/<w:jc\b[^>]*\/>/.test(inner)) {
+    if (!/<w:jc[^>]*w:val="right"/.test(inner)) {
+      inner = inner.replace(/<w:jc\b[^>]*\/>/, JC);
+      mutated = true;
+    }
+  } else {
+    inner = inner + JC;
+    mutated = true;
+  }
+  if (!/<w:keepLines\s*\/>/.test(inner)) {
+    inner = KEEP + inner;
+    mutated = true;
+  }
+  if (!mutated) return { xml: pXml, changed: false };
+  return {
+    xml: pXml.replace(pprMatch[0], `<w:pPr>${inner}</w:pPr>`),
+    changed: true,
+  };
 }
 
 /**
- * Build a tag-stripped view that maps each plain-text char back to its XML
- * offset. Lets us rewrite specific characters (e.g. spaces) without parsing
- * the full DOCX run model.
+ * Strip trailing whitespace inside the LAST non-empty <w:t> of a paragraph,
+ * and drop trailing all-whitespace runs after it. Trailing spaces would
+ * otherwise be rendered as right-aligned spaces, pushing the visible
+ * "NO" left of the right margin.
  */
-function buildStrippedIndex(xml: string): { text: string; map: number[] } {
-  const text: string[] = [];
-  const map: number[] = [];
-  for (let i = 0; i < xml.length; i++) {
-    const ch = xml[i];
-    if (ch === "<") {
-      const close = xml.indexOf(">", i);
-      if (close === -1) break;
-      i = close;
-      continue;
-    }
-    text.push(ch);
-    map.push(i);
+function trimTrailingWhitespace(pXml: string): { xml: string; changed: boolean } {
+  let out = pXml;
+  let changed = false;
+  // Drop trailing whitespace-only runs (one at a time, idempotent).
+  for (let safety = 0; safety < 5; safety++) {
+    const re = /<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:t\b[^>]*>\s*<\/w:t>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>(?=\s*<\/w:p>)/;
+    if (!re.test(out)) break;
+    out = out.replace(re, "");
+    changed = true;
   }
-  return { text: text.join(""), map };
-}
-
-/**
- * Within a paragraph that already contains both `_yes_glyph` and `_no_glyph`
- * of the same family, replace the literal space(s) between `YES` and the
- * `{{pr_li_<fam>_N_no_glyph}}` opener with a non-breaking space (`&#160;`).
- * This prevents Word from wrapping the NO checkbox onto its own line in
- * narrow cells. Idempotent — already-NBSP spaces are skipped.
- */
-function nbspBetweenYesAndNo(pXml: string): { xml: string; replaced: number } {
-  const { text, map } = buildStrippedIndex(pXml);
-  // Find every "YES" (plus following spaces) immediately preceding a
-  // matching `{{pr_li_<fam>_N_no_glyph` opener for one of our families.
-  const re = new RegExp(
-    `\\bYES(\\s+)\\{\\{\\s*pr_li_(?:${FAMILIES.join("|")})_N_no_glyph`,
-    "g",
-  );
-  // Collect (xmlPos, len) ranges of the gap-spaces to convert.
-  const ranges: Array<{ xmlStart: number; xmlEnd: number }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const gapStartStripped = m.index + 3; // after "YES"
-    const gapEndStripped = gapStartStripped + m[1].length;
-    if (gapStartStripped >= map.length) continue;
-    const xmlStart = map[gapStartStripped];
-    const xmlEnd = map[gapEndStripped - 1] + 1;
-    // Only rewrite if the gap is a contiguous span of plain spaces in xml.
-    let allSpaces = true;
-    for (let k = xmlStart; k < xmlEnd; k++) {
-      if (pXml[k] !== " ") { allSpaces = false; break; }
-    }
-    if (!allSpaces) continue;
-    ranges.push({ xmlStart, xmlEnd });
-  }
-  if (ranges.length === 0) return { xml: pXml, replaced: 0 };
-  // Replace each range with a single NBSP entity (collapses multiple
-  // intermediate spaces into one non-breaking glue char).
-  const out: string[] = [];
-  let cursor = 0;
-  for (const r of ranges) {
-    out.push(pXml.slice(cursor, r.xmlStart));
-    out.push("&#160;");
-    cursor = r.xmlEnd;
-  }
-  out.push(pXml.slice(cursor));
-  return { xml: out.join(""), replaced: ranges.length };
+  // Strip trailing whitespace inside the last <w:t> before </w:p>.
+  out = out.replace(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>(?:(?!<w:t\b)[\s\S])*?<\/w:p>\s*$)/, (full, open, inner, tail) => {
+    const trimmed = inner.replace(/\s+$/, "");
+    if (trimmed === inner) return full;
+    changed = true;
+    return open + trimmed + tail;
+  });
+  return { xml: out, changed };
 }
 
 function processXml(xml: string): {
   xml: string;
-  pairsMerged: number;
-  blanksRemoved: number;
-  nbspInserted: number;
+  paragraphsRightAligned: number;
+  paragraphsTrimmed: number;
 } {
   const paras = splitParagraphs(xml);
-  if (paras.length === 0) {
-    return { xml, pairsMerged: 0, blanksRemoved: 0, nbspInserted: 0 };
-  }
+  if (paras.length === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
 
-  // Track which paragraphs are dropped, and which are rewritten.
-  const drop = new Set<number>();
   const rewrite = new Map<number, string>();
+  let aligned = 0;
+  let trimmed = 0;
 
-  let pairsMerged = 0;
-  let blanksRemoved = 0;
-  let nbspInserted = 0;
-
-  // Pass 1: merge separate YES + NO paragraphs into one.
   for (let i = 0; i < paras.length; i++) {
-    if (drop.has(i)) continue;
-    const a = paras[i];
-    const yesFam = detectFamily(a.stripped, "yes");
-    if (!yesFam) continue;
-    // If A already contains the matching no-glyph, no merge needed.
-    if (new RegExp(`pr_li_${yesFam}_N_no_glyph`).test(a.stripped)) continue;
-
-    let j = i + 1;
-    const intermediates: number[] = [];
-    let matched = -1;
-    while (j < paras.length && j <= i + 6) {
-      const pj = paras[j];
-      const jStripped = pj.stripped.trim();
-      const noFam = detectFamily(pj.stripped, "no");
-      if (noFam === yesFam) { matched = j; break; }
-      if (jStripped === "") { intermediates.push(j); j++; continue; }
-      break;
-    }
-    if (matched < 0) continue;
-
-    const aXml = rewrite.get(i) ?? a.text;
-    const bXml = paras[matched].text;
-    rewrite.set(i, mergeParagraphs(aXml, bXml));
-    drop.add(matched);
-    for (const k of intermediates) {
-      drop.add(k);
-      blanksRemoved++;
-    }
-    pairsMerged++;
+    const p = paras[i];
+    const fam = familyFor(p.stripped);
+    if (!fam) continue;
+    let cur = p.text;
+    const a = rightAlignAndKeep(cur);
+    if (a.changed) { cur = a.xml; aligned++; }
+    const t = trimTrailingWhitespace(cur);
+    if (t.changed) { cur = t.xml; trimmed++; }
+    if (cur !== p.text) rewrite.set(i, cur);
   }
 
-  // Pass 2: for every paragraph that now contains a same-family yes/no pair
-  // (whether merged just now or already inline in the source template),
-  // convert the literal space(s) between "YES" and the no-glyph tag into
-  // a non-breaking space so Word cannot wrap the NO checkbox onto its own
-  // line.
-  for (let i = 0; i < paras.length; i++) {
-    if (drop.has(i)) continue;
-    const current = rewrite.get(i) ?? paras[i].text;
-    const stripped = current.replace(/<[^>]+>/g, "");
-    const yes = detectFamily(stripped, "yes");
-    if (!yes) continue;
-    if (!new RegExp(`pr_li_${yes}_N_no_glyph`).test(stripped)) continue;
-    const { xml: nx, replaced } = nbspBetweenYesAndNo(current);
-    if (replaced > 0) {
-      rewrite.set(i, nx);
-      nbspInserted += replaced;
-    }
-  }
+  if (rewrite.size === 0) return { xml, paragraphsRightAligned: 0, paragraphsTrimmed: 0 };
 
-  if (rewrite.size === 0 && drop.size === 0) {
-    return { xml, pairsMerged: 0, blanksRemoved: 0, nbspInserted: 0 };
-  }
-
-  // Rebuild XML in document order, applying rewrites and skipping drops.
   const out: string[] = [];
   let cursor = 0;
   for (let i = 0; i < paras.length; i++) {
+    if (!rewrite.has(i)) continue;
     const p = paras[i];
-    if (!rewrite.has(i) && !drop.has(i)) continue;
     out.push(xml.slice(cursor, p.start));
-    if (rewrite.has(i)) out.push(rewrite.get(i)!);
+    out.push(rewrite.get(i)!);
     cursor = p.end;
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), pairsMerged, blanksRemoved, nbspInserted };
+  return { xml: out.join(""), paragraphsRightAligned: aligned, paragraphsTrimmed: trimmed };
 }
 
 serve(async (req) => {
@@ -268,7 +183,7 @@ serve(async (req) => {
   }
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let templatePath = DEFAULT_TEMPLATE_PATH;
@@ -303,18 +218,41 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    const { xml: newXml, pairsMerged, blanksRemoved, nbspInserted } = processXml(originalXml);
+    const url = new URL(req.url);
+    if (url.searchParams.get("inspect") === "1") {
+      const paras = splitParagraphs(originalXml);
+      const counts: Record<string, number> = {};
+      const samples: Array<{ i: number; pPr: string; text: string }> = [];
+      for (let i = 0; i < paras.length; i++) {
+        const s = paras[i].stripped;
+        for (const f of FAMILIES) {
+          const yes = new RegExp(`pr_li_${f}_N_yes_glyph`).test(s);
+          const no  = new RegExp(`pr_li_${f}_N_no_glyph`).test(s);
+          if (yes || no) {
+            const k = `${f}:${yes ? "Y" : ""}${no ? "N" : ""}`;
+            counts[k] = (counts[k] || 0) + 1;
+            if (samples.length < 6) {
+              const ppr = paras[i].text.match(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/);
+              samples.push({ i, pPr: ppr?.[0] || "(none)", text: s.slice(0, 100) });
+            }
+          }
+        }
+      }
+      return new Response(JSON.stringify({ counts, samples }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { xml: newXml, paragraphsRightAligned, paragraphsTrimmed } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
-          pairsMerged: 0,
-          blanksRemoved: 0,
-          nbspInserted: 0,
-          message:
-            "Template already has YES/NO pairs inline — no changes written.",
+          paragraphsRightAligned: 0,
+          paragraphsTrimmed: 0,
+          message: "Template already right-aligned and trimmed — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -341,9 +279,8 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         templatePath,
-        pairsMerged,
-        blanksRemoved,
-        nbspInserted,
+        paragraphsRightAligned,
+        paragraphsTrimmed,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
