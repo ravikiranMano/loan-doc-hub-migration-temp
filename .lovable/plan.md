@@ -1,39 +1,35 @@
-## Problem
+## Plan
 
-The merge tag `{{pr_p_descript}}` (Property Description) renders blank in **RE851A** generations even though CSR data is saved.
+1. **Normalize broken RE851D template text before rendering**
+   - In the existing RE851D pre-render sanitization block in `supabase/functions/generate-document/index.ts`, add a small helper scoped to Word text runs that:
+     - collapses multiline/split Handlebars expressions inside `{{ ... }}` into one-line expressions,
+     - repairs malformed closes like `{{/if}` to `{{/if}}`,
+     - repairs broken RE851D encumbrance field suffixes such as `_N_S`, `_(N)_(S)`, `(N)(S)`, and split `S)` variants,
+     - keeps this limited to RE851D/document-template text and existing field families only.
 
-## Root cause
+2. **Replace the broken Balloon Payment row safely**
+   - Add a targeted RE851D cleanup around `BALLOON PAYMENT?` rows so any broken/raw balloon Handlebars fragments are reduced to clean checkbox output without changing business logic.
+   - Use the already-published boolean fields (`pr_li_rem_*` / `pr_li_ant_*`) and existing post-render winner logic to force exactly one of YES / NO / UNKNOWN.
+   - Avoid inserting literal malformed expressions and avoid hardcoded `☒`.
 
-CSR `PropertyDetailsForm` saves the description under composite JSONB keys like `property1::<dict_id>` / `property2::<dict_id>` (verified in DB for the affected deal — values "Borrower Property", "Ronit Roy", …). On generation, the existing per-property publisher and `propertyN.<suffix>` bridging that turns those composite keys into a usable `pr_p_descript` / `pr_p_descript_N` value lives **inside** the `if (/851d/i.test(template.name))` block in `supabase/functions/generate-document/index.ts` (~line 1244).
+3. **Clean the known corrupted phrase**
+   - Add a narrow replacement for `Additional remaininARE TAXES DELINQUENT?g` to `Additional remaining, expected, or anticipated encumbrances...` during RE851D XML sanitization.
 
-For an **RE851A** template the publisher never runs, so:
-- `pr_p_descript` may be set inconsistently (only when the property1 entry happens to have no `indexed_key`, depending on `forEach` order vs. property2/3 entries).
-- `pr_p_descript_N` is never set at all (the `_N` rewrite block at line 4940 is also gated to RE851D / `isEncumbrancePipeline`).
+4. **Fix the actual integrity error shown in logs**
+   - Recent backend logs show the current failure is:
+     - `expected </w:p> before </w:sdtContent>`
+     - context shows nested/duplicated checkbox SDT wrappers: `</w:sdtContent></w:sdt></w:sdtContent></w:sdt>`.
+   - Add a conservative final repair in `supabase/functions/_shared/docx-processor.ts` to unwrap/remove invalid nested checkbox SDT structure when it appears inside an outer SDT content block, preserving the visible checkbox glyph and surrounding runs.
+   - Call that repair in the existing RE851D final flush before `validateContentXmlPart`.
 
-Result: the tag resolves to empty.
+5. **Add targeted regression coverage**
+   - Add or extend a Deno test under `supabase/functions/_shared` that validates:
+     - multiline Handlebars are normalized,
+     - `{{/if}` is repaired/removed correctly,
+     - broken balloon field keys normalize to usable keys,
+     - nested SDT corruption no longer fails `validateContentXmlPart` after repair.
 
-## Fix (narrow, RE851A only)
-
-Edit only `supabase/functions/generate-document/index.ts`. No schema, UI, or other template changes.
-
-1. **Always publish `pr_p_descript` for the primary property in RE851A.**
-   After the existing `fieldValues` build (around line 410, before the RE851D block), if the template name matches `/851a/i`, read the description value from the first available source in this order and write it to `pr_p_descript`:
-   - `property1.description` (bridged value)
-   - any `property{N}.description` where N is the lowest property index present
-   - the bare canonical `description` field
-
-2. **Also publish `pr_p_descript_1`** with the same value, so RE851A templates that author the tag as `{{pr_p_descript_1}}` (mirrors RE851D) also resolve.
-
-3. **Do not touch** the RE851D publisher, the `_N` rewrite block, the anti-fallback shield list, or any other tag families. Behavior for RE851D and other templates stays bit-for-bit identical.
-
-## Verification
-
-- Regenerate the RE851A doc on deal `236b605e-967e-403d-b880-5004c15ccdd6` and confirm the Property Description block now prints "Borrower Property".
-- Edge function logs should show one new line: `[RE851A] published pr_p_descript="Borrower Property" (source=property1.description)`.
-- RE851D regression check: regenerate any RE851D doc and confirm `pr_p_descript_1..N` still match per-property values (publisher path unchanged).
-
-## Out of scope
-
-- No new database columns, dictionary entries, or UI changes.
-- No changes to currency/percent formatting work done in earlier turns.
-- No refactor of the existing publisher / shield / rewrite logic.
+6. **Validate with the real function path**
+   - Run the focused edge-function tests.
+   - Deploy the changed backend functions.
+   - Trigger or inspect `generate-document` for the RE851D template again and confirm no `word/document.xml` integrity failure appears in logs.
