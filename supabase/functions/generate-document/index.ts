@@ -9183,7 +9183,10 @@ async function generateSingleDocument(
                   while ((wm = wtRe.exec(sectionSlice)) !== null) {
                     const text = wm[2];
                     if (!/pr_li_(?:rem|ant)_balloon/i.test(text) &&
-                        !/\{\{\s*(?:#if|else|\/if)\b[^{}]*?balloon/i.test(text)) {
+                        !/\{\{\s*(?:#if|else|\/if)\b[^{}]*?balloon/i.test(text) &&
+                        !/\{\{\s*(?:#if|else|\/if)\b/i.test(text) &&
+                        !/(?:^|[\s>])#if\b/i.test(text) &&
+                        !/\{\{|\}\}/.test(text)) {
                       continue;
                     }
                     let cleaned = text;
