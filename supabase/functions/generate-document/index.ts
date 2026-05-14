@@ -9048,23 +9048,33 @@ async function generateSingleDocument(
                 const winner: "yes" | "no" | "unk" = isYes ? "yes" : isNo ? "no" : "unk";
                 const wantFor = (l: "yes" | "no" | "unk") => (l === winner ? "\u2611" : "\u2610");
 
-                // Collect all checkbox-bearing runs in window order.
+                // Collect only standalone checkbox-bearing text runs in window order.
+                // Do NOT target glyphs that already live inside native Word SDT
+                // checkbox content controls: replacing/removing the inner <w:r>
+                // of an SDT can leave malformed <w:sdtContent> nesting in the
+                // final word/document.xml. Existing SDTs are left structurally
+                // untouched by this pass.
                 const slice = xml.slice(rawWinStart, rawWinEnd);
                 const glyphRunRe = /(<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>)([\u2610\u2611\u2612])(<\/w:t>\s*<\/w:r>)/g;
-                const drawingRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:drawing\b[\s\S]*?<\/w:drawing>\s*<\/w:r>/g;
                 const handlebarsRunRe = /<w:r\b[^>]*>(?:\s*<w:rPr>([\s\S]*?)<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>([^<]*\{\{[^{}]*?pr_li_(?:rem|ant)_balloon(?:Yes|No|Unknown)[^{}]*?\}\}[^<]*)<\/w:t>\s*<\/w:r>/g;
-                type Hit = { idx: number; len: number; kind: "glyph" | "drawing" | "handlebars"; cur?: string; pre?: string; post?: string; rPr?: string };
+                type Hit = { idx: number; len: number; kind: "glyph" | "handlebars"; cur?: string; pre?: string; post?: string; rPr?: string };
                 const hits: Hit[] = [];
+                const insideExistingSdt = (absStart: number): boolean => {
+                  const lastContentOpen = xml.lastIndexOf("<w:sdtContent", absStart);
+                  const lastContentClose = xml.lastIndexOf("</w:sdtContent>", absStart);
+                  if (lastContentOpen > lastContentClose) return true;
+                  const lastPrOpen = xml.lastIndexOf("<w:sdtPr", absStart);
+                  const lastPrClose = xml.lastIndexOf("</w:sdtPr>", absStart);
+                  return lastPrOpen > lastPrClose;
+                };
                 let gm: RegExpExecArray | null;
                 while ((gm = glyphRunRe.exec(slice)) !== null) {
+                  if (insideExistingSdt(rawWinStart + gm.index)) continue;
                   hits.push({ idx: gm.index, len: gm[0].length, kind: "glyph", pre: gm[1], cur: gm[2], post: gm[3] });
-                }
-                let dm: RegExpExecArray | null;
-                while ((dm = drawingRunRe.exec(slice)) !== null) {
-                  hits.push({ idx: dm.index, len: dm[0].length, kind: "drawing" });
                 }
                 let hm: RegExpExecArray | null;
                 while ((hm = handlebarsRunRe.exec(slice)) !== null) {
+                  if (insideExistingSdt(rawWinStart + hm.index)) continue;
                   hits.push({ idx: hm.index, len: hm[0].length, kind: "handlebars", rPr: hm[1] || "" });
                 }
                 hits.sort((a, b) => a.idx - b.idx);
