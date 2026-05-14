@@ -104,10 +104,79 @@ function mergeParagraphs(aXml: string, bXml: string): string {
   return aXml.replace(/<\/w:p>\s*$/, `${nbspRun}${bInner}</w:p>`);
 }
 
+/**
+ * Build a tag-stripped view that maps each plain-text char back to its XML
+ * offset. Lets us rewrite specific characters (e.g. spaces) without parsing
+ * the full DOCX run model.
+ */
+function buildStrippedIndex(xml: string): { text: string; map: number[] } {
+  const text: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < xml.length; i++) {
+    const ch = xml[i];
+    if (ch === "<") {
+      const close = xml.indexOf(">", i);
+      if (close === -1) break;
+      i = close;
+      continue;
+    }
+    text.push(ch);
+    map.push(i);
+  }
+  return { text: text.join(""), map };
+}
+
+/**
+ * Within a paragraph that already contains both `_yes_glyph` and `_no_glyph`
+ * of the same family, replace the literal space(s) between `YES` and the
+ * `{{pr_li_<fam>_N_no_glyph}}` opener with a non-breaking space (`&#160;`).
+ * This prevents Word from wrapping the NO checkbox onto its own line in
+ * narrow cells. Idempotent — already-NBSP spaces are skipped.
+ */
+function nbspBetweenYesAndNo(pXml: string): { xml: string; replaced: number } {
+  const { text, map } = buildStrippedIndex(pXml);
+  // Find every "YES" (plus following spaces) immediately preceding a
+  // matching `{{pr_li_<fam>_N_no_glyph` opener for one of our families.
+  const re = new RegExp(
+    `\\bYES(\\s+)\\{\\{\\s*pr_li_(?:${FAMILIES.join("|")})_N_no_glyph`,
+    "g",
+  );
+  // Collect (xmlPos, len) ranges of the gap-spaces to convert.
+  const ranges: Array<{ xmlStart: number; xmlEnd: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const gapStartStripped = m.index + 3; // after "YES"
+    const gapEndStripped = gapStartStripped + m[1].length;
+    if (gapStartStripped >= map.length) continue;
+    const xmlStart = map[gapStartStripped];
+    const xmlEnd = map[gapEndStripped - 1] + 1;
+    // Only rewrite if the gap is a contiguous span of plain spaces in xml.
+    let allSpaces = true;
+    for (let k = xmlStart; k < xmlEnd; k++) {
+      if (pXml[k] !== " ") { allSpaces = false; break; }
+    }
+    if (!allSpaces) continue;
+    ranges.push({ xmlStart, xmlEnd });
+  }
+  if (ranges.length === 0) return { xml: pXml, replaced: 0 };
+  // Replace each range with a single NBSP entity (collapses multiple
+  // intermediate spaces into one non-breaking glue char).
+  const out: string[] = [];
+  let cursor = 0;
+  for (const r of ranges) {
+    out.push(pXml.slice(cursor, r.xmlStart));
+    out.push("&#160;");
+    cursor = r.xmlEnd;
+  }
+  out.push(pXml.slice(cursor));
+  return { xml: out.join(""), replaced: ranges.length };
+}
+
 function processXml(xml: string): {
   xml: string;
   pairsMerged: number;
   blanksRemoved: number;
+  nbspInserted: number;
 } {
   const paras = splitParagraphs(xml);
   if (paras.length === 0) return { xml, pairsMerged: 0, blanksRemoved: 0 };
