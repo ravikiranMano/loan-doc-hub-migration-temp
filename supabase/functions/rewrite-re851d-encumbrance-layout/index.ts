@@ -188,6 +188,31 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
+    const url = new URL(req.url);
+    if (url.searchParams.get("inspect") === "1") {
+      const paras = splitParagraphs(originalXml);
+      const counts: Record<string, number> = {};
+      const samples: Array<{ i: number; pPr: string; text: string }> = [];
+      for (let i = 0; i < paras.length; i++) {
+        const s = paras[i].stripped;
+        for (const f of FAMILIES) {
+          const yes = new RegExp(`pr_li_${f}_N_yes_glyph`).test(s);
+          const no  = new RegExp(`pr_li_${f}_N_no_glyph`).test(s);
+          if (yes || no) {
+            const k = `${f}:${yes ? "Y" : ""}${no ? "N" : ""}`;
+            counts[k] = (counts[k] || 0) + 1;
+            if (samples.length < 6) {
+              const ppr = paras[i].text.match(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/);
+              samples.push({ i, pPr: ppr?.[0] || "(none)", text: s.slice(0, 100) });
+            }
+          }
+        }
+      }
+      return new Response(JSON.stringify({ counts, samples }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { xml: newXml, paragraphsRightAligned } = processXml(originalXml);
 
     if (newXml === originalXml) {
