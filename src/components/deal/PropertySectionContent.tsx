@@ -245,7 +245,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     state: string;
     zipCode: string;
   }>>([]);
-  const [borrowerParticipantsLoading, setBorrowerParticipantsLoading] = useState(false);
+  const [borrowerParticipantsLoading, setBorrowerParticipantsLoading] = useState(!!routeDealId);
 
   useEffect(() => {
     if (!routeDealId) return;
