@@ -1488,6 +1488,31 @@ async function generateSingleDocument(
           // even when DOC_GEN_DEBUG is off.
           debugLog(`[RE851D] pr_pt idx=${idx} annual=${annual?.rawValue ?? ""} confidence=${conf || "(none)"} actual=${isActual} estimated=${isEstimated}`);
         }
+        // RE851D ARE TAXES DELINQUENT? — per-property publisher.
+        // Source of truth: propertytax{N}.delinquent (UI checkbox).
+        // Fallback: property{N}.delinquent (legacy). Strict per-index — no
+        // cross-property fallback. Always emits ☑/☐ glyphs (never blank).
+        {
+          const delinqRaw =
+            fieldValues.get(`propertytax${idx}.delinquent`)?.rawValue ??
+            fieldValues.get(`${prefix}.delinquent`)?.rawValue;
+          const s = String(delinqRaw ?? "").trim().toLowerCase();
+          const isDelinq = s === "true" || s === "1" || s === "yes" || s === "y" || s === "on" || s === "checked" || s === "☑" || s === "☒";
+          fieldValues.set(`pr_pt_delinquent_${idx}`,           { rawValue: isDelinq ? "true" : "false", dataType: "boolean" });
+          fieldValues.set(`pr_pt_delinquent_yes_glyph_${idx}`, { rawValue: isDelinq ? "☑" : "☐",        dataType: "text" });
+          fieldValues.set(`pr_pt_delinquent_no_glyph_${idx}`,  { rawValue: isDelinq ? "☐" : "☑",        dataType: "text" });
+          let amountStr = "";
+          if (isDelinq) {
+            const amtRaw =
+              fieldValues.get(`propertytax${idx}.delinquent_amount`)?.rawValue ??
+              fieldValues.get(`${prefix}.delinquent_amount`)?.rawValue;
+            if (amtRaw !== undefined && amtRaw !== null && String(amtRaw) !== "") {
+              amountStr = String(amtRaw);
+            }
+          }
+          fieldValues.set(`pr_pt_delinquentAmount_${idx}`, { rawValue: amountStr, dataType: "currency" });
+          debugLog(`[RE851D] pr_pt_delinquent idx=${idx} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
+        }
         // Delinquent payment count
         const delinqV =
           fieldValues.get(`${prefix}.delinquent_how_many`) ||
@@ -1891,6 +1916,15 @@ async function generateSingleDocument(
             }
           }
         }
+      }
+      // RE851D ARE TAXES DELINQUENT? — empty-slot defaults (anti-fallback shield).
+      // Slots without a property render as ☐ YES / ☑ NO with empty amount.
+      for (let i = 1; i <= 5; i++) {
+        if (realPropertyIndices.includes(i)) continue;
+        fieldValues.set(`pr_pt_delinquent_yes_glyph_${i}`, { rawValue: "☐", dataType: "text" });
+        fieldValues.set(`pr_pt_delinquent_no_glyph_${i}`,  { rawValue: "☑", dataType: "text" });
+        fieldValues.set(`pr_pt_delinquentAmount_${i}`,     { rawValue: "",  dataType: "currency" });
+        fieldValues.set(`pr_pt_delinquent_${i}`,           { rawValue: "false", dataType: "boolean" });
       }
       // ── RE851D: per-property INCOME publisher ──
       // Source: property{idx}.net_monthly_income (already bridged above).
@@ -4891,6 +4925,9 @@ async function generateSingleDocument(
           "pr_pt_annualTaxes_N",
           "pr_pt_actual_N_glyph", "pr_pt_actual_N",
           "pr_pt_estimated_N_glyph", "pr_pt_estimated_N",
+          // RE851D ARE TAXES DELINQUENT? per-property aliases. Longest first.
+          "pr_pt_delinquent_yes_glyph_N", "pr_pt_delinquent_no_glyph_N",
+          "pr_pt_delinquentAmount_N", "pr_pt_delinquent_N",
           // RE851D propertytax dotted-form _N tags. Order is critical: longer
           // matches FIRST so "delinquent_amount_N" wins before "delinquent_N".
           "propertytax.delinquent_amount_N",
@@ -6270,6 +6307,8 @@ async function generateSingleDocument(
         "pr_pt_annualTaxes",
         "pr_pt_actual", "pr_pt_actual_glyph",
         "pr_pt_estimated", "pr_pt_estimated_glyph",
+        "pr_pt_delinquent_yes_glyph", "pr_pt_delinquent_no_glyph",
+        "pr_pt_delinquentAmount", "pr_pt_delinquent",
         // Lien-derived per-property aliases used by the questionnaire blocks.
         "pr_li_delinquencyPaidByLoan", "pr_li_delinquencyPaidByLoan_yes",
         "pr_li_delinquencyPaidByLoan_no", "pr_li_delinquencyPaidByLoan_yes_glyph",
