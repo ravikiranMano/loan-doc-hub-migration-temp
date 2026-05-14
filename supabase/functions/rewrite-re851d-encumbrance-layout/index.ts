@@ -298,6 +298,30 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
+    const url = new URL(req.url);
+    if (url.searchParams.get("inspect") === "1") {
+      const paras = splitParagraphs(originalXml);
+      const sample: any[] = [];
+      for (let i = 0; i < paras.length; i++) {
+        const s = paras[i].stripped;
+        const famHit = FAMILIES.find(f => f.phrase.test(s));
+        const yesHit = FAMILIES.find(f => hasGlyph(s, f.family, "yes"));
+        const noHit  = FAMILIES.find(f => hasGlyph(s, f.family, "no"));
+        if (famHit || yesHit || noHit) {
+          sample.push({
+            i,
+            q: famHit?.family,
+            y: yesHit?.family,
+            n: noHit?.family,
+            t: s.slice(0, 80),
+          });
+        }
+      }
+      return new Response(JSON.stringify({ sample }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { xml: newXml, questionsRewritten, paragraphsDropped } =
       processXml(originalXml);
 
