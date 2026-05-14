@@ -5892,6 +5892,61 @@ async function generateSingleDocument(
             }
           }
 
+          // ── RE851D appraiser conditional → merge-tag rewrite ──
+          // The authored RE851D template contains:
+          //   {{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{/if}}
+          //   {{#if (eq pr_p_performeBy_N "Broker")}}N/A{{/if}}
+          // Our renderer prints these raw because (a) the literal `_N` survives
+          // and (b) the conditional helper does not always evaluate cleanly.
+          // We pre-publish per-property `pr_p_appraiserName_K` /
+          // `pr_p_appraiserAddress_K` values upstream; here we replace the entire
+          // {{#if … }}…{{/if}} block with the corresponding plain merge tag,
+          // anchored to the PROPERTY #K region the match sits in. Strictly
+          // scoped: only matches the two literal payloads ("BPO Performed by
+          // Broker" and "N/A") so unrelated conditionals are never touched.
+          {
+            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_N\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/g;
+            let acm: RegExpExecArray | null;
+            let appraiserBlocksRewritten = 0;
+            const appraiserPairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
+            while ((acm = apprCondRe.exec(xml)) !== null) {
+              const fullStart = acm.index;
+              const fullEnd = fullStart + acm[0].length;
+              if (isConsumed(fullStart, fullEnd)) continue;
+              const payload = String(acm[1] || "").replace(/<[^>]+>/g, "").trim();
+              let kind: "name" | "addr" | null = null;
+              if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
+              else if (/^N\/A$/i.test(payload)) kind = "addr";
+              if (kind === null) continue;
+              // Determine PROPERTY #K by region; fall back to occurrence order.
+              let pIdx: number | null = null;
+              for (const p of regions.props) {
+                if (fullStart >= p.range[0] && fullStart < p.range[1]) {
+                  pIdx = p.k;
+                  break;
+                }
+              }
+              if (pIdx === null) {
+                appraiserPairCounter[kind] += 1;
+                pIdx = Math.min(Math.max(appraiserPairCounter[kind], 1), 5);
+              }
+              const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
+              rewrites.push({
+                start: fullStart,
+                end: fullEnd,
+                replacement: `{{${tagBase}_${pIdx}}}`,
+              });
+              consumed.push([fullStart, fullEnd]);
+              totalRewrites++;
+              appraiserBlocksRewritten++;
+            }
+            if (appraiserBlocksRewritten > 0) {
+              try {
+                debugLog(`[generate-document] RE851D appraiser conditional rewrite: ${appraiserBlocksRewritten} {{#if pr_p_performeBy_N}} block(s) replaced with appraiserName/Address merge tags`);
+              } catch (_) { /* ignore */ }
+            }
+          }
+
           // ── RE851D pr_p_performeBy_N targeted safety rewrite ──
           // Some authored RE851D templates split the
           // `{{#if (eq pr_p_performeBy_N "Broker")}}` opener across multiple
