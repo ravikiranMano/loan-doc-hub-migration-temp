@@ -483,6 +483,59 @@ async function generateSingleDocument(
         fieldValues.set("pr_p_descript_1", { rawValue: descValue, dataType: "text" });
         console.log(`[RE851A] published pr_p_descript="${descValue}" (source=${descSource})`);
       }
+
+      // RE851A: publish bare pr_pt_actual / pr_pt_estimated (+ _glyph) + pr_pt_annualTaxes
+      // for the primary property. The per-property RE851D publisher (gated to /851d/i)
+      // never runs for RE851A, so {{#if pr_pt_actual}} / {{#if pr_pt_estimated}}
+      // would otherwise resolve falsy. Resolve confidence + annual taxes from the
+      // lowest property index present (matches the description publisher above).
+      {
+        let primaryIdx: number | null = null;
+        const idxRe = /^property(\d+)\./;
+        const idxs = new Set<number>();
+        for (const k of fieldValues.keys()) {
+          const m = k.match(idxRe);
+          if (m) idxs.add(parseInt(m[1], 10));
+        }
+        if (idxs.size > 0) primaryIdx = Math.min(...idxs);
+
+        const getVal = (k: string) => {
+          const v = fieldValues.get(k);
+          return v && v.rawValue !== undefined && v.rawValue !== null ? String(v.rawValue) : "";
+        };
+
+        let conf = "";
+        let annual = "";
+        if (primaryIdx !== null) {
+          conf =
+            getVal(`propertytax${primaryIdx}.tax_confidence`) ||
+            getVal(`property${primaryIdx}.tax_confidence`);
+          annual =
+            getVal(`propertytax${primaryIdx}.annual_payment`) ||
+            getVal(`property${primaryIdx}.annual_property_taxes`) ||
+            getVal(`property${primaryIdx}.annual_tax`) ||
+            getVal(`property${primaryIdx}.propertytax_annual_payment`);
+        }
+        if (!conf) conf = getVal("tax_confidence");
+        if (!annual) {
+          annual =
+            getVal("annual_property_taxes") ||
+            getVal("annual_tax") ||
+            getVal("propertytax_annual_payment");
+        }
+        const confNorm = conf.trim().toLowerCase();
+        const isActual = confNorm === "actual";
+        const isEstimated = confNorm === "estimated";
+
+        fieldValues.set("pr_pt_actual",          { rawValue: isActual    ? "true" : "false", dataType: "boolean" });
+        fieldValues.set("pr_pt_estimated",       { rawValue: isEstimated ? "true" : "false", dataType: "boolean" });
+        fieldValues.set("pr_pt_actual_glyph",    { rawValue: isActual    ? "☑" : "☐",        dataType: "text" });
+        fieldValues.set("pr_pt_estimated_glyph", { rawValue: isEstimated ? "☑" : "☐",        dataType: "text" });
+        if (annual !== "") {
+          fieldValues.set("pr_pt_annualTaxes", { rawValue: annual, dataType: "currency" });
+        }
+        console.log(`[RE851A] published pr_pt_actual=${isActual} pr_pt_estimated=${isEstimated} (confidence="${confNorm || "(none)"}", annual="${annual}", primaryIdx=${primaryIdx ?? "(none)"})`);
+      }
     }
 
     // ── Participant-based contact lookup ──
