@@ -1,40 +1,37 @@
-## Plan
+## Goal
+Stop the RE851D YES/NO encumbrance checkboxes from stacking/wrapping by forcing each YES + NO pair onto a single line with a non-breaking space between them. Logic stays untouched — formatting only.
 
-1. **Strengthen server-side pre-resolution in `generate-document`**
-   - Ensure all 5 property slots always publish these exact strings before rendering:
-     - `pr_li_encumbranceOfRecord_N_yes_glyph` / `_no_glyph`
-     - `pr_li_delinqu60day_N_yes_glyph` / `_no_glyph`
-     - `pr_li_currentDelinqu_N_yes_glyph` / `_no_glyph`
-     - `pr_li_delinquencyPaidByLoan_N_yes_glyph` / `_no_glyph`
-     - `pr_li_sourceOfPayment_N`
-     - `pr_p_delinquHowMany_N`
-   - Default missing/null booleans to `☐ YES / ☑ NO`; default text/number fields to `""`.
-   - Preserve the existing per-property lien aggregation rules and avoid cross-property fallback.
-   - Add compatibility aliases only where needed for the template variants that use shortened/bare names, so raw names cannot leak.
+## Root cause
+In the stored RE851D template, each of the four questionnaire pairs is authored as two separate paragraphs:
 
-2. **Add a permanent RE851D template rewrite for the encumbrance section**
-   - Extend the existing one-shot template rewrite approach or create a narrowly scoped rewrite pass for `RE851D-V12.1`.
-   - For each of the 5 property sections, replace the four inline question/checkbox paragraph patterns with two-column table rows:
-     ```text
-     | Question text + dotted fill | {{pr_li_*_N_yes_glyph}} YES  {{pr_li_*_N_no_glyph}} NO |
-     ```
-   - Right-align the second cell, keep the first cell left-aligned, and use stable widths around 75% / 25%.
-   - Apply row/paragraph keep rules (`keepNext` / `cantSplit` equivalent XML) so the question and YES/NO pair do not split across a page break.
-   - Leave unrelated RE851D sections untouched.
+```
+{{pr_li_encumbranceOfRecord_N_yes_glyph}} YES
+{{pr_li_encumbranceOfRecord_N_no_glyph}} NO
+```
 
-3. **Keep runtime safety net minimal and scoped**
-   - Keep the existing `_N → _1.._5` region rewrite for these tags.
-   - Add a targeted fallback for fragmented/bare encumbrance glyph tags only, not a broad DOCX rewrite.
-   - Do not introduce `{{#if}}` conditionals.
+Word renders these on separate lines and may wrap further in narrow cells, producing the broken `☑ YES ☑NO ☑ YES ☑` output.
 
-4. **Deploy and apply the fix**
-   - Deploy the updated backend functions.
-   - Invoke the RE851D template rewrite once against the stored mapped template path.
-   - Regenerate RE851D for deal `DL-2026-0250`.
+## Fix
+Update the one-shot template rewrite function `supabase/functions/rewrite-re851d-encumbrance-layout/index.ts` so that, for all 5 property sections × 4 questionnaire pairs:
 
-5. **Verify against the uploaded generated output issues**
-   - Inspect the regenerated DOCX XML and rendered document text to confirm:
-     - no raw `{{...}}`, `_N`, `undefined`, `null`, `true`, or `false` appears in the encumbrance section;
-     - all four YES/NO pairs are in a right-aligned table cell for each property;
-     - question A no longer separates from its checkbox pair at page breaks;
-     - values remain independent for PROPERTY #1 through PROPERTY #5.
+1. Detect each pair where two adjacent paragraphs contain:
+   - paragraph A: `{{pr_li_<family>_N_yes_glyph}} YES`
+   - paragraph B (next or near-next sibling): `{{pr_li_<same family>_N_no_glyph}} NO`
+   - families: `encumbranceOfRecord`, `delinqu60day`, `currentDelinqu`, `delinquencyPaidByLoan`
+2. Merge them into a single paragraph by appending the runs from paragraph B into paragraph A, separated by a non-breaking space (`\u00A0` / `&#160;`) between `YES` and the no-glyph tag.
+3. Delete paragraph B entirely.
+4. Keep the existing right-align + keepLines/keepNext behaviour on the merged paragraph so the question stays anchored to the checkbox row.
+5. Remain idempotent: if paragraph A already contains both `_yes_glyph` and `_no_glyph` for the same family, skip merging.
+6. Strictly scoped to these 4 families — no other paragraphs touched.
+
+## Deploy + verify
+- Deploy `rewrite-re851d-encumbrance-layout`.
+- Invoke it once against the stored template `1778746922135_RE851D-V12.1.docx`.
+- Inspect the rewritten DOCX XML to confirm: each property section has 4 single-paragraph YES/NO rows, no orphan `_no_glyph` paragraphs remain, and a `\u00A0` sits between `YES` and the no-glyph tag.
+- Regenerate RE851D for `DL-2026-0250` to confirm the rendered output shows `☐ YES ☑ NO` on one line per question for every property.
+
+## Out of scope
+- No business-logic changes (which box gets checked is unchanged).
+- No schema, UI, or `generate-document` resolver changes.
+- No `{{#if}}` conditionals introduced.
+- No new tables or layout containers.

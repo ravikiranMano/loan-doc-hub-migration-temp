@@ -1,15 +1,24 @@
 // One-shot template rewrite for the RE851D ENCUMBRANCE INFORMATION section.
 //
-// Goals (per user spec, all 5 property sections):
-//   1. Right-align the YES/NO checkbox paragraphs that contain
-//      {{pr_li_(encumbranceOfRecord|delinqu60day|currentDelinqu|delinquencyPaidByLoan)_N_yes_glyph}}.
-//   2. Keep each YES/NO checkbox paragraph together with its preceding
-//      question paragraph (and any blank spacing paragraphs in between)
-//      so they never split across page breaks (Problem 2: question A).
+// Goal (per latest user spec):
+//   Merge each YES/NO checkbox pair onto a SINGLE paragraph (one line) with a
+//   non-breaking space between "YES" and the no-glyph tag, so Word cannot
+//   wrap or stack the two checkboxes vertically.
 //
-// Strictly scoped — only paragraphs that contain one of the four lien
-// glyph tags (and a small lookback window above them) are touched.
-// Idempotent: re-running adds nothing new (we dedupe keepNext/keepLines/jc).
+// Pairs handled (each in 5 property sections):
+//   {{pr_li_encumbranceOfRecord_N_yes_glyph}} YES   ←┐ merge into one
+//   {{pr_li_encumbranceOfRecord_N_no_glyph}} NO     ←┘ paragraph
+//   …delinqu60day…
+//   …currentDelinqu…
+//   …delinquencyPaidByLoan…
+//
+// Strictly scoped — only paragraphs that contain a `_yes_glyph` (or its
+// matching `_no_glyph`) for one of the four families are touched. Any
+// intervening blank paragraphs between the YES paragraph and the NO
+// paragraph are removed so the pair sits on the same line.
+//
+// Idempotent: if a paragraph already contains both `_yes_glyph` and
+// `_no_glyph` for the same family, no change is made.
 //
 // POST body: { templatePath?: string }
 //   templatePath defaults to "1778746922135_RE851D-V12.1.docx".
@@ -26,14 +35,19 @@ const corsHeaders = {
 
 const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
 
-const GLYPH_FAMILY_RE =
-  /pr_li_(?:encumbranceOfRecord|delinqu60day|currentDelinqu|delinquencyPaidByLoan)/;
+const FAMILIES = [
+  "encumbranceOfRecord",
+  "delinqu60day",
+  "currentDelinqu",
+  "delinquencyPaidByLoan",
+] as const;
+type Family = (typeof FAMILIES)[number];
 
 interface Para {
   start: number;
   end: number;
-  text: string;
-  stripped: string;
+  text: string;     // raw XML
+  stripped: string; // text content with tags removed
 }
 
 function splitParagraphs(xml: string): Para[] {
@@ -52,103 +66,113 @@ function splitParagraphs(xml: string): Para[] {
   return out;
 }
 
-/**
- * Insert <w:pPr> children safely.
- * - Dedupe by tag name (keepNext, keepLines, jc).
- * - If <w:pPr> exists, insert before </w:pPr>.
- * - If <w:pPr> missing, create one immediately after opening <w:p ...>.
- *
- * Note: schema technically constrains child order, but Word is forgiving
- * for these specific elements in practice.
- */
-function modifyPara(
-  pXml: string,
-  opts: { keepNext?: boolean; keepLines?: boolean; rightAlign?: boolean },
-): string {
-  const want: string[] = [];
-  if (opts.keepNext && !/<w:keepNext\b/.test(pXml)) want.push("<w:keepNext/>");
-  if (opts.keepLines && !/<w:keepLines\b/.test(pXml)) {
-    want.push("<w:keepLines/>");
+function detectFamily(stripped: string, kind: "yes" | "no"): Family | null {
+  for (const f of FAMILIES) {
+    const re = new RegExp(`pr_li_${f}_N_${kind}_glyph`);
+    if (re.test(stripped)) return f;
   }
-  if (opts.rightAlign && !/<w:jc\b[^/]*\bw:val="right"/.test(pXml)) {
-    // If a non-right jc is present, replace it; else insert.
-    if (/<w:jc\b[^/]*\/>/.test(pXml)) {
-      pXml = pXml.replace(/<w:jc\b[^/]*\/>/, '<w:jc w:val="right"/>');
-    } else {
-      want.push('<w:jc w:val="right"/>');
-    }
-  }
-  if (want.length === 0) return pXml;
-  const insert = want.join("");
-
-  if (/<w:pPr\b[^>]*>/.test(pXml)) {
-    // Insert before <w:rPr> if present (rPr must remain last child of pPr),
-    // otherwise insert before </w:pPr>.
-    if (/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>\s*<\/w:pPr>/.test(pXml)) {
-      return pXml.replace(
-        /(<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>\s*<\/w:pPr>)/,
-        insert + "$1",
-      );
-    }
-    return pXml.replace(/<\/w:pPr>/, insert + "</w:pPr>");
-  }
-  // Create pPr right after opening <w:p ...>
-  return pXml.replace(/(<w:p\b[^>]*?>)/, `$1<w:pPr>${insert}</w:pPr>`);
+  return null;
 }
 
-function processXml(xml: string): { xml: string; checkboxParas: number; questionParas: number } {
-  const paras = splitParagraphs(xml);
-  // Map each paragraph index to its rewritten text (default: same as original)
-  const rewrites = new Map<number, string>();
+/**
+ * Merge paragraph B's inner content into paragraph A, separated by a
+ * non-breaking-space run. We splice B's runs (everything inside the
+ * outer <w:p>...</w:p>, EXCLUDING B's <w:pPr>) just before A's </w:p>.
+ *
+ * The non-breaking space is inserted as its own run that copies A's last
+ * run-properties (rPr) when available, so font/size match.
+ */
+function mergeParagraphs(aXml: string, bXml: string): string {
+  // Strip B's wrapping <w:p ...> ... </w:p> AND B's leading <w:pPr>.
+  const bInnerMatch = bXml.match(/^<w:p\b[^>]*?>([\s\S]*)<\/w:p>$/);
+  if (!bInnerMatch) return aXml; // safety
+  let bInner = bInnerMatch[1];
+  // Drop B's <w:pPr>...</w:pPr> if present (paragraph-level props belong
+  // to the paragraph wrapper, which is being discarded).
+  bInner = bInner.replace(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/, "");
 
-  let checkboxCount = 0;
-  let questionCount = 0;
+  // Try to find a recent <w:rPr> in A to clone for the NBSP run, so the
+  // glyph spacing/font matches surrounding text.
+  let rPrClone = "";
+  const lastRPr = [...aXml.matchAll(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g)].pop();
+  if (lastRPr) rPrClone = lastRPr[0];
+
+  const nbspRun =
+    `<w:r>${rPrClone}<w:t xml:space="preserve">\u00A0</w:t></w:r>`;
+
+  // Insert NBSP run + B's inner runs immediately before A's closing </w:p>.
+  return aXml.replace(/<\/w:p>\s*$/, `${nbspRun}${bInner}</w:p>`);
+}
+
+function processXml(xml: string): {
+  xml: string;
+  pairsMerged: number;
+  blanksRemoved: number;
+} {
+  const paras = splitParagraphs(xml);
+  if (paras.length === 0) return { xml, pairsMerged: 0, blanksRemoved: 0 };
+
+  // Track which paragraphs are dropped, and which are rewritten.
+  const drop = new Set<number>();
+  const rewrite = new Map<number, string>();
+
+  let pairsMerged = 0;
+  let blanksRemoved = 0;
 
   for (let i = 0; i < paras.length; i++) {
-    const p = paras[i];
-    if (!GLYPH_FAMILY_RE.test(p.stripped)) continue;
-    if (!/_yes_glyph/.test(p.stripped)) continue;
+    if (drop.has(i)) continue;
+    const a = paras[i];
+    const yesFam = detectFamily(a.stripped, "yes");
+    if (!yesFam) continue;
+    // Idempotency: skip if A already contains the matching no-glyph.
+    if (new RegExp(`pr_li_${yesFam}_N_no_glyph`).test(a.stripped)) continue;
 
-    // 1) Right-align + keepLines on the checkbox paragraph
-    const next = modifyPara(rewrites.get(i) ?? p.text, {
-      rightAlign: true,
-      keepLines: true,
-    });
-    if (next !== p.text) {
-      rewrites.set(i, next);
-      checkboxCount++;
-    }
-
-    // 2) Walk back up to 5 preceding paragraphs adding keepNext+keepLines.
-    //    Stop after the first paragraph that contains "?" (the question).
-    let stepsBack = 0;
-    for (let j = i - 1; j >= 0 && stepsBack < 5; j--, stepsBack++) {
+    // Walk forward to find the matching NO paragraph, skipping blank
+    // paragraphs and stopping at any non-blank, non-matching content.
+    let j = i + 1;
+    const intermediates: number[] = [];
+    let matched = -1;
+    while (j < paras.length && j <= i + 6) {
       const pj = paras[j];
-      const cur = rewrites.get(j) ?? pj.text;
-      const upd = modifyPara(cur, { keepNext: true, keepLines: true });
-      if (upd !== pj.text) {
-        rewrites.set(j, upd);
-        questionCount++;
-      }
-      if (pj.stripped.includes("?")) break;
+      const jStripped = pj.stripped.trim();
+      const noFam = detectFamily(pj.stripped, "no");
+      if (noFam === yesFam) { matched = j; break; }
+      if (jStripped === "") { intermediates.push(j); j++; continue; }
+      // Non-blank, non-matching paragraph — abort merge for this YES.
+      break;
     }
+    if (matched < 0) continue;
+
+    // Merge: A.text + NBSP + B.runs.  Drop intermediates and B.
+    const aXml = rewrite.get(i) ?? a.text;
+    const bXml = paras[matched].text;
+    rewrite.set(i, mergeParagraphs(aXml, bXml));
+    drop.add(matched);
+    for (const k of intermediates) {
+      drop.add(k);
+      blanksRemoved++;
+    }
+    pairsMerged++;
   }
 
-  if (rewrites.size === 0) return { xml, checkboxParas: 0, questionParas: 0 };
+  if (rewrite.size === 0 && drop.size === 0) {
+    return { xml, pairsMerged: 0, blanksRemoved: 0 };
+  }
 
-  // Apply rewrites in document order
+  // Rebuild the XML in document order, applying rewrites and skipping drops.
   const out: string[] = [];
   let cursor = 0;
-  const indices = [...rewrites.keys()].sort((a, b) => a - b);
-  for (const idx of indices) {
-    const p = paras[idx];
+  for (let i = 0; i < paras.length; i++) {
+    const p = paras[i];
+    if (!rewrite.has(i) && !drop.has(i)) continue;
     out.push(xml.slice(cursor, p.start));
-    out.push(rewrites.get(idx)!);
+    if (rewrite.has(i)) out.push(rewrite.get(i)!);
+    // dropped paragraphs emit nothing
     cursor = p.end;
   }
   out.push(xml.slice(cursor));
 
-  return { xml: out.join(""), checkboxParas: checkboxCount, questionParas: questionCount };
+  return { xml: out.join(""), pairsMerged, blanksRemoved };
 }
 
 serve(async (req) => {
@@ -192,16 +216,17 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    const { xml: newXml, checkboxParas, questionParas } = processXml(originalXml);
+    const { xml: newXml, pairsMerged, blanksRemoved } = processXml(originalXml);
 
     if (newXml === originalXml) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
-          checkboxParas: 0,
-          questionParas: 0,
-          message: "Template already has right-align + keep-together — no changes written.",
+          pairsMerged: 0,
+          blanksRemoved: 0,
+          message:
+            "Template already has YES/NO pairs inline — no changes written.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -228,8 +253,8 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         templatePath,
-        checkboxParas,
-        questionParas,
+        pairsMerged,
+        blanksRemoved,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
