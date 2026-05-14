@@ -7757,6 +7757,169 @@ async function generateSingleDocument(
       }
     }
 
+    // ── RE851D POST-RENDER encumbrance-question paragraph cleanup ──
+    // Some merge values upstream emit leading/trailing <w:br/> runs into the
+    // paragraph that contains "Are there any encumbrances of record..." or
+    // "Over the last 12 months, were any payments more than 60 days late?".
+    // Those stray soft breaks push the question to the bottom of one page and
+    // strand the YES/NO row at the top of the next page, which is the visible
+    // mismatch against the reference RE851D template. Strip leading and
+    // trailing <w:br/> runs (and whitespace-only runs) from those question
+    // paragraphs so the block stays together like the original template.
+    if (/851d/i.test(template.name || "")) {
+      try {
+        const QUESTION_PHRASES = [
+          "encumbrances of record against the securing property",
+          "payments more than 60 days late",
+        ];
+        const unzipped = __passUnzip(processedDocx);
+        const rezip: fflate.Zippable = {};
+        let didMutate = false;
+        for (const [filename, bytes] of Object.entries(unzipped)) {
+          const isContent =
+            filename === "word/document.xml" ||
+            filename.startsWith("word/header") ||
+            filename.startsWith("word/footer");
+          if (!isContent) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let xml = __xmlGet(filename, bytes);
+          const lower = xml.toLowerCase();
+          if (!QUESTION_PHRASES.some((p) => lower.indexOf(p) !== -1)) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+
+          // Match every <w:p>...</w:p>; rewrite only those whose visible text
+          // contains one of the question phrases.
+          const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+          let mutated = false;
+          xml = xml.replace(paraRe, (para) => {
+            const visible = para
+              .replace(/<[^>]+>/g, "")
+              .replace(/\s+/g, " ")
+              .toLowerCase();
+            if (!QUESTION_PHRASES.some((p) => visible.indexOf(p) !== -1)) {
+              return para;
+            }
+            const openMatch = para.match(/^<w:p\b[^>]*>/);
+            if (!openMatch) return para;
+            const open = openMatch[0];
+            let body = para.slice(open.length, para.length - "</w:p>".length);
+
+            // Skip optional pPr block — only act on runs that follow it.
+            let prefix = "";
+            const pprMatch = body.match(/^<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/);
+            if (pprMatch) {
+              prefix = pprMatch[0];
+              body = body.slice(prefix.length);
+            }
+
+            // Tokenize: keep <w:r>...</w:r> blocks and inter-run whitespace.
+            const runs: Array<{ kind: "run" | "other"; text: string }> = [];
+            const tokenRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+            let cursor = 0;
+            let rm: RegExpExecArray | null;
+            while ((rm = tokenRe.exec(body)) !== null) {
+              if (rm.index > cursor) {
+                runs.push({ kind: "other", text: body.slice(cursor, rm.index) });
+              }
+              runs.push({ kind: "run", text: rm[0] });
+              cursor = rm.index + rm[0].length;
+            }
+            if (cursor < body.length) {
+              runs.push({ kind: "other", text: body.slice(cursor) });
+            }
+
+            const isStripRun = (txt: string): boolean => {
+              if (!/^<w:r\b/.test(txt)) return false;
+              // Run that contains <w:br/> AND no visible text or <w:t> with
+              // only whitespace.
+              const hasBr = /<w:br\b[^>]*\/>/.test(txt);
+              const tMatches = [...txt.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)];
+              const visibleText = tMatches.map((m) => m[1]).join("");
+              const onlyWs = visibleText.replace(/\s+/g, "") === "";
+              if (hasBr && onlyWs) return true;
+              // Also strip pure whitespace-only <w:t> runs that have nothing
+              // else (no break, no drawing).
+              if (
+                onlyWs &&
+                !/<w:drawing\b/.test(txt) &&
+                !/<w:tab\b/.test(txt) &&
+                !/<w:sym\b/.test(txt) &&
+                tMatches.length > 0
+              ) {
+                return true;
+              }
+              return false;
+            };
+
+            // Locate first/last "real" run (i.e. not a strippable break/ws run).
+            let firstReal = -1;
+            let lastReal = -1;
+            for (let i = 0; i < runs.length; i++) {
+              if (runs[i].kind !== "run") continue;
+              if (!isStripRun(runs[i].text)) {
+                if (firstReal === -1) firstReal = i;
+                lastReal = i;
+              }
+            }
+            if (firstReal === -1) return para; // nothing to keep — leave alone.
+
+            const trimmed: typeof runs = [];
+            let changed = false;
+            for (let i = 0; i < runs.length; i++) {
+              if (runs[i].kind === "other") {
+                // Drop inter-run whitespace outside the [firstReal..lastReal]
+                // span; keep inner whitespace as-is.
+                if (i < firstReal || i > lastReal) {
+                  if (runs[i].text.trim() !== "") {
+                    trimmed.push(runs[i]);
+                  } else if (runs[i].text.length > 0) {
+                    changed = true;
+                  }
+                } else {
+                  trimmed.push(runs[i]);
+                }
+                continue;
+              }
+              if (i < firstReal || i > lastReal) {
+                if (isStripRun(runs[i].text)) {
+                  changed = true;
+                  continue;
+                }
+              }
+              trimmed.push(runs[i]);
+            }
+
+            if (!changed) return para;
+            mutated = true;
+            const newBody = prefix + trimmed.map((t) => t.text).join("");
+            return open + newBody + "</w:p>";
+          });
+
+          if (mutated) {
+            rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            didMutate = true;
+            debugLog(
+              `[generate-document] RE851D encumbrance-question cleanup: stripped leading/trailing breaks in ${filename}`,
+            );
+          } else {
+            rezip[filename] = [bytes, { level: 0 }];
+          }
+        }
+        if (didMutate) {
+          processedDocx = __passZip(rezip);
+        }
+      } catch (postErr) {
+        console.error(
+          `[generate-document] RE851D encumbrance-question cleanup failed (continuing):`,
+          postErr instanceof Error ? postErr.message : String(postErr),
+        );
+      }
+    }
+
     // ── RE851D POST-RENDER "60 day(s) or more delinquent" YES/NO safety pass ──
     // Anchored to the Q2 question text per PROPERTY block.
     // Driven by pr_li_delinqu60day_K (delinquencies_how_many > 0).
