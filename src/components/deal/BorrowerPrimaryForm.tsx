@@ -187,10 +187,13 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
           </InlineField>
 
           <InlineField label="Borrower Type" fieldKey={FIELD_KEYS.borrowerType}>
-            <Select value={getValue('borrowerType')} onValueChange={(value) => handleChange('borrowerType', value)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{BORROWER_TYPE_OPTIONS.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
-            </Select>
+            <SearchableSelect
+              value={getValue('borrowerType')}
+              onValueChange={(value) => handleChange('borrowerType', value)}
+              options={BORROWER_TYPE_OPTIONS}
+              searchPlaceholder="Search borrower type..."
+              disabled={disabled}
+            />
           </InlineField>
 
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.fullName}>
