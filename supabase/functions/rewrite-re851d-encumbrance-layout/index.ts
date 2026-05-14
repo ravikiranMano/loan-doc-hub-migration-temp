@@ -94,6 +94,11 @@ function addKeepNext(pXml: string): { xml: string; changed: boolean } {
   };
 }
 
+function removeKeepNext(pXml: string): { xml: string; changed: boolean } {
+  const next = pXml.replace(/<w:keepNext\s*\/>/g, "");
+  return { xml: next, changed: next !== pXml };
+}
+
 function keepCheckboxRow(pXml: string): { xml: string; changed: boolean } {
   const open = pXml.match(/^<w:p\b[^>]*?>/);
   if (!open) return { xml: pXml, changed: false };
@@ -107,6 +112,10 @@ function keepCheckboxRow(pXml: string): { xml: string; changed: boolean } {
   let mutated = false;
   if (/<w:jc\b[^>]*\/>/.test(inner)) {
     inner = inner.replace(/<w:jc\b[^>]*\/>/g, "");
+    mutated = true;
+  }
+  if (/<w:keepNext\s*\/>/.test(inner)) {
+    inner = inner.replace(/<w:keepNext\s*\/>/g, "");
     mutated = true;
   }
   if (!/<w:keepLines\s*\/>/.test(inner)) {
