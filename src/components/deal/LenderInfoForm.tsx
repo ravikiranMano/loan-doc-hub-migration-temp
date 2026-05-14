@@ -233,22 +233,15 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
 
             {wrapField('type', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender Type</Label>
-              <Select
+              <SearchableSelect
                 value={getValue('type')}
                 onValueChange={(value) => handleChange('type', value)}
+                options={LENDER_TYPE_OPTIONS.map(o => o.value)}
+                searchPlaceholder="Search lender type..."
+                placeholder="Select type"
                 disabled={disabled}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LENDER_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                triggerClassName="h-8"
+              />
             </div>)}
 
             {wrapField('fullName', <div className="flex items-center gap-3">
