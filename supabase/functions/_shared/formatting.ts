@@ -174,6 +174,48 @@ export function formatPercentage(value: string | number | null, decimals = 4): s
   return tail.length === 0 ? `${intPart}.${head}%` : `${intPart}.${head}${tail}%`;
 }
 
+// ============================================================================
+// Category-aware percentage formatting (mirrors src/lib/precisionFormat.ts)
+// ============================================================================
+
+export type PercentCategory = "interestRate" | "proRata" | "ratio" | "lateChargePct";
+
+export function resolvePercentCategory(fieldKey: string | null | undefined): PercentCategory {
+  if (!fieldKey) return "interestRate";
+  const k = fieldKey.toLowerCase();
+  if (/(^|_)(ltv|cltv)(_|$)/.test(k) || k.includes("protective_equity") || k.includes("protectiveequity")) {
+    return "ratio";
+  }
+  if (k.includes("late_charge") && (k.includes("pct") || k.includes("percent") || k.includes("rate"))) {
+    return "lateChargePct";
+  }
+  if (
+    k.includes("pro_rata") ||
+    k.includes("prorata") ||
+    k.includes("funding_pct") ||
+    k.includes("pct_owned") ||
+    k.includes("pctowned") ||
+    k.includes("allocation_pct") ||
+    k.includes("allocationpct")
+  ) {
+    return "proRata";
+  }
+  return "interestRate";
+}
+
+export function formatPercentByFieldKey(
+  fieldKey: string | null | undefined,
+  value: string | number | null
+): string {
+  switch (resolvePercentCategory(fieldKey)) {
+    case "ratio": return formatPercentage(value, 2);
+    case "proRata": return formatPercentage(value, 4);
+    case "lateChargePct": return formatPercentage(value, 3);
+    case "interestRate":
+    default: return formatPercentage(value, 3);
+  }
+}
+
 export function formatNumber(value: string | number | null): string {
   if (value === null || value === undefined || value === "") return "";
   const num = typeof value === "string" ? parseFloat(value) : value;
