@@ -1,67 +1,103 @@
-## Diagnosis (DL-2026-0250)
+## Goal
 
-The "ARE TAXES DELINQUENT?" YES/NO renders against the wrong property because the per-property publisher reads `propertytax{idx}.delinquent` positionally. Each Property Tax record actually carries a `propertytax{N}.property` dropdown that binds it to a specific Property by display string (e.g. `"Test property 2 - MG Road, Noida, CA, 98454"`).
+Make the RE851D "NAME OF APPRAISER" and "ADDRESS OF APPRAISER" fields render the correct per-property value, with no raw `{{#if}}` syntax leaking into the document. Fix is server-side only in `supabase/functions/generate-document/index.ts` — no DOCX template, schema, UI, or field_dictionary changes.
 
-For this deal:
+## Why a server-side fix (not a template edit)
 
-| Tax record | Linked property | delinquent | amount |
-|---|---|---|---|
-| propertytax1 | Property **2** | true  | 6578  |
-| propertytax2 | Property **1** | false | —     |
-| propertytax3 | Property **4** | true  | 23844 |
-| propertytax4 | Property **5** | false | —     |
-| (none)       | Property **3** | —     | —     |
+The template currently contains:
 
-So `pr_pt_delinquent_2` must come from `propertytax1`, not `propertytax2`. Same problem affects `pr_pt_delinquentAmount_${idx}` and the YES/NO glyph aliases.
+```
+{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{/if}}
+{{#if (eq pr_p_performeBy_N  "Broker")}}N/A{{/if}}
+```
+
+`pr_p_performeBy_N` is a literal `_N` placeholder (per the existing pattern around lines 5863–5870), and the `{{#if}}` helper isn't a supported construct in our renderer — that's why the raw conditional prints. We will:
+
+1. Pre-resolve two new per-property variables and publish them to `fieldValues`.
+2. Rewrite the two `{{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}` blocks in the XML to plain `{{pr_p_appraiserName_N}}` / `{{pr_p_appraiserAddress_N}}` merge tags before the renderer runs.
+
+This mirrors how the existing `pr_p_performeBy_N` targeted safety rewrite (line 5863) already handles fragmented conditional XML.
 
 ## Code change — single file
 
-`supabase/functions/generate-document/index.ts`, lines 1491–1515 (per-property delinquent publisher only — no other publisher is touched).
+`supabase/functions/generate-document/index.ts`
 
-### 1. Build a one-time `propertyIndexByTaxIndex` map (once, before the per-property loop)
+### 1. Per-property publisher (extend the block at lines 1466–1484)
 
-For tax indices 1..N (scan up to 10 to be safe), read `propertytax{T}.property` (string) and match it against each `property{P}` record using a normalized fingerprint built from the same fields the UI uses to render the dropdown label:
-- `property{P}.description`, `property{P}.street`, `property{P}.city`, `property{P}.state`, `property{P}.zip`
-
-Match strategy (in order, all case-insensitive, whitespace-collapsed):
-1. Exact match of full label `"{description} - {street}, {city}, {state}, {zip}"`.
-2. Substring match where label contains `description` AND (`street` OR `zip`) of a property — disambiguates partial labels.
-3. If still unresolved, leave that tax record unmapped (do NOT fall back to positional — that's the current bug).
-
-Result: `Map<taxIdx:number, propertyIdx:number>` plus the inverse `Map<propertyIdx, taxIdx>`.
-
-Add a debugLog summarizing the resolved mapping (e.g. `[RE851D] propertytax→property mapping: {1→2, 2→1, 3→4, 4→5}`).
-
-### 2. Rewrite the per-property delinquent publisher (lines 1491–1515)
-
-Inside the existing `for (const idx of realPropertyIndices)` loop, replace the block that currently reads `propertytax${idx}.delinquent` with a lookup via the inverse map:
+Inside the existing `for (const idx of realPropertyIndices)` loop, right after the `pr_p_performedBy_${idx}` block, add:
 
 ```ts
-const taxIdx = propertyToTax.get(idx); // number | undefined
-const delinqRaw = taxIdx !== undefined
-  ? fieldValues.get(`propertytax${taxIdx}.delinquent`)?.rawValue
-  : fieldValues.get(`${prefix}.delinquent`)?.rawValue; // legacy property{N}.delinquent fallback only
+// RE851D — pre-resolve appraiser name/address per property so the
+// template can use plain {{pr_p_appraiserName_N}} / {{pr_p_appraiserAddress_N}}
+// instead of {{#if}} conditionals (which the renderer does not support).
+{
+  const performedBy = String(
+    fieldValues.get(`property${idx}.appraisal_performed_by`)?.rawValue ?? ""
+  ).trim();
+  const isBroker = performedBy.toLowerCase() === "broker";
+
+  const nameRaw = String(
+    fieldValues.get(`property${idx}.appraiser_name`)?.rawValue ?? ""
+  );
+  const addrParts = [
+    fieldValues.get(`property${idx}.appraiser_street`)?.rawValue,
+    fieldValues.get(`property${idx}.appraiser_city`)?.rawValue,
+    fieldValues.get(`property${idx}.appraiser_state`)?.rawValue,
+    fieldValues.get(`property${idx}.appraiser_zip`)?.rawValue,
+  ].map(v => String(v ?? "").trim()).filter(Boolean);
+  const addrRaw = addrParts.join(", ");
+
+  const nameOut = isBroker ? "BPO Performed by Broker" : nameRaw;
+  const addrOut = isBroker ? "N/A" : addrRaw;
+
+  fieldValues.set(`pr_p_appraiserName_${idx}`,    { rawValue: nameOut, dataType: "text" });
+  fieldValues.set(`pr_p_appraiserAddress_${idx}`, { rawValue: addrOut, dataType: "text" });
+}
 ```
 
-Same change for `propertytax${taxIdx}.delinquent_amount`. The `${prefix}.delinquent` / `${prefix}.delinquent_amount` legacy fallbacks remain in place for back-compat with deals that have no tax dropdown set.
+### 2. Default empty for unused slots (extend the loop near line 1920–1928)
 
-The glyph emission, empty-slot defaults loop (lines 1920–1928), `_N` key registration (line 4929), and `SUFFIXED_BASES` (line 6310) remain unchanged — they already handle missing/false correctly.
+Add `pr_p_appraiserName_${n}` and `pr_p_appraiserAddress_${n}` to the slot-defaulting loop so slots 1–5 with no property publish `""` rather than leaving the merge tag unresolved.
 
-### 3. No other publishers, schema, UI, template, or DOCX changes.
+### 3. Register the new keys for `_N` resolution
+
+Add `"pr_p_appraiserName_N"` and `"pr_p_appraiserAddress_N"` to the `_N` key list around line 4913, and add `"pr_p_appraiserName"`, `"pr_p_appraiserAddress"` to `SUFFIXED_BASES` around line 6326. This is what the anti-fallback shield uses to keep slot N strictly per-property.
+
+### 4. XML rewrite — strip the `{{#if}}` blocks, anchored to the existing performeBy safety pass
+
+In the same region as the existing `pr_p_performeBy_N` safety rewrite (around line 5863), add a pass that runs on the normalized XML before the renderer. For N = 1..5, replace:
+
+```
+{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{/if}}
+```
+
+with `{{pr_p_appraiserName_N}}`, and:
+
+```
+{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{/if}}
+```
+
+with `{{pr_p_appraiserAddress_N}}`. Use the same fragment-tolerant approach already in use there (collapse run boundaries, allow `performeBy` and `performedBy`, allow extra whitespace, allow either `"` or `"`/`"`). Do not touch any other `{{#if}}` usage — match strictly on these two literal payloads (`BPO Performed by Broker` and `N/A`) so we don't affect unrelated conditionals.
+
+Add a `debugLog` summarizing how many of the 10 expected blocks were rewritten per render.
 
 ## Verification
 
-After deploy and regeneration of RE851D for DL-2026-0250:
-- PROPERTY #1 (Sunset Plaza)  → ☐ YES   ☑ NO  (from propertytax2)
-- PROPERTY #2 (Test property 2) → ☑ YES   ☐ NO  + amount $6,578.00  (from propertytax1)
-- PROPERTY #3 (Property 3)    → ☐ YES   ☑ NO  (no tax record)
-- PROPERTY #4 (Property 4)    → ☑ YES   ☐ NO  + amount $23,844.00  (from propertytax3)
-- PROPERTY #5 (Property 5)    → ☐ YES   ☑ NO  (from propertytax4)
+After deploy, regenerate RE851D for DL-2026-0250:
 
-Edge function logs should show the `propertytax→property mapping` debugLog with the resolved map.
+| Property | performedBy | Expected NAME | Expected ADDRESS |
+|---|---|---|---|
+| 1 | Broker | BPO Performed by Broker | N/A |
+| 2 | Appraiser (with name/addr) | <appraiser name> | <street, city, state, zip> |
+| 3 | Broker | BPO Performed by Broker | N/A |
+| 4 | Broker | BPO Performed by Broker | N/A |
+| 5 | (empty slot) | (blank) | (blank) |
+
+No `{{#if`, no `pr_p_performeBy_`, and no `pr_p_appraiser*` placeholders should remain in the unresolved-placeholders log line.
 
 ## Out of scope
 
-- UI / Property Tax form changes.
-- Schema, field_dictionary, or DOCX template edits.
-- Any other publisher (annual_payment, actual/estimated confidence, etc.) — those will be revisited in a follow-up if the user reports the same wrong-property symptom there. This change is strictly limited to delinquent + delinquent_amount.
+- DOCX template edits (handled by XML rewrite instead).
+- UI / Property form / field_dictionary / schema.
+- Any other `{{#if}}` block in any template.
+- The existing `pr_p_performeBy_N` publisher and its safety pass — left intact for back-compat with other places the variable is referenced standalone.
