@@ -179,7 +179,7 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Interest Rate</Label>
               <div className="relative flex-1">
-                <Input inputMode="decimal" value={values[FIELD_KEYS.interestRate] || ''} onChange={(e) => onValueChange(FIELD_KEYS.interestRate, sanitizeInterestInput(e.target.value))} onBlur={() => { const v = normalizeInterestOnBlur(values[FIELD_KEYS.interestRate] || '', 2); if (v !== (values[FIELD_KEYS.interestRate] || '')) onValueChange(FIELD_KEYS.interestRate, v); }} disabled={disabled} className="h-7 text-sm pr-6" placeholder="0.00" />
+                <Input inputMode="decimal" value={values[FIELD_KEYS.interestRate] || ''} onChange={(e) => onValueChange(FIELD_KEYS.interestRate, sanitizeInterestInput(e.target.value))} onBlur={() => { const v = normalizeInterestOnBlur(values[FIELD_KEYS.interestRate] || '', 3); if (v !== (values[FIELD_KEYS.interestRate] || '')) onValueChange(FIELD_KEYS.interestRate, v); }} disabled={disabled} className="h-7 text-sm pr-6" placeholder="0.00" />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
               </div>
             </div>

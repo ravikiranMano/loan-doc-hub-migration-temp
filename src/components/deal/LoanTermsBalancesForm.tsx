@@ -391,7 +391,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   value={getValue(FIELD_KEYS.soldRateCompany)}
                   onChange={(e) => setValue(FIELD_KEYS.soldRateCompany, sanitizeInterestInput(e.target.value))}
                   onBlur={() => {
-                    const v = normalizeInterestOnBlur(getValue(FIELD_KEYS.soldRateCompany), 2);
+                    const v = normalizeInterestOnBlur(getValue(FIELD_KEYS.soldRateCompany), 3);
                     if (v !== getValue(FIELD_KEYS.soldRateCompany)) setValue(FIELD_KEYS.soldRateCompany, v);
                   }}
                   disabled={disabled}

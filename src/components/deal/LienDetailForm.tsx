@@ -397,7 +397,7 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">Interest Rate</Label>
               <div className="relative flex-1">
-                <Input value={lien.interestRate} onChange={(e) => onChange('interestRate', sanitizeInterestInput(e.target.value))} onBlur={() => { const v = normalizeInterestOnBlur(lien.interestRate, 2); if (v !== lien.interestRate) onChange('interestRate', v); }} disabled={disabled || isThisLoan} className={`h-7 text-sm text-right pr-6 ${isThisLoan ? 'opacity-50 bg-muted cursor-not-allowed' : ''}`} inputMode="decimal" placeholder="0.00" />
+                <Input value={lien.interestRate} onChange={(e) => onChange('interestRate', sanitizeInterestInput(e.target.value))} onBlur={() => { const v = normalizeInterestOnBlur(lien.interestRate, 3); if (v !== lien.interestRate) onChange('interestRate', v); }} disabled={disabled || isThisLoan} className={`h-7 text-sm text-right pr-6 ${isThisLoan ? 'opacity-50 bg-muted cursor-not-allowed' : ''}`} inputMode="decimal" placeholder="0.00" />
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
