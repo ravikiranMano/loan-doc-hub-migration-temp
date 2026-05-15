@@ -18,10 +18,10 @@ export const parseDateOnly = (val?: string | null): Date | undefined => {
   }
 };
 
-/** Format a Date as a local 'yyyy-MM-dd' string (no UTC shift). */
-export const formatDateOnly = (date?: Date | null): string => {
+/** Format a local Date without converting through UTC. */
+export const formatDateOnly = (date?: Date | null, pattern = 'yyyy-MM-dd'): string => {
   if (!date || !isValid(date)) return '';
-  return format(date, 'yyyy-MM-dd');
+  return format(date, pattern);
 };
 
 /** Today as a local 'yyyy-MM-dd' string. */

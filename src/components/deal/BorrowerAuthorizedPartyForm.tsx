@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { STATE_OPTIONS } from '@/lib/usStates';
 import type { FieldDefinition } from '@/hooks/useDealFields';
@@ -30,12 +30,6 @@ const CAPACITY_OPTIONS = [
 ];
 
 const sanitizeName = (v: string) => v.replace(/[^a-zA-Z\s'\-]/g, '').slice(0, 100);
-
-const parseDate = (dateStr: string): Date | undefined => {
-  if (!dateStr) return undefined;
-  const date = new Date(dateStr);
-  return isNaN(date.getTime()) ? undefined : date;
-};
 
 interface BorrowerAuthorizedPartyFormProps {
   fields: FieldDefinition[];
@@ -128,17 +122,17 @@ export const BorrowerAuthorizedPartyForm: React.FC<BorrowerAuthorizedPartyFormPr
                   >
                     <CalendarIcon className="h-3.5 w-3.5 mr-2 opacity-60" />
                     {getValue('dateAuthorized')
-                      ? format(parseDate(getValue('dateAuthorized'))!, 'MM/dd/yyyy')
+                      ? formatDateOnly(parseDateOnly(getValue('dateAuthorized')), 'MM/dd/yyyy')
                       : 'Date'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 bg-background z-50" align="start">
                   <EnhancedCalendar
                     mode="single"
-                    selected={parseDate(getValue('dateAuthorized'))}
-                    onSelect={(date) => { handleChange('dateAuthorized', date ? format(date, 'yyyy-MM-dd') : ''); setDateOpen(false); }}
+                    selected={parseDateOnly(getValue('dateAuthorized'))}
+                    onSelect={(date) => { handleChange('dateAuthorized', date ? formatDateOnly(date) : ''); setDateOpen(false); }}
                     onClear={() => { handleChange('dateAuthorized', ''); setDateOpen(false); }}
-                    onToday={() => { handleChange('dateAuthorized', format(new Date(), 'yyyy-MM-dd')); setDateOpen(false); }}
+                    onToday={() => { handleChange('dateAuthorized', todayDateOnly()); setDateOpen(false); }}
                     initialFocus
                   />
                 </PopoverContent>

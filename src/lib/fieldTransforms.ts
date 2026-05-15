@@ -5,7 +5,7 @@
  * Stores canonical (raw) values in the database; formatted values only for display/export.
  */
 
-import { format, parseISO, isValid } from 'date-fns';
+import { formatDateOnly, parseDateOnly } from './dateOnly';
 import { formatPercentDisplay } from './precisionFormat';
 
 export type TransformType = 
@@ -108,9 +108,9 @@ function numberToWords(num: number): string {
 export function formatDateMMDDYYYY(value: string | null): string {
   if (!value) return '';
   try {
-    const date = parseISO(value);
-    if (!isValid(date)) return '';
-    return format(date, 'MM/dd/yyyy');
+    const date = parseDateOnly(value);
+    if (!date) return '';
+    return formatDateOnly(date, 'MM/dd/yyyy');
   } catch {
     return '';
   }
@@ -124,9 +124,9 @@ export function formatDateMMDDYYYY(value: string | null): string {
 export function formatDateLong(value: string | null): string {
   if (!value) return '';
   try {
-    const date = parseISO(value);
-    if (!isValid(date)) return '';
-    return format(date, 'MMMM d, yyyy');
+    const date = parseDateOnly(value);
+    if (!date) return '';
+    return formatDateOnly(date, 'MMMM d, yyyy');
   } catch {
     return '';
   }
@@ -140,9 +140,9 @@ export function formatDateLong(value: string | null): string {
 export function formatDateShort(value: string | null): string {
   if (!value) return '';
   try {
-    const date = parseISO(value);
-    if (!isValid(date)) return '';
-    return format(date, 'MMM d, yyyy');
+    const date = parseDateOnly(value);
+    if (!date) return '';
+    return formatDateOnly(date, 'MMM d, yyyy');
   } catch {
     return '';
   }

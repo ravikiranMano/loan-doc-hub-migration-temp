@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Button } from '@/components/ui/button';
 import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import type { FundingFormData } from './AddFundingModal';
 import { LenderIdSearch } from './LenderIdSearch';
@@ -41,10 +41,10 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
   const [interestFromOpen, setInterestFromOpen] = useState(false);
   const [focusedRateField, setFocusedRateField] = useState<null | 'lender' | 'override'>(null);
   const [fundingDate, setFundingDate] = useState<Date | undefined>(
-    data.fundingDate ? new Date(data.fundingDate) : undefined
+    parseDateOnly(data.fundingDate)
   );
   const [interestFromDate, setInterestFromDate] = useState<Date | undefined>(
-    data.interestFrom ? new Date(data.interestFrom) : undefined
+    parseDateOnly(data.interestFrom)
   );
 
   const handleChange = useCallback((field: keyof FundingFormData, value: string | boolean) => {
@@ -54,13 +54,13 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
   const handleFundingDateChange = useCallback((date: Date | undefined) => {
     setFundingDate(date);
     setFundingDateOpen(false);
-    onChange({ ...data, fundingDate: date ? format(date, 'yyyy-MM-dd') : '' });
+    onChange({ ...data, fundingDate: formatDateOnly(date) });
   }, [data, onChange]);
 
   const handleInterestFromDateChange = useCallback((date: Date | undefined) => {
     setInterestFromDate(date);
     setInterestFromOpen(false);
-    onChange({ ...data, interestFrom: date ? format(date, 'yyyy-MM-dd') : '' });
+    onChange({ ...data, interestFrom: formatDateOnly(date) });
   }, [data, onChange]);
 
   // Auto-compute Percent Owned = Funding Amount / Total Funded * 100. Total
@@ -153,12 +153,12 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
           <Popover open={fundingDateOpen} onOpenChange={setFundingDateOpen} modal={false}>
             <PopoverTrigger asChild>
               <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal flex-1', !fundingDate && 'text-muted-foreground')}>
-                {fundingDate ? format(fundingDate, 'MM/dd/yyyy') : 'Select date'}
+                {fundingDate ? formatDateOnly(fundingDate, 'MM/dd/yyyy') : 'Select date'}
                 <CalendarIcon className="ml-auto h-3.5 w-3.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={fundingDate} onSelect={handleFundingDateChange} onClear={() => handleFundingDateChange(undefined)} onToday={() => handleFundingDateChange(new Date())} initialFocus />
+              <EnhancedCalendar mode="single" selected={fundingDate} onSelect={handleFundingDateChange} onClear={() => handleFundingDateChange(undefined)} onToday={() => handleFundingDateChange(parseDateOnly(formatDateOnly(new Date())))} initialFocus />
             </PopoverContent>
           </Popover>
         </div>
@@ -168,12 +168,12 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
           <Popover open={interestFromOpen} onOpenChange={setInterestFromOpen} modal={false}>
             <PopoverTrigger asChild>
               <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal flex-1', !interestFromDate && 'text-muted-foreground')}>
-                {interestFromDate ? format(interestFromDate, 'MM/dd/yyyy') : 'Select date'}
+                {interestFromDate ? formatDateOnly(interestFromDate, 'MM/dd/yyyy') : 'Select date'}
                 <CalendarIcon className="ml-auto h-3.5 w-3.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={interestFromDate} onSelect={handleInterestFromDateChange} onClear={() => handleInterestFromDateChange(undefined)} onToday={() => handleInterestFromDateChange(new Date())} initialFocus />
+              <EnhancedCalendar mode="single" selected={interestFromDate} onSelect={handleInterestFromDateChange} onClear={() => handleInterestFromDateChange(undefined)} onToday={() => handleInterestFromDateChange(parseDateOnly(formatDateOnly(new Date())))} initialFocus />
             </PopoverContent>
           </Popover>
         </div>

@@ -17,7 +17,7 @@ import { formatPercentDisplay } from '@/lib/precisionFormat';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { LenderIdSearch } from './LenderIdSearch';
 import { numericKeyDown, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
@@ -114,7 +114,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
       setBorrower(initialData.borrower);
       setBalance(initialData.loanBalance);
       setAdjustmentAmount(initialData.adjustmentAmount);
-      setAsOfDate(initialData.asOfDate ? new Date(initialData.asOfDate) : undefined);
+      setAsOfDate(parseDateOnly(initialData.asOfDate));
       setDistributeByProRata(initialData.distributeByProRata);
       setLenders(initialData.lenders);
       setDescription(initialData.description);
@@ -295,7 +295,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
       borrower,
       loanBalance: balance,
       adjustmentAmount: adjustmentAmount || formatCurrencyDisplay(totalAdjustment.toFixed(2)),
-      asOfDate: asOfDate ? format(asOfDate, 'yyyy-MM-dd') : '',
+      asOfDate: formatDateOnly(asOfDate),
       distributeByProRata,
       lenders,
       description,
@@ -386,7 +386,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
                       )}
                     >
                       <CalendarIcon className="mr-2 h-3 w-3" />
-                      {asOfDate ? format(asOfDate, 'MM/dd/yyyy') : 'Select date'}
+                      {asOfDate ? formatDateOnly(asOfDate, 'MM/dd/yyyy') : 'Select date'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0 z-[9999]" align="start">

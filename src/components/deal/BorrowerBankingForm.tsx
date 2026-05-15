@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
@@ -60,12 +60,6 @@ export const BorrowerBankingForm: React.FC<BorrowerBankingFormProps> = ({
   const [nextDebitOpen, setNextDebitOpen] = useState(false);
   const [stopOnDateOpen, setStopOnDateOpen] = useState(false);
 
-  const parseDate = (dateStr: string): Date | undefined => {
-    if (!dateStr) return undefined;
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? undefined : date;
-  };
-
   const RowLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <Label className="w-36 text-sm text-foreground flex-shrink-0">{children}</Label>
   );
@@ -80,17 +74,17 @@ export const BorrowerBankingForm: React.FC<BorrowerBankingFormProps> = ({
           disabled={disabled}
           className={cn("h-8 text-sm flex-1 justify-start text-left font-normal", !value && "text-muted-foreground")}
         >
-          {value ? format(parseDate(value)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+          {value ? formatDateOnly(parseDateOnly(value), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
           <CalendarIcon className="ml-auto h-4 w-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0 bg-background z-50" align="start">
         <EnhancedCalendar
           mode="single"
-          selected={parseDate(value)}
-          onSelect={(date) => { onChange(date ? format(date, 'yyyy-MM-dd') : ''); setOpen(false); }}
+          selected={parseDateOnly(value)}
+          onSelect={(date) => { onChange(date ? formatDateOnly(date) : ''); setOpen(false); }}
           onClear={() => { onChange(''); setOpen(false); }}
-          onToday={() => { onChange(format(new Date(), 'yyyy-MM-dd')); setOpen(false); }}
+          onToday={() => { onChange(todayDateOnly()); setOpen(false); }}
           initialFocus
         />
       </PopoverContent>

@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon, Search } from 'lucide-react';
-import { format, parse, isValid } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -29,15 +29,7 @@ import { DEPARTMENT_OPTIONS, getDepartmentCategories, getCategoryDetails } from 
 
 const BILLING_OPTIONS = ['Short Payment', 'Debit All Outgoing', 'Credit Card', 'Invoice / Link'];
 
-const safeParse = (v: string): Date | undefined => {
-  if (!v) return undefined;
-  try {
-    const d = parse(v, 'yyyy-MM-dd', new Date());
-    if (isValid(d)) return d;
-    const d2 = new Date(v);
-    return isValid(d2) ? d2 : undefined;
-  } catch { return undefined; }
-};
+const safeParse = (v: string): Date | undefined => parseDateOnly(v);
 
 export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
   values,
@@ -71,12 +63,12 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
           <Popover open={datePickerStates[key] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [key]: open }))}>
             <PopoverTrigger asChild>
               <Button variant="outline" className={cn('h-7 text-sm flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')} disabled={disabled}>
-                {val && safeParse(val) ? format(safeParse(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                {val && safeParse(val) ? formatDateOnly(safeParse(val), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                 <CalendarIcon className="ml-auto h-3.5 w-3.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={safeParse(val)} onSelect={(date) => { if (date) onValueChange(key, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} onClear={() => { onValueChange(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} onToday={() => { onValueChange(key, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} initialFocus />
+              <EnhancedCalendar mode="single" selected={safeParse(val)} onSelect={(date) => { if (date) onValueChange(key, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} onClear={() => { onValueChange(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} onToday={() => { onValueChange(key, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} initialFocus />
             </PopoverContent>
           </Popover>
         </div>
