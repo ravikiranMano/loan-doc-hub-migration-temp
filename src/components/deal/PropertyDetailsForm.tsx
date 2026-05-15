@@ -596,23 +596,6 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               </div>
             </div>
           </DirtyFieldWrapper>
-          {/* Read-only Current Principal Balance (drives Current LTV) */}
-          <div className="flex items-center gap-2">
-            <Label className="w-[110px] shrink-0 text-xs text-foreground">Current Principal Bal.</Label>
-            <div className="relative flex-1">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">$</span>
-              <Input
-                value={currentPrincipalBalance !== null ? formatDollar(currentPrincipalBalance).replace('$', '') : ''}
-                readOnly
-                disabled
-                title="Live value from servicing ledger (Loan History)"
-                className="h-7 text-xs pl-6"
-              />
-            </div>
-          </div>
-          {currentBalanceInvalid && (
-            <p className="text-[11px] text-destructive ml-[118px]">Current principal balance cannot be negative.</p>
-          )}
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.originationLtv}>
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Origination LTV</Label>
