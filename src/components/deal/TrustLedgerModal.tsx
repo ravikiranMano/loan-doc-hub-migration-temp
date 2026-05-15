@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { format, parse, isValid } from 'date-fns';
+import { todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
 import { hasModalFormData } from '@/lib/modalFormValidation';
@@ -29,7 +30,7 @@ interface TrustLedgerModalProps {
 
 const getEmptyEntry = (): TrustLedgerEntry => ({
   id: `trust_ledger_${Date.now()}`,
-  date: new Date().toISOString().split('T')[0],
+  date: todayDateOnly(),
   reference: '',
   fromWhomReceivedPaid: '',
   memo: '',
