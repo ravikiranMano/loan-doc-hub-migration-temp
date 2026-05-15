@@ -150,19 +150,34 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValueNum - loanAmountNum));
     }
 
-    // CLTV (sum of all liens / Estimate of Value)
-    const cltv = computeLtv(existingLiensTotal, estValueNum);
-    if (cltv !== null) writeIfChanged(FIELD_KEYS.cltv, cltv);
+    // Skip-condition flags per LTV display spec.
+    const estValueValid = Number.isFinite(estValueNum) && estValueNum > 0;
+    const loanAmountValid = Number.isFinite(loanAmountNum) && loanAmountNum >= 0;
+    const principalValid = Number.isFinite(currentPrincipalNum) && currentPrincipalNum >= 0;
 
-    // Current LTV — uses Balances → Principal (loan_terms.principal)
-    if (!currentBalanceInvalid && Number.isFinite(currentPrincipalNum)) {
-      const curLtv = computeLtv(currentPrincipalNum, estValueNum);
-      if (curLtv !== null) writeIfChanged(FIELD_KEYS.ltv, curLtv);
+    // CLTV (sum of all liens / Estimate of Value)
+    if (estValueValid) {
+      const cltv = computeLtv(existingLiensTotal, estValueNum);
+      writeIfChanged(FIELD_KEYS.cltv, cltv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.cltv, '');
     }
 
-    // Origination LTV — Loan Amount / Estimate of Value
-    const origLtv = computeLtv(loanAmountNum, estValueNum);
-    if (origLtv !== null) writeIfChanged(FIELD_KEYS.originationLtv, origLtv);
+    // Current LTV — Balances → Principal / Estimate of Value
+    if (estValueValid && principalValid) {
+      const curLtv = computeLtv(currentPrincipalNum, estValueNum);
+      writeIfChanged(FIELD_KEYS.ltv, curLtv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.ltv, '');
+    }
+
+    // Origination LTV — Loan Amount / Estimate of Value (frozen formula)
+    if (estValueValid && loanAmountValid) {
+      const origLtv = computeLtv(loanAmountNum, estValueNum);
+      writeIfChanged(FIELD_KEYS.originationLtv, origLtv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.originationLtv, '');
+    }
 
     // Principal Paid = Loan Amount − Current Principal Balance (derived)
     if (
