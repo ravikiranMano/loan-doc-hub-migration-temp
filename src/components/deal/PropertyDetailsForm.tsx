@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, roundDollarForStorage, computeLtv, formatDollar } from '@/lib/precisionFormat';
-import { supabase } from '@/integrations/supabase/client';
 import { US_STATES } from '@/lib/usStates';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Input } from '@/components/ui/input';
