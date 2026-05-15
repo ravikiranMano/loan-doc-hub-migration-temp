@@ -516,6 +516,33 @@ async function generateSingleDocument(
             getVal(`property${primaryIdx}.annual_tax`) ||
             getVal(`property${primaryIdx}.propertytax_annual_payment`);
         }
+        // Fallback: scan ALL propertytax{N} / property{N} indices and use the
+        // first non-empty tax_confidence / annual figure. Handles deals where
+        // the primary property has no propertytax record but a sibling does.
+        if (!conf || !annual) {
+          const ptIdxRe = /^propertytax(\d+)\./;
+          const ptIdxs = new Set<number>();
+          for (const k of fieldValues.keys()) {
+            const m = k.match(ptIdxRe);
+            if (m) ptIdxs.add(parseInt(m[1], 10));
+          }
+          const allIdxs = Array.from(new Set([...idxs, ...ptIdxs])).sort((a, b) => a - b);
+          for (const i of allIdxs) {
+            if (!conf) {
+              conf =
+                getVal(`propertytax${i}.tax_confidence`) ||
+                getVal(`property${i}.tax_confidence`);
+            }
+            if (!annual) {
+              annual =
+                getVal(`propertytax${i}.annual_payment`) ||
+                getVal(`property${i}.annual_property_taxes`) ||
+                getVal(`property${i}.annual_tax`) ||
+                getVal(`property${i}.propertytax_annual_payment`);
+            }
+            if (conf && annual) break;
+          }
+        }
         if (!conf) conf = getVal("tax_confidence");
         if (!annual) {
           annual =
