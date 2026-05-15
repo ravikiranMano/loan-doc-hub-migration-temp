@@ -4,6 +4,7 @@ import { Plus, DollarSign, FileText, ArrowRightLeft, Ban, CheckSquare, Building,
 import { numericKeyDown, numericPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { parseDateOnly, formatDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -333,7 +334,7 @@ const LenderTrustLedger: React.FC<{ lenderId: string; contactDbId: string; disab
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                      <EnhancedCalendar mode="single" selected={(newEntry as any)[f.key] ? new Date((newEntry as any)[f.key]) : undefined} onSelect={(date) => setNewEntry(prev => ({ ...prev, [f.key]: date ? date.toISOString().split('T')[0] : '' }))} onClear={() => setNewEntry(prev => ({ ...prev, [f.key]: '' }))} onToday={() => setNewEntry(prev => ({ ...prev, [f.key]: new Date().toISOString().split('T')[0] }))} initialFocus />
+                      <EnhancedCalendar mode="single" selected={parseDateOnly((newEntry as any)[f.key])} onSelect={(date) => setNewEntry(prev => ({ ...prev, [f.key]: formatDateOnly(date) }))} onClear={() => setNewEntry(prev => ({ ...prev, [f.key]: '' }))} onToday={() => setNewEntry(prev => ({ ...prev, [f.key]: todayDateOnly() }))} initialFocus />
                     </PopoverContent>
                   </Popover>
                 ) : f.type === 'currency' ? (
