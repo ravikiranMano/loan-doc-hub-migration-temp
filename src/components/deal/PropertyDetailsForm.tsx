@@ -38,6 +38,7 @@ interface PropertyDetailsFormProps {
   borrowerOptions?: string[];
   borrowerAddress?: { street: string; city: string; state: string; zipCode: string };
   borrowerAddressLoading?: boolean;
+  dealId?: string;
 }
 
 const PROPERTY_TYPE_OPTIONS = [
