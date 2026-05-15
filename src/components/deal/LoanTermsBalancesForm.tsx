@@ -130,12 +130,13 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     values[FIELD_KEYS.chargesInterest], values[FIELD_KEYS.unpaidOther],
   ]);
 
+  // Estimated Balloon Payment = Original Principal (Loan Amount) + One Month Interest
   const calculatedEstimatedBalloon = useMemo(() => {
     const loanAmount = parseNum(FIELD_KEYS.loanAmount);
     const noteRate = parseNum(FIELD_KEYS.noteRate);
     const oneMonthInterest = loanAmount * (noteRate / 100) / 12;
-    return calculatedTotalBalanceDue + oneMonthInterest;
-  }, [calculatedTotalBalanceDue, values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
+    return loanAmount + oneMonthInterest;
+  }, [values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
 
   // Auto-calculate Regular P & I Payment based on loan amount, note rate,
   // number of payments, and payment frequency (standard amortization formula).
