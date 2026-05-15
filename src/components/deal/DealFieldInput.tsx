@@ -8,7 +8,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { AlertCircle, Lock, Calculator, Asterisk, CheckCircle2, CalendarIcon } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { parseToCanonical, formatForDisplay } from '@/lib/fieldTransforms';
 import { roundPctForStorage } from '@/lib/precisionFormat';
 import { isNegativeValue, INTEREST_NEGATIVE_MESSAGE } from '@/lib/interestValidation';
@@ -129,7 +129,7 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
-      onChange(format(date, 'yyyy-MM-dd'));
+      onChange(formatDateOnly(date));
     } else {
       onChange('');
     }
@@ -162,8 +162,8 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
 
   // Render date picker
   const renderDatePicker = () => {
-    const selectedDate = value ? parseISO(value) : undefined;
-    const isValidDate = selectedDate && isValid(selectedDate);
+    const selectedDate = parseDateOnly(value);
+    const isValidDate = !!selectedDate;
 
     return (
       <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
@@ -179,7 +179,7 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
               isDisabled && 'bg-muted cursor-not-allowed'
             )}
           >
-            {isValidDate ? format(selectedDate, 'MM/dd/yyyy') : <span>mm/dd/yyyy</span>}
+            {isValidDate ? formatDateOnly(selectedDate, 'MM/dd/yyyy') : <span>mm/dd/yyyy</span>}
             <CalendarIcon className="ml-auto h-3 w-3" />
           </Button>
         </PopoverTrigger>
@@ -189,7 +189,7 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
             selected={isValidDate ? selectedDate : undefined}
             onSelect={handleDateSelect}
             onClear={() => { onChange(''); setDatePickerOpen(false); }}
-            onToday={() => { onChange(format(new Date(), 'yyyy-MM-dd')); setDatePickerOpen(false); }}
+            onToday={() => { onChange(todayDateOnly()); setDatePickerOpen(false); }}
             initialFocus
           />
         </PopoverContent>

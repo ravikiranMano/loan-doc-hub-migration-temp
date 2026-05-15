@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { AccountIdSearch } from './AccountIdSearch';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
@@ -153,8 +153,8 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
 
   const handleCancel = () => onOpenChange(false);
 
-  const startDateValue = formData.startDate ? new Date(formData.startDate) : undefined;
-  const debitDateValue = formData.debitThroughDate ? new Date(formData.debitThroughDate) : undefined;
+  const startDateValue = parseDateOnly(formData.startDate);
+  const debitDateValue = parseDateOnly(formData.debitThroughDate);
 
   return (
     <>
@@ -302,7 +302,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
               <Popover open={startDateOpen} onOpenChange={setStartDateOpen} modal={false}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className={cn('h-6 text-[11px] flex-1 justify-start text-left font-normal', !startDateValue && 'text-muted-foreground')}>
-                    {startDateValue && !isNaN(startDateValue.getTime()) ? format(startDateValue, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                    {startDateValue && !isNaN(startDateValue.getTime()) ? formatDateOnly(startDateValue, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                     <CalendarIcon className="ml-auto h-3 w-3" />
                   </Button>
                 </PopoverTrigger>
@@ -310,9 +310,9 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                   <EnhancedCalendar
                     mode="single"
                     selected={startDateValue}
-                    onSelect={(d) => { handleChange('startDate', d ? format(d, 'yyyy-MM-dd') : ''); setStartDateOpen(false); }}
+                    onSelect={(d) => { handleChange('startDate', d ? formatDateOnly(d) : ''); setStartDateOpen(false); }}
                     onClear={() => { handleChange('startDate', ''); setStartDateOpen(false); }}
-                    onToday={() => { handleChange('startDate', format(new Date(), 'yyyy-MM-dd')); setStartDateOpen(false); }}
+                    onToday={() => { handleChange('startDate', todayDateOnly()); setStartDateOpen(false); }}
                     initialFocus
                   />
                 </PopoverContent>
@@ -342,7 +342,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 <Popover open={debitDateOpen} onOpenChange={setDebitDateOpen} modal={false}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('h-6 text-[11px] flex-1 justify-start text-left font-normal', !debitDateValue && 'text-muted-foreground')}>
-                      {debitDateValue && !isNaN(debitDateValue.getTime()) ? format(debitDateValue, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                      {debitDateValue && !isNaN(debitDateValue.getTime()) ? formatDateOnly(debitDateValue, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                       <CalendarIcon className="ml-auto h-3 w-3" />
                     </Button>
                   </PopoverTrigger>
@@ -350,9 +350,9 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                     <EnhancedCalendar
                       mode="single"
                       selected={debitDateValue}
-                      onSelect={(d) => { handleChange('debitThroughDate', d ? format(d, 'yyyy-MM-dd') : ''); setDebitDateOpen(false); }}
+                      onSelect={(d) => { handleChange('debitThroughDate', d ? formatDateOnly(d) : ''); setDebitDateOpen(false); }}
                       onClear={() => { handleChange('debitThroughDate', ''); setDebitDateOpen(false); }}
-                      onToday={() => { handleChange('debitThroughDate', format(new Date(), 'yyyy-MM-dd')); setDebitDateOpen(false); }}
+                      onToday={() => { handleChange('debitThroughDate', todayDateOnly()); setDebitDateOpen(false); }}
                       initialFocus
                     />
                   </PopoverContent>

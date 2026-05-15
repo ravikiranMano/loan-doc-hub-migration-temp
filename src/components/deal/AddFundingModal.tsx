@@ -23,7 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, computeAmortizedPayment } from '@/lib/precisionFormat';
 
@@ -666,8 +666,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const servicingDisabled = !(formData.overrideServicing ?? false);
   const vendorDisabled = !(formData.vendorId && String(formData.vendorId).trim() !== '');
 
-  const fundingDate = formData.fundingDate ? new Date(formData.fundingDate) : undefined;
-  const interestFromDate = formData.interestFrom ? new Date(formData.interestFrom) : undefined;
+  const fundingDate = parseDateOnly(formData.fundingDate);
+  const interestFromDate = parseDateOnly(formData.interestFrom);
 
   const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false) => (
     <div className="relative flex-1">
@@ -706,12 +706,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     <Popover open={isOpen} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground')}>
-          {value && !isNaN(value.getTime()) ? format(value, 'MM/dd/yyyy') : 'Date'}
+          {value && !isNaN(value.getTime()) ? formatDateOnly(value, 'MM/dd/yyyy') : 'Date'}
           <CalendarIcon className="ml-auto h-3 w-3" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-        <EnhancedCalendar mode="single" selected={value} onSelect={(d) => { onSelect(d); setOpen(false); }} onClear={() => { onSelect(undefined); setOpen(false); }} onToday={() => { onSelect(new Date()); setOpen(false); }} initialFocus />
+        <EnhancedCalendar mode="single" selected={value} onSelect={(d) => { onSelect(d); setOpen(false); }} onClear={() => { onSelect(undefined); setOpen(false); }} onToday={() => { onSelect(parseDateOnly(todayDateOnly())); setOpen(false); }} initialFocus />
       </PopoverContent>
     </Popover>
   );
@@ -894,7 +894,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Funding Date</Label>
-                {renderDateField(fundingDate, (d) => handleChange('fundingDate', d ? format(d, 'yyyy-MM-dd') : ''), fundingDateOpen, setFundingDateOpen)}
+                {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen)}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Original Funding</Label>
@@ -910,7 +910,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Interest From</Label>
-                {renderDateField(interestFromDate, (d) => handleChange('interestFrom', d ? format(d, 'yyyy-MM-dd') : ''), interestFromOpen, setInterestFromOpen)}
+                {renderDateField(interestFromDate, (d) => handleChange('interestFrom', formatDateOnly(d)), interestFromOpen, setInterestFromOpen)}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Pro Rata</Label>
@@ -1174,14 +1174,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         )}
                         {disbColVisibility.accountId && <td className="py-0.5 px-1 text-xs">{row.accountId || '-'}</td>}
                         {disbColVisibility.name && <td className="py-0.5 px-1 text-xs">{row.name || '-'}</td>}
-                        {disbColVisibility.startDate && <td className="py-0.5 px-1 text-xs">{row.startDate ? format(new Date(row.startDate), 'MM/dd/yyyy') : '-'}</td>}
+                        {disbColVisibility.startDate && <td className="py-0.5 px-1 text-xs">{row.startDate ? formatDateOnly(parseDateOnly(row.startDate), 'MM/dd/yyyy') : '-'}</td>}
                         {showEndDateCol && (
-                          <td className="py-0.5 px-1 text-xs">{row.endDate ? format(new Date(row.endDate), 'MM/dd/yyyy') : (row.debitThrough === 'date' && row.debitThroughDate ? format(new Date(row.debitThroughDate), 'MM/dd/yyyy') : '-')}</td>
+                          <td className="py-0.5 px-1 text-xs">{row.endDate ? formatDateOnly(parseDateOnly(row.endDate), 'MM/dd/yyyy') : (row.debitThrough === 'date' && row.debitThroughDate ? formatDateOnly(parseDateOnly(row.debitThroughDate), 'MM/dd/yyyy') : '-')}</td>
                         )}
                         {disbColVisibility.amount && <td className="py-0.5 px-1 text-xs text-right">{row.amount ? `$${row.amount}` : '-'}</td>}
                         {disbColVisibility.debitThrough && (
                           <td className="py-0.5 px-1 text-xs">
-                            {row.debitThrough === 'date' ? (row.debitThroughDate ? format(new Date(row.debitThroughDate), 'MM/dd/yyyy') : '-') :
+                            {row.debitThrough === 'date' ? (row.debitThroughDate ? formatDateOnly(parseDateOnly(row.debitThroughDate), 'MM/dd/yyyy') : '-') :
                              row.debitThrough === 'amount' ? `$${row.debitThroughAmount}` :
                              row.debitThrough === 'payments' ? `${row.debitThroughPayments} Payments` :
                              row.debitThrough === 'payoff' ? 'Payoff' : '-'}
