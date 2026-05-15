@@ -16,7 +16,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
-import { format, parse, isValid } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import type { InsuranceData } from './InsuranceTableView';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
@@ -112,13 +112,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
 }) => {
   const [datePickerStates, setDatePickerStates] = useState<Record<string, boolean>>({});
 
-  const safeParseDateStr = (val: string): Date | undefined => {
-    if (!val) return undefined;
-    try {
-      const d = parse(val, 'yyyy-MM-dd', new Date());
-      return isValid(d) ? d : undefined;
-    } catch { return undefined; }
-  };
+  const safeParseDateStr = (val: string): Date | undefined => parseDateOnly(val);
 
   const renderField = (field: keyof InsuranceData, label: string, props: Record<string, any> = {}) => {
     if (props.type === 'date') {
@@ -130,12 +124,12 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
             <Popover open={datePickerStates[field] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [field]: open }))}>
               <PopoverTrigger asChild>
                 <Button variant="outline" className={cn('h-7 text-sm flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')} disabled={disabled}>
-                  {val && safeParseDateStr(val) ? format(safeParseDateStr(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                  {val && safeParseDateStr(val) ? formatDateOnly(safeParseDateStr(val), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                   <CalendarIcon className="ml-auto h-3.5 w-3.5" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                <EnhancedCalendar mode="single" selected={safeParseDateStr(val)} onSelect={(date) => { if (date) onChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { onChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { onChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
+                <EnhancedCalendar mode="single" selected={safeParseDateStr(val)} onSelect={(date) => { if (date) onChange(field, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { onChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { onChange(field, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
               </PopoverContent>
             </Popover>
           </div>

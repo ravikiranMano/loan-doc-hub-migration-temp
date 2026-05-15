@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
-import { format, parse, isValid } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
 import { hasModalFormData } from '@/lib/modalFormValidation';
@@ -54,13 +54,7 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
   const [showConfirm, setShowConfirm] = useState(false);
   const [datePickerStates, setDatePickerStates] = useState<Record<string, boolean>>({});
 
-  const safeParseDateStr = (val: string): Date | undefined => {
-    if (!val) return undefined;
-    try {
-      const d = parse(val, 'yyyy-MM-dd', new Date());
-      return isValid(d) ? d : undefined;
-    } catch { return undefined; }
-  };
+  const safeParseDateStr = (val: string): Date | undefined => parseDateOnly(val);
 
   useEffect(() => {
     if (open) {
@@ -96,7 +90,7 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
         <Popover open={datePickerStates[field] || false} onOpenChange={(o) => setDatePickerStates(prev => ({ ...prev, [field]: o }))}>
           <PopoverTrigger asChild>
             <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')}>
-              {val && safeParseDateStr(val) ? format(safeParseDateStr(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+              {val && safeParseDateStr(val) ? formatDateOnly(safeParseDateStr(val), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
               <CalendarIcon className="ml-auto h-3.5 w-3.5" />
             </Button>
           </PopoverTrigger>
@@ -104,9 +98,9 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
             <EnhancedCalendar
               mode="single"
               selected={safeParseDateStr(val)}
-              onSelect={(date) => { if (date) handleChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
+              onSelect={(date) => { if (date) handleChange(field, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
               onClear={() => { handleChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-              onToday={() => { handleChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
+              onToday={() => { handleChange(field, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
               initialFocus
             />
           </PopoverContent>
@@ -229,7 +223,7 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
                 <Popover open={datePickerStates['lastVerified'] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, lastVerified: open }))}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !String(formData.lastVerified || '') && 'text-muted-foreground')}>
-                      {String(formData.lastVerified || '') && safeParseDateStr(String(formData.lastVerified)) ? format(safeParseDateStr(String(formData.lastVerified))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                      {String(formData.lastVerified || '') && safeParseDateStr(String(formData.lastVerified)) ? formatDateOnly(safeParseDateStr(String(formData.lastVerified)), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                       <CalendarIcon className="ml-auto h-3.5 w-3.5" />
                     </Button>
                   </PopoverTrigger>
@@ -237,9 +231,9 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
                     <EnhancedCalendar
                       mode="single"
                       selected={safeParseDateStr(String(formData.lastVerified || ''))}
-                      onSelect={(date) => { if (date) handleChange('lastVerified', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, lastVerified: false })); }}
+                      onSelect={(date) => { if (date) handleChange('lastVerified', formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, lastVerified: false })); }}
                       onClear={() => { handleChange('lastVerified', ''); setDatePickerStates(prev => ({ ...prev, lastVerified: false })); }}
-                      onToday={() => { handleChange('lastVerified', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, lastVerified: false })); }}
+                      onToday={() => { handleChange('lastVerified', todayDateOnly()); setDatePickerStates(prev => ({ ...prev, lastVerified: false })); }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -289,7 +283,7 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
                 <Popover open={datePickerStates['borrowerNotifiedDate'] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, borrowerNotifiedDate: open }))}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !String(formData.borrowerNotifiedDate || '') && 'text-muted-foreground')}>
-                      {String(formData.borrowerNotifiedDate || '') && safeParseDateStr(String(formData.borrowerNotifiedDate)) ? format(safeParseDateStr(String(formData.borrowerNotifiedDate))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                      {String(formData.borrowerNotifiedDate || '') && safeParseDateStr(String(formData.borrowerNotifiedDate)) ? formatDateOnly(safeParseDateStr(String(formData.borrowerNotifiedDate)), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                       <CalendarIcon className="ml-auto h-3.5 w-3.5" />
                     </Button>
                   </PopoverTrigger>
@@ -297,9 +291,9 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
                     <EnhancedCalendar
                       mode="single"
                       selected={safeParseDateStr(String(formData.borrowerNotifiedDate || ''))}
-                      onSelect={(date) => { if (date) handleChange('borrowerNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, borrowerNotifiedDate: false })); }}
+                      onSelect={(date) => { if (date) handleChange('borrowerNotifiedDate', formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, borrowerNotifiedDate: false })); }}
                       onClear={() => { handleChange('borrowerNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, borrowerNotifiedDate: false })); }}
-                      onToday={() => { handleChange('borrowerNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, borrowerNotifiedDate: false })); }}
+                      onToday={() => { handleChange('borrowerNotifiedDate', todayDateOnly()); setDatePickerStates(prev => ({ ...prev, borrowerNotifiedDate: false })); }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -317,7 +311,7 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
                 <Popover open={datePickerStates['lenderNotifiedDate'] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, lenderNotifiedDate: open }))}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !String((formData as any).lenderNotifiedDate || '') && 'text-muted-foreground')}>
-                      {String((formData as any).lenderNotifiedDate || '') && safeParseDateStr(String((formData as any).lenderNotifiedDate)) ? format(safeParseDateStr(String((formData as any).lenderNotifiedDate))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                      {String((formData as any).lenderNotifiedDate || '') && safeParseDateStr(String((formData as any).lenderNotifiedDate)) ? formatDateOnly(safeParseDateStr(String((formData as any).lenderNotifiedDate)), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                       <CalendarIcon className="ml-auto h-3.5 w-3.5" />
                     </Button>
                   </PopoverTrigger>
@@ -325,9 +319,9 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
                     <EnhancedCalendar
                       mode="single"
                       selected={safeParseDateStr(String((formData as any).lenderNotifiedDate || ''))}
-                      onSelect={(date) => { if (date) handleChange('lenderNotifiedDate' as keyof PropertyTaxData, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, lenderNotifiedDate: false })); }}
+                      onSelect={(date) => { if (date) handleChange('lenderNotifiedDate' as keyof PropertyTaxData, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, lenderNotifiedDate: false })); }}
                       onClear={() => { handleChange('lenderNotifiedDate' as keyof PropertyTaxData, ''); setDatePickerStates(prev => ({ ...prev, lenderNotifiedDate: false })); }}
-                      onToday={() => { handleChange('lenderNotifiedDate' as keyof PropertyTaxData, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, lenderNotifiedDate: false })); }}
+                      onToday={() => { handleChange('lenderNotifiedDate' as keyof PropertyTaxData, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, lenderNotifiedDate: false })); }}
                       initialFocus
                     />
                   </PopoverContent>

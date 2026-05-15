@@ -18,7 +18,7 @@ import { ModalSaveConfirmation } from './ModalSaveConfirmation';
 import { hasModalFormData } from '@/lib/modalFormValidation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
-import { format, parse, isValid } from 'date-fns';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import type { ChargeData } from './ChargesTableView';
 
 interface ChargesModalProps {
@@ -76,15 +76,7 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
   };
   const handleConfirmSave = () => { setShowConfirm(false); onSave(formData); onOpenChange(false); };
 
-  const safeParse = (v: string): Date | undefined => {
-    if (!v) return undefined;
-    try {
-      const d = parse(v, 'yyyy-MM-dd', new Date());
-      if (isValid(d)) return d;
-      const d2 = new Date(v);
-      return isValid(d2) ? d2 : undefined;
-    } catch { return undefined; }
-  };
+  const safeParse = (v: string): Date | undefined => parseDateOnly(v);
 
   const renderDateField = (field: keyof ChargeData, label: string, labelWidth = 'w-[110px]') => {
     const val = formData[field] || '';
@@ -94,12 +86,12 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
         <Popover open={datePickerStates[field] || false} onOpenChange={(o) => setDatePickerStates(prev => ({ ...prev, [field]: o }))}>
           <PopoverTrigger asChild>
             <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')}>
-              {val && safeParse(val) ? format(safeParse(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+              {val && safeParse(val) ? formatDateOnly(safeParse(val), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
               <CalendarIcon className="ml-auto h-3.5 w-3.5" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0 !z-[9999]" align="start">
-            <EnhancedCalendar mode="single" selected={safeParse(val)} onSelect={(date) => { if (date) handleFieldChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { handleFieldChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { handleFieldChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
+            <EnhancedCalendar mode="single" selected={safeParse(val)} onSelect={(date) => { if (date) handleFieldChange(field, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { handleFieldChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { handleFieldChange(field, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
           </PopoverContent>
         </Popover>
       </div>

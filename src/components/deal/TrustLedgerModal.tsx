@@ -12,8 +12,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
-import { format, parse, isValid } from 'date-fns';
-import { todayDateOnly } from '@/lib/dateOnly';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
 import { hasModalFormData } from '@/lib/modalFormValidation';
@@ -52,13 +52,7 @@ export const TrustLedgerModal: React.FC<TrustLedgerModalProps> = ({
   const [balanceFocused, setBalanceFocused] = useState(false);
   const [mutualError, setMutualError] = useState('');
 
-  const safeParseDateStr = (val: string): Date | undefined => {
-    if (!val) return undefined;
-    try {
-      const d = parse(val, 'yyyy-MM-dd', new Date());
-      return isValid(d) ? d : undefined;
-    } catch { return undefined; }
-  };
+  const safeParseDateStr = (val: string): Date | undefined => parseDateOnly(val);
 
   useEffect(() => {
     if (open) {
@@ -139,7 +133,7 @@ export const TrustLedgerModal: React.FC<TrustLedgerModalProps> = ({
                 <Popover open={dateOpen} onOpenChange={setDateOpen}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className={cn('h-8 text-xs w-full justify-start text-left font-normal', !formData.date && 'text-muted-foreground')}>
-                      {formData.date && safeParseDateStr(formData.date) ? format(safeParseDateStr(formData.date)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                      {formData.date && safeParseDateStr(formData.date) ? formatDateOnly(safeParseDateStr(formData.date), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
                       <CalendarIcon className="ml-auto h-3.5 w-3.5" />
                     </Button>
                   </PopoverTrigger>
@@ -147,9 +141,9 @@ export const TrustLedgerModal: React.FC<TrustLedgerModalProps> = ({
                     <EnhancedCalendar
                       mode="single"
                       selected={safeParseDateStr(formData.date)}
-                      onSelect={(date) => { if (date) handleChange('date', format(date, 'yyyy-MM-dd')); setDateOpen(false); }}
+                      onSelect={(date) => { if (date) handleChange('date', formatDateOnly(date)); setDateOpen(false); }}
                       onClear={() => { handleChange('date', ''); setDateOpen(false); }}
-                      onToday={() => { handleChange('date', format(new Date(), 'yyyy-MM-dd')); setDateOpen(false); }}
+                      onToday={() => { handleChange('date', todayDateOnly()); setDateOpen(false); }}
                       initialFocus
                     />
                   </PopoverContent>
