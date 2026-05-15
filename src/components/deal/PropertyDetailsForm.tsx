@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
-import { roundPctForStorage, roundDollarForStorage, computeLtv, formatDollar } from '@/lib/precisionFormat';
+import { roundPctForStorage, roundDollarForStorage, computeLtv, formatDollar, formatLtv } from '@/lib/precisionFormat';
 import { US_STATES } from '@/lib/usStates';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Input } from '@/components/ui/input';
@@ -150,19 +150,34 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValueNum - loanAmountNum));
     }
 
-    // CLTV (sum of all liens / Estimate of Value)
-    const cltv = computeLtv(existingLiensTotal, estValueNum);
-    if (cltv !== null) writeIfChanged(FIELD_KEYS.cltv, cltv);
+    // Skip-condition flags per LTV display spec.
+    const estValueValid = Number.isFinite(estValueNum) && estValueNum > 0;
+    const loanAmountValid = Number.isFinite(loanAmountNum) && loanAmountNum >= 0;
+    const principalValid = Number.isFinite(currentPrincipalNum) && currentPrincipalNum >= 0;
 
-    // Current LTV — uses Balances → Principal (loan_terms.principal)
-    if (!currentBalanceInvalid && Number.isFinite(currentPrincipalNum)) {
-      const curLtv = computeLtv(currentPrincipalNum, estValueNum);
-      if (curLtv !== null) writeIfChanged(FIELD_KEYS.ltv, curLtv);
+    // CLTV (sum of all liens / Estimate of Value)
+    if (estValueValid) {
+      const cltv = computeLtv(existingLiensTotal, estValueNum);
+      writeIfChanged(FIELD_KEYS.cltv, cltv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.cltv, '');
     }
 
-    // Origination LTV — Loan Amount / Estimate of Value
-    const origLtv = computeLtv(loanAmountNum, estValueNum);
-    if (origLtv !== null) writeIfChanged(FIELD_KEYS.originationLtv, origLtv);
+    // Current LTV — Balances → Principal / Estimate of Value
+    if (estValueValid && principalValid) {
+      const curLtv = computeLtv(currentPrincipalNum, estValueNum);
+      writeIfChanged(FIELD_KEYS.ltv, curLtv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.ltv, '');
+    }
+
+    // Origination LTV — Loan Amount / Estimate of Value (frozen formula)
+    if (estValueValid && loanAmountValid) {
+      const origLtv = computeLtv(loanAmountNum, estValueNum);
+      writeIfChanged(FIELD_KEYS.originationLtv, origLtv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.originationLtv, '');
+    }
 
     // Principal Paid = Loan Amount − Current Principal Balance (derived)
     if (
@@ -581,12 +596,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={getFieldValue(FIELD_KEYS.originationLtv)}
-                  onChange={(e) => handlePercentageChange(FIELD_KEYS.originationLtv, e.target.value)}
+                  value={formatLtv(getFieldValue(FIELD_KEYS.originationLtv)) || '—'}
+                  readOnly
                   disabled={disabled}
-                  className="h-7 text-xs pr-6"
+                  className="h-7 text-xs bg-muted/40"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
           </DirtyFieldWrapper>
@@ -602,13 +616,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Current LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={getFieldValue(FIELD_KEYS.ltv)}
-                  onChange={(e) => handlePercentageChange(FIELD_KEYS.ltv, e.target.value)}
+                  value={formatLtv(getFieldValue(FIELD_KEYS.ltv)) || '—'}
+                  readOnly
                   disabled={disabled}
-                  className="h-7 text-xs pr-6"
-                  inputMode="decimal"
+                  className="h-7 text-xs bg-muted/40"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
           </DirtyFieldWrapper>
@@ -617,13 +629,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">CLTV (If a Junior Lien)</Label>
               <div className="relative flex-1">
                 <Input
-                  value={getFieldValue(FIELD_KEYS.cltv)}
-                  onChange={(e) => handlePercentageChange(FIELD_KEYS.cltv, e.target.value)}
+                  value={formatLtv(getFieldValue(FIELD_KEYS.cltv)) || '—'}
+                  readOnly
                   disabled={disabled}
-                  className="h-7 text-xs pr-6"
-                  inputMode="decimal"
+                  className="h-7 text-xs bg-muted/40"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
           </DirtyFieldWrapper>
