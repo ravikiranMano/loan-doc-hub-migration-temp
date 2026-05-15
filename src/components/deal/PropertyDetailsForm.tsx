@@ -106,57 +106,30 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     return total;
   }, [values]);
 
-  // Live current principal balance from servicing ledger (loan_history).
-  // Drives Current LTV; falls back to null when no rows exist (LTV stays blank).
-  const [currentPrincipalBalance, setCurrentPrincipalBalance] = React.useState<number | null>(null);
-  useEffect(() => {
-    if (!dealId) { setCurrentPrincipalBalance(null); return; }
-    let cancelled = false;
-    const load = async () => {
-      const { data, error } = await supabase
-        .from('loan_history')
-        .select('principal_balance,date_received,created_at')
-        .eq('deal_id', dealId)
-        .order('date_received', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      if (error || !data || data.principal_balance == null) {
-        setCurrentPrincipalBalance(null);
-      } else {
-        const num = typeof data.principal_balance === 'string'
-          ? parseFloat(data.principal_balance)
-          : Number(data.principal_balance);
-        setCurrentPrincipalBalance(Number.isFinite(num) ? num : null);
-      }
-    };
-    load();
-    const channel = supabase
-      .channel(`loan_history_${dealId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'loan_history', filter: `deal_id=eq.${dealId}` }, load)
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(channel); };
-  }, [dealId]);
-
-  // Auto-calculate equities & LTVs — auto-sync on any input change.
+  // Auto-calculate equities, LTVs, and Principal Paid.
   // Formulas (per spec):
   //   Protective Equity = Estimate of Value − Current Balance (from liens)
   //   Pledged Equity    = Estimate of Value − Loan Amount
   //   CLTV              = Total All Liens / Estimate of Value × 100
-  //   Current LTV       = Current Principal Balance (servicing) / Estimate of Value × 100
-  //   Origination LTV   = Loan Amount / Estimate of Value × 100
+  //   Origination LTV   = Loan Amount / Estimate of Value × 100   (static after funding;
+  //                       still recomputed from current source values, never from a stale copy)
+  //   Current LTV       = Balances → Principal / Estimate of Value × 100  (recalcs whenever
+  //                       Principal or Estimate of Value changes)
+  //   Principal Paid    = Loan Amount − Balances → Principal      (derived; not user-editable)
   const loanAmountRaw = values['loan_terms.loan_amount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
+  const currentPrincipalRaw = values['loan_terms.principal'] || '';
   const liensBalanceForEquity = liensCurrentBalanceTotal;
 
   const loanAmountNum = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
   const estValueNum = parseFloat(estValueRaw.replace(/[, $]/g, ''));
+  const currentPrincipalNum = parseFloat(currentPrincipalRaw.replace(/[, $]/g, ''));
 
   // Inline validation flags (skip the offending calc, surface near the field).
   const estValueInvalid = estValueRaw.trim() !== '' && (!Number.isFinite(estValueNum) || estValueNum <= 0);
   const loanAmountInvalid = Number.isFinite(loanAmountNum) && loanAmountNum < 0;
-  const currentBalanceInvalid = currentPrincipalBalance !== null && currentPrincipalBalance < 0;
+  const currentBalanceInvalid =
+    currentPrincipalRaw.trim() !== '' && Number.isFinite(currentPrincipalNum) && currentPrincipalNum < 0;
 
   useEffect(() => {
     const writeIfChanged = (key: string, next: string) => {
@@ -181,16 +154,24 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     const cltv = computeLtv(existingLiensTotal, estValueNum);
     if (cltv !== null) writeIfChanged(FIELD_KEYS.cltv, cltv);
 
-    // Current LTV — uses live servicing ledger principal balance
-    if (currentPrincipalBalance !== null) {
-      const curLtv = computeLtv(currentPrincipalBalance, estValueNum);
+    // Current LTV — uses Balances → Principal (loan_terms.principal)
+    if (!currentBalanceInvalid && Number.isFinite(currentPrincipalNum)) {
+      const curLtv = computeLtv(currentPrincipalNum, estValueNum);
       if (curLtv !== null) writeIfChanged(FIELD_KEYS.ltv, curLtv);
     }
 
     // Origination LTV — Loan Amount / Estimate of Value
     const origLtv = computeLtv(loanAmountNum, estValueNum);
     if (origLtv !== null) writeIfChanged(FIELD_KEYS.originationLtv, origLtv);
-  }, [loanAmountRaw, estValueRaw, liensBalanceForEquity, existingLiensTotal, currentPrincipalBalance]);
+
+    // Principal Paid = Loan Amount − Current Principal Balance (derived)
+    if (
+      Number.isFinite(loanAmountNum) && loanAmountNum >= 0 &&
+      Number.isFinite(currentPrincipalNum) && currentPrincipalNum >= 0
+    ) {
+      writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(loanAmountNum - currentPrincipalNum));
+    }
+  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
 
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
