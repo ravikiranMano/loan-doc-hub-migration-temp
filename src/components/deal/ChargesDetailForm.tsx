@@ -29,15 +29,7 @@ import { DEPARTMENT_OPTIONS, getDepartmentCategories, getCategoryDetails } from 
 
 const BILLING_OPTIONS = ['Short Payment', 'Debit All Outgoing', 'Credit Card', 'Invoice / Link'];
 
-const safeParse = (v: string): Date | undefined => {
-  if (!v) return undefined;
-  try {
-    const d = parse(v, 'yyyy-MM-dd', new Date());
-    if (isValid(d)) return d;
-    const d2 = new Date(v);
-    return isValid(d2) ? d2 : undefined;
-  } catch { return undefined; }
-};
+const safeParse = (v: string): Date | undefined => parseDateOnly(v);
 
 export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
   values,
