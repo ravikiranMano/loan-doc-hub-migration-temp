@@ -178,12 +178,15 @@ export function formatPercentage(value: string | number | null, decimals = 4): s
 // Category-aware percentage formatting (mirrors src/lib/precisionFormat.ts)
 // ============================================================================
 
-export type PercentCategory = "interestRate" | "proRata" | "ratio" | "lateChargePct";
+export type PercentCategory = "interestRate" | "proRata" | "ratio" | "lateChargePct" | "ltv";
 
 export function resolvePercentCategory(fieldKey: string | null | undefined): PercentCategory {
   if (!fieldKey) return "interestRate";
   const k = fieldKey.toLowerCase();
-  if (/(^|_)(ltv|cltv)(_|$)/.test(k) || k.includes("protective_equity") || k.includes("protectiveequity")) {
+  if (/(^|_)(ltv|cltv|origination_ltv)(_|$)/.test(k)) {
+    return "ltv";
+  }
+  if (k.includes("protective_equity") || k.includes("protectiveequity")) {
     return "ratio";
   }
   if (k.includes("late_charge") && (k.includes("pct") || k.includes("percent") || k.includes("rate"))) {
@@ -208,6 +211,7 @@ export function formatPercentByFieldKey(
   value: string | number | null
 ): string {
   switch (resolvePercentCategory(fieldKey)) {
+    case "ltv": return formatPercentage(value, 4);
     case "ratio": return formatPercentage(value, 2);
     case "proRata": return formatPercentage(value, 4);
     case "lateChargePct": return formatPercentage(value, 3);
