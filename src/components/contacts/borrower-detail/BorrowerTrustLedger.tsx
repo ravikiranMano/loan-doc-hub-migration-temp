@@ -348,7 +348,7 @@ const BorrowerTrustLedger: React.FC<{ borrowerId: string; contactDbId: string; d
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full h-8 text-xs justify-start font-normal">
-                        {(newEntry as any)[f.key] || <span className="text-muted-foreground">dd-mm-yyyy</span>}
+                        {(newEntry as any)[f.key] || <span className="text-muted-foreground">mm/dd/yyyy</span>}
                         <CalendarIcon className="ml-auto h-3 w-3" />
                       </Button>
                     </PopoverTrigger>

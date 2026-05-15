@@ -352,7 +352,7 @@ const BorrowerCharges: React.FC<Props> = ({ contactDbId }) => {
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn('h-8 text-xs w-full justify-start font-normal', !filterDateFrom && 'text-muted-foreground')}>
-                        {filterDateFrom ? (() => { try { const d = parse(filterDateFrom, 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'dd-MM-yyyy') : filterDateFrom; } catch { return filterDateFrom; } })() : 'dd-mm-yyyy'}
+                        {filterDateFrom ? (() => { try { const d = parse(filterDateFrom, 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'MM/dd/yyyy') : filterDateFrom; } catch { return filterDateFrom; } })() : 'mm/dd/yyyy'}
                         <CalendarIcon className="ml-auto h-3 w-3" />
                       </Button>
                     </PopoverTrigger>
@@ -366,7 +366,7 @@ const BorrowerCharges: React.FC<Props> = ({ contactDbId }) => {
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn('h-8 text-xs w-full justify-start font-normal', !filterDateTo && 'text-muted-foreground')}>
-                        {filterDateTo ? (() => { try { const d = parse(filterDateTo, 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'dd-MM-yyyy') : filterDateTo; } catch { return filterDateTo; } })() : 'dd-mm-yyyy'}
+                        {filterDateTo ? (() => { try { const d = parse(filterDateTo, 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'MM/dd/yyyy') : filterDateTo; } catch { return filterDateTo; } })() : 'mm/dd/yyyy'}
                         <CalendarIcon className="ml-auto h-3 w-3" />
                       </Button>
                     </PopoverTrigger>

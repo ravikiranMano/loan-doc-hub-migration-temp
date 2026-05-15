@@ -322,7 +322,7 @@ const LenderConversationLog: React.FC<{ lenderId: string; contactDbId: string; d
           <Popover open={asOfFilterOpen} onOpenChange={setAsOfFilterOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 text-xs gap-1 w-[130px] justify-start">
-                {asOfDateFilter ? format(asOfDateFilter, 'dd-MM-yyyy') : <span className="text-muted-foreground">dd-mm-yyyy</span>}
+                {asOfDateFilter ? format(asOfDateFilter, 'MM/dd/yyyy') : <span className="text-muted-foreground">mm/dd/yyyy</span>}
                 <CalendarIcon className="h-3 w-3 ml-auto" />
               </Button>
             </PopoverTrigger>
