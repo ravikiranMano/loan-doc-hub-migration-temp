@@ -596,12 +596,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={getFieldValue(FIELD_KEYS.originationLtv)}
-                  onChange={(e) => handlePercentageChange(FIELD_KEYS.originationLtv, e.target.value)}
+                  value={formatLtv(getFieldValue(FIELD_KEYS.originationLtv)) || '—'}
+                  readOnly
                   disabled={disabled}
-                  className="h-7 text-xs pr-6"
+                  className="h-7 text-xs bg-muted/40"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
           </DirtyFieldWrapper>
@@ -617,13 +616,24 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Current LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={getFieldValue(FIELD_KEYS.ltv)}
-                  onChange={(e) => handlePercentageChange(FIELD_KEYS.ltv, e.target.value)}
+                  value={formatLtv(getFieldValue(FIELD_KEYS.ltv)) || '—'}
+                  readOnly
                   disabled={disabled}
-                  className="h-7 text-xs pr-6"
-                  inputMode="decimal"
+                  className="h-7 text-xs bg-muted/40"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
+              </div>
+            </div>
+          </DirtyFieldWrapper>
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.cltv}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[110px] shrink-0 text-xs text-foreground">CLTV (If a Junior Lien)</Label>
+              <div className="relative flex-1">
+                <Input
+                  value={formatLtv(getFieldValue(FIELD_KEYS.cltv)) || '—'}
+                  readOnly
+                  disabled={disabled}
+                  className="h-7 text-xs bg-muted/40"
+                />
               </div>
             </div>
           </DirtyFieldWrapper>
