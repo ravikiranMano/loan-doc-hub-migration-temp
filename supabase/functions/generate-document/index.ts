@@ -3396,22 +3396,20 @@ async function generateSingleDocument(
         let antAmtCount = 0;
         for (const i of orderedIdx) {
           const rec = perLien[i] || {};
-          const isAnticipated = isTrueVal(rec.ant);
           const isThisLoan = isTrueVal(rec.thisLoan);
           // Skip "this loan" lien — its amount is already covered by ln_p_loanAmount.
           if (isThisLoan) continue;
-          if (isAnticipated) {
-            const ant = toNum(rec.nrb) || toNum(rec.antAmt);
-            if (ant > 0) {
-              antAmtSum += ant;
-              antAmtCount++;
-            }
-          } else {
-            const cb = toNum(rec.cb);
-            if (cb > 0) {
-              lienBalSum += cb;
-              lienBalCount++;
-            }
+          // Per spec: subtract BOTH current lien balance AND anticipated amount independently.
+          // Formula: pr_pd_estimateValue − ln_p_loanAmount − pr_li_lienCurrenBalanc − li_lt_anticipatedAmount
+          const cb = toNum(rec.cb);
+          if (cb > 0) {
+            lienBalSum += cb;
+            lienBalCount++;
+          }
+          const ant = toNum(rec.nrb) || toNum(rec.antAmt);
+          if (ant > 0) {
+            antAmtSum += ant;
+            antAmtCount++;
           }
         }
 
