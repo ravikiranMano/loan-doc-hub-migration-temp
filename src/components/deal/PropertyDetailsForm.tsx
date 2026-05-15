@@ -578,7 +578,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           </DirtyFieldWrapper>
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.originationLtv}>
             <div className="flex items-center gap-2">
-              <Label className="w-[110px] shrink-0 text-xs text-foreground">Origination LTV</Label>
+              <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
               <div className="relative flex-1">
                 <Input
                   value={getFieldValue(FIELD_KEYS.originationLtv)}
