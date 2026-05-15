@@ -207,13 +207,16 @@ export function formatDollar(value: string | number | null | undefined): string 
 // Field-key -> category resolver
 // ----------------------------------------------------------------------------
 
-export type PercentCategory = 'interestRate' | 'proRata' | 'ratio' | 'lateChargePct';
+export type PercentCategory = 'interestRate' | 'proRata' | 'ratio' | 'lateChargePct' | 'ltv';
 
 /** Resolve a field key to its percentage category. Defaults to interestRate (3dp). */
 export function resolvePercentCategory(fieldKey: string | null | undefined): PercentCategory {
   if (!fieldKey) return 'interestRate';
   const k = fieldKey.toLowerCase();
-  if (/(^|_)(ltv|cltv)(_|$)/.test(k) || k.includes('protective_equity') || k.includes('protectiveequity')) {
+  if (/(^|_)(ltv|cltv|origination_ltv)(_|$)/.test(k)) {
+    return 'ltv';
+  }
+  if (k.includes('protective_equity') || k.includes('protectiveequity')) {
     return 'ratio';
   }
   if (k.includes('late_charge') && (k.includes('pct') || k.includes('percent') || k.includes('rate'))) {
@@ -234,12 +237,19 @@ export function resolvePercentCategory(fieldKey: string | null | undefined): Per
   return 'interestRate';
 }
 
+/** LTV / CLTV display: min 2dp, max 4dp, trailing zeros trimmed beyond the 2nd decimal. */
+export function formatLtv(value: string | number | null | undefined): string {
+  const s = formatPercentDisplay(value, 4);
+  return s === '' ? '' : `${s}%`;
+}
+
 /** Format a percent value using the category resolved from a field key. */
 export function formatPercentByFieldKey(
   fieldKey: string | null | undefined,
   value: string | number | null | undefined
 ): string {
   switch (resolvePercentCategory(fieldKey)) {
+    case 'ltv': return formatLtv(value);
     case 'ratio': return formatRatio(value);
     case 'proRata': return formatProRata(value);
     case 'lateChargePct': return formatLateChargePct(value);
