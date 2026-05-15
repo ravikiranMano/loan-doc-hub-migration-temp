@@ -564,13 +564,27 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-flex items-center justify-center h-5 w-5">
-                    {record.roundingAdjustment ? (
-                      <Check className="h-4 w-4 text-primary" aria-label="Receives rounding adjustment" />
-                    ) : (
-                      <span className="text-muted-foreground/40">—</span>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!!record.roundingAdjustment}
+                    aria-label="Receives rounding adjustment"
+                    disabled={disabled}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (disabled) return;
+                      if (!record.roundingAdjustment) {
+                        onUpdateRecord(record.id, { roundingAdjustment: true });
+                      }
+                    }}
+                    className={cn(
+                      "aspect-square h-4 w-4 rounded-full border border-primary text-primary ring-offset-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 inline-flex items-center justify-center",
                     )}
-                  </span>
+                  >
+                    {record.roundingAdjustment && (
+                      <span className="h-2 w-2 rounded-full bg-primary" />
+                    )}
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
                   This lender will receive any rounding difference (e.g., $0.01)
