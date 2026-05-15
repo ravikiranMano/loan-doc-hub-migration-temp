@@ -6873,7 +6873,154 @@ async function generateSingleDocument(
       return processedDocx;
     };
 
-    // ── RE851D POST-RENDER OWNER OCCUPIED safety pass ──
+    // ── RE851D MULTI-PROPERTY LIEN-DETAIL CLONER ─────────────────────────
+    // The shipped RE851D template carries the lien-detail block (ENCUMBRANCE
+    // grids + "Additional encumbrances…" YES/NO row + Broker/Lender initials
+    // row) only ONCE. Property 1 maps and renders correctly today. For deals
+    // with 2..5 properties we duplicate that exact block per extra property,
+    // each on a fresh page, prefixed with a "PROPERTY INFORMATION" anchor so
+    // every downstream per-property pass (label-anchored encumbrance value
+    // publisher, balloon safety pass, additional-encumbrance YES/NO + addendum
+    // attachment, lien questionnaire, etc.) automatically picks up the new
+    // region and writes the matching pr_li_rem_*_{N}_{S} / pr_li_ant_*_{N}_{S}
+    // values that the in-render publisher has already produced for N=2..K.
+    //
+    // Strictly additive: never edits Property 1's block, and short-circuits
+    // when:
+    //   • template is not RE851D
+    //   • the loan file has 1 (or zero) properties
+    //   • the lien-detail boundaries cannot be located
+    //   • the document already exposes >=K PROPERTY INFORMATION anchors
+    //     (idempotent — safe to re-run, e.g. on retries or if a future
+    //     template revision ships pre-cloned).
+    if (/851d/i.test(template.name || "")) {
+      try {
+        // Determine property count K from already-published field values.
+        let K = 1;
+        for (let n = 5; n >= 2; n--) {
+          const a = fieldValues.get(`property${n}.address`)?.rawValue;
+          const v = fieldValues.get(`property${n}.appraise_value`)?.rawValue;
+          const ad = fieldValues.get(`property${n}.address_line1`)?.rawValue;
+          if (
+            (a !== undefined && String(a).trim() !== "") ||
+            (v !== undefined && String(v).trim() !== "") ||
+            (ad !== undefined && String(ad).trim() !== "")
+          ) { K = n; break; }
+        }
+
+        if (K >= 2) {
+          const unzipped = __passUnzip(processedDocx);
+          for (const [filename, bytes] of Object.entries(unzipped)) {
+            if (filename !== "word/document.xml") continue;
+            let xml = __xmlGet(filename, bytes);
+            // Idempotency: if document already has >=K "PROPERTY INFORMATION" anchors, skip.
+            const existingAnchors = (xml.match(/PROPERTY\s*<[^>]*>\s*<[^>]*>?\s*INFORMATION|PROPERTY\s+INFORMATION/gi) || []).length;
+            // Quick visible-text count via projection (more reliable across run splits).
+            const vp0 = __getVisProj(filename, xml);
+            if (vp0.propAnchorsRaw.length >= K) {
+              debugLog(`[851D-clone] already has ${vp0.propAnchorsRaw.length} PROPERTY anchors (>=K=${K}); skipping`);
+              continue;
+            }
+
+            // Locate the lien-detail block in raw XML.
+            // Anchor: visible "ENCUMBRANCE(S) REMAINING" → walk back to its
+            // enclosing <w:tbl>; then walk forward through tables until we
+            // pass the table containing "INITIALS" (Broker/Lender initials).
+            const txt = vp0.txt;
+            const map = vp0.map;
+            const remIdx = txt.search(/ENCUMBRANCE\(S\)\s+REMAINING/i);
+            if (remIdx < 0) {
+              debugLog(`[851D-clone] could not find ENCUMBRANCE(S) REMAINING anchor; skipping`);
+              continue;
+            }
+            const remRaw = map[remIdx] ?? -1;
+            if (remRaw < 0) continue;
+            // Walk back to find the enclosing <w:tbl>.
+            const blockStart = xml.lastIndexOf("<w:tbl>", remRaw);
+            if (blockStart < 0) {
+              debugLog(`[851D-clone] no enclosing <w:tbl> for REMAINING; skipping`);
+              continue;
+            }
+            // From blockStart, scan forward through consecutive top-level
+            // tables/paragraphs until we close the table that contains
+            // "INITIALS" (Broker/Lender initials). Cap distance defensively.
+            const SCAN_CAP = 200_000; // chars
+            const scanLimit = Math.min(xml.length, blockStart + SCAN_CAP);
+            let cursor = blockStart;
+            let blockEnd = -1;
+            while (cursor < scanLimit) {
+              // Find next top-level <w:tbl> opening at cursor (must start with <w:tbl>).
+              if (xml.startsWith("<w:tbl>", cursor) || xml.startsWith("<w:tbl ", cursor)) {
+                const close = xml.indexOf("</w:tbl>", cursor);
+                if (close < 0) break;
+                const tblEnd = close + "</w:tbl>".length;
+                const tblXml = xml.slice(cursor, tblEnd);
+                const tblTxt = tblXml.replace(/<[^>]+>/g, " ");
+                cursor = tblEnd;
+                if (/\bINITIALS\b/i.test(tblTxt)) {
+                  blockEnd = tblEnd;
+                  break;
+                }
+              } else if (xml.startsWith("<w:p>", cursor) || xml.startsWith("<w:p ", cursor)) {
+                const close = xml.indexOf("</w:p>", cursor);
+                if (close < 0) break;
+                cursor = close + "</w:p>".length;
+              } else {
+                // Skip a single character if neither table nor paragraph at cursor.
+                cursor += 1;
+              }
+            }
+            if (blockEnd < 0) {
+              debugLog(`[851D-clone] could not locate end-of-lien-block (INITIALS table); skipping`);
+              continue;
+            }
+
+            const slice = xml.slice(blockStart, blockEnd);
+
+            // Build N-1 clones (N=2..K). Each clone:
+            //  • leading explicit page break paragraph
+            //  • a "PROPERTY INFORMATION" heading paragraph (gives the
+            //    downstream per-property scanner its anchor)
+            //  • the lien-detail slice with bookmark + SDT + revision IDs
+            //    namespaced per property to avoid Word ID collisions.
+            const PAGE_BREAK_P =
+              `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+            const headingFor = (i: number) =>
+              `<w:p><w:pPr><w:pStyle w:val="Heading2"/><w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/></w:pPr>` +
+              `<w:r><w:rPr><w:b/><w:caps/></w:rPr>` +
+              `<w:t xml:space="preserve">PROPERTY INFORMATION (Property ${i})</w:t></w:r></w:p>`;
+
+            const namespaceIds = (s: string, i: number): string => {
+              const bump = i * 100000;
+              // Bump numeric w:id="…" attributes (revisions, bookmarks, sdt ids, etc.)
+              s = s.replace(/(\bw:id=")(\d+)(")/g, (_m, p1, num, p3) => `${p1}${parseInt(num, 10) + bump}${p3}`);
+              // Bump bookmark names so they remain unique.
+              s = s.replace(/(<w:bookmarkStart\b[^>]*\bw:name=")([^"]+)(")/g, (_m, p1, nm, p3) => `${p1}${nm}_p${i}${p3}`);
+              return s;
+            };
+
+            const clones: string[] = [];
+            for (let i = 2; i <= K; i++) {
+              clones.push(PAGE_BREAK_P + headingFor(i) + namespaceIds(slice, i));
+            }
+            const insertion = clones.join("");
+
+            // Splice clones immediately after the original lien-detail block
+            // so each cloned block sits on its own page.
+            const newXml = xml.slice(0, blockEnd) + insertion + xml.slice(blockEnd);
+            __xmlSet(filename, newXml);
+            debugLog(`[851D-clone] cloned lien-detail block for properties 2..${K} (slice=${slice.length} chars, ${clones.length} clones)`);
+          }
+        }
+      } catch (cloneErr) {
+        console.error(
+          `[generate-document] RE851D multi-property clone pass failed (continuing):`,
+          cloneErr instanceof Error ? cloneErr.message : String(cloneErr)
+        );
+      }
+    }
+
+
     // Some authored RE851D templates carry inline conditional checkbox glyphs
     // (e.g. {{#if (eq pr_p_occupanc_N "Owner Occupied")}}☑{{else}}☐{{/if}})
     // that, depending on template variants and run fragmentation, may leave
