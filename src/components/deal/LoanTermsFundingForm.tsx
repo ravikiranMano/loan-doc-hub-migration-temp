@@ -299,6 +299,36 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     return [];
   }, [values]);
 
+  // Self-heal pctOwned for stored records: Pro Rata MUST be each lender's
+  // funding amount divided by the TOTAL LOAN AMOUNT (not the sum of funded
+  // amounts). Records persisted by older builds may have an incorrect
+  // pctOwned (e.g. 100% for a single partial-funding lender); recompute and
+  // re-persist whenever loanAmount is known and a drift is detected.
+  const lastHealedRef = useRef<string>('');
+  useEffect(() => {
+    if (!fundingRecords.length) return;
+    const loanAmt = parseFloat(String(loanAmount || '').replace(/[$,]/g, '')) || 0;
+    if (loanAmt <= 0) return;
+    let drift = false;
+    const healed = fundingRecords.map((r) => {
+      const fa = Number(r.originalAmount) || 0;
+      if (fa <= 0) return r;
+      const expected = parseFloat(((fa / loanAmt) * 100).toFixed(4));
+      const current = Number(r.pctOwned) || 0;
+      if (Math.abs(expected - current) > 0.0001) {
+        drift = true;
+        return { ...r, pctOwned: expected };
+      }
+      return r;
+    });
+    if (!drift) return;
+    const json = JSON.stringify(healed);
+    if (lastHealedRef.current === json) return;
+    lastHealedRef.current = json;
+    onValueChange(FIELD_KEYS.fundingRecords, json);
+    void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
+  }, [fundingRecords, loanAmount, dealId, onValueChange]);
+
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
   // The single record flagged with `roundingAdjustment` absorbs any fractional
   // remainder so the displayed total matches the grid column total exactly.
