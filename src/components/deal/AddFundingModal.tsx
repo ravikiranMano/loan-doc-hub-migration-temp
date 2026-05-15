@@ -259,6 +259,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         ...mergedDraft,
         loan: loanNumber || draft.loan,
         borrower: borrowerName || draft.borrower,
+        // Rounding Adjustment is a mutually-exclusive global flag — always trust the
+        // latest editData value (parent enforces exclusivity), never the stale draft.
+        roundingAdjustment: editData
+          ? (editData.roundingAdjustment ?? false)
+          : (draft.roundingAdjustment ?? false),
         disbursements: draft.disbursements?.length ? draft.disbursements.map(d => ({
           ...emptyDisbursementRow(),
           ...d,
