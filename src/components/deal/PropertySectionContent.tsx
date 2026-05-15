@@ -670,6 +670,7 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
             borrowerOptions={borrowerOptions}
             borrowerAddress={primaryBorrowerAddress}
             borrowerAddressLoading={borrowerParticipantsLoading}
+            dealId={routeDealId}
           />
         );
       case 'legal_description':
