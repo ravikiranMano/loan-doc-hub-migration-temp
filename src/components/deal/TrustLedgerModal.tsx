@@ -30,7 +30,7 @@ interface TrustLedgerModalProps {
 
 const getEmptyEntry = (): TrustLedgerEntry => ({
   id: `trust_ledger_${Date.now()}`,
-  date: new Date().toISOString().split('T')[0],
+  date: todayDateOnly(),
   reference: '',
   fromWhomReceivedPaid: '',
   memo: '',
