@@ -107,56 +107,92 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     return total;
   }, [values]);
 
+  // Live current principal balance from servicing ledger (loan_history).
+  // Drives Current LTV; falls back to null when no rows exist (LTV stays blank).
+  const [currentPrincipalBalance, setCurrentPrincipalBalance] = React.useState<number | null>(null);
+  useEffect(() => {
+    if (!dealId) { setCurrentPrincipalBalance(null); return; }
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('loan_history')
+        .select('principal_balance,date_received,created_at')
+        .eq('deal_id', dealId)
+        .order('date_received', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data || data.principal_balance == null) {
+        setCurrentPrincipalBalance(null);
+      } else {
+        const num = typeof data.principal_balance === 'string'
+          ? parseFloat(data.principal_balance)
+          : Number(data.principal_balance);
+        setCurrentPrincipalBalance(Number.isFinite(num) ? num : null);
+      }
+    };
+    load();
+    const channel = supabase
+      .channel(`loan_history_${dealId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loan_history', filter: `deal_id=eq.${dealId}` }, load)
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [dealId]);
+
   // Auto-calculate equities & LTVs — auto-sync on any input change.
   // Formulas (per spec):
   //   Protective Equity = Estimate of Value − Current Balance (from liens)
   //   Pledged Equity    = Estimate of Value − Loan Amount
   //   CLTV              = Total All Liens / Estimate of Value × 100
-  //   Current LTV       = Current Balance / Estimate of Value × 100
+  //   Current LTV       = Current Principal Balance (servicing) / Estimate of Value × 100
   //   Origination LTV   = Loan Amount / Estimate of Value × 100
   const loanAmountRaw = values['loan_terms.loan_amount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
-  const currentBalanceRaw = liensCurrentBalanceTotal;
-  useEffect(() => {
-    const loanAmount = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
-    const estValue = parseFloat(estValueRaw.replace(/[, $]/g, ''));
-    const currentBalance = currentBalanceRaw;
-    const totalAllLiens = existingLiensTotal;
+  const liensBalanceForEquity = liensCurrentBalanceTotal;
 
+  const loanAmountNum = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
+  const estValueNum = parseFloat(estValueRaw.replace(/[, $]/g, ''));
+
+  // Inline validation flags (skip the offending calc, surface near the field).
+  const estValueInvalid = estValueRaw.trim() !== '' && (!Number.isFinite(estValueNum) || estValueNum <= 0);
+  const loanAmountInvalid = Number.isFinite(loanAmountNum) && loanAmountNum < 0;
+  const currentBalanceInvalid = currentPrincipalBalance !== null && currentPrincipalBalance < 0;
+
+  useEffect(() => {
     const writeIfChanged = (key: string, next: string) => {
       const cur = (values[key] || '').replace(/[, $]/g, '').trim();
       if (cur !== next) onValueChange(key, next);
     };
 
-    // Persist computed current balance from liens into property field
-    const computedBalanceStr = roundDollarForStorage(currentBalance);
-    writeIfChanged('property1.lien_current_balance', computedBalanceStr);
+    // Persist computed current balance from liens into property field (legacy field)
+    writeIfChanged('property1.lien_current_balance', roundDollarForStorage(liensBalanceForEquity));
 
-    // Protective Equity = Estimate of Value − Current Balance
-    if (!isNaN(estValue) && !isNaN(currentBalance)) {
-      writeIfChanged(FIELD_KEYS.protectiveEquity, roundDollarForStorage(estValue - currentBalance));
+    // Protective Equity = Estimate of Value − Current Balance (from liens)
+    if (!isNaN(estValueNum) && !isNaN(liensBalanceForEquity)) {
+      writeIfChanged(FIELD_KEYS.protectiveEquity, roundDollarForStorage(estValueNum - liensBalanceForEquity));
     }
 
     // Pledged Equity = Estimate of Value − Loan Amount
-    if (!isNaN(estValue) && !isNaN(loanAmount)) {
-      writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValue - loanAmount));
+    if (!isNaN(estValueNum) && !isNaN(loanAmountNum)) {
+      writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValueNum - loanAmountNum));
     }
 
-    // CLTV = Total All Liens / Estimate of Value × 100
-    if (!isNaN(estValue) && estValue > 0) {
-      writeIfChanged(FIELD_KEYS.cltv, roundPctForStorage((totalAllLiens / estValue) * 100));
+    // CLTV (sum of all liens / Estimate of Value)
+    const cltv = computeLtv(existingLiensTotal, estValueNum);
+    if (cltv !== null) writeIfChanged(FIELD_KEYS.cltv, cltv);
+
+    // Current LTV — uses live servicing ledger principal balance
+    if (currentPrincipalBalance !== null) {
+      const curLtv = computeLtv(currentPrincipalBalance, estValueNum);
+      if (curLtv !== null) writeIfChanged(FIELD_KEYS.ltv, curLtv);
     }
 
-    // Current LTV = Current Balance / Estimate of Value × 100
-    if (!isNaN(estValue) && estValue > 0 && !isNaN(currentBalance)) {
-      writeIfChanged(FIELD_KEYS.ltv, roundPctForStorage((currentBalance / estValue) * 100));
-    }
+    // Origination LTV — Loan Amount / Estimate of Value
+    const origLtv = computeLtv(loanAmountNum, estValueNum);
+    if (origLtv !== null) writeIfChanged(FIELD_KEYS.originationLtv, origLtv);
+  }, [loanAmountRaw, estValueRaw, liensBalanceForEquity, existingLiensTotal, currentPrincipalBalance]);
 
-    // Origination LTV = Loan Amount / Estimate of Value × 100
-    if (!isNaN(estValue) && estValue > 0 && !isNaN(loanAmount)) {
-      writeIfChanged(FIELD_KEYS.originationLtv, roundPctForStorage((loanAmount / estValue) * 100));
-    }
-  }, [loanAmountRaw, estValueRaw, liensCurrentBalanceTotal, existingLiensTotal]);
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
   const informationProvidedBy = getFieldValue(FIELD_KEYS.informationProvidedBy);
