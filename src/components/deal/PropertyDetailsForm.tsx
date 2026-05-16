@@ -604,17 +604,28 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           </DirtyFieldWrapper>
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.originationLtv}>
             <div className="flex items-center gap-2">
-              <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
+              <Label
+                className="w-[110px] shrink-0 text-xs text-foreground"
+                title="Frozen at first funding: Original Funding Amount ÷ Property Value at Origination. Never recomputes."
+              >
+                Original LTV
+              </Label>
               <div className="relative flex-1">
                 <Input
                   value={formatLtv(getFieldValue(FIELD_KEYS.originationLtv)) || '—'}
                   readOnly
                   disabled={disabled}
                   className="h-7 text-xs bg-muted/40"
+                  title="Snapshot taken when the first Funding record was added. Source: Funding > Add Funding."
                 />
               </div>
             </div>
           </DirtyFieldWrapper>
+          {!originationLtvSnapshot && fundingTotals.count === 0 && (
+            <p className="text-[11px] text-muted-foreground ml-[118px]">
+              Locks in when the first Funding record is added.
+            </p>
+          )}
           {(estValueInvalid || loanAmountInvalid) && (
             <p className="text-[11px] text-destructive ml-[118px]">
               {estValueInvalid
@@ -624,13 +635,19 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           )}
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.ltv}>
             <div className="flex items-center gap-2">
-              <Label className="w-[110px] shrink-0 text-xs text-foreground">Current LTV</Label>
+              <Label
+                className="w-[110px] shrink-0 text-xs text-foreground"
+                title="Live: Σ Funding Current Balance ÷ Estimate of Value. Updates as balances or property value change."
+              >
+                Current LTV
+              </Label>
               <div className="relative flex-1">
                 <Input
                   value={formatLtv(getFieldValue(FIELD_KEYS.ltv)) || '—'}
                   readOnly
                   disabled={disabled}
                   className="h-7 text-xs bg-muted/40"
+                  title="Source: Funding > Add Funding (sum of Current Balance across funding records) ÷ Estimate of Value."
                 />
               </div>
             </div>
