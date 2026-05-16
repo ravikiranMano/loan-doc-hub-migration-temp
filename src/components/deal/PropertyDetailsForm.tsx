@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, roundDollarForStorage, computeLtv, formatDollar, formatLtv } from '@/lib/precisionFormat';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { US_STATES } from '@/lib/usStates';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Input } from '@/components/ui/input';
@@ -326,19 +327,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
         <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
-        <div className="relative flex-1">
-          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">$</span>
-          <Input
+        <div className="flex-1">
+          <CurrencyInput
             value={getFieldValue(fieldKey)}
-            onChange={(e) => handleCurrencyChange(fieldKey, e.target.value)}
-            onBlur={() => { const raw = getFieldValue(fieldKey); if (raw) onValueChange(fieldKey, formatCurrencyDisplay(raw)); }}
-            onFocus={() => { const raw = getFieldValue(fieldKey); if (raw) onValueChange(fieldKey, unformatCurrencyDisplay(raw)); }}
-            onKeyDown={numericKeyDown}
-            onPaste={(e) => numericPaste(e, (val) => onValueChange(fieldKey, val))}
+            onValueChange={(v) => onValueChange(fieldKey, v)}
             disabled={disabled}
-            className="h-7 text-xs pl-6"
-            inputMode="decimal"
-            placeholder="0.00"
           />
         </div>
       </div>
@@ -576,17 +569,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.protectiveEquity}>
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Protective Equity</Label>
-              <div className="relative flex-1">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">$</span>
-                <Input
+              <div className="flex-1">
+                <CurrencyInput
                   value={getFieldValue(FIELD_KEYS.protectiveEquity)}
-                  onChange={(e) => onValueChange(FIELD_KEYS.protectiveEquity, unformatCurrencyDisplay(e.target.value))}
-                  onBlur={() => { const raw = getFieldValue(FIELD_KEYS.protectiveEquity); if (raw) onValueChange(FIELD_KEYS.protectiveEquity, formatCurrencyDisplay(raw)); }}
-                  onFocus={() => { const raw = getFieldValue(FIELD_KEYS.protectiveEquity); if (raw) onValueChange(FIELD_KEYS.protectiveEquity, unformatCurrencyDisplay(raw)); }}
-                  onKeyDown={numericKeyDown}
-                  onPaste={(e) => numericPaste(e, (val) => onValueChange(FIELD_KEYS.protectiveEquity, val))}
+                  onValueChange={(v) => onValueChange(FIELD_KEYS.protectiveEquity, v)}
                   disabled={disabled}
-                  className="h-7 text-xs pl-6"
                 />
               </div>
             </div>
