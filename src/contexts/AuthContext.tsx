@@ -97,6 +97,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let isMounted = true;
+    let currentUserId: string | null = null;
+
+    const settleLoading = () => {
+      if (isMounted) setLoading(false);
+    };
 
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -106,16 +111,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (authSession?.user) {
             manualSignOutRef.current = false;
-            await applySessionState(authSession);
-            if (isMounted) setLoading(false);
+            // Skip re-applying state (and re-fetching role) for the same user on
+            // silent events like TOKEN_REFRESHED — prevents layout flicker.
+            if (authSession.user.id !== currentUserId) {
+              currentUserId = authSession.user.id;
+              await applySessionState(authSession);
+            } else {
+              // Keep session object fresh without role re-fetch
+              setSession(authSession);
+            }
+            settleLoading();
             return;
           }
 
           const recoveredSession = await recoverSession();
           if (recoveredSession?.user) {
             manualSignOutRef.current = false;
-            await applySessionState(recoveredSession);
-            if (isMounted) setLoading(false);
+            if (recoveredSession.user.id !== currentUserId) {
+              currentUserId = recoveredSession.user.id;
+              await applySessionState(recoveredSession);
+            } else {
+              setSession(recoveredSession);
+            }
+            settleLoading();
             return;
           }
 
@@ -123,10 +141,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Ignore transient SIGNED_OUT events caused by tab/focus/session race conditions.
           if (event === 'SIGNED_OUT' && manualSignOutRef.current) {
             manualSignOutRef.current = false;
+            currentUserId = null;
             await applySessionState(null);
           }
 
-          if (isMounted) setLoading(false);
+          settleLoading();
         })();
       }
     );
@@ -136,8 +155,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const recoveredSession = await recoverSession();
       if (!isMounted) return;
 
+      if (recoveredSession?.user) {
+        currentUserId = recoveredSession.user.id;
+      }
       await applySessionState(recoveredSession);
-      if (isMounted) setLoading(false);
+      settleLoading();
     })();
 
     return () => {
