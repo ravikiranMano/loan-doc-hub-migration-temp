@@ -108,15 +108,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   }, [values]);
 
   // Auto-calculate equities, LTVs, and Principal Paid.
-  // Formulas (per spec):
-  //   Protective Equity = Estimate of Value − Current Balance (from liens)
-  //   Pledged Equity    = Estimate of Value − Loan Amount
-  //   CLTV              = Total All Liens / Estimate of Value × 100
-  //   Origination LTV   = Loan Amount / Estimate of Value × 100   (static after funding;
-  //                       still recomputed from current source values, never from a stale copy)
-  //   Current LTV       = Balances → Principal / Estimate of Value × 100  (recalcs whenever
-  //                       Principal or Estimate of Value changes)
-  //   Principal Paid    = Loan Amount − Balances → Principal      (derived; not user-editable)
+  // Spec (Drew's LTV story):
+  //   Original LTV  = Σ(Funding originalAmount) ÷ Property Value at Origination × 100
+  //                   FROZEN once the first Funding record is created. Never recomputes.
+  //                   Source: Funding > Add Funding (loan_terms.funding_records).
+  //   Current LTV   = Σ(Funding principalBalance) ÷ Estimate of Value × 100
+  //                   Recomputes whenever balances or property value change.
+  //   CLTV          = Σ(all liens) ÷ Estimate of Value × 100
+  //   Protective Eq = Estimate of Value − Σ(lien current_balance)
+  //   Pledged Eq    = Estimate of Value − Loan Amount
+  //   Principal Paid= Loan Amount − Balances → Principal (derived)
   const loanAmountRaw = values['loan_terms.loan_amount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
   const currentPrincipalRaw = values['loan_terms.principal'] || '';
@@ -126,11 +127,35 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   const estValueNum = parseFloat(estValueRaw.replace(/[, $]/g, ''));
   const currentPrincipalNum = parseFloat(currentPrincipalRaw.replace(/[, $]/g, ''));
 
+  // Funding totals — Original (sum of originalAmount) and Current (sum of principalBalance).
+  // Source: loan_terms.funding_records (JSON array written by Add Funding).
+  const fundingTotals = React.useMemo(() => {
+    const raw = values['loan_terms.funding_records'];
+    if (!raw) return { count: 0, original: 0, current: 0 };
+    try {
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return { count: 0, original: 0, current: 0 };
+      let original = 0;
+      let current = 0;
+      arr.forEach((r: any) => {
+        const oa = parseFloat(String(r?.originalAmount ?? '').replace(/[, $]/g, ''));
+        const pb = parseFloat(String(r?.principalBalance ?? '').replace(/[, $]/g, ''));
+        if (Number.isFinite(oa)) original += oa;
+        if (Number.isFinite(pb)) current += pb;
+      });
+      return { count: arr.length, original, current };
+    } catch {
+      return { count: 0, original: 0, current: 0 };
+    }
+  }, [values]);
+
   // Inline validation flags (skip the offending calc, surface near the field).
   const estValueInvalid = estValueRaw.trim() !== '' && (!Number.isFinite(estValueNum) || estValueNum <= 0);
   const loanAmountInvalid = Number.isFinite(loanAmountNum) && loanAmountNum < 0;
   const currentBalanceInvalid =
     currentPrincipalRaw.trim() !== '' && Number.isFinite(currentPrincipalNum) && currentPrincipalNum < 0;
+
+  const originationLtvSnapshot = (values[FIELD_KEYS.originationLtv] || '').trim();
 
   useEffect(() => {
     const writeIfChanged = (key: string, next: string) => {
@@ -153,8 +178,6 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
     // Skip-condition flags per LTV display spec.
     const estValueValid = Number.isFinite(estValueNum) && estValueNum > 0;
-    const loanAmountValid = Number.isFinite(loanAmountNum) && loanAmountNum >= 0;
-    const principalValid = Number.isFinite(currentPrincipalNum) && currentPrincipalNum >= 0;
 
     // CLTV (sum of all liens / Estimate of Value)
     if (estValueValid) {
@@ -164,30 +187,31 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.cltv, '');
     }
 
-    // Current LTV — Balances → Principal / Estimate of Value
-    if (estValueValid && principalValid) {
-      const curLtv = computeLtv(currentPrincipalNum, estValueNum);
+    // Current LTV — Σ funding principalBalance / Estimate of Value
+    if (estValueValid && fundingTotals.count > 0) {
+      const curLtv = computeLtv(fundingTotals.current, estValueNum);
       writeIfChanged(FIELD_KEYS.ltv, curLtv ?? '');
     } else {
       writeIfChanged(FIELD_KEYS.ltv, '');
     }
 
-    // Origination LTV — Loan Amount / Estimate of Value (frozen formula)
-    if (estValueValid && loanAmountValid) {
-      const origLtv = computeLtv(loanAmountNum, estValueNum);
-      writeIfChanged(FIELD_KEYS.originationLtv, origLtv ?? '');
-    } else {
-      writeIfChanged(FIELD_KEYS.originationLtv, '');
+    // Original LTV — FROZEN snapshot on first funding entry.
+    // Once set, never recompute or clear it (the story of loan birth).
+    if (!originationLtvSnapshot && estValueValid && fundingTotals.count > 0 && fundingTotals.original > 0) {
+      const origLtv = computeLtv(fundingTotals.original, estValueNum);
+      if (origLtv !== null) writeIfChanged(FIELD_KEYS.originationLtv, origLtv);
     }
 
-    // Principal Paid = Loan Amount − Current Principal Balance (derived)
-    if (
+    // Principal Paid = Original Funded − Current Funded (derived from funding records)
+    if (fundingTotals.count > 0) {
+      writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(fundingTotals.original - fundingTotals.current));
+    } else if (
       Number.isFinite(loanAmountNum) && loanAmountNum >= 0 &&
       Number.isFinite(currentPrincipalNum) && currentPrincipalNum >= 0
     ) {
       writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(loanAmountNum - currentPrincipalNum));
     }
-  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
+  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid, fundingTotals, originationLtvSnapshot]);
 
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
