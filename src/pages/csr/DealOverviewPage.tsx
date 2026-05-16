@@ -348,8 +348,15 @@ export const DealOverviewPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="page-container flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="page-container space-y-4 animate-pulse">
+        <div className="h-8 w-64 rounded-md bg-muted" />
+        <div className="h-4 w-96 rounded-md bg-muted" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+          <div className="h-32 rounded-lg bg-muted" />
+          <div className="h-32 rounded-lg bg-muted" />
+          <div className="h-32 rounded-lg bg-muted" />
+        </div>
+        <div className="h-64 rounded-lg bg-muted" />
       </div>
     );
   }
