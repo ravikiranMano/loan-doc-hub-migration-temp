@@ -58,7 +58,7 @@ async function loadPermissions(role: string, userId: string): Promise<FormPermis
   const { data, error } = await supabase
     .from('form_permissions')
     .select('form_key, access_mode, screen_visible')
-    .eq('role', role);
+    .eq('role', role as any);
   if (error) throw error;
   return (data || []) as unknown as FormPermission[];
 }
