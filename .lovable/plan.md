@@ -1,89 +1,103 @@
-## Goal
 
-Extend RE851D doc generation so the lien-detail page (the two ENCUMBRANCE grids — Remaining + Expected/Anticipated, plus the "Additional remaining…" YES/NO line and addendum hook) renders **once per property** found in the loan file (up to 5), each on its own page, each filtered to that property's liens, without touching anything that already works for Property 1.
+# Fix: Eliminate UI Flicker During Navigation, Refresh & Loading
 
-## What already works (do not modify)
+## Root Causes Identified
 
-- In-render publisher writes `pr_li_rem_<field>_{N}_{S}` and `pr_li_ant_<field>_{N}_{S}` per property index N, per slot S=1,2 (lines ~3947, ~5179–5216).
-- Label-anchored encumbrance publisher (lines ~8816–9450) walks each "PROPERTY INFORMATION" region in the document, finds the two ENCUMBRANCE sections, and writes the resolved values into slot 1 / slot 2 cells.
-- Additional-encumbrance attachment + balloon checkbox safety passes already key off N per property region.
-- Multi-property aliases for `pr_p_*_N`, `pr_pt_*_N`, `pr_li_rem_priority_{P}_{S}` etc. all publish for N=1..5.
+After auditing routing, auth, layout, and data-loading patterns, the flicker is driven by **5 concrete issues** — not a global rendering problem.
 
-So the **only gap** is the template itself: it carries one Property's ENCUMBRANCE grids. Once we duplicate that grid block per real property, every existing publisher fires correctly because they already iterate by N.
+### 1. `RoleGuard` redirect race (biggest visible flicker)
+`src/components/layout/RoleGuard.tsx` reads `role` from `useAuth()` but **does not check `loading`**. On any hard refresh of a guarded route (`/deals`, `/admin/*`, `/contacts/*`), `role` is `null` for ~50–300 ms while `applySessionState` fetches it. During that window the guard does `<Navigate to="/dashboard" replace />`, the dashboard mounts and starts fetching, then `role` resolves and React Router pushes the user back to the original route. Visible as a dashboard flash → snap to target page.
 
-## Plan
+### 2. `Index.tsx` redirect flash
+`/` always mounts a spinner and then `navigate('/dashboard' | '/auth')`. Any link/refresh that lands on `/` produces a white spinner flash before navigation. Should redirect declaratively with `<Navigate>` so React Router replaces synchronously.
 
-### 1. Mark the cloneable block in the template (one-time helper)
+### 3. `AppLayout` full-screen loading state replaces the whole shell
+`AppLayout` returns a full-screen `<Loader2/>` while `loading || !role`. The shell (sidebar + header + tab bar) unmounts on every auth event that flips loading (token refresh, focus). Even on initial load the entire chrome paints once empty, then re-paints with content.
 
-Extend `supabase/functions/rewrite-re851d-template/index.ts` (or add a sibling `rewrite-re851d-property-block`) to wrap the existing single Property's lien-detail block with two invisible sentinels in `word/document.xml`:
+### 4. `useFormPermissions` re-fetches on every consumer mount
+13 files call `useFormPermissions()`; each one issues its own Supabase query on mount. Navigating between a contact list and a contact detail re-runs the query, the detail layout flips between `permissionsLoading=true` (disabled fields) and `false` (enabled fields) — visible as inputs flickering from greyed to active.
 
-```text
-<!-- PROPERTY_LIEN_BLOCK_START -->
-…existing PROPERTY INFORMATION heading + ENCUMBRANCE(S) REMAINING table
-   + ENCUMBRANCE(S) EXPECTED OR ANTICIPATED table
-   + "Additional remaining, expected, or anticipated encumbrances…" YES/NO row
-   + Broker/Lender initials row…
-<!-- PROPERTY_LIEN_BLOCK_END -->
+### 5. Page-level "replace everything with a spinner" pattern
+`Dashboard`, all 6 contact list pages, and several CSR pages render `<Loader2 .../> Loading…` that fills the content area, then swap to the grid. Causes layout jump + white flash on every navigation.
+
+Secondary contributors (smaller impact, fixed by same patterns):
+- No scroll reset between routes → perceived "jump" on long pages.
+- `AppLayout` unmounts/remounts because `AuthProvider` re-runs `applySessionState` on every `onAuthStateChange` event (including TOKEN_REFRESHED), briefly toggling `loading`.
+
+## Fixes
+
+### A. Guard waits for auth to resolve
+`RoleGuard.tsx`:
+```tsx
+const { role, loading, isExternalUser } = useAuth();
+if (loading || role === null) {
+  return <Outlet context={{ authPending: true }} />; // or render a stable skeleton wrapper
+}
 ```
+Render the matched route's skeleton instead of redirecting while `loading` is true. Only redirect once auth has settled.
 
-Sentinels are XML comments so Word ignores them; we use them as cut-points for the runtime cloner. Run this rewrite once against the active RE851D template.
+### B. Declarative root redirect
+Replace `Index.tsx` body with:
+```tsx
+if (loading) return null; // shell already painted by parent
+return <Navigate to={user ? '/dashboard' : '/auth'} replace />;
+```
+Remove the spinner page entirely.
 
-### 2. Runtime block cloner (new pass in `generate-document/index.ts`)
+### C. Stable layout shell
+In `AppLayout`:
+- Keep sidebar + header + tab bar mounted always.
+- Replace the full-screen spinner with an inline skeleton **inside `<main>`** when `loading`.
+- Treat `TOKEN_REFRESHED` in `AuthContext` as a no-op for `loading` (don't flip to true on silent refreshes).
 
-Add a new pass that runs **before** all the existing 851D label-anchored / safety / addendum passes (so they see N copies instead of 1):
+`AuthContext.tsx`:
+- Set `loading=false` only on the **first** resolution; subsequent `onAuthStateChange` events should update session/role without re-toggling `loading`.
+- Skip `applySessionState` and role re-fetch when the incoming `authSession.user.id` matches the current user.
 
-1. Detect template name matches `851d`.
-2. Read `word/document.xml`.
-3. Determine the property count K from `fieldValues`:
-   - Scan keys `property{N}.address` / `property{N}.appraise_value` for N=1..5; K = max N seen, capped at 5, min 1.
-4. Locate the slice between `PROPERTY_LIEN_BLOCK_START` and `PROPERTY_LIEN_BLOCK_END`.
-5. For i = 2..K, build a clone of the slice with these XML-safe rewrites:
-   - Insert a `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` page break before the clone.
-   - Bump every `w:id="…"`, `w:bookmarkStart/End @w:id`, `w:sdt @w:id` by `i * 100000` to prevent ID collisions.
-   - Bump every `w:name="…"` bookmark by suffix `_p{i}`.
-   - Leave merge-tag text `{{pr_li_rem_*_{N}_{S}}}` untouched — the existing per-property publisher already writes the resolved values into the i-th PROPERTY region by visible-text position, and the in-render publisher writes `_{i}_{S}` keys.
-6. Splice the K-1 clones in order immediately before `PROPERTY_LIEN_BLOCK_END`.
-7. Repack and feed the rewritten DOCX into the rest of the pipeline.
+### D. Hoist permissions into a provider
+Add `FormPermissionsProvider` (single fetch per session) at `AppLayout` level. Replace the existing `useFormPermissions` hook body to read from context. Sub-layouts (lender/broker/borrower/deal) consume cached values — no per-mount query. This removes the disabled→enabled input flicker on every contact open.
 
-This guarantees the existing per-region scanner sees K "PROPERTY INFORMATION" anchors → `propRanges` becomes K entries → every downstream publisher (encumbrance values, balloon safety, additional-encumbrance YES/NO, addendum) fires per-property automatically.
+### E. Skeleton loaders instead of full-screen spinners
+For each list/detail page (Dashboard, ContactLendersPage, ContactBorrowersPage, ContactBrokersPage, ContactCoBorrowersPage, ContactAuthorizedPartiesPage, ContactAdditionalGuarantorsPage, DealOverviewPage):
+- Keep the page chrome (title, toolbar, table header) rendered immediately.
+- Render a `<Skeleton>` grid (e.g. 8 grey rows) inside the table body while `loading` is true.
+- Never replace the entire screen with `<Loader2/>`.
 
-### 3. Field mapping that will resolve per property
+### F. Scroll restoration
+Add a small `ScrollToTop` component (resets `window.scrollTo(0,0)` on `pathname` change) mounted inside `<BrowserRouter>` in `App.tsx`. Eliminates "jump from middle of page to top" perception on cross-page navigation.
 
-For each property i ∈ {1..K}, slot S ∈ {1,2}, the **same** keys you already use for Property 1 will fill the i-th cloned page (no new keys, no template edits beyond the sentinels):
+### G. Minor stabilizations
+- In `WorkspaceFileRenderer`, keys are already stable — no change.
+- Ensure `QueryClient` `staleTime` is set (e.g. 30 s) so revisits within a session don't refetch and re-paint.
 
-| Cell label                   | Property i, slot S key                       |
-|------------------------------|----------------------------------------------|
-| PRIORITY (1ST, 2ND, ETC.)    | `pr_li_rem_priority_{i}_{S}`                 |
-| INTEREST RATE                | `pr_li_rem_interestRate_{i}_{S}`             |
-| BENEFICIARY                  | `pr_li_rem_beneficiary_{i}_{S}`              |
-| ORIGINAL AMOUNT              | `pr_li_rem_originalAmount_{i}_{S}`           |
-| APPROXIMATE PRINCIPAL BAL.   | `pr_li_rem_principalBalance_{i}_{S}`         |
-| MONTHLY PAYMENT              | `pr_li_rem_monthlyPayment_{i}_{S}`           |
-| MATURITY DATE                | `pr_li_rem_maturityDate_{i}_{S}`             |
-| BALLOON YES / NO / UNKNOWN   | `pr_li_rem_balloonYes_{i}_{S}` / `…No…` / `…Unknown…` |
-| IF YES, AMOUNT               | `pr_li_rem_balloonAmount_{i}_{S}`            |
+## Out of Scope (deliberate)
+- No refactor of `deal_section_values` schema, RLS, or business logic.
+- No changes to grid libraries / virtualization.
+- No new design tokens.
+- No removal of realtime channels (covered in a separate audit).
 
-Anticipated grid uses the identical shape with `pr_li_ant_*_{i}_{S}`:
-`priority`, `interestRate`, `beneficiary`, `originalAmount`, `monthlyPayment`, `maturityDate`, `balloonYes/No/Unknown`, `balloonAmount`.
+## Files Touched
+- `src/components/layout/RoleGuard.tsx` — wait for auth.
+- `src/pages/Index.tsx` — declarative redirect.
+- `src/components/layout/AppLayout.tsx` — inline skeleton, stable shell.
+- `src/contexts/AuthContext.tsx` — idempotent session updates; one-shot `loading`.
+- `src/contexts/FormPermissionsContext.tsx` — **new**, provider + cached hook.
+- `src/hooks/useFormPermissions.ts` — re-export hook backed by context.
+- `src/components/ScrollToTop.tsx` — **new**.
+- `src/App.tsx` — mount `ScrollToTop`, configure `QueryClient` `staleTime`.
+- Each affected page (Dashboard + 6 contact lists + DealOverviewPage) — swap full-screen spinner for skeleton-in-place.
 
-Per-property addendum / overflow keys already published by the existing pipeline:
+## Validation Checklist (manual QA)
+1. Hard-refresh `/admin/field-maps` while signed-in → no dashboard flash.
+2. Hard-refresh `/contacts/lenders/<id>` → form fields don't flicker disabled→enabled.
+3. Navigate `Lenders → Borrowers → Deals → back` repeatedly → sidebar/header never blank.
+4. Open/close a contact detail tab → no white flash in workspace area.
+5. Refresh on a long scrolled page → returns to top, no mid-page paint.
+6. Slow-network (DevTools throttle "Slow 3G") → skeleton rows visible; no empty screens.
 
-- `pr_li_additionalEncumbranceYes_glyph_{i}` / `…No_glyph_{i}`
-- Addendum tables for liens beyond slot 2 are appended per i via the existing additional-encumbrance attachment pass.
-
-### 4. Filtering correctness (already enforced)
-
-The existing in-render publisher groups liens by `lien.property` match, so `pr_li_rem_*_{i}_{S}` only contains liens whose `property` field equals property i. No new filtering needed.
-
-### 5. Verification
-
-- Run a deal with 1 property → identical output to today (clone loop is a no-op).
-- Run a deal with 3 properties → 3 lien-detail pages, each on a fresh page, each with only its own liens; properties 4–5 absent.
-- Run a deal with 5 properties + property 3 has 4 remaining liens → property 3 page shows YES on the additional-encumbrance row and an addendum is appended after that property's page only.
-
-### Out of scope (explicitly not changing)
-
-- Property 1 mappings, layout, styling.
-- In-render publishers and the label-anchored value writer.
-- Balloon / additional-encumbrance / questionnaire safety passes.
-- Field naming conventions and parser architecture.
+## Expected Outcome
+- No dashboard-bounce on guarded routes.
+- Sidebar/header persist across all navigations.
+- Permissions-driven fields stay stable on contact opens.
+- List/detail screens show skeletons instead of full-screen spinners.
+- Smooth, enterprise-grade transitions on both fresh loads and in-session navigation.
