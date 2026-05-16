@@ -37,12 +37,14 @@ import ContactBrokersPage from "./pages/contacts/ContactBrokersPage";
 import ContactCoBorrowersPage from "./pages/contacts/ContactCoBorrowersPage";
 import ContactAuthorizedPartiesPage from "./pages/contacts/ContactAuthorizedPartiesPage";
 import ContactAdditionalGuarantorsPage from "./pages/contacts/ContactAdditionalGuarantorsPage";
+import ScrollToTop from "./components/ScrollToTop";
 
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
+      staleTime: 30_000,
     },
   },
 });
@@ -55,6 +57,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <ScrollToTop />
             <SidebarProvider>
               <Routes>
                 <Route path="/" element={<Index />} />
