@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { sanitizeInterestInput, normalizeInterestOnBlur } from '@/lib/interestValidation';
 import { numericKeyDown, numericPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
+import { CurrencyInput } from '@/components/ui/currency-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
@@ -105,9 +106,13 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
     <DirtyFieldWrapper fieldKey={key}>
       <div className="flex items-center gap-3">
         <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">{label}</Label>
-        <div className="relative flex-1">
-          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-          <Input type="text" inputMode="decimal" value={values[key] || ''} onChange={(e) => onValueChange(key, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => onValueChange(key, val))} onBlur={() => { const raw = values[key] || ''; if (raw) onValueChange(key, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = values[key] || ''; if (raw) onValueChange(key, unformatCurrencyDisplay(raw)); }} disabled={disabled} className="h-7 text-sm pl-6" placeholder="0.00" />
+        <div className="flex-1">
+          <CurrencyInput
+            value={values[key] || ''}
+            onValueChange={(v) => onValueChange(key, v)}
+            disabled={disabled}
+            className="h-7 text-sm"
+          />
         </div>
       </div>
     </DirtyFieldWrapper>
