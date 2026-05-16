@@ -3,7 +3,7 @@
  * Blocks non-numeric characters while allowing navigation and editing keys.
  */
 
-import { formatPercentDisplay } from './precisionFormat';
+import { formatPercentDisplay, toDecimal, Decimal } from './precisionFormat';
 
 const ALLOWED_KEYS = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
 
@@ -67,10 +67,18 @@ export const integerPaste = (
  * e.g. "3423" → "3,423.00", "50.5" → "50.50", "" → ""
  */
 export const formatCurrencyDisplay = (value: string): string => {
-  if (!value) return '';
-  const num = parseFloat(value.replace(/,/g, ''));
-  if (isNaN(num)) return '';
-  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (value === null || value === undefined) return '';
+  const raw = String(value).replace(/[\s,$]/g, '').replace(/\.$/, '');
+  if (raw === '' || raw === '-' || raw === '.') return '';
+  const d = toDecimal(raw);
+  if (d === null) return '';
+  // Round HALF_UP to 2dp using decimal.js, then format with locale grouping.
+  const fixed = d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+  const negative = intPart.startsWith('-');
+  const absInt = negative ? intPart.slice(1) : intPart;
+  const withCommas = absInt.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${negative ? '-' : ''}${withCommas}.${decPart}`;
 };
 
 /**
@@ -78,7 +86,8 @@ export const formatCurrencyDisplay = (value: string): string => {
  * e.g. "3,423.00" → "3423.00"
  */
 export const unformatCurrencyDisplay = (value: string): string => {
-  return value.replace(/,/g, '');
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/[\s,$]/g, '');
 };
 
 /**

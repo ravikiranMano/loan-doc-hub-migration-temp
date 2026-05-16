@@ -1,103 +1,109 @@
 
-# Fix: Eliminate UI Flicker During Navigation, Refresh & Loading
+# Currency Formatting Audit & Fix Plan
 
-## Root Causes Identified
+## Root cause (confirmed from screenshot)
 
-After auditing routing, auth, layout, and data-loading patterns, the flicker is driven by **5 concrete issues** — not a global rendering problem.
+The screenshot shows mixed states on the same form:
+- `Down Payment` → `78,890,000.00` ✅ (recently edited, blur-formatted)
+- `Purchase Price` → `200000.00` ❌ (loaded from storage, never formatted)
+- `Estimate of Value` → `1200000.00` ❌
+- `Pledged Equity` → `600000.00` ❌
+- `Protective Equity` → `1198800.00` ❌
 
-### 1. `RoleGuard` redirect race (biggest visible flicker)
-`src/components/layout/RoleGuard.tsx` reads `role` from `useAuth()` but **does not check `loading`**. On any hard refresh of a guarded route (`/deals`, `/admin/*`, `/contacts/*`), `role` is `null` for ~50–300 ms while `applySessionState` fetches it. During that window the guard does `<Navigate to="/dashboard" replace />`, the dashboard mounts and starts fetching, then `role` resolves and React Router pushes the user back to the original route. Visible as a dashboard flash → snap to target page.
+Two incompatible patterns exist in the codebase:
 
-### 2. `Index.tsx` redirect flash
-`/` always mounts a spinner and then `navigate('/dashboard' | '/auth')`. Any link/refresh that lands on `/` produces a white spinner flash before navigation. Should redirect declaratively with `<Navigate>` so React Router replaces synchronously.
+**Pattern A — "format on blur, mutate storage" (broken on load)**
+Used in: `PropertyDetailsForm.tsx`, `ChargesDetailForm.tsx`, `AddFundingModal.tsx`, `PropertyModal.tsx`, `LienDetailForm.tsx`, `LienModal.tsx`, `InsuranceDetailForm.tsx`, `InsuranceModal.tsx`, `PropertyTaxForm.tsx`, `PropertyTaxModal.tsx`, `LoanTermsPenaltiesForm.tsx`, `LoanTermsServicingForm.tsx`, `OriginationFeesForm.tsx`, `OriginationPropertyForm.tsx`, `OriginationApplicationForm.tsx`, `OriginationInsuranceConditionsForm.tsx`, `FundingDetailForm.tsx`, `FundingAdjustmentModal.tsx`, `RE885ProposedLoanTerms.tsx`, `ChargesSectionContent.tsx`, `ChargesModal.tsx`, `TrustLedgerModal.tsx`, `LenderDisbursementModal.tsx`, `PropertyLiensForm.tsx`, `PropertyInsuranceForm.tsx`, `LoanTermsDetailsForm.tsx`, `LoanTermsFundingForm.tsx`, contact `*Charges.tsx` / `*TrustLedger.tsx` (6 files).
 
-### 3. `AppLayout` full-screen loading state replaces the whole shell
-`AppLayout` returns a full-screen `<Loader2/>` while `loading || !role`. The shell (sidebar + header + tab bar) unmounts on every auth event that flips loading (token refresh, focus). Even on initial load the entire chrome paints once empty, then re-paints with content.
+Issue: `<Input value={getFieldValue(key)} … onBlur={…format…}>` — raw value is rendered as-is on first paint. Only the blur handler writes the formatted string back into the form state, which then persists the commaed string to the DB. Values that arrive via load, defaults, calculations, paste, or that were saved before this code shipped, render unformatted.
 
-### 4. `useFormPermissions` re-fetches on every consumer mount
-13 files call `useFormPermissions()`; each one issues its own Supabase query on mount. Navigating between a contact list and a contact detail re-runs the query, the detail layout flips between `permissionsLoading=true` (disabled fields) and `false` (enabled fields) — visible as inputs flickering from greyed to active.
+**Pattern B — "format-on-display, raw-in-storage" (correct)**
+Used in: `LoanTermsBalancesForm.tsx` via a `focusedCurrencyField` state and `value={isFocused ? raw : formatCurrencyDisplay(raw)}`. Storage stays raw numeric; display is always formatted. This is what we standardize on.
 
-### 5. Page-level "replace everything with a spinner" pattern
-`Dashboard`, all 6 contact list pages, and several CSR pages render `<Loader2 .../> Loading…` that fills the content area, then swap to the grid. Causes layout jump + white flash on every navigation.
+## Approach
 
-Secondary contributors (smaller impact, fixed by same patterns):
-- No scroll reset between routes → perceived "jump" on long pages.
-- `AppLayout` unmounts/remounts because `AuthProvider` re-runs `applySessionState` on every `onAuthStateChange` event (including TOKEN_REFRESHED), briefly toggling `loading`.
+Replace Pattern A everywhere with a single shared component, **`<CurrencyInput>`**, that implements Pattern B internally. No backend or schema changes.
 
-## Fixes
+### Step 1 — Build `src/components/ui/currency-input.tsx`
 
-### A. Guard waits for auth to resolve
-`RoleGuard.tsx`:
-```tsx
-const { role, loading, isExternalUser } = useAuth();
-if (loading || role === null) {
-  return <Outlet context={{ authPending: true }} />; // or render a stable skeleton wrapper
-}
-```
-Render the matched route's skeleton instead of redirecting while `loading` is true. Only redirect once auth has settled.
+A controlled input with:
+- Props: `value: string`, `onValueChange: (raw: string) => void`, `disabled`, `placeholder`, `className`, optional `showDollarPrefix` (default true), `allowNegative` (default false), `id`, `aria-label`.
+- Internal `focused` state.
+  - When **focused**: display the raw value as-is (so the user can edit digits/decimal without commas getting in the way).
+  - When **blurred**: display `formatCurrencyDisplay(value)` — `1,200,000.00`.
+- `onChange`: sanitize keystroke via existing `sanitizeNumericValue` (digits, single `.`, optional leading `-`), pass the **unformatted** raw string up.
+- `onBlur`: normalize raw to 2dp via `roundDollarForStorage(value)` and emit it, so storage is always `200000.00` (string, 2dp), never `200,000.00`.
+- `onFocus`: emit `unformatCurrencyDisplay(value)` once to migrate any legacy commaed strings already in state to raw.
+- `onPaste`: strip non-numeric, keep one decimal point, emit raw.
+- `onKeyDown`: existing `numericKeyDown` filter.
+- Built-in `$` prefix span (absolute-positioned, `pl-6`) matching today's visual.
+- Right-aligned text optional via `align="right"` for grid cells.
 
-### B. Declarative root redirect
-Replace `Index.tsx` body with:
-```tsx
-if (loading) return null; // shell already painted by parent
-return <Navigate to={user ? '/dashboard' : '/auth'} replace />;
-```
-Remove the spinner page entirely.
+Backed by `formatCurrencyDisplay`, `unformatCurrencyDisplay`, `numericKeyDown`, `numericPaste` (already in `src/lib/numericInputFilter.ts`) and `roundDollarForStorage` (already in `src/lib/precisionFormat.ts`). No new deps.
 
-### C. Stable layout shell
-In `AppLayout`:
-- Keep sidebar + header + tab bar mounted always.
-- Replace the full-screen spinner with an inline skeleton **inside `<main>`** when `loading`.
-- Treat `TOKEN_REFRESHED` in `AuthContext` as a no-op for `loading` (don't flip to true on silent refreshes).
+### Step 2 — Strengthen `formatCurrencyDisplay`
 
-`AuthContext.tsx`:
-- Set `loading=false` only on the **first** resolution; subsequent `onAuthStateChange` events should update session/role without re-toggling `loading`.
-- Skip `applySessionState` and role re-fetch when the incoming `authSession.user.id` matches the current user.
+Today: `parseFloat(value.replace(/,/g, ''))` then `toLocaleString`. Add:
+- Pre-strip `$`, spaces, and a trailing `.` so values like `"$1,000."` round-trip.
+- Use `Decimal` (already imported elsewhere) to do `HALF_UP` rounding to 2dp before locale formatting, so `1000000.756` → `1,000,000.76` (matches the spec example; native `toLocaleString` is bank-rounding in some runtimes).
+- Return `''` for non-finite input. Negative handling: keep the sign, format the absolute value.
 
-### D. Hoist permissions into a provider
-Add `FormPermissionsProvider` (single fetch per session) at `AppLayout` level. Replace the existing `useFormPermissions` hook body to read from context. Sub-layouts (lender/broker/borrower/deal) consume cached values — no per-mount query. This removes the disabled→enabled input flicker on every contact open.
+### Step 3 — Add a read-only display helper for grids/cards/reports
 
-### E. Skeleton loaders instead of full-screen spinners
-For each list/detail page (Dashboard, ContactLendersPage, ContactBorrowersPage, ContactBrokersPage, ContactCoBorrowersPage, ContactAuthorizedPartiesPage, ContactAdditionalGuarantorsPage, DealOverviewPage):
-- Keep the page chrome (title, toolbar, table header) rendered immediately.
-- Render a `<Skeleton>` grid (e.g. 8 grey rows) inside the table body while `loading` is true.
-- Never replace the entire screen with `<Loader2/>`.
+Export `<CurrencyText value={raw} />` (thin span using `formatDollar` from `precisionFormat.ts` which already emits `$1,200,000.00`). Use in:
+- `LoanFundingGrid.tsx` cells (currently call `formatCurrencyDisplay` ad hoc).
+- All summary cards / read-only balance totals in `LoanTermsBalancesForm.tsx`, `RE885ProposedLoanTerms.tsx`, lender / borrower / broker `*TrustLedger.tsx` and `*Charges.tsx` rows.
+- Any place currently doing `parseFloat(raw.replace(/[, $]/g, ''))` for math should pass the resulting number back through `formatDollar` for re-display.
 
-### F. Scroll restoration
-Add a small `ScrollToTop` component (resets `window.scrollTo(0,0)` on `pathname` change) mounted inside `<BrowserRouter>` in `App.tsx`. Eliminates "jump from middle of page to top" perception on cross-page navigation.
+### Step 4 — Replace Pattern A call sites
 
-### G. Minor stabilizations
-- In `WorkspaceFileRenderer`, keys are already stable — no change.
-- Ensure `QueryClient` `staleTime` is set (e.g. 30 s) so revisits within a session don't refetch and re-paint.
+For every file listed in "Pattern A" above:
+1. Delete the inline `renderCurrencyField` / `onBlur` / `onFocus` boilerplate.
+2. Swap the `<Input … />` (with surrounding `<span>$</span>` and `<div className="relative">`) for `<CurrencyInput value={getValue(key)} onValueChange={(v) => onValueChange(key, v)} disabled={disabled} />`.
+3. Where `onValueChange` previously received a commaed string (e.g. `setFormData({ [field]: formatCurrencyDisplay(v) })` paths in `PropertyModal.tsx` lines 106/165, `AddFundingModal.tsx` lines 415/429/482/483/531), change them to store the raw 2dp string. Display formatting is the input's job.
 
-## Out of Scope (deliberate)
-- No refactor of `deal_section_values` schema, RLS, or business logic.
-- No changes to grid libraries / virtualization.
-- No new design tokens.
-- No removal of realtime channels (covered in a separate audit).
+### Step 5 — One-time normalize on load (no migration)
 
-## Files Touched
-- `src/components/layout/RoleGuard.tsx` — wait for auth.
-- `src/pages/Index.tsx` — declarative redirect.
-- `src/components/layout/AppLayout.tsx` — inline skeleton, stable shell.
-- `src/contexts/AuthContext.tsx` — idempotent session updates; one-shot `loading`.
-- `src/contexts/FormPermissionsContext.tsx` — **new**, provider + cached hook.
-- `src/hooks/useFormPermissions.ts` — re-export hook backed by context.
-- `src/components/ScrollToTop.tsx` — **new**.
-- `src/App.tsx` — mount `ScrollToTop`, configure `QueryClient` `staleTime`.
-- Each affected page (Dashboard + 6 contact lists + DealOverviewPage) — swap full-screen spinner for skeleton-in-place.
+In the consuming forms' value loaders (e.g. `useDealFields`'s `values` map and the modal `useEffect` hydrators in `PropertyModal`, `AddFundingModal`, `ChargesModal`, etc.), run incoming dollar field values through `unformatCurrencyDisplay` once before storing into local state. This silently migrates any legacy `"200,000.00"` strings already in the DB to raw `"200000.00"` for the session; the next save persists raw.
 
-## Validation Checklist (manual QA)
-1. Hard-refresh `/admin/field-maps` while signed-in → no dashboard flash.
-2. Hard-refresh `/contacts/lenders/<id>` → form fields don't flicker disabled→enabled.
-3. Navigate `Lenders → Borrowers → Deals → back` repeatedly → sidebar/header never blank.
-4. Open/close a contact detail tab → no white flash in workspace area.
-5. Refresh on a long scrolled page → returns to top, no mid-page paint.
-6. Slow-network (DevTools throttle "Slow 3G") → skeleton rows visible; no empty screens.
+No SQL migration is required — the format change happens lazily as records are touched.
 
-## Expected Outcome
-- No dashboard-bounce on guarded routes.
-- Sidebar/header persist across all navigations.
-- Permissions-driven fields stay stable on contact opens.
-- List/detail screens show skeletons instead of full-screen spinners.
-- Smooth, enterprise-grade transitions on both fresh loads and in-session navigation.
+### Step 6 — Calculated / derived fields
+
+`computeLtv`, `allocateDollarsByPercent`, and the pro-rata calc in `AddFundingModal` already produce numeric strings. After this change the inputs they feed into accept raw values directly — drop the `formatCurrencyDisplay(...)` wrapping before assignment (only the display layer formats).
+
+## Out of scope
+
+- Database schema and column types (already strings; no migration).
+- Edge function formatting (`supabase/functions/_shared/formatting.ts`) — used only for document generation, already correct.
+- Percentage / interest rate fields — handled by `precisionFormat.ts` and a separate memory.
+- Date / phone / SSN formatters.
+- New design tokens, colors, or layout changes.
+
+## Files touched
+
+New:
+- `src/components/ui/currency-input.tsx`
+- `src/components/ui/currency-text.tsx`
+
+Modified (formatter hardening):
+- `src/lib/numericInputFilter.ts` — strengthen `formatCurrencyDisplay`.
+
+Modified (swap to `<CurrencyInput>` / `<CurrencyText>`), ~30 files in `src/components/deal/` and `src/components/contacts/*-detail/` — see Pattern A list. Each change is mechanical (replace input block, remove blur/focus handlers).
+
+## QA checklist
+
+| Scenario | Expected |
+|---|---|
+| Load existing deal with legacy raw `200000.00` | `200,000.00` |
+| Load legacy commaed `"200,000.00"` from DB | `200,000.00`, persists as `200000.00` on next save |
+| Type `1000` then blur | `1,000.00` |
+| Type `25000.5` then blur | `25,000.50` |
+| Type `1000000.756` then blur | `1,000,000.76` (HALF_UP) |
+| Paste `$1,234,567.891` | `1,234,567.89` |
+| Focus formatted field, edit, blur | round-trip stays consistent |
+| Page refresh on Property Details, Charges, Funding, Liens, Insurance | all currency fields formatted |
+| Inline grid edit in `LoanFundingGrid` | formatted on commit |
+| Calculated Pro Rata / LTV unchanged | still correct |
+| Negative amounts (where allowed in trust ledger debits) | `-$1,000.00` |
+| Empty field | placeholder `0.00`, no `$` orphan |
