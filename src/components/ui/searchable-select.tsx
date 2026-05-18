@@ -78,8 +78,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="p-0 z-[9999] w-[var(--radix-popover-trigger-width)] bg-background border border-border" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} className="h-8 text-xs" />
+        <Command shouldFilter={false}>
           <CommandList>
             <CommandEmpty className="py-2 px-2 text-xs text-muted-foreground">{emptyText}</CommandEmpty>
             <CommandGroup>
