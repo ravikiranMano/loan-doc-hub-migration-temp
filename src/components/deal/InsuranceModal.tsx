@@ -156,7 +156,7 @@ export const InsuranceModal: React.FC<InsuranceModalProps> = ({ open, onOpenChan
                 <div className="border-b border-border pb-1 mb-2">
                   <span className="font-semibold text-xs text-primary">Insurance Policy Information</span>
                 </div>
-                {renderInlineSelect('property', 'Property', [{ id: 'unassigned', label: 'Unassigned' }, ...propertyOptions], 'Unassigned')}
+                {renderInlineSelect('property', 'Property', [{ id: 'unassigned', label: 'Unassigned' }, ...propertyOptions], 'Unassigned', { clearable: false })}
                 {renderInlineSelect('description', 'Description', INSURANCE_DESCRIPTION_OPTIONS, 'Select')}
                 {renderInlineField('companyName', 'Ins. Company')}
                 {renderInlineField('policyNumber', 'Policy Number')}
