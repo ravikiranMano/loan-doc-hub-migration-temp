@@ -1,64 +1,71 @@
+# RE851D — PROPERTY TYPE Consistency Pass (per-property)
+
 ## Goal
+Every PROPERTY TYPE block (Property 1..K) renders with identical checkbox glyph size, identical spacing, vertically-aligned left/right columns, equal row heights, and a fixed right-column start — regardless of dynamic values (e.g., `OTHER: <text>`).
 
-In the generated RE851D document, force a single consistent space between each PROPERTY TYPE checkbox glyph (☐/☑/☒) and its label across all seven options, on every property block. Today the template's `{{#if property_type_sfr_owner_N}}☑{{else}}☐{{/if}} SINGLE-FAMILY RESIDENCE …` blocks resolve into runs where the gap between glyph and label is sometimes a tab, sometimes multiple spaces, sometimes nothing — depending on how Word fragmented the conditional. The fix normalizes this gap to exactly one space without touching the glyph state, the labels, the font, the paragraph alignment, or any other section.
+## Scope (single edit point)
+File: `supabase/functions/generate-document/index.ts`
+Section: the existing **RE851D POST-RENDER PROPERTY TYPE checkbox spacing safety pass** (≈ lines 8316–8424).
 
-## Scope
+No template (.docx), publisher, alias, UI, schema, or API change. No other safety pass is touched.
 
-Single file edited:
+## Out of scope
+- The publisher that emits `property_type_*_N` / `_glyph` / `_text_N` (kept as-is).
+- The RE851D template's underlying paragraphs and table cells (kept; we only rewrite their inline runs/pPr/tblGrid).
+- All other RE851D / RE851A post-render passes.
+- The Source-of-Information row and Multiple-Properties checkbox passes.
 
-- `supabase/functions/generate-document/index.ts` — add ONE new label-anchored post-render normalization pass for the seven PROPERTY TYPE labels. Inserted right after the existing "Source of Information row" safety pass added earlier (same `if (/851d/i.test(template.name || ""))` gate, same `__passUnzip` / `__xmlGet` / `__xmlSet` / `__passZip` helpers, same per-property region pattern used by the cure-delinquency and source-info passes).
+## What the pass will additionally do
 
-No template re-uploads, no new edge function, no schema changes, no UI changes, no changes to which property type is checked (already correctly published per-property by the existing block around lines 1875–1965 and the `property_type_*_N` family in `RE851D_INDEXED_TAGS`).
+For every paragraph whose visible text begins with `☐ / ☑ / ☒` AND contains one of the 7 PROPERTY TYPE labels (existing gate, reused unchanged):
 
-## How it works (technical)
+1. **Glyph run — canonical font + size (NEW)**
+   Locate the first `<w:r>` whose `<w:t>` body begins with a checkbox glyph. Replace (or insert) its `<w:rPr>` with a single canonical block:
+   - `<w:rFonts w:ascii="Segoe UI Symbol" w:hAnsi="Segoe UI Symbol" w:cs="Segoe UI Symbol"/>`
+   - `<w:sz w:val="20"/><w:szCs w:val="20"/>`
+   This guarantees every checkbox glyph is rendered at exactly the same size and shape across every property section.
 
-1. **Label set** (matched case-insensitive, whitespace-flex):
-   - `SINGLE-FAMILY RESIDENCE (owner occupied)`
-   - `SINGLE-FAMILY RESIDENCE (not owner occupied)`
-   - `SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)`
-   - `COMMERCIAL`
-   - `LAND ZONED`
-   - `LAND INCOME PRODUCING`
-   - `OTHER`
+2. **Label run — canonical font + size (NEW, conservative)**
+   For each `<w:r>` whose `<w:t>` body starts with one of the 7 labels, force `<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>` + `<w:sz w:val="20"/><w:szCs w:val="20"/>` inside its `<w:rPr>` (preserving b / i / color if present). Ensures the label text width and baseline match across all clones.
 
-   Labels are matched only when they appear in a paragraph whose visible text **starts with a checkbox glyph** (`☐ / ☑ / ☒`), so unrelated body prose containing the word `OTHER` or `COMMERCIAL` is never touched. Word-boundary guards (`(?<![A-Za-z])` / `(?![A-Za-z])`) apply to the bare-word labels (`COMMERCIAL`, `OTHER`, `LAND ZONED`, `LAND INCOME PRODUCING`).
+3. **Paragraph spacing + indent reset (NEW)**
+   Inside each matched paragraph's `<w:pPr>`:
+   - Remove any `<w:ind .../>` (drops varying left / first-line / hanging indents).
+   - Remove any `<w:tabs>...</w:tabs>` (no manual tab alignment).
+   - Replace `<w:spacing .../>` with a fixed `<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>` so every row is the same height.
+   Existing alignment (`<w:jc>`) and numbering (`<w:numPr>`) are preserved.
 
-2. For every matched paragraph, walk `<w:r>` runs in order:
-   - Locate the run whose `<w:t>` text contains the trailing glyph character of the checkbox group (it may be a literal `☐`/`☑` glyph in a static run, or the resolved content of a `<w:sdt>` checkbox SDT).
-   - Locate the next run whose `<w:t>` text begins with the label literal (after stripping leading whitespace).
-   - Rewrite ONLY the whitespace between those two — drop any `<w:tab/>`, drop empty whitespace-only runs, and ensure the **label run** starts with exactly one regular space (`<w:t xml:space="preserve"> LABEL…</w:t>`).
-   - If the glyph and label already share the same `<w:t>` (no inter-run gap), normalize the inline whitespace inside that `<w:t>` to a single space: `☐LABEL` → `☐ LABEL`, `☐\tLABEL` → `☐ LABEL`, `☐   LABEL` → `☐ LABEL`.
+4. **Existing whitespace / tab / break normalization (KEPT)**
+   - Strip stray `<w:tab/>` and `<w:br/>` between glyph and label.
+   - Collapse whitespace after each glyph to exactly one regular space; force `xml:space="preserve"`.
+   - Strip leading whitespace inside the label's `<w:t>`.
 
-3. The pass is **idempotent**: a second invocation on already-normalized XML produces no diff.
+5. **Containing table — fixed column widths (NEW)**
+   For every `<w:tbl>` that contains at least one matched PROPERTY TYPE paragraph:
+   - Force `<w:tblW w:w="9360" w:type="dxa"/>` (US-letter content width).
+   - Rewrite `<w:tblGrid>` to exactly two `<w:gridCol w:w="4680"/>` columns.
+   - For every `<w:tc>` in that table, force `<w:tcW w:w="4680" w:type="dxa"/>` and clear `<w:tcMar>` overrides to a fixed `top/bottom=0`, `left/right=120`.
+   This guarantees the right column starts at the same horizontal position in every property's PROPERTY TYPE block and prevents `OTHER: <dynamic text>` from shifting columns.
 
-4. **Out of scope for this pass** — explicitly NOT modified:
-   - Which glyph appears (the checked/unchecked state stays whatever the upstream publisher / earlier safety passes set it to).
-   - The label text itself.
-   - The paragraph's `<w:pPr>` (alignment, tab stops, indent, spacing).
-   - The run's `<w:rPr>` (font, size, color).
-   - Anything outside the seven PROPERTY TYPE label paragraphs.
-   - The `property_type_other_text_N` value rendered after the OTHER label — only the gap between `☐/☑` and the word `OTHER` is normalized.
+6. **Idempotency**
+   The pass detects no-op runs and skips re-zipping; re-running on already-normalized XML yields zero mutations.
+
+## Safety guarantees
+- Gate is unchanged: only paragraphs that visibly begin with a checkbox glyph AND contain one of the 7 PROPERTY TYPE labels are touched.
+- `<w:numPr>`, `<w:jc>`, bookmarks, content controls (`<w:sdt>`), and label TEXT are never modified.
+- Glyph state (☐ vs ☑ vs ☒) is never changed.
+- Table-width / column-width rewrite only fires for tables that contain at least one matched PROPERTY TYPE paragraph — no other tables in the document are touched.
+- Wrapped in try / catch with `didMutate` flag → on any error the original XML is preserved and rendering continues.
 
 ## Verification
+- Generate RE851D for a deal with ≥ 2 properties, including one whose PROPERTY TYPE is OTHER with a populated free-text value.
+- Confirm in the output `.docx`:
+  - Checkbox glyphs visually identical in every property block.
+  - Left column labels (SFR rows) align vertically across all blocks.
+  - Right column (COMMERCIAL, LAND ZONED, LAND INCOME PRODUCING, OTHER) starts at the same X across all blocks.
+  - `OTHER: <text>` length does not shift the row's checkbox position.
+  - Row spacing is equal across all 4 rows in every block.
+- Confirm no regression in Source-of-Information row, Multiple-Properties checkbox, Encumbrance pages, or RE851A output.
 
-1. Regenerate the RE851D doc for the current deal and confirm visually that for every property block, all seven PROPERTY TYPE rows render as:
-   ```
-   ☐ SINGLE-FAMILY RESIDENCE (owner occupied)
-   ☐ SINGLE-FAMILY RESIDENCE (not owner occupied)
-   ☐ SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)
-   ☐ COMMERCIAL …
-   ☐ LAND ZONED …
-   ☐ LAND INCOME PRODUCING …
-   ☐ OTHER …
-   ```
-   with a single uniform gap between glyph and label, on every property page.
-2. Edge function logs include `RE851D post-render property-type spacing pass: N row(s) normalized in word/document.xml` per property page.
-
-## Not changing
-
-- The `property_type_*` publisher (lines 1875–1965).
-- `RE851D_INDEXED_TAGS` entries for property type.
-- The DOCX template file.
-- Any other RE851D safety pass.
-- Source-of-information row pass (just added in the prior turn).
-- UI, database, APIs.
+## Memory
+Update `mem://features/document-generation/re851d-property-type-spacing` to note that the same pass now also (a) canonicalizes glyph + label run fonts/sizes, (b) resets paragraph indent + spacing, and (c) forces a fixed 2-column `<w:tblGrid>` on any table containing PROPERTY TYPE rows.
