@@ -39,23 +39,30 @@ describe('formatPercentDisplay (smart-trim)', () => {
   });
 });
 
-describe('category helpers', () => {
-  it('formatInterestRate caps at 3dp', () => {
+describe('category helpers (all use min 2 / max 4 smart-trim)', () => {
+  it('formatInterestRate', () => {
     expect(formatInterestRate('8.5000')).toBe('8.50%');
     expect(formatInterestRate('8.8750')).toBe('8.875%');
-    expect(formatInterestRate('8.8756')).toBe('8.876%');
+    expect(formatInterestRate('8.8756')).toBe('8.8756%');
+    expect(formatInterestRate('7.3500')).toBe('7.35%');
+    expect(formatInterestRate('7.2000')).toBe('7.20%');
   });
-  it('formatProRata caps at 4dp', () => {
+  it('formatProRata', () => {
     expect(formatProRata('27.2727')).toBe('27.2727%');
     expect(formatProRata('50.5000')).toBe('50.50%');
+    expect(formatProRata('33.3333')).toBe('33.3333%');
   });
-  it('formatRatio caps at 2dp', () => {
-    expect(formatRatio('80.1250')).toBe('80.13%');
+  it('formatRatio (LTV/CLTV/Protective Equity)', () => {
+    expect(formatRatio('80.1250')).toBe('80.125%');
     expect(formatRatio('65.5000')).toBe('65.50%');
+    expect(formatRatio('50.0000')).toBe('50.00%');
+    expect(formatRatio('4.1671')).toBe('4.1671%');
+    expect(formatRatio('0.0167')).toBe('0.0167%');
   });
-  it('formatLateChargePct caps at 3dp', () => {
+  it('formatLateChargePct', () => {
     expect(formatLateChargePct('5.1250')).toBe('5.125%');
     expect(formatLateChargePct('5.1000')).toBe('5.10%');
+    expect(formatLateChargePct('10.5010')).toBe('10.501%');
   });
   it('formatDollar always 2dp with $ and commas', () => {
     expect(formatDollar(1000)).toBe('$1,000.00');
@@ -90,7 +97,7 @@ describe('resolvePercentCategory', () => {
 
 describe('formatPercentByFieldKey', () => {
   it('routes through correct category', () => {
-    expect(formatPercentByFieldKey('ln_p_note_rate', '8.8756')).toBe('8.876%');
+    expect(formatPercentByFieldKey('ln_p_note_rate', '8.8756')).toBe('8.8756%');
     expect(formatPercentByFieldKey('lender_pro_rata', '27.2727')).toBe('27.2727%');
     expect(formatPercentByFieldKey('ltv', '80.1250')).toBe('80.125%');
     expect(formatPercentByFieldKey('late_charge_pct', '5.125')).toBe('5.125%');

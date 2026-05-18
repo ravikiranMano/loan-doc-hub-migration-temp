@@ -167,27 +167,33 @@ export function allocateDollarsByPercent(
 // string.
 // ============================================================================
 
-/** Interest-style rates (Note, Default, Interest Guarantee, Deferred). Max 3dp. */
+// Platform-wide rule: every percent/rate field displays with min 2, max 4
+// decimals, with trailing zeros beyond the 2nd decimal suppressed. Storage
+// remains 4dp. All category helpers route through the same formatter so
+// Note Rate, Lender Rate, Override Rate, Pro Rata, Original/Current LTV,
+// CLTV, Protective Equity, Late Charge %, etc. render identically.
+
+/** Interest-style rates (Note, Default, Interest Guarantee, Deferred). */
 export function formatInterestRate(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 3);
+  const s = formatPercentDisplay(value, 4);
   return s === '' ? '' : `${s}%`;
 }
 
-/** Pro-rata / funding / lender allocation %. Max 4dp. */
+/** Pro-rata / funding / lender allocation %. */
 export function formatProRata(value: string | number | null | undefined): string {
   const s = formatPercentDisplay(value, 4);
   return s === '' ? '' : `${s}%`;
 }
 
-/** LTV / CLTV / Protective Equity / generic ratio %. Max 2dp. */
+/** LTV / CLTV / Protective Equity / generic ratio %. */
 export function formatRatio(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 2);
+  const s = formatPercentDisplay(value, 4);
   return s === '' ? '' : `${s}%`;
 }
 
-/** Late Charge %. Max 3dp. */
+/** Late Charge %. */
 export function formatLateChargePct(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 3);
+  const s = formatPercentDisplay(value, 4);
   return s === '' ? '' : `${s}%`;
 }
 
