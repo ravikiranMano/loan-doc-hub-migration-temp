@@ -106,6 +106,7 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
     ach: cd?.ach === 'true',
     email: contact.email || cd?.email || '',
     agreement: cd?.agreement_on_file === 'true',
+    agreementDate: cd?.agreement_on_file_date || '',
     repPhone: cd?.rep_phone || preferredPhoneValue || '',
     repEmail: cd?.rep_email || contact.email || cd?.email || '',
     repLicense: cd?.rep_license || '',
