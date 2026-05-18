@@ -240,6 +240,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   loanNumber,
   borrowerName,
   fundingRecords,
+  allRecords,
   totalRecordCount,
   historyRecords = [],
   onAddFunding,
@@ -270,6 +271,12 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   onDeleteHistoryRecord,
 }) => {
   const { user } = useAuth();
+  // Records used for cross-row aggregates (totals, rounding adjustment, pct
+  // ownership). Defaults to the visible paginated set when the parent does
+  // not provide the unpaginated list.
+  const aggregateRecords: FundingRecord[] = allRecords && allRecords.length
+    ? allRecords
+    : fundingRecords;
   const [createLenderModalOpen, setCreateLenderModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
