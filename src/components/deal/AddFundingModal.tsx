@@ -490,11 +490,25 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const percentOwnedNum = parseFloat(formData.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
+  // Over-funded: total funding $ across all lenders exceeds loan principal
+  // balance beyond a $0.50 tolerance. Replaces the old "> 100% ownership"
+  // check which incorrectly assumed the loan was always fully funded.
+  const FUNDING_TOLERANCE = 0.5;
+  const currentFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+  const otherLendersFundingTotal = existingRecords
+    .filter(r => r.id !== editingRecordId)
+    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+  const principalBalanceNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, ''))
+    || parseFloat((loanAmount || '').replace(/[$,]/g, ''))
+    || 0;
+  const projectedFundedTotal = otherLendersFundingTotal + currentFundingAmount;
+  const totalPercentError = principalBalanceNum > 0
+    && projectedFundedTotal > principalBalanceNum + FUNDING_TOLERANCE;
+  // Legacy computed for any callers still reading it.
   const otherLendersTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
     .reduce((sum, r) => sum + r.pctOwned, 0);
   const projectedTotal = otherLendersTotal + percentOwnedNum;
-  const totalPercentError = projectedTotal > 100;
 
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
