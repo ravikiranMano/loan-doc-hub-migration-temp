@@ -15,6 +15,7 @@ interface AccountIdSearchProps {
   onChange: (accountId: string, name: string) => void;
   className?: string;
   disabled?: boolean;
+  contactTypes?: Array<'borrower' | 'lender' | 'broker'>;
 }
 
 export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
@@ -22,6 +23,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
   onChange,
   className,
   disabled = false,
+  contactTypes = ['borrower', 'lender'],
 }) => {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<AccountResult[]>([]);
@@ -40,7 +42,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
       let qb = supabase
         .from('contacts')
         .select('contact_id, full_name, contact_type')
-        .in('contact_type', ['borrower', 'lender']);
+        .in('contact_type', contactTypes);
 
       if (searchTerm && searchTerm.length >= 1) {
         qb = qb.or(`contact_id.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
@@ -65,7 +67,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [contactTypes.join(',')]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
