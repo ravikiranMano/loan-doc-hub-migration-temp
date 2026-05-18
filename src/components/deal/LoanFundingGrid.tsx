@@ -464,7 +464,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     ? Math.max(0, 100 - fundedPct)
     : 0;
   const fundingStatus: 'under' | 'full' | 'over' | 'none' =
-    effectiveLoanPrincipal <= 0 || fundingRecords.length === 0
+    effectiveLoanPrincipal <= 0 || aggregateRecords.length === 0
       ? 'none'
       : overAmount > FUNDING_TOLERANCE
         ? 'over'
