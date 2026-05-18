@@ -675,7 +675,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.months`}
           checkboxValue={values[`${prefix}.months_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.months_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <PenaltyIntegerInput
             value={values[`${prefix}.months`] || ''}
