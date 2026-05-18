@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
@@ -14,6 +14,19 @@ import { DealDataEntryInner } from '@/pages/csr/DealDataEntryPage';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const ContentSkeleton = () => (
+  <div className="page-container space-y-4 animate-pulse" aria-hidden="true">
+    <div className="h-8 w-64 rounded-md bg-muted" />
+    <div className="h-4 w-96 max-w-full rounded-md bg-muted" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+      <div className="h-28 rounded-lg bg-muted" />
+      <div className="h-28 rounded-lg bg-muted" />
+      <div className="h-28 rounded-lg bg-muted" />
+    </div>
+    <div className="h-72 rounded-lg bg-muted" />
+  </div>
+);
+
 const AppLayoutInner: React.FC = () => {
   const { isCollapsed } = useSidebar();
   const { role } = useAuth();
@@ -21,6 +34,8 @@ const AppLayoutInner: React.FC = () => {
   const contactWs = useContactWorkspace();
   const location = useLocation();
   const navigate = useNavigate();
+  const [showRouteSkeleton, setShowRouteSkeleton] = useState(false);
+  const hasMountedRef = useRef(false);
 
   // Close confirmation state (files)
   const [closingFileId, setClosingFileId] = useState<string | null>(null);
@@ -132,6 +147,19 @@ const AppLayoutInner: React.FC = () => {
 
   const showWorkspaceRenderer = hasOpenFiles;
 
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    setShowRouteSkeleton(true);
+    const timeout = window.setTimeout(() => setShowRouteSkeleton(false), 180);
+    return () => {
+      window.clearTimeout(timeout);
+      return;
+    }
+  }, [location.pathname, location.search]);
+
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
@@ -147,10 +175,10 @@ const AppLayoutInner: React.FC = () => {
           isCollapsed ? "pl-16" : "pl-64",
           hasTabBar ? "pt-[88px]" : "pt-12"
         )}>
-        <div className="animate-fade-in">
+        <div className="relative min-h-[calc(100vh-88px)]">
           {/* Always render workspace files (hidden when not active) */}
           {showWorkspaceRenderer && (
-            <div className={cn(!isWorkspaceRoute && 'hidden')}>
+            <div className={cn(!isWorkspaceRoute && 'app-route-hidden')}>
             <WorkspaceFileRenderer
                 renderFile={(dealId, isActive) => (
                   <DealDataEntryInner
@@ -164,8 +192,16 @@ const AppLayoutInner: React.FC = () => {
             </div>
           )}
           {/* Show Outlet for non-workspace routes */}
-          <div className={cn(isWorkspaceRoute && 'hidden')}>
+          <div className={cn(isWorkspaceRoute && 'app-route-hidden')}>
             <Outlet />
+          </div>
+          <div
+            className={cn(
+              'pointer-events-none absolute inset-0 bg-background transition-opacity duration-150 ease-in-out',
+              showRouteSkeleton ? 'opacity-100 visible' : 'opacity-0 invisible'
+            )}
+          >
+            <ContentSkeleton />
           </div>
         </div>
       </main>

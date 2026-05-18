@@ -22,8 +22,10 @@ export const WorkspaceFileRenderer: React.FC<WorkspaceFileRendererProps> = ({ re
           <div
             key={file.id}
             className={cn(
-              isActive ? 'block' : 'hidden'
+              'app-keepalive-pane',
+              isActive ? 'app-keepalive-pane-active' : 'app-keepalive-pane-inactive'
             )}
+            aria-hidden={!isActive}
           >
             <DealNavigationProvider dealId={file.id} initialTab="loan_terms">
               {renderFile(file.id, isActive)}
