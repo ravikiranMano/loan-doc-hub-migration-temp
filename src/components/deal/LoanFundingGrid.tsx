@@ -162,6 +162,13 @@ interface LoanFundingGridProps {
   loanNumber?: string;
   borrowerName?: string;
   fundingRecords: FundingRecord[];
+  /**
+   * Optional full set of funding records (unpaginated). When provided, totals,
+   * pro rata, payment/net-payment column computations and rounding
+   * reconciliation are calculated against the full set so the grid stays
+   * synchronized across pages. Falls back to `fundingRecords` when omitted.
+   */
+  allRecords?: FundingRecord[];
   totalRecordCount?: number;
   historyRecords?: any[];
   onAddFunding: (data: any) => void;
