@@ -424,7 +424,7 @@ export const PacketManagementPage: React.FC = () => {
               <Label>Add Template</Label>
               <Select onValueChange={handleAddTemplate}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select template to add" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="z-[200] bg-background border-border">
                   {availableTemplates.map((t) => (

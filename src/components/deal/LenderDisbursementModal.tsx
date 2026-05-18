@@ -212,7 +212,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 disabled={isPercentZeroOrLess}
               >
                 <SelectTrigger className="h-6 text-[11px] w-[110px]">
-                  <SelectValue placeholder="Select Type" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="!z-[9999]" position="popper" sideOffset={4}>
                   <SelectItem value="Payment">Payment</SelectItem>

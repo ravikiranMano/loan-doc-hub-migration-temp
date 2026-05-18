@@ -514,7 +514,7 @@ const DefaultInterestColumn: React.FC<{
             disabled={disabled || !isEnabled}
           >
             <SelectTrigger className="h-7 text-sm">
-              <SelectValue placeholder="Select..." />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent className="bg-background border border-border z-50">
               {TRIGGERED_BY_OPTIONS.map(opt => (
@@ -739,7 +739,7 @@ const PrepaymentPenaltySection: React.FC<{
                 disabled={disabled || !isEnabled}
               >
                 <SelectTrigger className="h-7 text-sm w-28 shrink-0">
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   <SelectItem value="original">Original</SelectItem>

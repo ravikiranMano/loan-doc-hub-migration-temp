@@ -96,7 +96,7 @@ export const PropertyLiensForm: React.FC<PropertyLiensFormProps> = ({
           <div>
             <Label className="text-sm text-foreground">Property</Label>
             <Select value={getFieldValue(FIELD_KEYS.property)} onValueChange={(val) => onValueChange(FIELD_KEYS.property, val)} disabled={disabled}>
-              <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent className="bg-background border border-border z-50">
                 <SelectItem value="unassigned">Unassigned</SelectItem>
                 <SelectItem value="primary">Primary Collateral</SelectItem>
@@ -110,7 +110,7 @@ export const PropertyLiensForm: React.FC<PropertyLiensFormProps> = ({
           <div>
             <Label className="text-sm text-foreground">Priority</Label>
             <Select value={getFieldValue(FIELD_KEYS.priority)} onValueChange={(val) => onValueChange(FIELD_KEYS.priority, val)} disabled={disabled}>
-              <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select priority" /></SelectTrigger>
+              <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent className="bg-background border border-border z-50">
                 {PRIORITY_OPTIONS.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
               </SelectContent>

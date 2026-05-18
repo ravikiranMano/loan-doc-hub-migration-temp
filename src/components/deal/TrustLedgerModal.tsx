@@ -240,7 +240,7 @@ export const TrustLedgerModal: React.FC<TrustLedgerModalProps> = ({
               <Label className="text-xs text-foreground">Category <span className="text-destructive">*</span></Label>
               <Select value={formData.category} onValueChange={v => handleChange('category', v)}>
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="bg-background border border-border z-[10000] max-h-60">
                   <SelectItem value="all">All Transactions</SelectItem>

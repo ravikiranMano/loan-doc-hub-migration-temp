@@ -151,7 +151,7 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
       <Label className={cn(labelWidth, 'shrink-0 text-xs font-semibold text-foreground')}>{label}</Label>
       <Select value={formData[field] || undefined} onValueChange={(val) => handleFieldChange(field, val)}>
         <SelectTrigger className="h-7 text-xs flex-1">
-          <SelectValue placeholder="Select..." />
+          <SelectValue placeholder="Select" />
         </SelectTrigger>
         <SelectContent className="!z-[9999]" position="popper" sideOffset={4}>
           {options.map(opt => (
@@ -209,7 +209,7 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
                   <Label className="w-[110px] shrink-0 text-xs font-semibold text-foreground">Department</Label>
                   <Select value={formData.department || undefined} onValueChange={handleDepartmentChange}>
                     <SelectTrigger className="h-7 text-xs flex-1">
-                      <SelectValue placeholder="Select..." />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="!z-[9999]" position="popper" sideOffset={4}>
                       {DEPARTMENT_OPTIONS.map(opt => (
@@ -304,7 +304,7 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
                     <div className="px-1.5 py-1">
                       <Select value={formData.advancedByDeferred || undefined} onValueChange={(val) => handleFieldChange('advancedByDeferred', val)}>
                         <SelectTrigger className="h-6 text-xs">
-                          <SelectValue placeholder="Y/N" />
+                          <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent className="!z-[9999]" position="popper" sideOffset={4}>
                           <SelectItem value="Y">Y</SelectItem>
@@ -357,7 +357,7 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
                     <div className="px-1.5 py-1">
                       <Select value={formData.onBehalfOfBilling || undefined} onValueChange={(val) => handleFieldChange('onBehalfOfBilling', val)}>
                         <SelectTrigger className="h-6 text-xs">
-                          <SelectValue placeholder="Select..." />
+                          <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent className="!z-[9999]" position="popper" sideOffset={4}>
                           {BILLING_OPTIONS.map(opt => (

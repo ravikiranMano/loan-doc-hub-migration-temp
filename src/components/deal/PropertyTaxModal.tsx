@@ -174,7 +174,7 @@ export const PropertyTaxModal: React.FC<PropertyTaxModalProps> = ({
               <div className="flex items-center gap-2">
                 <Label className="w-[120px] shrink-0 text-xs text-foreground">State</Label>
                 <Select value={formData.pmaState} onValueChange={(v) => handleChange('pmaState', v)}>
-                  <SelectTrigger className="h-7 text-xs flex-1 bg-background"><SelectValue placeholder="Select state" /></SelectTrigger>
+                  <SelectTrigger className="h-7 text-xs flex-1 bg-background"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent className="bg-background z-[9999] max-h-[200px]">
                     {STATE_OPTIONS.map((st) => (<SelectItem key={st} value={st}>{st}</SelectItem>))}
                   </SelectContent>

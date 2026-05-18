@@ -148,7 +148,7 @@ export const BrokerBankingForm: React.FC<BrokerBankingFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">ACH Status</Label>
               <Select value={getValue('achStatus')} onValueChange={(v) => handleChange('achStatus', v)} disabled={disabled}>
-                <SelectTrigger className="h-8 w-[160px] 3xl:w-[200px]"><SelectValue placeholder="Select status" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-[160px] 3xl:w-[200px]"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="Inactive">Inactive</SelectItem>
@@ -164,7 +164,7 @@ export const BrokerBankingForm: React.FC<BrokerBankingFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="text-sm text-muted-foreground min-w-[120px] max-w-[120px] text-left shrink-0">Type</Label>
               <Select value={getValue('accountType')} onValueChange={(v) => handleChange('accountType', v)} disabled={disabled}>
-                <SelectTrigger className="h-8 w-[160px] 3xl:w-[200px]"><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-[160px] 3xl:w-[200px]"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Personal Banking">Personal Banking</SelectItem>
                   <SelectItem value="Business Banking">Business Banking</SelectItem>

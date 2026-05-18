@@ -625,7 +625,7 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
               disabled={disabled}
             >
               <SelectTrigger className="h-8 text-xs w-[180px]">
-                <SelectValue placeholder="Select broker" />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
                 {brokerParticipants.map((b) => (

@@ -105,7 +105,7 @@ export const BorrowerBankingForm: React.FC<BorrowerBankingFormProps> = ({
             <div className="flex items-center gap-4">
               <RowLabel>ACH Status</RowLabel>
               <Select value={getValue('achStatus') || undefined} onValueChange={(v) => handleChange('achStatus', v)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select status" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {ACH_STATUS_OPTIONS.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                 </SelectContent>
@@ -150,7 +150,7 @@ export const BorrowerBankingForm: React.FC<BorrowerBankingFormProps> = ({
             <div className="flex items-center gap-4">
               <RowLabel>Account Type</RowLabel>
               <Select value={getValue('accountType') || undefined} onValueChange={(v) => handleChange('accountType', v)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select account type" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {ACCOUNT_TYPE_OPTIONS.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                 </SelectContent>
@@ -258,7 +258,7 @@ export const BorrowerBankingForm: React.FC<BorrowerBankingFormProps> = ({
             <div className="flex items-center gap-4">
               <RowLabel>Frequency</RowLabel>
               <Select value={debitFrequency} onValueChange={(v) => handleChange('debitFrequency', v)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select frequency" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {DEBIT_FREQUENCY_OPTIONS.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                 </SelectContent>
@@ -319,7 +319,7 @@ export const BorrowerBankingForm: React.FC<BorrowerBankingFormProps> = ({
             <div className="flex items-center gap-4">
               <RowLabel>Resubmit NSF</RowLabel>
               <Select value={getValue('resubmitNsf') || undefined} onValueChange={(v) => handleChange('resubmitNsf', v)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Yes / No" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background z-50">
                   {YES_NO_OPTIONS.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                 </SelectContent>

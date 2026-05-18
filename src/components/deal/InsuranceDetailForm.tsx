@@ -164,7 +164,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Property</Label>
               <Select value={insurance.property} onValueChange={(val) => onChange('property', val)} disabled={disabled}>
-                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   <SelectItem value="unassigned">Unassigned</SelectItem>
                   {propertyOptions.map(opt => (<SelectItem key={opt.id} value={opt.id}>{opt.label}</SelectItem>))}
@@ -241,7 +241,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">State</Label>
               <Select value={insurance.paymentMailingState || undefined} onValueChange={(val) => onChange('paymentMailingState', (val === '__select__' ? '' : val))} disabled={disabled}>
-                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -271,7 +271,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">State</Label>
               <Select value={insurance.businessAddressState || undefined} onValueChange={(val) => onChange('businessAddressState', (val === '__select__' ? '' : val))} disabled={disabled}>
-                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select state" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   <SelectItem value="__select__">Select</SelectItem>
                   {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
@@ -328,7 +328,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
                 <div className="flex items-center gap-3">
                   <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Status</Label>
                   <Select value={insurance.trackingStatus} onValueChange={(val) => onChange('trackingStatus', val)} disabled={disabled}>
-                    <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent className="bg-background border border-border z-50">
                       {TRACKING_STATUS_OPTIONS.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
                     </SelectContent>

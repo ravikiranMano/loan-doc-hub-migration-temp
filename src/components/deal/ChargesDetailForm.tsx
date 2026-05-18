@@ -162,7 +162,7 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Department</Label>
               <Select value={departmentVal || undefined} onValueChange={handleDepartmentChange} disabled={disabled}>
                 <SelectTrigger className="h-7 text-sm flex-1">
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
                   {DEPARTMENT_OPTIONS.map(opt => (
@@ -271,7 +271,7 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
                 <div className="px-2 py-1.5">
                   <Select value={values[FIELD_KEYS.advancedByDeferred] || undefined} onValueChange={(val) => onValueChange(FIELD_KEYS.advancedByDeferred, val)} disabled={disabled}>
                     <SelectTrigger className="h-7 text-sm">
-                      <SelectValue placeholder="Y/N" />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[9999]">
                       <SelectItem value="Y">Y</SelectItem>
@@ -328,7 +328,7 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
                 <div className="px-2 py-1.5">
                   <Select value={values[FIELD_KEYS.onBehalfOfBilling] || undefined} onValueChange={(val) => onValueChange(FIELD_KEYS.onBehalfOfBilling, val)} disabled={disabled}>
                     <SelectTrigger className="h-7 text-sm">
-                      <SelectValue placeholder="Select..." />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[9999]">
                       {BILLING_OPTIONS.map(opt => (

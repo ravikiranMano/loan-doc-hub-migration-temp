@@ -366,7 +366,7 @@ const BrokerTrustLedger: React.FC<{ brokerId: string; contactDbId: string; disab
             <div className="space-y-1">
               <Label className="text-xs">Category</Label>
               <Select value={newEntry.category || undefined} onValueChange={v => setNewEntry(prev => ({ ...prev, category: v as any }))}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="!z-[9999]" position="popper" sideOffset={4}>
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="reserve">Reserve</SelectItem>

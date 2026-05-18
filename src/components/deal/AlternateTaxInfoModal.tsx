@@ -197,7 +197,7 @@ export const AlternateTaxInfoModal: React.FC<AlternateTaxInfoModalProps> = ({
                 onValueChange={(value) => handleChange('recipientType', value)}
               >
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Select type" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   {RECIPIENT_TYPE_OPTIONS.map((option) => (

@@ -259,7 +259,7 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
           <Label className="w-[100px] shrink-0 text-xs text-foreground">Type</Label>
           <Select value={formData.type || undefined} onValueChange={(val) => setFormData(prev => prev ? ({ ...prev, type: val }) : prev)} disabled={disabled || typesLoading}>
             <SelectTrigger className="h-7 text-xs flex-1">
-              <SelectValue placeholder="Select type..." />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent className="z-[9999]">
               {noteTypes.length > 0 ? noteTypes.map(t => (
@@ -340,7 +340,7 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
           <div className="flex items-center gap-2">
             <Label className="shrink-0 text-xs text-foreground">to</Label>
             <Select value={formData.assignedTo || undefined} onValueChange={(val) => setFormData(prev => prev ? ({ ...prev, assignedTo: val }) : prev)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="CSR Dropdown" /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent className="z-[9999]">
                 <SelectItem value="csr1" className="text-xs">CSR 1</SelectItem>
                 <SelectItem value="csr2" className="text-xs">CSR 2</SelectItem>
@@ -348,7 +348,7 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
             </Select>
             <Label className="shrink-0 text-xs text-foreground">or</Label>
             <Select value={formData.assignedDepartment || undefined} onValueChange={(val) => setFormData(prev => prev ? ({ ...prev, assignedDepartment: val }) : prev)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Department" /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent className="z-[9999]">
                 <SelectItem value="servicing" className="text-xs">Servicing</SelectItem>
                 <SelectItem value="origination" className="text-xs">Origination</SelectItem>
@@ -365,7 +365,7 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
           <div className="flex items-center gap-2">
             <Label className="shrink-0 text-xs text-foreground">Completed By</Label>
             <Select value={formData.completedBy || undefined} onValueChange={(val) => setFormData(prev => prev ? ({ ...prev, completedBy: val }) : prev)} disabled={disabled}>
-              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="CSR Dropdown" /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent className="z-[9999]">
                 <SelectItem value="csr1" className="text-xs">CSR 1</SelectItem>
                 <SelectItem value="csr2" className="text-xs">CSR 2</SelectItem>

@@ -155,7 +155,7 @@ export const LenderAuthorizedPartyForm: React.FC<LenderAuthorizedPartyFormProps>
                 <Label className="text-sm text-muted-foreground min-w-[50px]">State</Label>
                 <Select value={getValue('state')} onValueChange={(v) => handleChange('state', (v === '__select__' ? '' : v))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm flex-1 bg-background">
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="bg-background z-50">
                     <SelectItem value="__select__">Select</SelectItem>

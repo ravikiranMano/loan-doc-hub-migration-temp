@@ -375,7 +375,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
               <Label className="text-sm font-medium">Select Participant Type</Label>
               <Select value={participantType} onValueChange={(v) => setParticipantType(v as ParticipantType)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose type..." />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="z-[70]">
                   {PARTICIPANT_TYPES.map((t) => (
@@ -399,7 +399,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
                   setSearchResults([]);
                 }}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose type..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="z-[70]">
                     {PARTICIPANT_TYPES.map((t) => (

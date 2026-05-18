@@ -114,7 +114,7 @@ export const PropertyInsuranceForm: React.FC<PropertyInsuranceFormProps> = ({
               disabled={disabled}
             >
               <SelectTrigger className="h-8 text-sm mt-1">
-                <SelectValue placeholder="Unassigned" />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-background border border-border z-50">
                 <SelectItem value="unassigned">Unassigned</SelectItem>
@@ -129,7 +129,7 @@ export const PropertyInsuranceForm: React.FC<PropertyInsuranceFormProps> = ({
             <div>
               <Label className="text-sm text-foreground">Description</Label>
               <Select value={getFieldValue(FIELD_KEYS.description)} onValueChange={(val) => onValueChange(FIELD_KEYS.description, val)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select description" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   {INSURANCE_DESCRIPTION_OPTIONS.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
                 </SelectContent>
@@ -141,7 +141,7 @@ export const PropertyInsuranceForm: React.FC<PropertyInsuranceFormProps> = ({
             <div>
               <Label className="text-sm text-foreground">Insurance Company</Label>
               <Select value={getFieldValue(FIELD_KEYS.companyName) || undefined} onValueChange={(val) => onValueChange(FIELD_KEYS.companyName, val)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select company" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   {US_INSURANCE_COMPANIES.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
                 </SelectContent>
@@ -205,7 +205,7 @@ export const PropertyInsuranceForm: React.FC<PropertyInsuranceFormProps> = ({
             <div>
               <Label className="text-sm text-foreground">Frequency</Label>
               <Select value={getFieldValue(FIELD_KEYS.frequency) || undefined} onValueChange={(val) => onValueChange(FIELD_KEYS.frequency, val)} disabled={disabled}>
-                <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select frequency" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-sm mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   {FREQUENCY_OPTIONS.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
                 </SelectContent>

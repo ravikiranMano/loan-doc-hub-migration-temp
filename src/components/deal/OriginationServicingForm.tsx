@@ -215,7 +215,7 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
           <Label className="w-[80px] text-sm shrink-0">State</Label>
           <Select value={v(keys.state)} onValueChange={(val) => sv(keys.state, (val === '__select__' ? '' : val))} disabled={disabled || extraDisabled}>
             <SelectTrigger className="h-7 text-sm">
-              <SelectValue placeholder="Select..." />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent className="bg-popover z-50">
               <SelectItem value="__select__">Select</SelectItem>
@@ -258,7 +258,7 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
               <Label className="w-[120px] text-sm shrink-0">Servicing Agent</Label>
               <Select value={v(FK.servicing_agent)} onValueChange={(val) => sv(FK.servicing_agent, val)} disabled={disabled}>
                 <SelectTrigger className="h-7 text-sm">
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover z-50">
                   {AGENT_OPTIONS.map((opt) => (

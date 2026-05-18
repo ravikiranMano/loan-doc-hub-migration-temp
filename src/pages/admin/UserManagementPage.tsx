@@ -274,7 +274,7 @@ export const UserManagementPage: React.FC = () => {
                 }}
               >
                 <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select a role" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -287,7 +287,7 @@ export const UserManagementPage: React.FC = () => {
                 <Label htmlFor="permission_level">Permission Level</Label>
                 <Select value={newPermissionLevel} onValueChange={setNewPermissionLevel}>
                   <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Select permission level" />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="full">Full — Can edit all forms</SelectItem>
