@@ -572,6 +572,23 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
         return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
       case 'lenderRate':
+        if (!hasLenderRate(record)) {
+          return (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                    <span>-</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  Lender Rate not set — defaulting to Note Rate
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        }
         return <span>{formatPercentage(record.lenderRate, 3)}</span>;
       case 'regularPayment':
         return <span>{formatCurrency(getDisplayedPayment(record))}</span>;
