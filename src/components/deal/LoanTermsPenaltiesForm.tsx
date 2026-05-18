@@ -281,7 +281,20 @@ const DistributionFields: React.FC<{
         </DirtyFieldWrapper>
         <DirtyFieldWrapper fieldKey={`${prefix}.distribution.other`}>
           <div className="flex items-center gap-3">
-            <Label className="text-sm min-w-[160px] max-w-[160px]">Other</Label>
+            <div className="min-w-[160px] max-w-[160px]">
+              <DistributionOtherSelect
+                entityId={values[`${prefix}.distribution.other_entity_id`] || ''}
+                entityType={values[`${prefix}.distribution.other_entity_type`] || ''}
+                entityName={values[`${prefix}.distribution.other_entity_name`] || ''}
+                disabled={disabled}
+                hasError={otherClamped > 0 && !values[`${prefix}.distribution.other_entity_id`]}
+                onChange={(sel) => {
+                  onValueChange(`${prefix}.distribution.other_entity_id`, sel?.id || '');
+                  onValueChange(`${prefix}.distribution.other_entity_type`, sel?.type || '');
+                  onValueChange(`${prefix}.distribution.other_entity_name`, sel?.name || '');
+                }}
+              />
+            </div>
             <div className="flex-1 min-w-0">
               <PenaltyPercentInput
                 value={otherRaw}
