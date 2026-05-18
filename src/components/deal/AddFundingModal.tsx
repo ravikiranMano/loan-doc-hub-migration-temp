@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, X, SlidersHorizontal } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, SlidersHorizontal, Info } from 'lucide-react';
 import { LenderDisbursementModal, type DisbursementFormData } from './LenderDisbursementModal';
 import { cn } from '@/lib/utils';
 import { LenderIdSearch } from './LenderIdSearch';
@@ -723,12 +723,24 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
           <span className="text-xs font-bold">Add / Edit Lender Funding</span>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold">Principal Balance</span>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs max-w-[260px]">
+                  Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <div className="relative w-24">
               <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
               <Input
                 value={loanPrincipalBalance ?? ''}
                 readOnly
-                className="h-6 text-xs pl-4 bg-muted/50"
+                tabIndex={-1}
+                aria-readonly="true"
+                className="h-6 text-xs pl-4 bg-muted/50 cursor-not-allowed"
                 placeholder="-"
               />
             </div>
