@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { Plus, Trash2, Pencil, Loader2, Download, Search, X, Filter, SlidersHorizontal, History, Check } from 'lucide-react';
+import { Plus, Trash2, Pencil, Loader2, Download, Search, X, Filter, SlidersHorizontal, History, Check, AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { AddFundingModal, FundingFormData } from './AddFundingModal';
