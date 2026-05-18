@@ -334,46 +334,41 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return map;
   }, [fundingRecords, remainingPayments, noteRate]);
 
-  // Pro Rata: derived from each lender's funding amount over the SUM of all
-  // funding amounts (not the original loan amount). Rounded to 4 decimals.
-  // The lender flagged with `roundingAdjustment` absorbs only the fractional
-  // residual so the column always totals 100.0000%.
+  // Loan-level principal balance (denominator for Pro Rata).
+  // Prefer the explicit loan_terms.principal prop; fall back to loanAmount.
+  // Does NOT use SUM(funding amounts) — pro rata must reflect each lender's
+  // actual share of the loan, NOT a normalized split that always sums to 100%.
+  const loanPrincipalNumeric = React.useMemo(() => {
+    const p = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, ''));
+    if (!isNaN(p) && p > 0) return p;
+    const l = parseFloat(String(loanAmount || '').replace(/[$,]/g, ''));
+    if (!isNaN(l) && l > 0) return l;
+    return 0;
+  }, [loanPrincipalBalance, loanAmount]);
+
+  // Funding tolerance for over/fully-funded detection (penny rounding guard).
+  const FUNDING_TOLERANCE = 0.5;
+
+  // Pro Rata = fundingAmount[i] / loan.principalBalance * 100.
+  // NOT normalized to 100%. When the loan is partially funded the column
+  // total will be < 100; when over-funded it will be > 100.
   const computedPctOwned = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
-    const totalFunded = fundingRecords.reduce(
-      (acc, r) => acc.plus(new Decimal(Number(r.originalAmount) || 0)),
-      new Decimal(0)
-    );
-    if (totalFunded.lte(0)) {
+    const denom = new Decimal(loanPrincipalNumeric || 0);
+    if (denom.lte(0)) {
       fundingRecords.forEach(r => map.set(r.id, 0));
       return map;
     }
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    let sumOthers = new Decimal(0);
-    fundingRecords.forEach((r, i) => {
-      if (i === adjIdx) return;
+    fundingRecords.forEach((r) => {
       const pct = new Decimal(Number(r.originalAmount) || 0)
-        .div(totalFunded)
+        .div(denom)
         .times(100)
         .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
       map.set(r.id, pct.toNumber());
-      sumOthers = sumOthers.plus(pct);
     });
-    if (adjIdx >= 0) {
-      const adjRec = fundingRecords[adjIdx];
-      const adjPct = new Decimal(100).minus(sumOthers)
-        .toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
-        .toNumber();
-      map.set(adjRec.id, adjPct);
-      const total = Array.from(map.values()).reduce((a, b) => a + b, 0);
-      if (Math.abs(total - 100) > 0.0001) {
-        // eslint-disable-next-line no-console
-        console.error('Pro Rata total is not 100%:', total);
-      }
-    }
     return map;
-  }, [fundingRecords]);
+  }, [fundingRecords, loanPrincipalNumeric]);
 
   const getDisplayedPctOwned = (record: FundingRecord) => {
     const v = computedPctOwned.get(record.id);
