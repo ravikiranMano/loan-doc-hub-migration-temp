@@ -8,7 +8,8 @@
 //
 // Idempotent. Safe to re-run.
 //
-// POST body: { templatePath?: string, debug?: boolean, force?: boolean }
+// POST body: { templatePath?: string }
+//   templatePath defaults to "1778746922135_RE851D-V12.1.docx".
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -22,10 +23,9 @@ const corsHeaders = {
 
 const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
 
-// Bumped V1 → V2 so previously-rewritten templates get re-normalized with
-// the new font / spacing / keep-with-next directives.
-const SENTINEL_CURRENT = "PT_LAYOUT_V2";
-const SENTINEL_LEGACY = ["PT_LAYOUT_V1"];
+// Marker we inject inside the new canonical table so we can detect on a
+// later run that this property is already normalized.
+const SENTINEL = "PT_LAYOUT_V1";
 
 const FIELDS = [
   "property_type_sfr_owner",
@@ -60,107 +60,91 @@ function buildStrippedIndex(xml: string): { text: string; map: number[] } {
 }
 
 /**
- * Recursively walk every <w:p> and <w:tbl> in the document body (including
- * those nested inside table cells and SDT content controls). Returns a flat
- * list of element offset ranges. Used to find the innermost block (paragraph
- * or table) that contains a placeholder, so we replace exactly that block —
- * not a parent table.
+ * For a given XML char offset that lies inside a top-level <w:p> or <w:tbl>
+ * element (i.e., a direct child of <w:body>), return the [start, end] offsets
+ * of that enclosing top-level block. We do this by scanning forward from
+ * `<w:body>` and tracking a depth-1 element boundary.
  */
-function findAllBlocks(
+function findTopLevelBlocks(
   xml: string,
-): Array<{ start: number; end: number; tag: "w:p" | "w:tbl" }> {
-  const blocks: Array<{ start: number; end: number; tag: "w:p" | "w:tbl" }> = [];
+): Array<{ start: number; end: number; tag: "w:p" | "w:tbl" | "w:sectPr" }> {
+  const bodyOpen = xml.search(/<w:body\b[^>]*>/);
+  const bodyClose = xml.lastIndexOf("</w:body>");
+  if (bodyOpen < 0 || bodyClose < 0) return [];
+  const bodyOpenEnd = xml.indexOf(">", bodyOpen) + 1;
 
-  const walk = (tag: "w:p" | "w:tbl"): void => {
-    const openRe = new RegExp(`<${tag}\\b[^>]*?(\\/?>)`, "g");
-    let m: RegExpExecArray | null;
-    while ((m = openRe.exec(xml)) !== null) {
-      const selfClosing = m[1] === "/>";
-      if (selfClosing) {
-        blocks.push({ start: m.index, end: m.index + m[0].length, tag });
-        continue;
-      }
-      // Find matching close at depth 0 by scanning character-by-character
-      // through nested opens/closes of THIS tag only.
-      const openMarker = `<${tag}`;
-      const closeMarker = `</${tag}>`;
-      let depth = 1;
-      let cursor = m.index + m[0].length;
-      while (cursor < xml.length && depth > 0) {
-        const nextOpen = xml.indexOf(openMarker, cursor);
-        const nextClose = xml.indexOf(closeMarker, cursor);
-        if (nextClose < 0) break;
-        if (nextOpen >= 0 && nextOpen < nextClose) {
-          // Confirm this is a real opener for THIS tag (not e.g. <w:pPr>).
-          const after = xml.charAt(nextOpen + openMarker.length);
-          if (after === " " || after === ">" || after === "/") {
-            depth++;
-            cursor = nextOpen + openMarker.length;
-            continue;
-          }
-          cursor = nextOpen + openMarker.length;
-          continue;
-        }
+  const out: Array<{ start: number; end: number; tag: "w:p" | "w:tbl" | "w:sectPr" }> = [];
+  const re = /<(w:p|w:tbl|w:sectPr)\b[^>]*?(\/>|>)/g;
+  re.lastIndex = bodyOpenEnd;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    if (m.index >= bodyClose) break;
+    const tag = m[1] as "w:p" | "w:tbl" | "w:sectPr";
+    const selfClosing = m[2] === "/>";
+    if (selfClosing) {
+      out.push({ start: m.index, end: m.index + m[0].length, tag });
+      continue;
+    }
+    // Find matching close tag at depth 0 (for THIS top-level element).
+    const closeTag = `</${tag}>`;
+    const openRe = new RegExp(`<${tag}\\b[^>]*?>`, "g");
+    const closeRe = new RegExp(`</${tag}>`, "g");
+    openRe.lastIndex = m.index + m[0].length;
+    closeRe.lastIndex = m.index + m[0].length;
+    let depth = 1;
+    let cursor = m.index + m[0].length;
+    while (depth > 0) {
+      openRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const o = openRe.exec(xml);
+      const c = closeRe.exec(xml);
+      if (!c) break;
+      if (o && o.index < c.index) {
+        depth++;
+        cursor = o.index + o[0].length;
+      } else {
         depth--;
-        cursor = nextClose + closeMarker.length;
+        cursor = c.index + c[0].length;
         if (depth === 0) {
-          blocks.push({ start: m.index, end: cursor, tag });
+          out.push({ start: m.index, end: cursor, tag });
+          re.lastIndex = cursor;
         }
       }
     }
-  };
-
-  walk("w:p");
-  walk("w:tbl");
-  return blocks;
+  }
+  return out;
 }
 
 /** Build the canonical PROPERTY TYPE table XML for property index N. */
 function buildCanonicalTable(n: number): string {
   // Template uses literal `_N` (replaced at runtime per property).
   const tag = (k: (typeof FIELDS)[number]) => `{{${k}_N}}`;
+  void n;
 
-  // Arial 10pt (sz=20) — matches the surrounding PROPERTY OWNER / ADDRESS
-  // rows in the original template. Roomier paragraph spacing so each row
-  // reads clearly. `keepLines` keeps every paragraph as a single visual line.
-  const RPR = `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>`;
-  const PPR_BASE =
-    `<w:spacing w:before="100" w:after="100" w:line="276" w:lineRule="auto"/><w:keepLines/>`;
-
-  const para = (
-    parts: Array<{ text: string; preserve?: boolean }>,
-    opts?: { keepNext?: boolean },
-  ): string => {
+  const para = (parts: Array<{ text: string; preserve?: boolean }>) => {
     const runs = parts
       .map(
         (p) =>
-          `<w:r>${RPR}<w:t${
+          `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t${
             p.preserve ? ' xml:space="preserve"' : ""
           }>${p.text}</w:t></w:r>`,
       )
       .join("");
-    const keep = opts?.keepNext ? `<w:keepNext/>` : "";
-    return `<w:p><w:pPr>${PPR_BASE}${keep}${RPR}</w:pPr>${runs}</w:p>`;
+    return `<w:p><w:pPr><w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:pPr>${runs}</w:p>`;
   };
 
   const leftParas = [
-    para(
-      [
-        { text: tag("property_type_sfr_owner") },
-        { text: " SINGLE-FAMILY RESIDENCE (owner occupied)", preserve: true },
-      ],
-      { keepNext: true },
-    ),
-    para(
-      [
-        { text: tag("property_type_sfr_non_owner") },
-        {
-          text: " SINGLE-FAMILY RESIDENCE (not owner occupied)",
-          preserve: true,
-        },
-      ],
-      { keepNext: true },
-    ),
+    para([
+      { text: tag("property_type_sfr_owner") },
+      { text: " SINGLE-FAMILY RESIDENCE (owner occupied)", preserve: true },
+    ]),
+    para([
+      { text: tag("property_type_sfr_non_owner") },
+      {
+        text: " SINGLE-FAMILY RESIDENCE (not owner occupied)",
+        preserve: true,
+      },
+    ]),
     para([
       { text: tag("property_type_sfr_zoned") },
       {
@@ -171,29 +155,18 @@ function buildCanonicalTable(n: number): string {
   ].join("");
 
   const rightParas = [
-    para(
-      [
-        { text: tag("property_type_commercial") },
-        { text: " COMMERCIAL & INCOME-PRODUCING", preserve: true },
-      ],
-      { keepNext: true },
-    ),
-    para(
-      [
-        { text: tag("property_type_land_zoned") },
-        { text: " LAND (zoned commercial/residential)", preserve: true },
-      ],
-      { keepNext: true },
-    ),
-    para(
-      [
-        { text: tag("property_type_land_income") },
-        { text: " LAND (income-producing)", preserve: true },
-      ],
-      // keepNext on land_income so it can never visually pair with OTHER —
-      // the next paragraph starts on its own line.
-      { keepNext: true },
-    ),
+    para([
+      { text: tag("property_type_commercial") },
+      { text: " COMMERCIAL & INCOME-PRODUCING", preserve: true },
+    ]),
+    para([
+      { text: tag("property_type_land_zoned") },
+      { text: " LAND (zoned commercial/residential)", preserve: true },
+    ]),
+    para([
+      { text: tag("property_type_land_income") },
+      { text: " LAND (income-producing)", preserve: true },
+    ]),
     para([
       { text: tag("property_type_other") },
       { text: " OTHER: ", preserve: true },
@@ -201,10 +174,8 @@ function buildCanonicalTable(n: number): string {
     ]),
   ].join("");
 
-  // Hidden sentinel marker so re-runs are no-ops.
-  const sentinelPara =
-    `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:vanish/><w:sz w:val="2"/></w:rPr></w:pPr>` +
-    `<w:r><w:rPr><w:vanish/><w:sz w:val="2"/></w:rPr><w:t>${SENTINEL_CURRENT}_${n}</w:t></w:r></w:p>`;
+  // Sentinel paragraph (zero-size hidden marker so we can detect prior runs).
+  const sentinelPara = `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:rPr><w:vanish/><w:sz w:val="2"/></w:rPr></w:pPr><w:r><w:rPr><w:vanish/><w:sz w:val="2"/></w:rPr><w:t>${SENTINEL}_${n}</w:t></w:r></w:p>`;
 
   const nilBorders = `<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>`;
   const tcBorders = `<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/></w:tcBorders>`;
@@ -228,30 +199,18 @@ interface RewritePlan {
   n: number;
 }
 
-function planRewrites(
-  xml: string,
-  force: boolean,
-): {
+function planRewrites(xml: string): {
   plans: RewritePlan[];
   skipped: number[];
   notFound: number[];
-  blockDebug: Array<{ n: number; start: number; end: number; sample: string }>;
 } {
   const { text, map } = buildStrippedIndex(xml);
-  const blocks = findAllBlocks(xml);
+  const blocks = findTopLevelBlocks(xml);
 
-  // Sort blocks by start asc; for offset lookup prefer the SMALLEST enclosing
-  // block (deepest nesting).
-  const sortedBlocks = blocks
-    .slice()
-    .sort((a, b) => (a.end - a.start) - (b.end - b.start));
-
-  const blockForOffset = (off: number): number => {
-    // Return index in `blocks` of the smallest block containing off.
-    for (const b of sortedBlocks) {
-      if (off >= b.start && off < b.end) {
-        return blocks.indexOf(b);
-      }
+  const blockForOffset = (off: number) => {
+    // Binary search would be nicer, but linear is fine for a one-shot.
+    for (let i = 0; i < blocks.length; i++) {
+      if (off >= blocks[i].start && off < blocks[i].end) return i;
     }
     return -1;
   };
@@ -259,8 +218,12 @@ function planRewrites(
   const plans: RewritePlan[] = [];
   const skipped: number[] = [];
   const notFound: number[] = [];
-  const blockDebug: Array<{ n: number; start: number; end: number; sample: string }> = [];
 
+  // Template uses literal `_N` placeholders that are cloned at runtime for
+  // each property. Find every occurrence of the anchor placeholder
+  // `{{property_type_sfr_owner_N}}` and treat each one as the start of a
+  // property-type block. The block extends to the LAST occurrence of any
+  // of our 8 placeholders that appears BEFORE the next anchor (or end).
   const anchor = `{{${FIELDS[0]}_N}}`;
   const anchorPositions: number[] = [];
   let scanFrom = 0;
@@ -293,43 +256,37 @@ function planRewrites(
     }
 
     const blockIdxs = offsetsInRange.map(blockForOffset);
-    if (blockIdxs.some((i) => i < 0)) {
+    const minBlock = Math.min(...blockIdxs);
+    const maxBlock = Math.max(...blockIdxs);
+    if (minBlock < 0 || maxBlock < 0) {
       notFound.push(occ + 1);
       continue;
     }
 
-    // Compute the span [minStart, maxEnd] covering all 8 placeholder blocks.
-    let minStart = Infinity;
-    let maxEnd = -Infinity;
-    for (const bi of blockIdxs) {
+    // Idempotency: if any block in the range already contains the sentinel,
+    // skip this occurrence.
+    let alreadyDone = false;
+    for (let bi = minBlock; bi <= maxBlock; bi++) {
       const b = blocks[bi];
-      if (b.start < minStart) minStart = b.start;
-      if (b.end > maxEnd) maxEnd = b.end;
+      if (xml.slice(b.start, b.end).includes(SENTINEL)) {
+        alreadyDone = true;
+        break;
+      }
     }
-
-    // Idempotency: skip if already normalized with current sentinel.
-    const span = xml.slice(minStart, maxEnd);
-    if (!force && span.includes(SENTINEL_CURRENT)) {
+    if (alreadyDone) {
       skipped.push(occ + 1);
       continue;
     }
 
-    blockDebug.push({
-      n: occ + 1,
-      start: minStart,
-      end: maxEnd,
-      sample: span.slice(0, 400),
-    });
-
     plans.push({
-      start: minStart,
-      end: maxEnd,
+      start: blocks[minBlock].start,
+      end: blocks[maxBlock].end,
       replacement: buildCanonicalTable(occ + 1),
       n: occ + 1,
     });
   }
 
-  // Sort + ensure non-overlapping (drop later plans that overlap earlier).
+  // Sort + ensure non-overlapping.
   plans.sort((a, b) => a.start - b.start);
   const cleaned: RewritePlan[] = [];
   let last = -1;
@@ -339,7 +296,7 @@ function planRewrites(
     last = p.end;
   }
 
-  return { plans: cleaned, skipped, notFound, blockDebug };
+  return { plans: cleaned, skipped, notFound };
 }
 
 function applyPlans(xml: string, plans: RewritePlan[]): string {
@@ -366,8 +323,6 @@ serve(async (req) => {
 
     let templatePath = DEFAULT_TEMPLATE_PATH;
     let debug = false;
-    let force = false;
-    let dumpBlocks = false;
     try {
       const body = await req.json().catch(() => ({}));
       if (
@@ -378,9 +333,9 @@ serve(async (req) => {
         templatePath = body.templatePath.trim();
       }
       if (body && body.debug) debug = true;
-      if (body && body.force) force = true;
-      if (body && body.dumpBlocks) dumpBlocks = true;
-    } catch (_) { /* default */ }
+    } catch (_) {
+      /* default */
+    }
 
     const dl = await supabase.storage.from("templates").download(templatePath);
     if (dl.error || !dl.data) {
@@ -411,34 +366,28 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    if (debug || dumpBlocks) {
-      const { plans, skipped, notFound, blockDebug } = planRewrites(
-        originalXml,
-        true, // force=true so we get the spans even if already normalized
-      );
-      const sentinelHits = (
-        originalXml.match(new RegExp(SENTINEL_CURRENT, "g")) || []
-      ).length;
-      const legacyHits = SENTINEL_LEGACY.map((s) => ({
-        s,
-        n: (originalXml.match(new RegExp(s, "g")) || []).length,
-      }));
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          templatePath,
-          plannedRewrites: plans.length,
-          skipped,
-          notFound,
-          sentinelHits,
-          legacyHits,
-          blocks: blockDebug,
-        }, null, 2),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (debug) {
+      const { text } = buildStrippedIndex(originalXml);
+      const ptIdx = text.indexOf("PROPERTY TYPE");
+      const snippets: Record<string, unknown> = {};
+      snippets.firstPropertyTypeContext = ptIdx >= 0 ? text.slice(ptIdx, ptIdx + 1500) : null;
+      // Find all `{{...}}` tokens containing "property_type" or "property" near PT.
+      const tokenRe = /\{\{[^{}]*property[^{}]*\}\}/gi;
+      const tokens = new Set<string>();
+      let m: RegExpExecArray | null;
+      while ((m = tokenRe.exec(text)) !== null) tokens.add(m[0]);
+      snippets.propertyTokens = Array.from(tokens);
+      // Tokens specifically for sfr/owner/commercial/land/other
+      const ptTokenRe = /\{\{[^{}]*(sfr|commercial|land|other|owner)[^{}]*\}\}/gi;
+      const ptTokens = new Set<string>();
+      while ((m = ptTokenRe.exec(text)) !== null) ptTokens.add(m[0]);
+      snippets.ptTokens = Array.from(ptTokens);
+      return new Response(JSON.stringify({ ok: true, debug: snippets }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const { plans, skipped, notFound } = planRewrites(originalXml, force);
+    const { plans, skipped, notFound } = planRewrites(originalXml);
 
     if (plans.length === 0) {
       return new Response(
