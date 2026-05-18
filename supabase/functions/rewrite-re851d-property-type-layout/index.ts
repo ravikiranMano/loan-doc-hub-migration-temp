@@ -117,7 +117,9 @@ function findTopLevelBlocks(
 
 /** Build the canonical PROPERTY TYPE table XML for property index N. */
 function buildCanonicalTable(n: number): string {
-  const tag = (k: (typeof FIELDS)[number]) => `{{${k}_${n}}}`;
+  // Template uses literal `_N` (replaced at runtime per property).
+  const tag = (k: (typeof FIELDS)[number]) => `{{${k}_N}}`;
+  void n;
 
   const para = (parts: Array<{ text: string; preserve?: boolean }>) => {
     const runs = parts
