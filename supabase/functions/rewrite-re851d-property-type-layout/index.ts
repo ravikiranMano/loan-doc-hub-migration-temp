@@ -303,6 +303,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let templatePath = DEFAULT_TEMPLATE_PATH;
+    let debug = false;
     try {
       const body = await req.json().catch(() => ({}));
       if (
@@ -312,6 +313,7 @@ serve(async (req) => {
       ) {
         templatePath = body.templatePath.trim();
       }
+      if (body && body.debug) debug = true;
     } catch (_) {
       /* default */
     }
