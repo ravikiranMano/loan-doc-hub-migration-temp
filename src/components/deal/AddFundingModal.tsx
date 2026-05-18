@@ -381,12 +381,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   }, [formData.lenderRate, formData.rateLenderValue]);
 
   // Auto-compute Pro Rata (Percent Owned) = this lender's funding amount
-  // divided by the TOTAL LOAN AMOUNT (not the sum of current funded amounts).
-  // A single lender funding only part of the loan should reflect their actual
-  // share — e.g. $2,400 of a $600,000 loan = 0.40%, NOT 100%.
+  // divided by the LOAN PRINCIPAL BALANCE (loan-level, not the sum of
+  // currently funded amounts). Prefers loanPrincipalBalance prop; falls back
+  // to loanAmount when principal hasn't been recorded yet.
   React.useEffect(() => {
     const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-    const loanAmt = parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
+    const principal = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+    const loanAmt = principal > 0
+      ? principal
+      : (parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0);
     if (loanAmt > 0 && fa > 0) {
       const computed = roundPctForStorage(fa / loanAmt * 100);
       if (computed !== formData.percentOwned) {
@@ -395,7 +398,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     } else if (fa === 0 && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.fundingAmount, loanAmount]);
+  }, [formData.fundingAmount, loanAmount, loanPrincipalBalance]);
 
   // Auto-default Current Balance from Original Funding minus disbursements (only when not manually edited)
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);
@@ -487,11 +490,25 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const percentOwnedNum = parseFloat(formData.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
+  // Over-funded: total funding $ across all lenders exceeds loan principal
+  // balance beyond a $0.50 tolerance. Replaces the old "> 100% ownership"
+  // check which incorrectly assumed the loan was always fully funded.
+  const FUNDING_TOLERANCE = 0.5;
+  const currentFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+  const otherLendersFundingTotal = existingRecords
+    .filter(r => r.id !== editingRecordId)
+    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+  const principalBalanceNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, ''))
+    || parseFloat((loanAmount || '').replace(/[$,]/g, ''))
+    || 0;
+  const projectedFundedTotal = otherLendersFundingTotal + currentFundingAmount;
+  const totalPercentError = principalBalanceNum > 0
+    && projectedFundedTotal > principalBalanceNum + FUNDING_TOLERANCE;
+  // Legacy computed for any callers still reading it.
   const otherLendersTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
     .reduce((sum, r) => sum + r.pctOwned, 0);
   const projectedTotal = otherLendersTotal + percentOwnedNum;
-  const totalPercentError = projectedTotal > 100;
 
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -1044,7 +1061,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
             <p className="text-xs text-destructive font-medium">Percent Owned cannot exceed 100%</p>
           )}
           {totalPercentError && !percentOwnedError && (
-            <p className="text-xs text-destructive font-medium">Total ownership across all lenders exceeds 100%</p>
+            <p className="text-xs text-destructive font-medium">Funding exceeds loan principal balance.</p>
           )}
 
           {/* Checkboxes row */}

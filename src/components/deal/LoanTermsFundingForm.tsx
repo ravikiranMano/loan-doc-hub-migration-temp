@@ -307,7 +307,10 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const lastHealedRef = useRef<string>('');
   useEffect(() => {
     if (!fundingRecords.length) return;
-    const loanAmt = parseFloat(String(loanAmount || '').replace(/[$,]/g, '')) || 0;
+    const principal = parseFloat(String(values['loan_terms.principal'] || '').replace(/[$,]/g, '')) || 0;
+    const loanAmt = principal > 0
+      ? principal
+      : (parseFloat(String(loanAmount || '').replace(/[$,]/g, '')) || 0);
     if (loanAmt <= 0) return;
     let drift = false;
     const healed = fundingRecords.map((r) => {
@@ -330,21 +333,15 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   }, [fundingRecords, loanAmount, dealId, onValueChange]);
 
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
-  // The single record flagged with `roundingAdjustment` absorbs any fractional
-  // remainder so the displayed total matches the grid column total exactly.
+  // No longer normalized to 100% — when the loan is partially funded the total
+  // reflects the actual funded share (e.g. 81.20%).
   const computedProRataTotal = useMemo(() => {
     if (!fundingRecords.length) return '';
     const sum = fundingRecords.reduce(
       (acc, r) => acc.plus(new Decimal(Number(r.pctOwned) || 0)),
       new Decimal(0)
     );
-    const adjIdx = fundingRecords.findIndex((r) => r.roundingAdjustment);
-    let total = sum;
-    if (adjIdx >= 0) {
-      const diff = new Decimal(100).minus(sum);
-      if (!diff.isZero()) total = sum.plus(diff);
-    }
-    return total.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+    return sum.toDecimalPlaces(4, Decimal.ROUND_HALF_UP).toFixed(2);
   }, [fundingRecords]);
 
   // Persist the auto-filled Pro Rata into loan_terms.pro_rata whenever the
