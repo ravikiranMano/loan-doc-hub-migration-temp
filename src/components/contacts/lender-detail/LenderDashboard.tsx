@@ -80,6 +80,7 @@ const LenderDashboard: React.FC<Props> = ({ contact }) => {
             <Field label="ACH" value={data.ach === 'true' ? 'Yes' : 'No'} />
             <Field label="Send 1099" value={data.send_1099 === 'true' ? 'Yes' : 'No'} />
             <Field label="Agreement" value={data.agreement_on_file === 'true' ? 'Yes' : 'No'} />
+            <Field label="Agreement Date" value={formatAgreementDate(data.servicing_agreement_on_file_date || data.agreement_on_file_date || '')} />
           </CardContent>
         </Card>
       </div>
