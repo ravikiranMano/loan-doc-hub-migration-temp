@@ -334,41 +334,46 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return map;
   }, [fundingRecords, remainingPayments, noteRate]);
 
-  // Loan-level principal balance (denominator for Pro Rata).
-  // Prefer the explicit loan_terms.principal prop; fall back to loanAmount.
-  // Does NOT use SUM(funding amounts) — pro rata must reflect each lender's
-  // actual share of the loan, NOT a normalized split that always sums to 100%.
-  const loanPrincipalNumeric = React.useMemo(() => {
-    const p = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, ''));
-    if (!isNaN(p) && p > 0) return p;
-    const l = parseFloat(String(loanAmount || '').replace(/[$,]/g, ''));
-    if (!isNaN(l) && l > 0) return l;
-    return 0;
-  }, [loanPrincipalBalance, loanAmount]);
-
-  // Funding tolerance for over/fully-funded detection (penny rounding guard).
-  const FUNDING_TOLERANCE = 0.5;
-
-  // Pro Rata = fundingAmount[i] / loan.principalBalance * 100.
-  // NOT normalized to 100%. When the loan is partially funded the column
-  // total will be < 100; when over-funded it will be > 100.
+  // Pro Rata: derived from each lender's funding amount over the SUM of all
+  // funding amounts (not the original loan amount). Rounded to 4 decimals.
+  // The lender flagged with `roundingAdjustment` absorbs only the fractional
+  // residual so the column always totals 100.0000%.
   const computedPctOwned = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
-    const denom = new Decimal(loanPrincipalNumeric || 0);
-    if (denom.lte(0)) {
+    const totalFunded = fundingRecords.reduce(
+      (acc, r) => acc.plus(new Decimal(Number(r.originalAmount) || 0)),
+      new Decimal(0)
+    );
+    if (totalFunded.lte(0)) {
       fundingRecords.forEach(r => map.set(r.id, 0));
       return map;
     }
-    fundingRecords.forEach((r) => {
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    let sumOthers = new Decimal(0);
+    fundingRecords.forEach((r, i) => {
+      if (i === adjIdx) return;
       const pct = new Decimal(Number(r.originalAmount) || 0)
-        .div(denom)
+        .div(totalFunded)
         .times(100)
         .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
       map.set(r.id, pct.toNumber());
+      sumOthers = sumOthers.plus(pct);
     });
+    if (adjIdx >= 0) {
+      const adjRec = fundingRecords[adjIdx];
+      const adjPct = new Decimal(100).minus(sumOthers)
+        .toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
+        .toNumber();
+      map.set(adjRec.id, adjPct);
+      const total = Array.from(map.values()).reduce((a, b) => a + b, 0);
+      if (Math.abs(total - 100) > 0.0001) {
+        // eslint-disable-next-line no-console
+        console.error('Pro Rata total is not 100%:', total);
+      }
+    }
     return map;
-  }, [fundingRecords, loanPrincipalNumeric]);
+  }, [fundingRecords]);
 
   const getDisplayedPctOwned = (record: FundingRecord) => {
     const v = computedPctOwned.get(record.id);
@@ -410,19 +415,6 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalDisbursementsSum = fundingRecords.reduce((sum, r) => sum + getDisbursementsTotal(r), 0);
   const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
-
-  // Funding state derived from loan principal balance.
-  const unfundedAmount = Math.max(0, loanPrincipalNumeric - totalFundingAmount);
-  const overFundedAmount = Math.max(0, totalFundingAmount - loanPrincipalNumeric);
-  const fundedPct = loanPrincipalNumeric > 0 ? (totalFundingAmount / loanPrincipalNumeric) * 100 : 0;
-  const fundingStatus: 'under' | 'full' | 'over' | 'none' =
-    loanPrincipalNumeric <= 0
-      ? 'none'
-      : overFundedAmount > FUNDING_TOLERANCE
-        ? 'over'
-        : Math.abs(totalFundingAmount - loanPrincipalNumeric) <= FUNDING_TOLERANCE
-          ? 'full'
-          : 'under';
 
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
   const formatPercentage = (value: number, max = 2) => `${formatPercentDisplay(value, max)}%`;
@@ -618,8 +610,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         return <span className="font-semibold">{formatCurrency(totalCurrentBalance)}</span>;
       case 'pctOwned': {
         const totalPctOwned = filteredData.reduce((sum, r) => sum + getDisplayedPctOwned(r), 0);
-        const cls = fundingStatus === 'over' ? 'text-destructive' : fundingStatus === 'under' ? 'text-orange-600' : '';
-        return <span className={`font-semibold ${cls}`}>{formatPercentage(totalPctOwned, 4)}</span>;
+        return <span className="font-semibold">{formatPercentage(totalPctOwned, 4)}</span>;
       }
       case 'regularPayment':
         return <span className="font-semibold">{formatCurrency(totalPaymentSum)}</span>;
@@ -755,27 +746,6 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
             </div>
           </div>
-          {loanPrincipalNumeric > 0 && (
-            <div className="flex items-center gap-2 ml-auto text-xs">
-              <span className="text-muted-foreground">
-                Funded: <span className="font-semibold text-foreground">{formatCurrency(totalFundingAmount)}</span> of <span className="font-semibold text-foreground">{formatCurrency(loanPrincipalNumeric)}</span> ({fundedPct.toFixed(2)}%)
-              </span>
-              <span className={fundingStatus === 'over' ? 'text-destructive font-medium' : 'text-muted-foreground'}>
-                {fundingStatus === 'over'
-                  ? `Over by ${formatCurrency(overFundedAmount)}`
-                  : `Unfunded: ${formatCurrency(unfundedAmount)} (${Math.max(0, 100 - fundedPct).toFixed(2)}%)`}
-              </span>
-              {fundingStatus === 'under' && (
-                <Badge variant="outline" className="text-orange-700 border-orange-400 bg-orange-50">Under-funded</Badge>
-              )}
-              {fundingStatus === 'full' && (
-                <Badge variant="outline" className="text-green-700 border-green-500 bg-green-50">Fully funded</Badge>
-              )}
-              {fundingStatus === 'over' && (
-                <Badge variant="destructive">Over-funded</Badge>
-              )}
-            </div>
-          )}
         </div>
         </div>
 
@@ -974,11 +944,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         totalPayment={totalPayment}
         loanAmount={loanAmount}
         loanPrincipalBalance={(() => {
-          // Pro Rata denominator MUST be the loan-level outstanding principal balance,
-          // NOT the sum of lender funding principal balances (which only equals the
-          // loan principal when fully funded). Falls back to loanAmount if the loan
-          // principal field is empty.
-          const v = loanPrincipalNumeric;
+          // Loan-level outstanding principal = sum of all lender funding principal balances.
+          // Does NOT reflect the currently-selected lender row; switching/editing a lender
+          // row must not change this value.
+          const sum = totalPrincipalBalance;
+          const parsed = parseFloat((loanPrincipalBalance || '').toString().replace(/[$,]/g, ''));
+          const fallback = parseFloat((loanAmount || '').toString().replace(/[$,]/g, ''));
+          const v = sum > 0 ? sum : (!isNaN(parsed) && parsed > 0 ? parsed : (!isNaN(fallback) && fallback > 0 ? fallback : 0));
           return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
         })()}
         remainingPayments={remainingPayments}
