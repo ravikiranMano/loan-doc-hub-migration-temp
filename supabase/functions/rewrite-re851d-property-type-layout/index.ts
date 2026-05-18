@@ -217,53 +217,70 @@ function planRewrites(xml: string): {
   const skipped: number[] = [];
   const notFound: number[] = [];
 
-  for (let n = 1; n <= 5; n++) {
-    const placeholderXmlOffsets: number[] = [];
-    let missing = false;
+  // Template uses literal `_N` placeholders that are cloned at runtime for
+  // each property. Find every occurrence of the anchor placeholder
+  // `{{property_type_sfr_owner_N}}` and treat each one as the start of a
+  // property-type block. The block extends to the LAST occurrence of any
+  // of our 8 placeholders that appears BEFORE the next anchor (or end).
+  const anchor = `{{${FIELDS[0]}_N}}`;
+  const anchorPositions: number[] = [];
+  let scanFrom = 0;
+  while (true) {
+    const idx = text.indexOf(anchor, scanFrom);
+    if (idx < 0) break;
+    anchorPositions.push(idx);
+    scanFrom = idx + anchor.length;
+  }
+
+  for (let occ = 0; occ < anchorPositions.length; occ++) {
+    const startTxt = anchorPositions[occ];
+    const limitTxt =
+      occ + 1 < anchorPositions.length ? anchorPositions[occ + 1] : text.length;
+
+    const offsetsInRange: number[] = [];
+    let allFound = true;
     for (const f of FIELDS) {
-      const needle = `{{${f}_${n}}}`;
-      const idx = text.indexOf(needle);
-      if (idx < 0) {
-        missing = true;
+      const needle = `{{${f}_N}}`;
+      const idx = text.indexOf(needle, startTxt);
+      if (idx < 0 || idx >= limitTxt) {
+        allFound = false;
         break;
       }
-      placeholderXmlOffsets.push(map[idx]);
+      offsetsInRange.push(map[idx]);
     }
-    if (missing) {
-      // Try sentinel detection — if every field is missing but the sentinel
-      // is present, the template was already rewritten.
-      if (text.includes(`${SENTINEL}_${n}`)) {
-        skipped.push(n);
-      } else {
-        notFound.push(n);
-      }
+    if (!allFound) {
+      notFound.push(occ + 1);
       continue;
     }
 
-    // Idempotency: if all 8 placeholders are inside a single block that also
-    // contains our sentinel for this N, skip.
-    const blockIdxs = placeholderXmlOffsets.map(blockForOffset);
+    const blockIdxs = offsetsInRange.map(blockForOffset);
     const minBlock = Math.min(...blockIdxs);
     const maxBlock = Math.max(...blockIdxs);
-    if (minBlock === maxBlock && minBlock >= 0) {
-      const b = blocks[minBlock];
-      const blockXml = xml.slice(b.start, b.end);
-      if (blockXml.includes(`${SENTINEL}_${n}`)) {
-        skipped.push(n);
-        continue;
-      }
+    if (minBlock < 0 || maxBlock < 0) {
+      notFound.push(occ + 1);
+      continue;
     }
 
-    if (minBlock < 0 || maxBlock < 0) {
-      notFound.push(n);
+    // Idempotency: if any block in the range already contains the sentinel,
+    // skip this occurrence.
+    let alreadyDone = false;
+    for (let bi = minBlock; bi <= maxBlock; bi++) {
+      const b = blocks[bi];
+      if (xml.slice(b.start, b.end).includes(SENTINEL)) {
+        alreadyDone = true;
+        break;
+      }
+    }
+    if (alreadyDone) {
+      skipped.push(occ + 1);
       continue;
     }
 
     plans.push({
       start: blocks[minBlock].start,
       end: blocks[maxBlock].end,
-      replacement: buildCanonicalTable(n),
-      n,
+      replacement: buildCanonicalTable(occ + 1),
+      n: occ + 1,
     });
   }
 
