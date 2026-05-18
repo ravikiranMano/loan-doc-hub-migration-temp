@@ -15,6 +15,7 @@ interface AccountIdSearchProps {
   onChange: (accountId: string, name: string) => void;
   className?: string;
   disabled?: boolean;
+  contactTypes?: Array<'borrower' | 'lender' | 'broker'>;
 }
 
 export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
@@ -22,6 +23,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
   onChange,
   className,
   disabled = false,
+  contactTypes = ['borrower', 'lender'],
 }) => {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<AccountResult[]>([]);
