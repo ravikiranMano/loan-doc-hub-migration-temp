@@ -755,6 +755,27 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
             </div>
           </div>
+          {loanPrincipalNumeric > 0 && (
+            <div className="flex items-center gap-2 ml-auto text-xs">
+              <span className="text-muted-foreground">
+                Funded: <span className="font-semibold text-foreground">{formatCurrency(totalFundingAmount)}</span> of <span className="font-semibold text-foreground">{formatCurrency(loanPrincipalNumeric)}</span> ({fundedPct.toFixed(2)}%)
+              </span>
+              <span className={fundingStatus === 'over' ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                {fundingStatus === 'over'
+                  ? `Over by ${formatCurrency(overFundedAmount)}`
+                  : `Unfunded: ${formatCurrency(unfundedAmount)} (${Math.max(0, 100 - fundedPct).toFixed(2)}%)`}
+              </span>
+              {fundingStatus === 'under' && (
+                <Badge variant="outline" className="text-orange-700 border-orange-400 bg-orange-50">Under-funded</Badge>
+              )}
+              {fundingStatus === 'full' && (
+                <Badge variant="outline" className="text-green-700 border-green-500 bg-green-50">Fully funded</Badge>
+              )}
+              {fundingStatus === 'over' && (
+                <Badge variant="destructive">Over-funded</Badge>
+              )}
+            </div>
+          )}
         </div>
         </div>
 
