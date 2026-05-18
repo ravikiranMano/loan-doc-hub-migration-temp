@@ -494,6 +494,24 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const projectedTotal = otherLendersTotal + percentOwnedNum;
   const totalPercentError = projectedTotal > 100;
 
+  // Over-funded check (Pro Rata uses loan principal balance — see effect above).
+  // Sum funding amounts (this record + sibling records) and compare to loan
+  // principal with a $0.50 tolerance.
+  const FUNDING_TOLERANCE = 0.5;
+  const principalForValidation = (() => {
+    const p = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+    if (p > 0) return p;
+    return parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
+  })();
+  const thisFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+  const otherFundingTotal = existingRecords
+    .filter(r => r.id !== editingRecordId)
+    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+  const projectedFundedTotal = otherFundingTotal + thisFundingAmount;
+  const overFundedError =
+    principalForValidation > 0 && projectedFundedTotal - principalForValidation > FUNDING_TOLERANCE;
+  const overFundedAmount = Math.max(0, projectedFundedTotal - principalForValidation);
+
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
