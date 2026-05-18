@@ -1,109 +1,61 @@
+## Goal
 
-# Currency Formatting Audit & Fix Plan
+Fix the RE851D "Source of Information" checkbox row so it always renders as:
 
-## Root cause (confirmed from screenshot)
+```
+☐ BROKER INQUIRY   ☐ BORROWER   ☑ OTHER (EXPLAIN): Public Record
+```
 
-The screenshot shows mixed states on the same form:
-- `Down Payment` → `78,890,000.00` ✅ (recently edited, blur-formatted)
-- `Purchase Price` → `200000.00` ❌ (loaded from storage, never formatted)
-- `Estimate of Value` → `1200000.00` ❌
-- `Pledged Equity` → `600000.00` ❌
-- `Protective Equity` → `1198800.00` ❌
+…regardless of how Word fragmented the original `{{pr_li_sourceInfoBroker_N_glyph}}` / `{{pr_li_sourceInfoBorrower_N_glyph}}` / `{{pr_li_sourceInfoOther_N_glyph}}` / `{{pr_li_sourceInfoOtherText_N}}` tags across `<w:r>` runs (which currently leaks raw `…glyph}}` text and produces no space between the glyph and the label).
 
-Two incompatible patterns exist in the codebase:
+This is a generator-only fix. No template re-uploads, no UI changes, no schema changes, no changes to which field drives which checkbox (already correctly published per-property by the existing block at lines ~3818–3823 and ~3937–3943 in `supabase/functions/generate-document/index.ts`).
 
-**Pattern A — "format on blur, mutate storage" (broken on load)**
-Used in: `PropertyDetailsForm.tsx`, `ChargesDetailForm.tsx`, `AddFundingModal.tsx`, `PropertyModal.tsx`, `LienDetailForm.tsx`, `LienModal.tsx`, `InsuranceDetailForm.tsx`, `InsuranceModal.tsx`, `PropertyTaxForm.tsx`, `PropertyTaxModal.tsx`, `LoanTermsPenaltiesForm.tsx`, `LoanTermsServicingForm.tsx`, `OriginationFeesForm.tsx`, `OriginationPropertyForm.tsx`, `OriginationApplicationForm.tsx`, `OriginationInsuranceConditionsForm.tsx`, `FundingDetailForm.tsx`, `FundingAdjustmentModal.tsx`, `RE885ProposedLoanTerms.tsx`, `ChargesSectionContent.tsx`, `ChargesModal.tsx`, `TrustLedgerModal.tsx`, `LenderDisbursementModal.tsx`, `PropertyLiensForm.tsx`, `PropertyInsuranceForm.tsx`, `LoanTermsDetailsForm.tsx`, `LoanTermsFundingForm.tsx`, contact `*Charges.tsx` / `*TrustLedger.tsx` (6 files).
+## Scope
 
-Issue: `<Input value={getFieldValue(key)} … onBlur={…format…}>` — raw value is rendered as-is on first paint. Only the blur handler writes the formatted string back into the form state, which then persists the commaed string to the DB. Values that arrive via load, defaults, calculations, paste, or that were saved before this code shipped, render unformatted.
+Single file edited:
 
-**Pattern B — "format-on-display, raw-in-storage" (correct)**
-Used in: `LoanTermsBalancesForm.tsx` via a `focusedCurrencyField` state and `value={isFocused ? raw : formatCurrencyDisplay(raw)}`. Storage stays raw numeric; display is always formatted. This is what we standardize on.
+- `supabase/functions/generate-document/index.ts` — add one new label-anchored safety pass (mirroring the existing RE851A Payable / Servicing / RE851D Cure Delinquency safety passes already documented in memory) that runs inside the existing RE851D post-render pipeline.
 
-## Approach
+No other files are modified. No new edge function, no template rewrite endpoint, no migrations.
 
-Replace Pattern A everywhere with a single shared component, **`<CurrencyInput>`**, that implements Pattern B internally. No backend or schema changes.
+## How it works (technical)
 
-### Step 1 — Build `src/components/ui/currency-input.tsx`
+The new pass runs once per property region after all `_N` → `_K` rewrites and Handlebars resolution have completed, scoped exactly like the existing `pr_li_currentDelinqu` and `delinquencyPaidByLoan` safety passes (the same region-walking helper that already iterates property regions in the encumbrance pipeline).
 
-A controlled input with:
-- Props: `value: string`, `onValueChange: (raw: string) => void`, `disabled`, `placeholder`, `className`, optional `showDollarPrefix` (default true), `allowNegative` (default false), `id`, `aria-label`.
-- Internal `focused` state.
-  - When **focused**: display the raw value as-is (so the user can edit digits/decimal without commas getting in the way).
-  - When **blurred**: display `formatCurrencyDisplay(value)` — `1,200,000.00`.
-- `onChange`: sanitize keystroke via existing `sanitizeNumericValue` (digits, single `.`, optional leading `-`), pass the **unformatted** raw string up.
-- `onBlur`: normalize raw to 2dp via `roundDollarForStorage(value)` and emit it, so storage is always `200000.00` (string, 2dp), never `200,000.00`.
-- `onFocus`: emit `unformatCurrencyDisplay(value)` once to migrate any legacy commaed strings already in state to raw.
-- `onPaste`: strip non-numeric, keep one decimal point, emit raw.
-- `onKeyDown`: existing `numericKeyDown` filter.
-- Built-in `$` prefix span (absolute-positioned, `pl-6`) matching today's visual.
-- Right-aligned text optional via `align="right"` for grid cells.
+For each property region K it:
 
-Backed by `formatCurrencyDisplay`, `unformatCurrencyDisplay`, `numericKeyDown`, `numericPaste` (already in `src/lib/numericInputFilter.ts`) and `roundDollarForStorage` (already in `src/lib/precisionFormat.ts`). No new deps.
+1. Reads the already-published per-property values:
+   - `pr_li_sourceInfoBroker_K` (boolean)
+   - `pr_li_sourceInfoBorrower_K` (boolean)
+   - `pr_li_sourceInfoOther_K` (boolean)
+   - `pr_li_sourceInfoOtherText_K` (string)
+2. Builds an XML-flex regex (whitespace + `<[^>]+>` tolerant, identical to the helper used by the Payable safety pass in `tag-parser.payable-frequency.test.ts`) for each label literal: `BROKER INQUIRY`, `BORROWER`, `OTHER (EXPLAIN)`.
+3. For each label, in the paragraph(s) that contain all three labels:
+   - Forces the glyph immediately preceding the label to `☑` or `☐` based on the boolean.
+   - Scrubs any leaked Handlebars residue (`{{…glyph}}`, `{{pr_li_sourceInfoOtherText_N}}`, stray `_N`/`_K` tokens) inside the matched span — same scrub pattern already used by the RE851D balloon safety pass (memory: *RE851D Balloon Payment Checkboxes*).
+   - Inserts exactly one regular space between glyph and label text when the inter-glyph/label run carries none (handled by emitting `<w:t xml:space="preserve"> </w:t>` so Word keeps the space).
+4. For `OTHER (EXPLAIN)` specifically:
+   - Ensures a single space after the colon, then the resolved `pr_li_sourceInfoOtherText_K` value, or empty string when unchecked.
+   - If no `:` exists in the matched run because it was fragmented, the pass injects `: ` between the label and the value run.
 
-### Step 2 — Strengthen `formatCurrencyDisplay`
+Word-boundary guards (`(?<![A-Za-z])` / `(?![A-Za-z])`) follow the same convention as the Payable test fixture so labels like `BORROWERS` or `BROKERAGE` are never touched.
 
-Today: `parseFloat(value.replace(/,/g, ''))` then `toLocaleString`. Add:
-- Pre-strip `$`, spaces, and a trailing `.` so values like `"$1,000."` round-trip.
-- Use `Decimal` (already imported elsewhere) to do `HALF_UP` rounding to 2dp before locale formatting, so `1000000.756` → `1,000,000.76` (matches the spec example; native `toLocaleString` is bank-rounding in some runtimes).
-- Return `''` for non-finite input. Negative handling: keep the sign, format the absolute value.
+The pass is idempotent: running it on already-correct XML produces no diff.
 
-### Step 3 — Add a read-only display helper for grids/cards/reports
+## Verification
 
-Export `<CurrencyText value={raw} />` (thin span using `formatDollar` from `precisionFormat.ts` which already emits `$1,200,000.00`). Use in:
-- `LoanFundingGrid.tsx` cells (currently call `formatCurrencyDisplay` ad hoc).
-- All summary cards / read-only balance totals in `LoanTermsBalancesForm.tsx`, `RE885ProposedLoanTerms.tsx`, lender / borrower / broker `*TrustLedger.tsx` and `*Charges.tsx` rows.
-- Any place currently doing `parseFloat(raw.replace(/[, $]/g, ''))` for math should pass the resulting number back through `formatDollar` for re-display.
+1. Add a Deno test file `supabase/functions/_shared/tag-parser.source-info.test.ts` mirroring the structure of `tag-parser.payable-frequency.test.ts`, covering:
+   - All three single-checked cases (Broker, Borrower, Other) produce exactly one ☑ and two ☐.
+   - `OTHER` checked with text `Public Record` renders as `☑ OTHER (EXPLAIN): Public Record` with exactly one space after the colon.
+   - All three unchecked → three ☐ with single spaces, empty OTHER text.
+   - Fragmented input (label inside a separate `<w:t>` from glyph, with leaked `{{…glyph}}` residue) is normalized.
+   - Word-boundary guard: `BORROWERS` / `BROKERAGE` are not affected.
+2. Regenerate the RE851D doc for the current deal and confirm visually that the row matches `☐ BROKER INQUIRY ☐ BORROWER ☑ OTHER (EXPLAIN): Public Record`.
 
-### Step 4 — Replace Pattern A call sites
+## Out of scope (explicitly not changing)
 
-For every file listed in "Pattern A" above:
-1. Delete the inline `renderCurrencyField` / `onBlur` / `onFocus` boilerplate.
-2. Swap the `<Input … />` (with surrounding `<span>$</span>` and `<div className="relative">`) for `<CurrencyInput value={getValue(key)} onValueChange={(v) => onValueChange(key, v)} disabled={disabled} />`.
-3. Where `onValueChange` previously received a commaed string (e.g. `setFormData({ [field]: formatCurrencyDisplay(v) })` paths in `PropertyModal.tsx` lines 106/165, `AddFundingModal.tsx` lines 415/429/482/483/531), change them to store the raw 2dp string. Display formatting is the input's job.
-
-### Step 5 — One-time normalize on load (no migration)
-
-In the consuming forms' value loaders (e.g. `useDealFields`'s `values` map and the modal `useEffect` hydrators in `PropertyModal`, `AddFundingModal`, `ChargesModal`, etc.), run incoming dollar field values through `unformatCurrencyDisplay` once before storing into local state. This silently migrates any legacy `"200,000.00"` strings already in the DB to raw `"200000.00"` for the session; the next save persists raw.
-
-No SQL migration is required — the format change happens lazily as records are touched.
-
-### Step 6 — Calculated / derived fields
-
-`computeLtv`, `allocateDollarsByPercent`, and the pro-rata calc in `AddFundingModal` already produce numeric strings. After this change the inputs they feed into accept raw values directly — drop the `formatCurrencyDisplay(...)` wrapping before assignment (only the display layer formats).
-
-## Out of scope
-
-- Database schema and column types (already strings; no migration).
-- Edge function formatting (`supabase/functions/_shared/formatting.ts`) — used only for document generation, already correct.
-- Percentage / interest rate fields — handled by `precisionFormat.ts` and a separate memory.
-- Date / phone / SSN formatters.
-- New design tokens, colors, or layout changes.
-
-## Files touched
-
-New:
-- `src/components/ui/currency-input.tsx`
-- `src/components/ui/currency-text.tsx`
-
-Modified (formatter hardening):
-- `src/lib/numericInputFilter.ts` — strengthen `formatCurrencyDisplay`.
-
-Modified (swap to `<CurrencyInput>` / `<CurrencyText>`), ~30 files in `src/components/deal/` and `src/components/contacts/*-detail/` — see Pattern A list. Each change is mechanical (replace input block, remove blur/focus handlers).
-
-## QA checklist
-
-| Scenario | Expected |
-|---|---|
-| Load existing deal with legacy raw `200000.00` | `200,000.00` |
-| Load legacy commaed `"200,000.00"` from DB | `200,000.00`, persists as `200000.00` on next save |
-| Type `1000` then blur | `1,000.00` |
-| Type `25000.5` then blur | `25,000.50` |
-| Type `1000000.756` then blur | `1,000,000.76` (HALF_UP) |
-| Paste `$1,234,567.891` | `1,234,567.89` |
-| Focus formatted field, edit, blur | round-trip stays consistent |
-| Page refresh on Property Details, Charges, Funding, Liens, Insurance | all currency fields formatted |
-| Inline grid edit in `LoanFundingGrid` | formatted on commit |
-| Calculated Pro Rata / LTV unchanged | still correct |
-| Negative amounts (where allowed in trust ledger debits) | `-$1,000.00` |
-| Empty field | placeholder `0.00`, no `$` orphan |
+- The per-property publisher at lines 3818–3824 and 3937–3943 (already correct).
+- The `RE851D_INDEXED_TAGS` list (already includes the four source-info families).
+- The DOCX template file itself.
+- Any other RE851D section (encumbrance YES/NO, delinquency, balloon, multiple properties, etc.).
+- UI, database, APIs.
