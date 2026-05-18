@@ -8304,6 +8304,118 @@ async function generateSingleDocument(
       }
     }
 
+    // ── RE851D POST-RENDER PROPERTY TYPE checkbox spacing safety pass ──
+    // For every paragraph in the document whose visible text begins with a
+    // checkbox glyph (☐ / ☑ / ☒) AND contains one of the seven PROPERTY TYPE
+    // labels, normalize the gap between the glyph and its label to exactly
+    // one regular space. Does NOT touch the glyph state, the label text,
+    // <w:pPr> (alignment / tabs / indent / spacing), or <w:rPr> (font / size).
+    // Idempotent — re-running on already-normalized XML is a no-op.
+    if (/851d/i.test(template.name || "")) {
+      try {
+        const LABEL_PATTERN =
+          "SINGLE-FAMILY RESIDENCE \\(owner occupied\\)|" +
+          "SINGLE-FAMILY RESIDENCE \\(not owner occupied\\)|" +
+          "SINGLE-FAMILY RESIDENCE \\(zoned residential lot/parcel\\)|" +
+          "COMMERCIAL|LAND ZONED|LAND INCOME PRODUCING|OTHER";
+        const labelTestRe = new RegExp(
+          `(?<![A-Za-z])(?:${LABEL_PATTERN})(?![A-Za-z])`,
+          "i",
+        );
+        const labelLeadRe = new RegExp(
+          `(<w:t(?:\\s[^>]*)?>)[\\s\\u00A0]+(?=(?:${LABEL_PATTERN})(?![A-Za-z]))`,
+          "gi",
+        );
+
+        const unzipped = __passUnzip(processedDocx);
+        const rezip: fflate.Zippable = {};
+        let didMutate = false;
+        for (const [filename, bytes] of Object.entries(unzipped)) {
+          const isContent =
+            filename === "word/document.xml" ||
+            filename.startsWith("word/header") ||
+            filename.startsWith("word/footer");
+          if (!isContent) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let xml = __xmlGet(filename, bytes);
+          if (!/[\u2610\u2611\u2612]/.test(xml) || !labelTestRe.test(xml)) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let count = 0;
+          const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+          xml = xml.replace(paraRe, (para) => {
+            // Cheap visible-text gate: only rewrite paragraphs that visibly
+            // begin with a checkbox glyph and contain one of the labels.
+            const visible = para
+              .replace(/<w:tab\s*\/?>/g, " ")
+              .replace(/<w:br\s*\/?>/g, " ")
+              .replace(/<[^>]+>/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (!/^[\u2610\u2611\u2612]/.test(visible)) return para;
+            if (!labelTestRe.test(visible)) return para;
+
+            let newPara = para;
+            // 1) Drop stray <w:tab/> and <w:br/> elements that sit between
+            //    the glyph run and the label run — they are the most common
+            //    cause of the visible spacing inconsistency.
+            newPara = newPara
+              .replace(/<w:tab\s*\/?>/g, "")
+              .replace(/<w:br\s*\/?>/g, "");
+            // 2) Within each <w:t> body, collapse any whitespace (incl. NBSP)
+            //    immediately following a checkbox glyph into exactly ONE
+            //    regular space. Also inserts a space when the glyph is
+            //    immediately followed by non-space content. Force
+            //    xml:space="preserve" so the trailing space survives Word.
+            newPara = newPara.replace(
+              /<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g,
+              (_m, attrs: string | undefined, text: string) => {
+                const t = text.replace(
+                  /([\u2610\u2611\u2612])[\s\u00A0]*/g,
+                  "$1 ",
+                );
+                const attrStr = attrs || "";
+                const withPreserve = /xml:space\s*=/.test(attrStr)
+                  ? attrStr
+                  : `${attrStr} xml:space="preserve"`;
+                return `<w:t${withPreserve}>${t}</w:t>`;
+              },
+            );
+            // 3) Strip any leading whitespace in a <w:t> whose body begins
+            //    with one of the PROPERTY TYPE labels — the prior glyph run
+            //    now ends in a single space, so the label run must not add
+            //    extra whitespace in front of itself.
+            newPara = newPara.replace(labelLeadRe, "$1");
+
+            if (newPara !== para) count++;
+            return newPara;
+          });
+          if (count > 0) {
+            rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            didMutate = true;
+            debugLog(
+              `[generate-document] RE851D post-render property-type spacing pass: ${count} row(s) normalized in ${filename}`,
+            );
+          } else {
+            rezip[filename] = [bytes, { level: 0 }];
+          }
+        }
+        if (didMutate) {
+          processedDocx = __passZip(rezip);
+        }
+      } catch (postErr) {
+        console.error(
+          `[generate-document] RE851D post-render property-type spacing pass failed (continuing):`,
+          postErr instanceof Error ? postErr.message : String(postErr),
+        );
+      }
+    }
+
+
+
 
 
     // ── RE851D POST-RENDER encumbrance-question paragraph cleanup ──
