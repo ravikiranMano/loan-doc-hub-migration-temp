@@ -688,7 +688,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.include_odd_days`}
           checkboxValue={values[`${prefix}.include_odd_days`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.include_odd_days`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <span />
         </FieldRow>
