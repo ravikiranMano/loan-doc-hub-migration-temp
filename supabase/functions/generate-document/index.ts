@@ -8117,6 +8117,195 @@ async function generateSingleDocument(
       }
     }
 
+    // ── RE851D POST-RENDER "Source of Information" row safety pass ──
+    // Anchors the paragraph that contains the three labels
+    //   BROKER INQUIRY   BORROWER   OTHER (EXPLAIN)
+    // and rewrites the paragraph body so each label is preceded by a single
+    // resolved glyph (☑/☐) with a fixed space between glyph and label, and
+    // the OTHER (EXPLAIN) value is appended after ": " (or blank when not
+    // Other). Required because Word frequently fragments
+    //   {{pr_li_sourceInfoBroker_N_glyph}} / _Borrower_ / _Other_ / _OtherText_
+    // across <w:r>/<w:t> runs so the per-property _N→_K rewriter cannot stitch
+    // them, leaving raw "…glyph}}" residue and no glyph/label spacing in the
+    // generated document.
+    //
+    // Driven by the per-property publishers at lines ~3818-3824 / ~3937-3943:
+    //   pr_li_sourceInfoBroker_K   (boolean)
+    //   pr_li_sourceInfoBorrower_K (boolean)
+    //   pr_li_sourceInfoOther_K    (boolean)
+    //   pr_li_sourceInfoOtherText_K (string)
+    if (/851d/i.test(template.name || "")) {
+      try {
+        const truthy = (raw: unknown): boolean => {
+          if (raw === null || raw === undefined) return false;
+          if (typeof raw === "boolean") return raw;
+          if (typeof raw === "number") return raw !== 0;
+          const s = String(raw).trim().toLowerCase();
+          return ["true", "yes", "y", "1", "checked", "on"].includes(s);
+        };
+        const xmlEsc = (s: string): string =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+        // Build per-property source-info bundles for K=1..5.
+        const siByIdx: Record<
+          number,
+          { broker: boolean; borrower: boolean; other: boolean; otherText: string }
+        > = {};
+        for (let k = 1; k <= 5; k++) {
+          siByIdx[k] = {
+            broker: truthy(fieldValues.get(`pr_li_sourceInfoBroker_${k}`)?.rawValue),
+            borrower: truthy(fieldValues.get(`pr_li_sourceInfoBorrower_${k}`)?.rawValue),
+            other: truthy(fieldValues.get(`pr_li_sourceInfoOther_${k}`)?.rawValue),
+            otherText: String(
+              fieldValues.get(`pr_li_sourceInfoOtherText_${k}`)?.rawValue ?? "",
+            ).trim(),
+          };
+        }
+
+        const unzipped = __passUnzip(processedDocx);
+        const rezip: fflate.Zippable = {};
+        let didMutate = false;
+
+        for (const [filename, bytes] of Object.entries(unzipped)) {
+          const isContent =
+            filename === "word/document.xml" ||
+            filename.startsWith("word/header") ||
+            filename.startsWith("word/footer");
+          if (!isContent) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let xml = __xmlGet(filename, bytes);
+          const lower = __xmlGetLower(filename, xml);
+          if (
+            lower.indexOf("broker inquiry") === -1 ||
+            lower.indexOf("other (explain)") === -1
+          ) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+
+          const propAnchors = [...__getVisProj(filename, xml).propAnchorsRaw];
+          // If we couldn't find PROPERTY INFORMATION anchors, default the
+          // single-property case to region K=1 covering the whole document.
+          const propRanges: Array<{ k: number; start: number; end: number }> = [];
+          if (propAnchors.length === 0) {
+            propRanges.push({ k: 1, start: 0, end: xml.length });
+          } else {
+            for (let pi = 0; pi < propAnchors.length; pi++) {
+              propRanges.push({
+                k: pi + 1,
+                start: propAnchors[pi],
+                end: pi + 1 < propAnchors.length ? propAnchors[pi + 1] : xml.length,
+              });
+            }
+          }
+
+          // Walk every <w:p>...</w:p>; rewrite only those whose visible text
+          // contains all three labels (this is the source-of-info row).
+          const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+          type Rewrite = { start: number; end: number; replacement: string };
+          const rewrites: Rewrite[] = [];
+          let pm: RegExpExecArray | null;
+          while ((pm = paraRe.exec(xml)) !== null) {
+            const paraStart = pm.index;
+            const paraEnd = paraStart + pm[0].length;
+            const para = pm[0];
+            const visibleRaw = para.replace(/<[^>]+>/g, "");
+            const visible = visibleRaw.replace(/\s+/g, " ").toUpperCase();
+            if (
+              visible.indexOf("BROKER INQUIRY") === -1 ||
+              visible.indexOf("BORROWER") === -1 ||
+              visible.indexOf("OTHER (EXPLAIN)") === -1
+            ) {
+              continue;
+            }
+            // Word-boundary safety: skip if the only "BORROWER" hit is part of
+            // a longer word (e.g. BORROWERS). We require the standalone token.
+            if (!/\bBORROWER\b/.test(visible)) continue;
+
+            const region =
+              propRanges.find((p) => paraStart >= p.start && paraStart < p.end) ||
+              propRanges[0];
+            const k = region.k;
+            const si = siByIdx[k] || { broker: false, borrower: false, other: false, otherText: "" };
+
+            // Preserve <w:p ...> open tag and original <w:pPr> block (alignment,
+            // tabs, indent, spacing) so layout matches the surrounding rows.
+            const openMatch = para.match(/^<w:p\b[^>]*>/);
+            if (!openMatch) continue;
+            const open = openMatch[0];
+            let body = para.slice(open.length, para.length - "</w:p>".length);
+            let pprStr = "";
+            const pprMatch = body.match(/^<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/);
+            if (pprMatch) {
+              pprStr = pprMatch[0];
+            }
+
+            // Try to inherit run-properties from the first text-bearing run in
+            // the original paragraph so font/size matches surrounding text.
+            let inheritedRPr = "";
+            const rPrMatch = para.match(
+              /<w:r\b[^>]*>\s*(<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>)/,
+            );
+            if (rPrMatch) inheritedRPr = rPrMatch[1];
+
+            const glyph = (on: boolean) => (on ? "\u2611" : "\u2610");
+            const mkRun = (text: string): string =>
+              `<w:r>${inheritedRPr}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>`;
+
+            // Layout: "☐ BROKER INQUIRY   ☐ BORROWER   ☑ OTHER (EXPLAIN): Public Record"
+            // Three spaces between groups preserves visual separation similar to
+            // the original template's tab/spacing; single space between glyph
+            // and label per spec.
+            const otherSuffix =
+              si.other && si.otherText.length > 0
+                ? `: ${si.otherText}`
+                : si.other
+                ? ":"
+                : ":";
+
+            const runs = [
+              mkRun(`${glyph(si.broker)} BROKER INQUIRY   `),
+              mkRun(`${glyph(si.borrower)} BORROWER   `),
+              mkRun(`${glyph(si.other)} OTHER (EXPLAIN)${otherSuffix}`),
+            ].join("");
+
+            const replacement = `${open}${pprStr}${runs}</w:p>`;
+            rewrites.push({ start: paraStart, end: paraEnd, replacement });
+            debugLog(
+              `[generate-document] RE851D source-info PROP#${k}: rewrote row (broker=${si.broker}, borrower=${si.borrower}, other=${si.other}, otherText="${si.otherText}")`,
+            );
+          }
+
+          if (rewrites.length > 0) {
+            rewrites.sort((a, b) => b.start - a.start);
+            for (const r of rewrites) {
+              xml = xml.slice(0, r.start) + r.replacement + xml.slice(r.end);
+            }
+            rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            didMutate = true;
+            debugLog(
+              `[generate-document] RE851D post-render source-info safety pass: ${rewrites.length} row(s) rewritten in ${filename}`,
+            );
+          } else {
+            rezip[filename] = [bytes, { level: 0 }];
+          }
+        }
+
+        if (didMutate) {
+          processedDocx = __passZip(rezip);
+        }
+      } catch (postErr) {
+        console.error(
+          `[generate-document] RE851D post-render source-info pass failed (continuing):`,
+          postErr instanceof Error ? postErr.message : String(postErr),
+        );
+      }
+    }
+
+
+
     // ── RE851D POST-RENDER encumbrance-question paragraph cleanup ──
     // Some merge values upstream emit leading/trailing <w:br/> runs into the
     // paragraph that contains "Are there any encumbrances of record..." or
