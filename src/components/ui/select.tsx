@@ -91,6 +91,14 @@ const SelectTrigger = React.forwardRef<
   const effectiveClearable = clearable ?? ctx?.clearable ?? true;
   const effectiveValue = clearableValue !== undefined ? clearableValue : ctx?.value;
   const effectiveClear = onClear ?? ctx?.onClear;
+  const clearHandledRef = React.useRef(false);
+  const handleClearActivation = React.useCallback(() => {
+    clearHandledRef.current = true;
+    effectiveClear?.();
+    window.requestAnimationFrame(() => {
+      clearHandledRef.current = false;
+    });
+  }, [effectiveClear]);
   const showClear =
     effectiveClearable &&
     !disabled &&
@@ -123,6 +131,11 @@ const SelectTrigger = React.forwardRef<
               e.preventDefault();
               e.stopPropagation();
             }}
+            onPointerUp={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClearActivation();
+            }}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -130,7 +143,7 @@ const SelectTrigger = React.forwardRef<
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              effectiveClear?.();
+              if (!clearHandledRef.current) handleClearActivation();
             }}
             className="inline-flex h-4 w-4 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent"
           >
