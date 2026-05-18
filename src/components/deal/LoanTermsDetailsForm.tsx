@@ -456,16 +456,16 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderAdjPercentField('loan_terms.current_rate', 'Current Rate')}
           {renderInlineField('loan_terms.interest_split', 'Interest Split')}
           {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
-          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Dropdown')}
-          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
           {getValue(FIELD_KEYS.rateStructure) === 'other' && (
             renderInlineField(FIELD_KEYS.rateStructureOther, 'Other (specify)')
           )}
-          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Dropdown')}
-          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Dropdown')}
-          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Dropdown')}
-          {renderInlineSelect('loan_terms.accrual_method', 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Dropdown')}
-          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
+          {renderInlineSelect('loan_terms.accrual_method', 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
         </div>
 
         {/* Loan Type Column */}
@@ -489,9 +489,9 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
         {/* Status Categories Column */}
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Status Categories (can be multiple)</h3>
-          {renderInlineSelect(FIELD_KEYS.loanStatus, 'Loan Status', LOAN_STATUS_OPTIONS, 'Dropdown')}
-          {renderInlineSelect(FIELD_KEYS.holdReason, 'Hold Reason', HOLD_REASON_OPTIONS, 'Dropdown')}
-          {renderInlineSelect(FIELD_KEYS.closedReason, 'Closed Reason', CLOSED_REASON_OPTIONS, 'Dropdown')}
+          {renderInlineSelect(FIELD_KEYS.loanStatus, 'Loan Status', LOAN_STATUS_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.holdReason, 'Hold Reason', HOLD_REASON_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.closedReason, 'Closed Reason', CLOSED_REASON_OPTIONS, 'Select')}
           {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
           {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
           {renderInlineCheckbox(FIELD_KEYS.statusBankruptcy, 'Bankruptcy')}
