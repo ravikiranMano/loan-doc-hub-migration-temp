@@ -409,8 +409,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     hasLenderRate(record) ? record.lenderRate : noteRateNumValue;
   const computedNetPayments = React.useMemo(() => {
     const map = new Map<string, number>();
-    if (!fundingRecords.length) return map;
-    const exact = fundingRecords.map(r => {
+    if (!aggregateRecords.length) return map;
+    const exact = aggregateRecords.map(r => {
       const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
         ? r.currentBalance
         : (r.originalAmount || 0);
@@ -422,13 +422,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
     const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
     const diff = sumExact.minus(sumRounded);
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    const adjIdx = aggregateRecords.findIndex(r => r.roundingAdjustment);
     if (adjIdx >= 0 && !diff.isZero()) {
       rounded[adjIdx] = rounded[adjIdx].plus(diff);
     }
-    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
+    aggregateRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [fundingRecords, noteRate]);
+  }, [aggregateRecords, noteRate]);
   const getNetPayment = (record: FundingRecord) => {
     const v = computedNetPayments.get(record.id);
     return v !== undefined ? v : 0;
