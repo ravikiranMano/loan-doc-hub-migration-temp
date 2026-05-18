@@ -709,12 +709,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
               <Input
                 value={(() => {
-                  // Loan-level outstanding principal = sum of all lender funding principal balances.
-                  // Falls back to stored loan_terms.principal, then original loan amount.
-                  const sum = totalPrincipalBalance;
-                  const parsed = parseFloat((loanPrincipalBalance || '').toString().replace(/[$,]/g, ''));
-                  const fallback = parseFloat((loanAmount || '').toString().replace(/[$,]/g, ''));
-                  const v = sum > 0 ? sum : (!isNaN(parsed) && parsed > 0 ? parsed : (!isNaN(fallback) && fallback > 0 ? fallback : 0));
+                  // Loan-level principal balance is the source of truth for
+                  // Pro Rata calculations. Use loan_terms.principal directly;
+                  // fall back to original loan amount only when absent.
+                  const v = loanPrincipalDenominator;
                   return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '-';
                 })()}
                 readOnly
