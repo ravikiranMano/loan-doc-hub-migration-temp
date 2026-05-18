@@ -13,6 +13,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { DistributionOtherSelect } from './DistributionOtherSelect';
 import { sanitizeInterestInput, normalizeInterestOnBlur } from '@/lib/interestValidation';
 import {
   numericKeyDown, numericPaste,
