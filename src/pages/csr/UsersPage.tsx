@@ -244,7 +244,7 @@ export const UsersPage: React.FC = () => {
             onValueChange={(v) => { setTypeFilter(v as UserTypeFilter); setPage(1); }}
           >
             <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Filter by type" />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Users</SelectItem>

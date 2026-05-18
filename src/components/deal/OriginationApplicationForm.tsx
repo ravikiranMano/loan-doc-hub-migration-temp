@@ -276,7 +276,7 @@ export const OriginationApplicationForm: React.FC<OriginationApplicationFormProp
           disabled={disabled}
         >
           <SelectTrigger className="h-7 text-sm flex-1">
-            <SelectValue placeholder="Select..." />
+            <SelectValue placeholder="Select" />
           </SelectTrigger>
           <SelectContent className="z-[9999]">
             {options.map((opt) => (

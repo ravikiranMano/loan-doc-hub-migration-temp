@@ -348,7 +348,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
           <Label className="w-[80px] text-sm shrink-0">State</Label>
           <Select value={v(keys.state)} onValueChange={(val) => sv(keys.state, (val === '__select__' ? '' : val))} disabled={disabled || extraDisabled}>
             <SelectTrigger className="h-7 text-sm">
-              <SelectValue placeholder="Select..." />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent className="bg-popover z-50">
               <SelectItem value="__select__">Select</SelectItem>
@@ -393,7 +393,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
             <Label className="w-[120px] text-sm shrink-0">Servicing Agent</Label>
             <Select value={v(AGENT_FK.servicing_agent)} onValueChange={(val) => sv(AGENT_FK.servicing_agent, val)} disabled={disabled}>
               <SelectTrigger className="h-7 text-sm">
-                <SelectValue placeholder="Select..." />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-popover z-50">
                 {SERVICING_AGENT_OPTIONS.map((opt) => (
@@ -508,7 +508,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
               disabled={disabled}
             >
               <SelectTrigger className="h-7 text-xs w-[120px]">
-                <SelectValue placeholder="Select..." />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-popover z-50">
                 <SelectItem value="Monthly">Monthly</SelectItem>
@@ -529,7 +529,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
               disabled={disabled}
             >
               <SelectTrigger className="h-7 text-xs w-[120px]">
-                <SelectValue placeholder="Select..." />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-popover z-50">
                 <SelectItem value="Monthly">Monthly</SelectItem>
@@ -645,7 +645,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
                                   disabled={disabled}
                                 >
                                   <SelectTrigger className="h-7 text-xs border-border">
-                                    <SelectValue placeholder="Select..." />
+                                    <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="fee_per_lender">Fee Per Lender - No Split</SelectItem>
@@ -706,7 +706,7 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
                                   disabled={disabled}
                                 >
                                   <SelectTrigger className="h-7 text-xs border-border">
-                                    <SelectValue placeholder="Select..." />
+                                    <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="fee_per_lender">Fee Per Lender - No Split</SelectItem>

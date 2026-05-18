@@ -118,7 +118,7 @@ export const BorrowerTaxInfoForm: React.FC<BorrowerTaxInfoFormProps> = ({
               disabled={disabled}
             >
               <SelectTrigger className="h-7 text-sm flex-1 max-w-[260px] bg-background">
-                <SelectValue placeholder="TIN Type Dropdown" />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-background z-50">
                 {TIN_TYPE_OPTIONS.map((opt) => (

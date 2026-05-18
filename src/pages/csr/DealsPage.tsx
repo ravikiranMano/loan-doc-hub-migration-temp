@@ -371,7 +371,7 @@ export const DealsPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-border">
               <Select value={filterStatus || "all"} onValueChange={(v) => setFilterStatus(v === "all" ? "" : v)}>
                 <SelectTrigger className="w-full sm:w-[150px]">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
@@ -382,7 +382,7 @@ export const DealsPage: React.FC = () => {
               </Select>
               <Select value={filterState || "all"} onValueChange={(v) => setFilterState(v === "all" ? "" : v)}>
                 <SelectTrigger className="w-full sm:w-[150px]">
-                  <SelectValue placeholder="State" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All States</SelectItem>
@@ -393,7 +393,7 @@ export const DealsPage: React.FC = () => {
               </Select>
               <Select value={filterProduct || "all"} onValueChange={(v) => setFilterProduct(v === "all" ? "" : v)}>
                 <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Product Type" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Products</SelectItem>

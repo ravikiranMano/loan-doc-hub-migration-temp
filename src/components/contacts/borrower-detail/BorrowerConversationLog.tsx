@@ -364,7 +364,7 @@ const BorrowerConversationLog: React.FC<{ borrowerId: string; contactDbId: strin
             <div>
               <Label className="text-xs">Type</Label>
               <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__" className="text-xs">All</SelectItem>
                   {uniqueTypes.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
@@ -374,7 +374,7 @@ const BorrowerConversationLog: React.FC<{ borrowerId: string; contactDbId: strin
             <div>
               <Label className="text-xs">Status</Label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="All" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__" className="text-xs">All</SelectItem>
                   {uniqueStatuses.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
@@ -586,7 +586,7 @@ const BorrowerConversationLog: React.FC<{ borrowerId: string; contactDbId: strin
                 <div className="flex items-center gap-2">
                   <Label className="w-[80px] shrink-0 text-xs">Type <span className="text-destructive">*</span></Label>
                   <Select value={newLog.type || undefined} onValueChange={(v) => { setNewLog(p => ({ ...p, type: v })); setValidationErrors(prev => { const n = { ...prev }; delete n.type; return n; }); }}>
-                    <SelectTrigger className={cn("h-7 text-xs flex-1", validationErrors.type && "border-destructive")}><SelectValue placeholder="Select type..." /></SelectTrigger>
+                    <SelectTrigger className={cn("h-7 text-xs flex-1", validationErrors.type && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent className="z-[9999]">
                       {logTypes.length > 0 ? logTypes.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>) : <SelectItem value="__none__" disabled className="text-xs">No options available</SelectItem>}
                     </SelectContent>

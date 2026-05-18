@@ -118,7 +118,7 @@ export const OriginationPropertyForm: React.FC<OriginationPropertyFormProps> = (
           <Label className="w-[180px] text-sm shrink-0">State</Label>
           <Select value={v(FK.appraiser_state)} onValueChange={(val) => sv(FK.appraiser_state, (val === '__select__' ? '' : val))} disabled={disabled}>
             <SelectTrigger className="h-7 text-sm flex-1">
-              <SelectValue placeholder="Select state" />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__select__">Select</SelectItem>
@@ -178,7 +178,7 @@ export const OriginationPropertyForm: React.FC<OriginationPropertyFormProps> = (
           <Label className="w-[180px] text-sm shrink-0">Type of Construction</Label>
           <Select value={v(FK.construction_type)} onValueChange={(val) => sv(FK.construction_type, val)} disabled={disabled}>
             <SelectTrigger className="h-7 text-sm">
-              <SelectValue placeholder="Select..." />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent className="bg-popover z-50">
               {CONSTRUCTION_TYPES.map((opt) => (
@@ -197,7 +197,7 @@ export const OriginationPropertyForm: React.FC<OriginationPropertyFormProps> = (
           <Label className="w-[180px] text-sm shrink-0">Source of Lien Information</Label>
           <Select value={v(FK.source_lien_info)} onValueChange={(val) => sv(FK.source_lien_info, val)} disabled={disabled}>
             <SelectTrigger className="h-7 text-sm">
-              <SelectValue placeholder="Select..." />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent className="bg-popover z-50">
               {LIEN_SOURCES.map((opt) => (

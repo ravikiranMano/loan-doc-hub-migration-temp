@@ -787,7 +787,7 @@ export const DealDocumentsPage: React.FC = () => {
                     }}
                   >
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select a packet..." />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
                       {availablePackets.map(p => (
@@ -866,7 +866,7 @@ export const DealDocumentsPage: React.FC = () => {
                     onValueChange={(v) => setSelectedTemplateId(v)}
                   >
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select a template..." />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
                       {allTemplates.map(template => (

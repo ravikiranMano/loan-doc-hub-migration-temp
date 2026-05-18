@@ -222,7 +222,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 disabled={disabled}
               >
                 <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Select status" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="bg-background z-[100]">
                   <SelectItem value="Active">Active</SelectItem>

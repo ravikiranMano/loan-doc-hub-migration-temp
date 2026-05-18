@@ -57,7 +57,7 @@ export const CoBorrowerBankingForm: React.FC<CoBorrowerBankingFormProps> = ({
             <div className="flex items-center gap-3">
               <Label htmlFor="accountType" className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Account Type</Label>
               <Select value={getValue('bank.account_type')} onValueChange={(value) => handleChange('bank.account_type', value)} disabled={disabled}>
-                <SelectTrigger className="h-7 text-sm flex-1"><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectTrigger className="h-7 text-sm flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{ACCOUNT_TYPE_OPTIONS.map((type) => (<SelectItem key={type} value={type}>{type}</SelectItem>))}</SelectContent>
               </Select>
             </div>

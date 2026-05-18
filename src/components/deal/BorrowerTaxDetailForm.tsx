@@ -187,7 +187,7 @@ export const BorrowerTaxDetailForm: React.FC<BorrowerTaxDetailFormProps> = ({
               disabled={disabled}
             >
               <SelectTrigger className="h-7 text-sm flex-1 max-w-[200px] bg-background">
-                <SelectValue placeholder="Dropdown Populates" />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-background z-50">
                 {DESIGNATED_RECIPIENT_OPTIONS.map((opt) => (

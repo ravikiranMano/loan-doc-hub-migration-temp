@@ -172,7 +172,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
             <Label className="w-[160px] text-sm shrink-0">{label}</Label>
             <Select value={v(dropdownKey)} onValueChange={(val) => sv(dropdownKey, val)} disabled={disabled}>
               <SelectTrigger className="h-7 text-sm">
-                <SelectValue placeholder="Select..." />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent className="bg-popover z-50">
                 {DELIVERY_OPTIONS.map((opt) => (
@@ -203,7 +203,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                 <Label className="w-[80px] text-sm shrink-0">State</Label>
                 <Select value={v(otherKeys.state)} onValueChange={(val) => sv(otherKeys.state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
                     <SelectItem value="__select__">Select</SelectItem>
@@ -248,7 +248,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                 <Label className="w-[120px] text-sm shrink-0">State</Label>
                 <Select value={v(FK.escrow_state)} onValueChange={(val) => sv(FK.escrow_state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
                     <SelectItem value="__select__">Select</SelectItem>
@@ -295,7 +295,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                 <Label className="w-[120px] text-sm shrink-0">State</Label>
                 <Select value={v(FK.title_state)} onValueChange={(val) => sv(FK.title_state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
                     <SelectItem value="__select__">Select</SelectItem>
@@ -338,7 +338,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                 <Label className="w-[120px] text-sm shrink-0">Trustee</Label>
                 <Select value={trusteeType} onValueChange={(val) => sv(FK.trustee_type, val)} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
                     <SelectItem value="Company">Company</SelectItem>
@@ -364,7 +364,7 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                 <Label className="w-[120px] text-sm shrink-0">State</Label>
                 <Select value={v(FK.trustee_state)} onValueChange={(val) => sv(FK.trustee_state, (val === '__select__' ? '' : val))} disabled={disabled}>
                   <SelectTrigger className="h-7 text-sm">
-                    <SelectValue placeholder="Select..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover z-50">
                     <SelectItem value="__select__">Select</SelectItem>

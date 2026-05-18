@@ -251,7 +251,7 @@ export const FieldMapEditorPage: React.FC = () => {
           <Label>Select Template</Label>
           <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
             <SelectTrigger className="max-w-md">
-              <SelectValue placeholder="Choose a template to configure" />
+              <SelectValue placeholder="Select" />
             </SelectTrigger>
             <SelectContent>
               {templates.map((t) => (
@@ -348,7 +348,7 @@ export const FieldMapEditorPage: React.FC = () => {
                         }
                       >
                         <SelectTrigger className="h-8">
-                          <SelectValue placeholder="Transform rule" />
+                          <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
                           {TRANSFORM_RULES.map((rule) => (
@@ -492,7 +492,7 @@ export const FieldMapEditorPage: React.FC = () => {
                             }
                           >
                             <SelectTrigger className="h-8">
-                              <SelectValue placeholder="Transform rule" />
+                              <SelectValue placeholder="Select" />
                             </SelectTrigger>
                             <SelectContent>
                               {TRANSFORM_RULES.map((rule) => (

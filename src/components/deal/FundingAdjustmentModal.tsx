@@ -578,7 +578,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
               <Label className="text-xs text-muted-foreground">Description</Label>
               <Select value={description || '__none__'} onValueChange={(v) => setDescription(v === '__none__' ? '' : v)}>
                 <SelectTrigger className="h-7 text-xs w-44">
-                  <SelectValue placeholder="Select description" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
                   <SelectItem value="__none__" className="text-xs text-muted-foreground">Select description</SelectItem>

@@ -141,7 +141,7 @@ export const LenderBankingForm: React.FC<LenderBankingFormProps> = ({
             {wrapField('achStatus', <div className="grid grid-cols-2 gap-2 items-center">
               <Label className="text-sm text-muted-foreground">ACH Status</Label>
               <Select value={getValue('achStatus')} onValueChange={(v) => handleChange('achStatus', v)} disabled={disabled}>
-                <SelectTrigger className="h-8"><SelectValue placeholder="Select status" /></SelectTrigger>
+                <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="Inactive">Inactive</SelectItem>
@@ -177,7 +177,7 @@ export const LenderBankingForm: React.FC<LenderBankingFormProps> = ({
             {wrapField('accountType', <div className="grid grid-cols-2 gap-2 items-center">
               <Label className="text-sm text-muted-foreground">Type</Label>
               <Select value={getValue('accountType')} onValueChange={(value) => handleChange('accountType', value)} disabled={disabled}>
-                <SelectTrigger className="h-8"><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Personal Banking">Personal Banking</SelectItem>
                   <SelectItem value="Business Banking">Business Banking</SelectItem>

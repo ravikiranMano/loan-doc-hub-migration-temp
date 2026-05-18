@@ -96,7 +96,7 @@ export const EscrowImpoundForm: React.FC<Props> = ({
                   disabled={disabled}
                 >
                   <SelectTrigger id={frequencyField.field_key} className="h-8 text-sm">
-                    <SelectValue placeholder="Select frequency" />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="z-[100]">
                     {PAYMENT_FREQUENCY_OPTIONS.map(opt => (

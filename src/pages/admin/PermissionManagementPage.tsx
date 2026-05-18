@@ -101,7 +101,7 @@ const PermissionManagementPage: React.FC = () => {
         <span className="text-sm font-medium text-foreground">Select CSR User:</span>
         <Select value={selectedUserId} onValueChange={setSelectedUserId}>
           <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="Select a CSR user..." />
+            <SelectValue placeholder="Select" />
           </SelectTrigger>
           <SelectContent>
             {csrUsers.map(u => (

@@ -466,7 +466,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         </div>
         <Select value={roleFilter} onValueChange={setRoleFilter}>
           <SelectTrigger className="h-8 w-[180px] text-xs">
-            <SelectValue placeholder="Filter by Capacity" />
+            <SelectValue placeholder="Select" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Capacities</SelectItem>
@@ -477,7 +477,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="h-8 w-[140px] text-xs">
-            <SelectValue placeholder="Filter by Status" />
+            <SelectValue placeholder="Select" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>

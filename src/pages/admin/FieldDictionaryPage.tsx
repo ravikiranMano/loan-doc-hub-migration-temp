@@ -959,7 +959,7 @@ export const FieldDictionaryPage: React.FC = () => {
           <div className="flex flex-wrap gap-3 items-center">
             <Select value={filterSection || "all"} onValueChange={handleFilterSectionChange}>
               <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="All Sections" />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Sections</SelectItem>
@@ -972,7 +972,7 @@ export const FieldDictionaryPage: React.FC = () => {
             {filterSection && availableFilterForms.length > 0 && (
               <Select value={filterFormType || "all"} onValueChange={(v) => setFilterFormType(v === "all" ? "" : v)}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="All Forms" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Forms</SelectItem>

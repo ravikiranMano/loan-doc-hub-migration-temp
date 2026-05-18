@@ -387,7 +387,7 @@ export const NotesModal: React.FC<NotesModalProps> = ({
                   onValueChange={(val) => setFormData(prev => ({ ...prev, type: val }))}
                 >
                   <SelectTrigger className="h-7 text-xs flex-1">
-                    <SelectValue placeholder="Select type..." />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent className="z-[9999]">
                     {noteTypes.length > 0 ? noteTypes.map(t => (
@@ -498,7 +498,7 @@ export const NotesModal: React.FC<NotesModalProps> = ({
                     onValueChange={(val) => setFormData(prev => ({ ...prev, assignedTo: val }))}
                   >
                     <SelectTrigger className="h-7 text-xs flex-1">
-                      <SelectValue placeholder="CSR Dropdown" />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[9999]">
                       <SelectItem value="csr1" className="text-xs">CSR 1</SelectItem>
@@ -511,7 +511,7 @@ export const NotesModal: React.FC<NotesModalProps> = ({
                     onValueChange={(val) => setFormData(prev => ({ ...prev, assignedDepartment: val }))}
                   >
                     <SelectTrigger className="h-7 text-xs flex-1">
-                      <SelectValue placeholder="Department" />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[9999]">
                       <SelectItem value="servicing" className="text-xs">Servicing</SelectItem>
@@ -539,7 +539,7 @@ export const NotesModal: React.FC<NotesModalProps> = ({
                     onValueChange={(val) => setFormData(prev => ({ ...prev, completedBy: val }))}
                   >
                     <SelectTrigger className="h-7 text-xs flex-1">
-                      <SelectValue placeholder="CSR Dropdown" />
+                      <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="z-[9999]">
                       <SelectItem value="csr1" className="text-xs">CSR 1</SelectItem>

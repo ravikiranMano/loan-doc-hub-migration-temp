@@ -959,7 +959,7 @@ const LenderCharges: React.FC<LenderChargesProps> = ({ contactDbId, disabled }) 
                   value={draft.charge_type || ''}
                   onValueChange={(v) => setDraftField('charge_type', v)}
                 >
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select Charge Type" /></SelectTrigger>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent className="z-[9999]">
                     {CHARGE_TYPE_OPTIONS.map(opt => (
                       <SelectItem key={opt} value={opt}>{opt}</SelectItem>

@@ -146,7 +146,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
               <Label className="text-sm font-medium">Lender Split</Label>
               <Select value={form.lenders_split} onValueChange={(val) => set('lenders_split', val)}>
                 <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="fee_per_lender">Fee Per Lender - No Split</SelectItem>

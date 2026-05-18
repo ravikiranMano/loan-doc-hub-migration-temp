@@ -444,7 +444,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 disabled={disabled}
               >
                 <SelectTrigger className="h-8 text-sm flex-1">
-                  <SelectValue placeholder="Select method" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   {ACCRUAL_METHOD_OPTIONS.map((option) => (
@@ -817,7 +817,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 disabled={disabled}
               >
                 <SelectTrigger className="h-8 text-sm flex-1">
-                  <SelectValue placeholder="Select frequency" />
+                  <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
                   {PAYMENT_FREQUENCY_OPTIONS.map((option) => (

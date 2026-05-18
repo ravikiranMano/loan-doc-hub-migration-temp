@@ -155,7 +155,7 @@ export const LenderModal: React.FC<LenderModalProps> = ({ open, onOpenChange, le
                   onValueChange={(value) => handleChange('taxIdType', value)}
                 >
                   <SelectTrigger className="h-7 text-xs flex-1">
-                    <SelectValue placeholder="Select type" />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
                     {TAX_ID_TYPE_OPTIONS.map((option) => (
