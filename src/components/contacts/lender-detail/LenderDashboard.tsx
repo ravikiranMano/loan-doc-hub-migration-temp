@@ -1,7 +1,13 @@
 import React from 'react';
+import { format, parse, isValid } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { ContactRecord } from '@/hooks/useContactsCrud';
+
+const formatAgreementDate = (val: string): string => {
+  if (!val) return '';
+  try { const d = parse(val, 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'MM/dd/yyyy') : val; } catch { return val; }
+};
 
 interface Props { contact: ContactRecord; }
 
@@ -74,6 +80,7 @@ const LenderDashboard: React.FC<Props> = ({ contact }) => {
             <Field label="ACH" value={data.ach === 'true' ? 'Yes' : 'No'} />
             <Field label="Send 1099" value={data.send_1099 === 'true' ? 'Yes' : 'No'} />
             <Field label="Agreement" value={data.agreement_on_file === 'true' ? 'Yes' : 'No'} />
+            <Field label="Agreement Date" value={formatAgreementDate(data.servicing_agreement_on_file_date || data.agreement_on_file_date || '')} />
           </CardContent>
         </Card>
       </div>

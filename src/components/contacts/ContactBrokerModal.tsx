@@ -22,7 +22,7 @@ import type { ContactBroker } from '@/pages/contacts/ContactBrokersPage';
 type CreatePayload = Omit<ContactBroker, 'id' | 'brokerId'>;
 
 const EMPTY: CreatePayload = {
-  hold: false, type: 'Individual', ach: false, email: '', agreement: false,
+  hold: false, type: 'Individual', ach: false, email: '', agreement: false, agreementDate: '',
   firstName: '', lastName: '', city: '', state: '', cellPhone: '',
   homePhone: '', workPhone: '', fax: '', preferredPhone: 'Cell', verified: false,
   send1099: false, street: '', zip: '',

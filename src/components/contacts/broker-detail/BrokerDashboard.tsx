@@ -1,7 +1,13 @@
 import React from 'react';
+import { format, parse, isValid } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { ContactBroker } from '@/pages/contacts/ContactBrokersPage';
+
+const formatAgreementDate = (val: string): string => {
+  if (!val) return '';
+  try { const d = parse(val, 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'MM/dd/yyyy') : val; } catch { return val; }
+};
 
 interface Props { broker: ContactBroker; onUpdate: (b: ContactBroker) => void; }
 
@@ -72,6 +78,7 @@ const BrokerDashboard: React.FC<Props> = ({ broker }) => (
         <CardContent className="grid grid-cols-2 gap-3">
           <Field label="Send 1099" value={broker.send1099 ? 'Yes' : 'No'} />
           <Field label="Agreement" value={broker.agreement ? 'Yes' : 'No'} />
+          <Field label="Agreement Date" value={formatAgreementDate(broker.agreementDate || '')} />
         </CardContent>
       </Card>
     </div>
