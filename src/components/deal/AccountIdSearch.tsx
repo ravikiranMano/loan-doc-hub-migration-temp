@@ -42,7 +42,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
       let qb = supabase
         .from('contacts')
         .select('contact_id, full_name, contact_type')
-        .in('contact_type', ['borrower', 'lender']);
+        .in('contact_type', contactTypes);
 
       if (searchTerm && searchTerm.length >= 1) {
         qb = qb.or(`contact_id.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
