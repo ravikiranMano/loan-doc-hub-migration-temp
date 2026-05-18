@@ -128,7 +128,8 @@ async function generateSingleDocument(
     // RE851D-only behavior (multi-property checkboxes, taxes, Q1–Q6,
     // safety passes, etc.) is enabled here.
     const isLienMappingTemplate = /lien[_\s-]?mapping/i.test(template.name || "");
-    const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate;
+    const isTemplate851A = /851a/i.test(template.name || "");
+    const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate || isTemplate851A;
     const t885Total = performance.now();
     const tDataFetchStart = performance.now();
     const tDataMappingStart = performance.now();
