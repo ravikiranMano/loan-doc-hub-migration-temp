@@ -300,20 +300,22 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   }, [values]);
 
   // Self-heal pctOwned for stored records: Pro Rata MUST be each lender's
-  // funding amount divided by the TOTAL LOAN AMOUNT (not the sum of funded
-  // amounts). Records persisted by older builds may have an incorrect
-  // pctOwned (e.g. 100% for a single partial-funding lender); recompute and
-  // re-persist whenever loanAmount is known and a drift is detected.
+  // funding amount divided by the LOAN-LEVEL PRINCIPAL BALANCE (not the sum
+  // of funded amounts and not normalized to 100%). Records persisted by older
+  // builds may have an incorrect pctOwned; recompute and re-persist whenever
+  // the loan principal balance is known and a drift is detected.
   const lastHealedRef = useRef<string>('');
   useEffect(() => {
     if (!fundingRecords.length) return;
+    const principal = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
     const loanAmt = parseFloat(String(loanAmount || '').replace(/[$,]/g, '')) || 0;
-    if (loanAmt <= 0) return;
+    const denom = principal > 0 ? principal : loanAmt;
+    if (denom <= 0) return;
     let drift = false;
     const healed = fundingRecords.map((r) => {
       const fa = Number(r.originalAmount) || 0;
       if (fa <= 0) return r;
-      const expected = parseFloat(((fa / loanAmt) * 100).toFixed(4));
+      const expected = parseFloat(((fa / denom) * 100).toFixed(4));
       const current = Number(r.pctOwned) || 0;
       if (Math.abs(expected - current) > 0.0001) {
         drift = true;
@@ -327,24 +329,17 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     lastHealedRef.current = json;
     onValueChange(FIELD_KEYS.fundingRecords, json);
     void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
-  }, [fundingRecords, loanAmount, dealId, onValueChange]);
+  }, [fundingRecords, loanAmount, loanPrincipalBalance, dealId, onValueChange]);
 
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
-  // The single record flagged with `roundingAdjustment` absorbs any fractional
-  // remainder so the displayed total matches the grid column total exactly.
+  // Does NOT normalize to 100% — under-funded loans report <100, over-funded >100.
   const computedProRataTotal = useMemo(() => {
     if (!fundingRecords.length) return '';
     const sum = fundingRecords.reduce(
       (acc, r) => acc.plus(new Decimal(Number(r.pctOwned) || 0)),
       new Decimal(0)
     );
-    const adjIdx = fundingRecords.findIndex((r) => r.roundingAdjustment);
-    let total = sum;
-    if (adjIdx >= 0) {
-      const diff = new Decimal(100).minus(sum);
-      if (!diff.isZero()) total = sum.plus(diff);
-    }
-    return total.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+    return sum.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
   }, [fundingRecords]);
 
   // Persist the auto-filled Pro Rata into loan_terms.pro_rata whenever the
