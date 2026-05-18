@@ -67,7 +67,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [contactTypes.join(',')]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
