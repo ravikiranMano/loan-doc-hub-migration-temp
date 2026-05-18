@@ -162,13 +162,6 @@ interface LoanFundingGridProps {
   loanNumber?: string;
   borrowerName?: string;
   fundingRecords: FundingRecord[];
-  /**
-   * Optional full set of funding records (unpaginated). When provided, totals,
-   * pro rata, payment/net-payment column computations and rounding
-   * reconciliation are calculated against the full set so the grid stays
-   * synchronized across pages. Falls back to `fundingRecords` when omitted.
-   */
-  allRecords?: FundingRecord[];
   totalRecordCount?: number;
   historyRecords?: any[];
   onAddFunding: (data: any) => void;
@@ -240,7 +233,6 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   loanNumber,
   borrowerName,
   fundingRecords,
-  allRecords,
   totalRecordCount,
   historyRecords = [],
   onAddFunding,
@@ -271,12 +263,6 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   onDeleteHistoryRecord,
 }) => {
   const { user } = useAuth();
-  // Records used for cross-row aggregates (totals, rounding adjustment, pct
-  // ownership). Defaults to the visible paginated set when the parent does
-  // not provide the unpaginated list.
-  const aggregateRecords: FundingRecord[] = allRecords && allRecords.length
-    ? allRecords
-    : fundingRecords;
   const [createLenderModalOpen, setCreateLenderModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
@@ -336,9 +322,9 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // arithmetic with banker's rounding (ROUND_HALF_EVEN) to 2 decimals.
   const computedPayments = React.useMemo(() => {
     const map = new Map<string, number>();
-    if (!aggregateRecords.length) return map;
+    if (!fundingRecords.length) return map;
     const noteRateDec = new Decimal(parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0);
-    const exact = aggregateRecords.map(r => {
+    const exact = fundingRecords.map(r => {
       const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
         ? r.currentBalance
         : (r.originalAmount || 0);
@@ -352,13 +338,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
     const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
     const diff = sumExact.minus(sumRounded);
-    const adjIdx = aggregateRecords.findIndex(r => r.roundingAdjustment);
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
     if (adjIdx >= 0 && !diff.isZero()) {
       rounded[adjIdx] = rounded[adjIdx].plus(diff);
     }
-    aggregateRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
+    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [aggregateRecords, noteRate]);
+  }, [fundingRecords, noteRate]);
 
   // Pro Rata: lender funding amount divided by the LOAN PRINCIPAL BALANCE.
   // Does NOT normalize to 100% — when the loan is partially funded, totals
@@ -366,13 +352,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // applied here because the column is no longer forced to sum to 100.
   const computedPctOwned = React.useMemo(() => {
     const map = new Map<string, number>();
-    if (!aggregateRecords.length) return map;
+    if (!fundingRecords.length) return map;
     if (effectiveLoanPrincipal <= 0) {
-      aggregateRecords.forEach(r => map.set(r.id, 0));
+      fundingRecords.forEach(r => map.set(r.id, 0));
       return map;
     }
     const den = new Decimal(effectiveLoanPrincipal);
-    aggregateRecords.forEach(r => {
+    fundingRecords.forEach(r => {
       const pct = new Decimal(Number(r.originalAmount) || 0)
         .div(den)
         .times(100)
@@ -381,7 +367,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       map.set(r.id, pct);
     });
     return map;
-  }, [aggregateRecords, effectiveLoanPrincipal]);
+  }, [fundingRecords, effectiveLoanPrincipal]);
 
   const getDisplayedPctOwned = (record: FundingRecord) => {
     const v = computedPctOwned.get(record.id);
@@ -409,8 +395,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     hasLenderRate(record) ? record.lenderRate : noteRateNumValue;
   const computedNetPayments = React.useMemo(() => {
     const map = new Map<string, number>();
-    if (!aggregateRecords.length) return map;
-    const exact = aggregateRecords.map(r => {
+    if (!fundingRecords.length) return map;
+    const exact = fundingRecords.map(r => {
       const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
         ? r.currentBalance
         : (r.originalAmount || 0);
@@ -422,13 +408,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
     const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
     const diff = sumExact.minus(sumRounded);
-    const adjIdx = aggregateRecords.findIndex(r => r.roundingAdjustment);
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
     if (adjIdx >= 0 && !diff.isZero()) {
       rounded[adjIdx] = rounded[adjIdx].plus(diff);
     }
-    aggregateRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
+    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [aggregateRecords, noteRate]);
+  }, [fundingRecords, noteRate]);
   const getNetPayment = (record: FundingRecord) => {
     const v = computedNetPayments.get(record.id);
     return v !== undefined ? v : 0;
@@ -445,13 +431,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return Math.max(0, (record.originalAmount || 0) - disbSum);
   };
 
-  const totalOwnership = aggregateRecords.reduce((sum, r) => sum + r.pctOwned, 0);
-  const totalPrincipalBalance = aggregateRecords.reduce((sum, r) => sum + r.principalBalance, 0);
-  const totalCurrentBalance = aggregateRecords.reduce((sum, r) => sum + computeCurrentBalance(r), 0);
-  const totalPaymentSum = aggregateRecords.reduce((sum, r) => sum + getDisplayedPayment(r), 0);
-  const totalDisbursementsSum = aggregateRecords.reduce((sum, r) => sum + getDisbursementsTotal(r), 0);
-  const totalNetPaymentSum = aggregateRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
-  const totalFundingAmount = aggregateRecords.reduce((sum, r) => sum + r.originalAmount, 0);
+  const totalOwnership = fundingRecords.reduce((sum, r) => sum + r.pctOwned, 0);
+  const totalPrincipalBalance = fundingRecords.reduce((sum, r) => sum + r.principalBalance, 0);
+  const totalCurrentBalance = fundingRecords.reduce((sum, r) => sum + computeCurrentBalance(r), 0);
+  const totalPaymentSum = fundingRecords.reduce((sum, r) => sum + getDisplayedPayment(r), 0);
+  const totalDisbursementsSum = fundingRecords.reduce((sum, r) => sum + getDisbursementsTotal(r), 0);
+  const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
+  const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
   // Funded vs unfunded vs over-funded (against loan-level principal balance).
   const fundedAmount = totalFundingAmount;
@@ -464,7 +450,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     ? Math.max(0, 100 - fundedPct)
     : 0;
   const fundingStatus: 'under' | 'full' | 'over' | 'none' =
-    effectiveLoanPrincipal <= 0 || aggregateRecords.length === 0
+    effectiveLoanPrincipal <= 0 || fundingRecords.length === 0
       ? 'none'
       : overAmount > FUNDING_TOLERANCE
         ? 'over'
@@ -1055,7 +1041,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(effectiveLoanPrincipal)
           : ''}
         remainingPayments={remainingPayments}
-        existingRecords={aggregateRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount }))}
+        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount }))}
         editingRecordId={selectedRecord?.id}
       />
 
