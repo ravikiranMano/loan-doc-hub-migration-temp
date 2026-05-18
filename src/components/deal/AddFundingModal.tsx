@@ -1034,7 +1034,9 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                     }));
                   }}
                   className="h-6 text-xs"
+                  contactTypes={['borrower', 'lender', 'broker']}
                 />
+
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs min-w-[70px] shrink-0">Name</Label>
