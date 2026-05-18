@@ -16,6 +16,9 @@ import { SortableTableHead } from '@/components/deal/SortableTableHead';
 import { useTableColumnConfig } from '@/hooks/useTableColumnConfig';
 import { useGridSelection } from '@/hooks/useGridSelection';
 import type { ContactRecord } from '@/hooks/useContactsCrud';
+import { format, parse, isValid } from 'date-fns';
+
+const AGREEMENT_DATE_COLUMN_IDS = new Set(['agreement_on_file_date', 'servicing_agreement_on_file_date']);
 
 type SortDir = 'asc' | 'desc' | null;
 
@@ -176,6 +179,9 @@ export const ContactsListView: React.FC<ContactsListViewProps> = ({
     if (val === 'true') return '✓';
     if (val === 'false') return '';
     if (columnId === 'full_name') return <span className="font-medium">{val || '-'}</span>;
+    if (AGREEMENT_DATE_COLUMN_IDS.has(columnId) && val) {
+      try { const d = parse(val, 'yyyy-MM-dd', new Date()); if (isValid(d)) return format(d, 'MM/dd/yyyy'); } catch { /* noop */ }
+    }
     return val || '-';
   };
 

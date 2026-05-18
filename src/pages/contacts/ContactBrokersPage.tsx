@@ -8,6 +8,7 @@ import type { ColumnConfig } from '@/components/deal/ColumnConfigPopover';
 import type { FilterOption } from '@/components/deal/GridToolbar';
 import { useFormPermissions } from '@/hooks/useFormPermissions';
 import { useContactWorkspaceOptional } from '@/contexts/ContactWorkspaceContext';
+import { format, parse, isValid } from 'date-fns';
 
 export interface ContactBroker {
   id: string;
@@ -243,6 +244,9 @@ const ContactBrokersPage: React.FC = () => {
     }
 
     const val = cd[columnId] || '';
+    if ((columnId === 'agreement_on_file_date') && val) {
+      try { const d = parse(val, 'yyyy-MM-dd', new Date()); if (isValid(d)) return format(d, 'MM/dd/yyyy'); } catch { /* noop */ }
+    }
     return val || '-';
   }, []);
 
