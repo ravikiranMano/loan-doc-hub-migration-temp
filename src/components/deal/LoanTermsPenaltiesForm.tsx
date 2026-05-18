@@ -630,14 +630,39 @@ const InterestGuaranteeSection: React.FC<{
   const prefix = 'loan_terms.penalties.interest_guarantee';
   const isEnabled = values[`${prefix}.enabled`] === 'true';
 
+  const childKeys = [`${prefix}.months_enabled`, `${prefix}.include_odd_days`, `${prefix}.amount_enabled`];
+  const anyChildChecked = childKeys.some(k => values[k] === 'true');
+
+  // Reverse sync: any child checked → parent on; all unchecked → parent off
+  useEffect(() => {
+    if (anyChildChecked && !isEnabled) {
+      onValueChange(`${prefix}.enabled`, 'true');
+    } else if (!anyChildChecked && isEnabled) {
+      onValueChange(`${prefix}.enabled`, 'false');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyChildChecked]);
+
+  const handleParentToggle = (checked: boolean) => {
+    onValueChange(`${prefix}.enabled`, checked ? 'true' : 'false');
+    if (!checked) {
+      onValueChange(`${prefix}.months_enabled`, 'false');
+      onValueChange(`${prefix}.months`, '');
+      onValueChange(`${prefix}.include_odd_days`, 'false');
+      onValueChange(`${prefix}.amount_enabled`, 'false');
+      onValueChange(`${prefix}.amount`, '');
+      resetDistribution(prefix, onValueChange);
+    }
+  };
+
   return (
-    <div className="space-y-2 p-4 border border-border rounded-lg bg-card">
+    <div className={cn("space-y-2 p-4 border border-border rounded-lg bg-card", !isEnabled && disabledHighlightClass)}>
       <DirtyFieldWrapper fieldKey={`${prefix}.enabled`}>
         <div className="flex items-center gap-2 border-b border-border pb-2">
           <h3 className="font-semibold text-sm text-foreground">Interest Guarantee</h3>
           <Checkbox
             checked={isEnabled}
-            onCheckedChange={(checked) => onValueChange(`${prefix}.enabled`, checked ? 'true' : 'false')}
+            onCheckedChange={(checked) => handleParentToggle(!!checked)}
             disabled={disabled}
             className="h-4 w-4"
           />
@@ -650,7 +675,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.months`}
           checkboxValue={values[`${prefix}.months_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.months_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled || !isEnabled}
+          disabled={disabled}
         >
           <PenaltyIntegerInput
             value={values[`${prefix}.months`] || ''}
@@ -663,7 +688,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.include_odd_days`}
           checkboxValue={values[`${prefix}.include_odd_days`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.include_odd_days`, checked ? 'true' : 'false')}
-          disabled={disabled || !isEnabled}
+          disabled={disabled}
         >
           <span />
         </FieldRow>
@@ -672,7 +697,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.amount`}
           checkboxValue={values[`${prefix}.amount_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.amount_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled || !isEnabled}
+          disabled={disabled}
         >
           <PenaltyCurrencyInput
             value={values[`${prefix}.amount`] || ''}
