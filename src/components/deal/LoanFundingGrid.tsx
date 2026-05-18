@@ -744,15 +744,9 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             <div className="relative">
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
               <Input
-                value={(() => {
-                  // Loan-level outstanding principal = sum of all lender funding principal balances.
-                  // Falls back to stored loan_terms.principal, then original loan amount.
-                  const sum = totalPrincipalBalance;
-                  const parsed = parseFloat((loanPrincipalBalance || '').toString().replace(/[$,]/g, ''));
-                  const fallback = parseFloat((loanAmount || '').toString().replace(/[$,]/g, ''));
-                  const v = sum > 0 ? sum : (!isNaN(parsed) && parsed > 0 ? parsed : (!isNaN(fallback) && fallback > 0 ? fallback : 0));
-                  return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '-';
-                })()}
+                value={effectiveLoanPrincipal > 0
+                  ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(effectiveLoanPrincipal)
+                  : '-'}
                 readOnly
                 className="h-7 text-xs w-28 pl-5 bg-muted/30"
               />
@@ -761,7 +755,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             <Label className="text-xs text-foreground font-medium shrink-0">Pro Rata</Label>
             <div className="relative">
               <Input
-                value={proRata || ''}
+                value={fundingRecords.length > 0 ? formatPercentDisplay(fundedPct, 4) : ''}
                 readOnly
                 disabled={disabled}
                 inputMode="decimal"
@@ -770,8 +764,21 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
             </div>
           </div>
+          {fundingStatus !== 'none' && (
+            <Badge
+              variant={fundingStatus === 'over' ? 'destructive' : fundingStatus === 'full' ? 'default' : 'secondary'}
+              className={cn(
+                'text-[10px] uppercase tracking-wide',
+                fundingStatus === 'under' && 'bg-orange-500/15 text-orange-700 border-orange-500/30 hover:bg-orange-500/20',
+                fundingStatus === 'full' && 'bg-green-600/15 text-green-700 border-green-600/30 hover:bg-green-600/20',
+              )}
+            >
+              {fundingStatus === 'over' ? 'Over-funded' : fundingStatus === 'full' ? 'Fully funded' : 'Under-funded'}
+            </Badge>
+          )}
         </div>
         </div>
+
 
         <div className="overflow-x-auto">
           {isLoading ? (
