@@ -1,77 +1,60 @@
 ## Goal
 
-Fix the visual layout of Section 2 PROPERTY TYPE in the RE851D Word template so each property's options render in a clean, fixed two-column grid (3 rows left, 4 rows right) without cell collapse from long `{{property_type_*_N}}` placeholder text. No server-side logic, no variable names, and no other sections change.
+Make the rendered PROPERTY TYPE section (Section 2) of RE851D look like the reference for ALL 5 properties: clean fixed two-column layout, consistent spacing, each checkbox+label on its own line, and the OTHER row separate from the LAND (income-producing) row with the property text inline. Only the docx template layout changes; no business logic or placeholder names move.
 
-## Approach
+## What's wrong now (from the latest generated output)
 
-Add a new admin one-shot edge function (same pattern as the existing `rewrite-re851d-encumbrance-layout` and `rewrite-re851d-template` functions): download the template from the `templates` storage bucket, rewrite `word/document.xml`, repack, and re-upload. Idempotent and safe to re-run.
+1. **Property 1** still renders in the original (pre-rewrite) layout — bigger font, original spacing, and OTHER squashed onto the same visible line as LAND (income-producing). This means either Property 1's template block was not actually rewritten, or some other pass overwrites it at runtime.
+2. **Properties 2–5** show the new fixed table, but with two regressions:
+   - Paragraphs are stacked too tightly (font 9pt, before/after = 40 twips, line=240). The reference uses larger font and more breathing room.
+   - The OTHER row visually ends up on the same line as LAND (income-producing) (".. LAND (income-producing) ☑ OTHER: Farm"), even though I emit 4 distinct `<w:p>` in the right cell. Need to confirm whether (a) the runtime post-render safety pass at `generate-document/index.ts:8316–8424` collapses them, (b) one of the per-property publishers re-wraps them, or (c) Word is collapsing empty/whitespace runs.
 
-The function locates each per-property PROPERTY TYPE block (5 total) by anchoring on the unique set of placeholder names per index N (1–5), then replaces the entire block of paragraphs/tables that contain those placeholders with a single canonical fixed-layout 2-column borderless table.
+## Investigation steps (run during implementation)
 
-## New file
+1. Extend the existing `rewrite-re851d-property-type-layout` edge function with a richer debug mode that returns the raw XML slice for each of the 5 detected blocks AFTER rewrite, so we can confirm all 5 actually got replaced.
+2. Generate an RE851D document for the current deal, download the resulting `.docx`, unzip, and read `word/document.xml`. Locate every "PROPERTY TYPE" anchor and dump the surrounding XML for each property to confirm:
+   - Whether all 5 property cells contain our canonical `<w:tbl>` or only some
+   - Whether OTHER is genuinely a separate `<w:p>` after generation, or whether a post-render pass merged it
+3. If Property 1 was not rewritten by the template pass, find why — most likely the FIRST occurrence sits inside an SDT/content control or has an extra wrapper that my top-level block scanner skipped past (`findTopLevelBlocks` only walks direct children of `<w:body>`; nested tables get treated as part of their parent).
 
-`supabase/functions/rewrite-re851d-property-type-layout/index.ts`
+## Fix (in `supabase/functions/rewrite-re851d-property-type-layout/index.ts`)
 
-### Behavior
+### 1. Cover blocks nested inside other tables / SDTs
 
-For each N in 1..5:
+Change `findTopLevelBlocks` to also walk recursively inside `<w:tbl>` cells and inside `<w:sdt>`/`<w:sdtContent>` so that a placeholder living inside a nested cell still maps to its enclosing `<w:p>` or innermost `<w:tbl>` row. This fixes the "Property 1 not rewritten" case if it turns out the first PROPERTY TYPE block sits inside an outer table.
 
-1. Find the 8 placeholder occurrences for that property:
-   - `{{property_type_sfr_owner_N}}`
-   - `{{property_type_sfr_non_owner_N}}`
-   - `{{property_type_sfr_zoned_N}}`
-   - `{{property_type_commercial_N}}`
-   - `{{property_type_land_zoned_N}}`
-   - `{{property_type_land_income_N}}`
-   - `{{property_type_other_N}}`
-   - `{{property_type_other_text_N}}`
-2. Compute the smallest contiguous range of top-level block elements (`<w:p>` and `<w:tbl>`) that encloses all 8 placeholders for that N, anchored after the `2. PROPERTY TYPE:` heading paragraph (kept intact).
-3. Replace that range with one canonical `<w:tbl>` (see XML below).
-4. Skip the property if the canonical table is already present (idempotency check: an existing `<w:tbl>` immediately after the heading whose stripped text contains all 8 tokens for that N and no others).
+### 2. Match the visual style of the original template
 
-### Canonical table XML (per property)
+Rebuild `buildCanonicalTable` with paragraph properties that match what the surrounding RE851D rows use:
 
-- Table width: 9360 DXA (US Letter, 1" margins) with `<w:tblLayout w:type="fixed"/>`
-- Two columns, 4680 DXA each
-- `<w:tblBorders>` all set to `w:val="nil"` (no visible borders)
-- Cell vertical alignment: top (`<w:vAlign w:val="top"/>`)
-- Left cell: 3 `<w:p>` paragraphs, one per option (sfr_owner, sfr_non_owner, sfr_zoned)
-- Right cell: 4 `<w:p>` paragraphs (commercial, land_zoned, land_income, other line)
-- Each paragraph is a single line: `{{property_type_X_N}}` + single space + label text in one `<w:r>` chain (so it never splits across lines)
-- The OTHER paragraph: `{{property_type_other_N}} OTHER: {{property_type_other_text_N}}` — three runs in one paragraph
-- Paragraph properties: no special indent, default font matching surrounding template runs (copy `<w:rPr>` from the first existing placeholder run in the block to preserve font/size)
+- Font: Arial, size 20 (10pt) — matches PROPERTY OWNER / PROPERTY ADDRESS rows above and below.
+- Paragraph spacing: `<w:spacing w:before="120" w:after="120" w:line="276" w:lineRule="auto"/>` (a little more breathing room than before).
+- Keep `<w:tblLayout w:type="fixed"/>` so columns never collapse from long placeholder text.
+- Keep two equal 4680 DXA columns, borderless, `vAlign=top`.
 
-### Detection rules
+### 3. Guarantee the OTHER row stays its own paragraph
 
-- Use the same tag-stripped-with-offset-map approach as `rewrite-re851d-template/index.ts` so placeholders split across multiple `<w:r>` runs are still located.
-- For each placeholder, walk up to its enclosing top-level `<w:p>` or `<w:tbl>` and record start/end offsets.
-- The replacement range = min(start) .. max(end) across the 8 placeholders for that N.
-- Validation: refuse to rewrite if the heading paragraph "2. PROPERTY TYPE:" (or the closest preceding "PROPERTY TYPE" heading) is included in the range — only the option rows are replaced.
+Two safeguards:
 
-### Response
+- Add `<w:keepNext/>` on the LAND (income-producing) paragraph and `<w:keepLines/>` on the OTHER paragraph so Word can't merge or visually run them together.
+- Inside the OTHER paragraph, ensure the structure is exactly three runs: `{{property_type_other_N}}` + run with ` OTHER: ` (`xml:space="preserve"`) + `{{property_type_other_text_N}}`. No tabs, no breaks. (Already the case; tighten it.)
 
-Returns `{ ok, templatePath, propertiesRewritten, propertiesSkipped, originalSize, newSize }`.
+### 4. Defensive scope check against the post-render pass
 
-## Invocation
+The post-render safety pass at `generate-document/index.ts:8316–8424` rewrites paragraphs that begin with a checkbox glyph and contain a PROPERTY TYPE label. It does NOT merge paragraphs, but it does aggressively strip `<w:tab/>` and `<w:br/>`. Verify (via the generated XML dump) that nothing in our canonical paragraphs is being mis-touched. If verification shows it's the cause of any merging or formatting loss, no change is needed there — the canonical table emits no `<w:tab/>`/`<w:br/>` so the pass is a no-op on our paragraphs.
 
-After deploy, the user runs once (per template path) via the existing admin pattern:
+### 5. Sentinel + idempotency stays the same
 
-```text
-POST /functions/v1/rewrite-re851d-property-type-layout
-{ "templatePath": "1778746922135_RE851D-V12.1.docx" }
-```
+Keep the existing `PT_LAYOUT_V1` sentinel so re-running is still a no-op once normalized. Bump the sentinel to `PT_LAYOUT_V2` so the new style is re-applied to any template that was already rewritten with the V1 (cramped) style — i.e., the function will redo the 5 blocks once.
 
-Re-running is a no-op once normalized.
+## Re-run + verify
+
+1. Deploy and `POST` the function with `{}` once — expect `propertiesRewritten: [1..5]` (re-application thanks to V1→V2 sentinel bump).
+2. Generate a fresh RE851D document for the test deal.
+3. Visually confirm against the user's reference: 3 rows left / 4 rows right per property, all 5 properties identical, OTHER inline with its text on its own row, no column collapse.
 
 ## Out of scope
 
-- No changes to `supabase/functions/generate-document/index.ts`
-- No changes to placeholder names, publishers, or any other section of the template
-- No UI changes
-
-## Technical notes
-
-- DXA units: 1440 = 1 inch; table width 9360 = 6.5" content area, 4680 per column
-- `<w:tblLayout w:type="fixed"/>` is the critical property that prevents Word from auto-resizing columns when the placeholder text is wide
-- Borderless via `<w:tblBorders>` with all sides `w:val="nil"`; also set `<w:tcBorders>` nil on each cell for safety
-- Preserve `xml:space="preserve"` on any `<w:t>` containing leading/trailing spaces (the space between glyph and label, and the spaces around "OTHER:")
+- No changes to `generate-document/index.ts`
+- No changes to placeholders, publishers, or any other section
+- No UI or schema changes
