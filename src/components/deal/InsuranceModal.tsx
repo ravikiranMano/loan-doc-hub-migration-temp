@@ -156,7 +156,7 @@ export const InsuranceModal: React.FC<InsuranceModalProps> = ({ open, onOpenChan
                 <div className="border-b border-border pb-1 mb-2">
                   <span className="font-semibold text-xs text-primary">Insurance Policy Information</span>
                 </div>
-                {renderInlineSelect('property', 'Property', [{ id: 'unassigned', label: 'Unassigned' }, ...propertyOptions], 'Unassigned', { clearable: false })}
+                {renderInlineSelect('property', 'Property', [{ id: 'unassigned', label: 'Unassigned' }, ...propertyOptions], 'Select')}
                 {renderInlineSelect('description', 'Description', INSURANCE_DESCRIPTION_OPTIONS, 'Select')}
                 {renderInlineField('companyName', 'Ins. Company')}
                 {renderInlineField('policyNumber', 'Policy Number')}
@@ -188,10 +188,9 @@ export const InsuranceModal: React.FC<InsuranceModalProps> = ({ open, onOpenChan
                 {renderInlineField('paymentMailingCity', 'City')}
                 <div className="flex items-center gap-2">
                   <Label className="w-[100px] shrink-0 text-xs text-foreground">State</Label>
-                  <Select value={String(formData.paymentMailingState || '') || undefined} onValueChange={(val) => handleChange('paymentMailingState', val === '__select__' ? '' : val)}>
+                  <Select value={String(formData.paymentMailingState || '') || undefined} onValueChange={(val) => handleChange('paymentMailingState', val)}>
                     <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent className="bg-background border border-border !z-[9999]" position="popper" sideOffset={4}>
-                      <SelectItem value="__select__">Select</SelectItem>
                       {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -212,10 +211,9 @@ export const InsuranceModal: React.FC<InsuranceModalProps> = ({ open, onOpenChan
                 {renderInlineField('businessAddressCity', 'City')}
                 <div className="flex items-center gap-2">
                   <Label className="w-[100px] shrink-0 text-xs text-foreground">State</Label>
-                  <Select value={String(formData.businessAddressState || '') || undefined} onValueChange={(val) => handleChange('businessAddressState', val === '__select__' ? '' : val)}>
+                  <Select value={String(formData.businessAddressState || '') || undefined} onValueChange={(val) => handleChange('businessAddressState', val)}>
                     <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent className="bg-background border border-border !z-[9999]" position="popper" sideOffset={4}>
-                      <SelectItem value="__select__">Select</SelectItem>
                       {US_STATES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
