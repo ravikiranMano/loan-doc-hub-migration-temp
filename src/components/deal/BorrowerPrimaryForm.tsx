@@ -1,5 +1,11 @@
 import React, { useEffect } from 'react';
+import { format, parse, isValid } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { cn } from '@/lib/utils';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { EmailInput } from '@/components/ui/email-input';
 import { ZipInput } from '@/components/ui/zip-input';
@@ -19,6 +25,15 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import BorrowerIdSearch from './BorrowerIdSearch';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+
+const safeParseAgreementDate = (val: string): Date | undefined => {
+  if (!val) return undefined;
+  try { const d = parse(val, 'yyyy-MM-dd', new Date()); return isValid(d) ? d : undefined; } catch { return undefined; }
+};
+const safeFormatAgreementDate = (val: string): string => {
+  const d = safeParseAgreementDate(val);
+  return d ? format(d, 'MM/dd/yyyy') : '';
+};
 
 const FORD_DROPDOWN_OPTIONS = [
   { value: 'Spouse, Kids, Grandkids', label: 'Spouse, Kids, Grandkids' },
