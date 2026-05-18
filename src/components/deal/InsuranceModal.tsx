@@ -123,10 +123,10 @@ export const InsuranceModal: React.FC<InsuranceModalProps> = ({ open, onOpenChan
     );
   };
 
-  const renderInlineSelect = (field: keyof InsuranceData, label: string, options: string[] | { id: string; label: string }[], placeholder: string) => (
+  const renderInlineSelect = (field: keyof InsuranceData, label: string, options: string[] | { id: string; label: string }[], placeholder: string, opts?: { clearable?: boolean }) => (
     <div className="flex items-center gap-2">
       <Label className="w-[100px] shrink-0 text-xs text-foreground">{label}</Label>
-      <Select value={String(formData[field] || '') || undefined} onValueChange={(val) => handleChange(field, val === '__none__' ? '' : val)}>
+      <Select value={String(formData[field] || '') || undefined} onValueChange={(val) => handleChange(field, val === '__none__' ? '' : val)} clearable={opts?.clearable !== false}>
         <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder={placeholder} /></SelectTrigger>
         <SelectContent className="bg-background border border-border !z-[9999]" position="popper" sideOffset={4}>
           {options.map(opt => {
