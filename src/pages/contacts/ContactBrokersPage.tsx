@@ -18,6 +18,7 @@ export interface ContactBroker {
   ach: boolean;
   email: string;
   agreement: boolean;
+  agreementDate: string;
   firstName: string;
   lastName: string;
   city: string;
