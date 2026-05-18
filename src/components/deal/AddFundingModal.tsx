@@ -26,6 +26,7 @@ import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { toast } from 'sonner';
 
 interface AddFundingModalProps {
   open: boolean;
@@ -646,7 +647,28 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
-  const handleSaveClick = () => setShowConfirm(true);
+  const handleSaveClick = () => {
+    // Validation: Lender Rate vs Note Rate (Funding > Payment rules)
+    const effectiveLenderRateStr = formData.lenderRateOverride
+      ? (formData.lenderRateOverrideValue || '')
+      : (formData.lenderRate || formData.rateLenderValue || '');
+    const trimmedLR = String(effectiveLenderRateStr).trim();
+    if (trimmedLR !== '') {
+      const lrNum = parseFloat(trimmedLR);
+      const nrNum = parseFloat(String(noteRate || '').replace(/[%,]/g, '')) || 0;
+      if (!isNaN(lrNum)) {
+        if (lrNum < 0) {
+          toast.error('Lender Rate cannot be negative');
+          return;
+        }
+        if (nrNum > 0 && lrNum > nrNum) {
+          toast.error('Lender Rate cannot exceed Note Rate');
+          return;
+        }
+      }
+    }
+    setShowConfirm(true);
+  };
   const handleConfirmSave = () => {
     setShowConfirm(false);
     // Sync new fee fields back to legacy fields for persistence
