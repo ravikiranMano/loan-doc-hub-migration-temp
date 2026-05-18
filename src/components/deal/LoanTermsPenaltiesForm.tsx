@@ -675,7 +675,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.months`}
           checkboxValue={values[`${prefix}.months_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.months_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <PenaltyIntegerInput
             value={values[`${prefix}.months`] || ''}
@@ -688,7 +688,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.include_odd_days`}
           checkboxValue={values[`${prefix}.include_odd_days`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.include_odd_days`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <span />
         </FieldRow>
@@ -697,7 +697,7 @@ const InterestGuaranteeSection: React.FC<{
           fieldKey={`${prefix}.amount`}
           checkboxValue={values[`${prefix}.amount_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.amount_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <PenaltyCurrencyInput
             value={values[`${prefix}.amount`] || ''}
@@ -889,7 +889,7 @@ const MaturitySection: React.FC<{
           fieldKey={`${prefix}.standard_10_percent`}
           checkboxValue={values[`${prefix}.standard_10_percent`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.standard_10_percent`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <span />
         </FieldRow>
@@ -898,7 +898,7 @@ const MaturitySection: React.FC<{
           fieldKey={`${prefix}.additional_flat_fee`}
           checkboxValue={values[`${prefix}.additional_flat_fee_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.additional_flat_fee_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled}
+          disabled={disabled || !isEnabled}
         >
           <PenaltyCurrencyInput
             value={values[`${prefix}.additional_flat_fee`] || ''}
