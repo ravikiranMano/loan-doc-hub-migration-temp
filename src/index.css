@@ -150,6 +150,10 @@
 
   html {
     font-size: 16px;
+    /* Paint the app background on the root element so there's no
+       white flash before React mounts (login redirect, hard refresh,
+       route transition). */
+    @apply bg-background text-foreground;
   }
 
   /* Scale root font-size for large screens */
@@ -172,9 +176,21 @@
       "calt" 1;
   }
 
-  /* Smooth transitions for theme switching */
-  * {
-    @apply transition-colors duration-200;
+  /* Smooth transitions for theme switching — scoped to the elements
+     that actually change color on theme toggle (root surfaces + common
+     chrome). The previous universal `*` selector forced a 200ms
+     color cross-fade on every element on every navigation, which
+     showed up as flicker/flash during route changes. */
+  html,
+  body,
+  [data-sidebar],
+  .bg-background,
+  .bg-card,
+  .bg-popover,
+  .bg-muted,
+  .bg-sidebar,
+  .bg-sidebar-accent {
+    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
   }
 }
 
