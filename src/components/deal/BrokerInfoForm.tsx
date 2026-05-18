@@ -1,4 +1,5 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
+import { format, parse, isValid } from 'date-fns';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Input } from '@/components/ui/input';
 import { EmailInput } from '@/components/ui/email-input';
@@ -7,8 +8,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CalendarIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { cn } from '@/lib/utils';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+
+const safeParseAgreementDate = (val: string): Date | undefined => {
+  if (!val) return undefined;
+  try { const d = parse(val, 'yyyy-MM-dd', new Date()); return isValid(d) ? d : undefined; } catch { return undefined; }
+};
+const safeFormatAgreementDate = (val: string): string => {
+  const d = safeParseAgreementDate(val);
+  return d ? format(d, 'MM/dd/yyyy') : '';
+};
 
 const FORD_DROPDOWN_OPTIONS = [
   'Spouse, Kids, Grandkids', 'Big Dream', 'Sports Teams', 'Hobbies / Collections',
@@ -148,13 +162,28 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               </div>
             </DirtyFieldWrapper>
             <DirtyFieldWrapper fieldKey={FIELD_KEYS.agreementOnFileDate}>
-              <Input
-                type="date"
-                value={getValue('agreementOnFileDate')}
-                onChange={(e) => handleChange('agreementOnFileDate', e.target.value)}
-                disabled={disabled}
-                className="h-7 text-xs flex-1"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={disabled}
+                    className={cn('h-7 text-xs flex-1 justify-start font-normal', !getValue('agreementOnFileDate') && 'text-muted-foreground')}
+                  >
+                    <CalendarIcon className="mr-2 h-3 w-3" />
+                    {safeFormatAgreementDate(getValue('agreementOnFileDate')) || 'MM/DD/YYYY'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseAgreementDate(getValue('agreementOnFileDate'))}
+                    onSelect={(d) => handleChange('agreementOnFileDate', d ? format(d, 'yyyy-MM-dd') : '')}
+                    onClear={() => handleChange('agreementOnFileDate', '')}
+                    onToday={() => handleChange('agreementOnFileDate', format(new Date(), 'yyyy-MM-dd'))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </DirtyFieldWrapper>
           </div>
         </div>
