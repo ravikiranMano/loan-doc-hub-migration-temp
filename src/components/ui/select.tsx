@@ -21,17 +21,19 @@ interface SelectRootProps extends React.ComponentPropsWithoutRef<typeof SelectPr
   clearable?: boolean;
 }
 
-const Select: React.FC<SelectRootProps> = ({
-  value,
-  defaultValue,
-  onValueChange,
-  clearable = true,
-  children,
-  ...props
-}) => {
-  const isControlled = value !== undefined;
+const Select: React.FC<SelectRootProps> = (selectProps) => {
+  const {
+    value,
+    defaultValue,
+    onValueChange,
+    clearable = true,
+    children,
+    ...props
+  } = selectProps;
+  const isControlled = Object.prototype.hasOwnProperty.call(selectProps, "value");
   const [internal, setInternal] = React.useState<string | undefined>(defaultValue);
   const current = isControlled ? value : internal;
+  const rootValue = isControlled ? (current ?? "") : undefined;
 
   const handleChange = React.useCallback(
     (v: string) => {
@@ -58,7 +60,7 @@ const Select: React.FC<SelectRootProps> = ({
     <SelectClearCtx.Provider value={ctx}>
       <SelectPrimitive.Root
         {...props}
-        value={value}
+        value={rootValue}
         defaultValue={defaultValue}
         onValueChange={handleChange}
       >
