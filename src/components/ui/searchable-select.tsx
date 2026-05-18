@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronsUpDown } from 'lucide-react';
+import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -18,6 +18,8 @@ interface SearchableSelectProps {
   triggerClassName?: string;
   disabled?: boolean;
   hasError?: boolean;
+  /** Show an X button to clear selection. Defaults to true. */
+  clearable?: boolean;
 }
 
 export const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -30,8 +32,10 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   triggerClassName,
   disabled,
   hasError,
+  clearable = true,
 }) => {
   const [open, setOpen] = useState(false);
+  const showClear = clearable && !!value && !disabled;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -48,7 +52,29 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           )}
         >
           <span className="truncate">{value || placeholder}</span>
-          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+          <span className="flex items-center gap-1 shrink-0">
+            {showClear && (
+              <span
+                role="button"
+                aria-label="Clear selection"
+                tabIndex={-1}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onValueChange('');
+                  setOpen(false);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="inline-flex h-4 w-4 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
+                <X className="h-3 w-3" />
+              </span>
+            )}
+            <ChevronsUpDown className="ml-1 h-3.5 w-3.5 opacity-50" />
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="p-0 z-[9999] w-[var(--radix-popover-trigger-width)] bg-background border border-border" align="start">
@@ -57,6 +83,19 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           <CommandList>
             <CommandEmpty className="py-2 px-2 text-xs text-muted-foreground">{emptyText}</CommandEmpty>
             <CommandGroup>
+              {clearable && value && (
+                <CommandItem
+                  value="__clear__"
+                  onSelect={() => {
+                    onValueChange('');
+                    setOpen(false);
+                  }}
+                  className="text-xs text-muted-foreground"
+                >
+                  <X className="mr-2 h-3.5 w-3.5" />
+                  Clear selection
+                </CommandItem>
+              )}
               {options.map((opt) => {
                 const selected = value === opt;
                 return (
