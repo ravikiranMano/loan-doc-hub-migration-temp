@@ -366,13 +366,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // applied here because the column is no longer forced to sum to 100.
   const computedPctOwned = React.useMemo(() => {
     const map = new Map<string, number>();
-    if (!fundingRecords.length) return map;
+    if (!aggregateRecords.length) return map;
     if (effectiveLoanPrincipal <= 0) {
-      fundingRecords.forEach(r => map.set(r.id, 0));
+      aggregateRecords.forEach(r => map.set(r.id, 0));
       return map;
     }
     const den = new Decimal(effectiveLoanPrincipal);
-    fundingRecords.forEach(r => {
+    aggregateRecords.forEach(r => {
       const pct = new Decimal(Number(r.originalAmount) || 0)
         .div(den)
         .times(100)
@@ -381,7 +381,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       map.set(r.id, pct);
     });
     return map;
-  }, [fundingRecords, effectiveLoanPrincipal]);
+  }, [aggregateRecords, effectiveLoanPrincipal]);
 
   const getDisplayedPctOwned = (record: FundingRecord) => {
     const v = computedPctOwned.get(record.id);
