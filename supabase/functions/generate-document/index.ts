@@ -8875,6 +8875,15 @@ async function generateSingleDocument(
               const rate        = getLien(lp, "interest_rate", "intRate");
               const pmt         = getLien(lp, "regular_payment", "regularPayment");
               const mat         = getLien(lp, "maturity_date", "matDate");
+              const balloonAmt  = getLien(lp, "balloon_amount", "balloonAmount", "balloon_payment_amount");
+              const balloonRaw  = getLien(lp, "balloon_payment", "balloonPayment", "balloon", "has_balloon");
+              const norm = balloonRaw.trim().toLowerCase();
+              let balloonStatus = "";
+              if (["yes", "y", "true", "1"].includes(norm)) balloonStatus = "YES";
+              else if (["no", "n", "false", "0"].includes(norm)) balloonStatus = "NO";
+              else if (["unknown", "unk", "u"].includes(norm)) balloonStatus = "UNKNOWN";
+              else if (balloonRaw) balloonStatus = balloonRaw.toUpperCase();
+              else if (balloonAmt && parseFloat(String(balloonAmt).replace(/[^0-9.\-]/g, "")) > 0) balloonStatus = "YES";
               const rows: Array<[string, string]> = [
                 ["Priority", priority],
                 ["Beneficiary", beneficiary],
@@ -8883,7 +8892,11 @@ async function generateSingleDocument(
                 ["Monthly Payment", pmt ? fmtCurrencyA(pmt) : ""],
                 ["Interest Rate", rate ? `${rate}${/%\s*$/.test(rate) ? "" : "%"}` : ""],
                 ["Maturity Date", mat],
+                ["Balloon Payment", balloonStatus],
               ];
+              if (balloonStatus === "YES" && balloonAmt) {
+                rows.push(["Balloon Amount", fmtCurrencyA(balloonAmt)]);
+              }
               if (rows.every(([, v]) => !v)) return para("(no details)");
               return renderLienTable(rows);
             };
