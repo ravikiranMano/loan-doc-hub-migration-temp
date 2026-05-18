@@ -930,13 +930,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         totalPayment={totalPayment}
         loanAmount={loanAmount}
         loanPrincipalBalance={(() => {
-          // Loan-level outstanding principal = sum of all lender funding principal balances.
-          // Does NOT reflect the currently-selected lender row; switching/editing a lender
-          // row must not change this value.
-          const sum = totalPrincipalBalance;
-          const parsed = parseFloat((loanPrincipalBalance || '').toString().replace(/[$,]/g, ''));
-          const fallback = parseFloat((loanAmount || '').toString().replace(/[$,]/g, ''));
-          const v = sum > 0 ? sum : (!isNaN(parsed) && parsed > 0 ? parsed : (!isNaN(fallback) && fallback > 0 ? fallback : 0));
+          // Loan-level principal balance is the source of truth for Pro Rata.
+          // Sourced from loan_terms.principal (with fallback to original loan
+          // amount). Never derived from the sum of lender funding rows.
+          const v = loanPrincipalDenominator;
           return v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
         })()}
         remainingPayments={remainingPayments}
