@@ -963,10 +963,13 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
                   // Check if any field in this section has been modified (dirty)
                   // For dictionary fields: exact key match
                   // For 'other' tab: exclude origination-prefixed keys (those belong to the origination_fees tab)
+                  // For 'loan_terms' tab: exclude keys owned by virtual sub-tabs (funding, escrow, reserve, to_escrow)
                   const ORIGINATION_PREFIXES = ['origination_fees.', 'origination_app.', 'origination_svc.', 'origination_esc.', 'origination_ins.'];
+                  const LOAN_TERMS_EXCLUDED_PREFIXES = ['loan_terms.funding', 'loan_terms.escrow', 'loan_terms.reserve', 'loan_terms.to_escrow'];
                   const sectionHasDirtyFields = sectionFields.some((f) => {
                     if (!dirtyFieldKeys.has(f.field_key)) return false;
                     if (section === 'other' && ORIGINATION_PREFIXES.some(p => f.field_key.startsWith(p))) return false;
+                    if (section === 'loan_terms' && LOAN_TERMS_EXCLUDED_PREFIXES.some(p => f.field_key.startsWith(p))) return false;
                     return true;
                   });
                   
