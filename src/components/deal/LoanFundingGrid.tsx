@@ -324,18 +324,25 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
     const noteRateDec = new Decimal(parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0);
-    fundingRecords.forEach(r => {
+    const exact = fundingRecords.map(r => {
       const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
         ? r.currentBalance
         : (r.originalAmount || 0);
-      const payment = new Decimal(currBal || 0)
-        .mul(noteRateDec)
-        .div(100)
-        .div(12)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN)
-        .toNumber();
-      map.set(r.id, payment);
+      return new Decimal(currBal || 0).mul(noteRateDec).div(100).div(12);
     });
+    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
+    // Rounding adjustment: when a lender row has roundingAdjustment === true,
+    // absorb any sub-cent drift between the exact sum and the rounded sum so
+    // the column total reconciles exactly.
+    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
+    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
+    const diff = sumExact.minus(sumRounded);
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    if (adjIdx >= 0 && !diff.isZero()) {
+      rounded[adjIdx] = rounded[adjIdx].plus(diff);
+    }
+    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
   }, [fundingRecords, noteRate]);
 
@@ -386,17 +393,31 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     record.lenderRate !== undefined && record.lenderRate !== null && !isNaN(record.lenderRate) && record.lenderRate > 0;
   const getEffectiveLenderRate = (record: FundingRecord) =>
     hasLenderRate(record) ? record.lenderRate : noteRateNumValue;
+  const computedNetPayments = React.useMemo(() => {
+    const map = new Map<string, number>();
+    if (!fundingRecords.length) return map;
+    const exact = fundingRecords.map(r => {
+      const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
+        ? r.currentBalance
+        : (r.originalAmount || 0);
+      const effRate = getEffectiveLenderRate(r);
+      return new Decimal(currBal || 0).mul(effRate || 0).div(100).div(12);
+    });
+    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
+    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
+    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
+    const diff = sumExact.minus(sumRounded);
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    if (adjIdx >= 0 && !diff.isZero()) {
+      rounded[adjIdx] = rounded[adjIdx].plus(diff);
+    }
+    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
+    return map;
+  }, [fundingRecords, noteRate]);
   const getNetPayment = (record: FundingRecord) => {
-    const currBal = (record.currentBalance !== undefined && record.currentBalance !== null && !isNaN(record.currentBalance))
-      ? record.currentBalance
-      : (record.originalAmount || 0);
-    const effRate = getEffectiveLenderRate(record);
-    return new Decimal(currBal || 0)
-      .mul(effRate || 0)
-      .div(100)
-      .div(12)
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN)
-      .toNumber();
+    const v = computedNetPayments.get(record.id);
+    return v !== undefined ? v : 0;
   };
 
 
