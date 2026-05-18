@@ -128,16 +128,7 @@ async function generateSingleDocument(
     // RE851D-only behavior (multi-property checkboxes, taxes, Q1–Q6,
     // safety passes, etc.) is enabled here.
     const isLienMappingTemplate = /lien[_\s-]?mapping/i.test(template.name || "");
-    // RE851A also authors its ENCUMBRANCE(S) REMAINING / ANTICIPATED block with
-    // the same `{{pr_li_(rem|ant)_<field>_{N}_{S}}}` curly-brace placeholders
-    // used by RE851D. Without the encumbrance pipeline enabled, those literal
-    // `{N}`/`{S}` tokens are never rewritten to per-property + per-slot indices
-    // (e.g. `pr_li_rem_priority_1_1`), so the merge-tag resolver leaves every
-    // encumbrance cell blank even though the publisher at lines ~4088-4186
-    // (which is template-agnostic) already populated the indexed keys.
-    const isTemplate851AEnc = /851a/i.test(template.name || "");
-    const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate || isTemplate851AEnc;
-
+    const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate;
     const t885Total = performance.now();
     const tDataFetchStart = performance.now();
     const tDataMappingStart = performance.now();
