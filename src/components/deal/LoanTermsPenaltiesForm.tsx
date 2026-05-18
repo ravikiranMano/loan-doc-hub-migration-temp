@@ -482,6 +482,20 @@ const ActiveUntilDatePicker: React.FC<{
   );
 };
 
+// Shared: zero-out distribution fields
+const resetDistribution = (
+  prefix: string,
+  onValueChange: (k: string, v: string) => void,
+) => {
+  onValueChange(`${prefix}.distribution.lenders`, '0.00');
+  onValueChange(`${prefix}.distribution.origination_vendors`, '0.00');
+  onValueChange(`${prefix}.distribution.company`, '0.00');
+  onValueChange(`${prefix}.distribution.other`, '0.00');
+};
+
+// Shared: suppress dirty yellow highlight when section is disabled
+const disabledHighlightClass = '[&_.bg-warning\\/10]:!bg-transparent [&_.ring-warning\\/30]:!ring-0';
+
 // Default Interest Column
 const DefaultInterestColumn: React.FC<{
   values: Record<string, string>;
@@ -492,14 +506,29 @@ const DefaultInterestColumn: React.FC<{
   const prefix = 'loan_terms.penalties.default_interest';
   const isEnabled = values[`${prefix}.enabled`] === 'true';
 
+  const handleParentToggle = (checked: boolean) => {
+    onValueChange(`${prefix}.enabled`, checked ? 'true' : 'false');
+    if (!checked) {
+      onValueChange(`${prefix}.triggered_by`, '');
+      onValueChange(`${prefix}.grace_period`, '');
+      onValueChange(`${prefix}.flat_rate`, '');
+      onValueChange(`${prefix}.flat_rate_enabled`, 'false');
+      onValueChange(`${prefix}.modifier`, '');
+      onValueChange(`${prefix}.modifier_enabled`, 'false');
+      onValueChange(`${prefix}.active_until`, '');
+      onValueChange(`${prefix}.additional_daily_charge`, '');
+      resetDistribution(prefix, onValueChange);
+    }
+  };
+
   return (
-    <div className="space-y-2 p-4 border border-border rounded-lg bg-card">
+    <div className={cn("space-y-2 p-4 border border-border rounded-lg bg-card", !isEnabled && disabledHighlightClass)}>
       <DirtyFieldWrapper fieldKey={`${prefix}.enabled`}>
         <div className="flex items-center gap-2 border-b border-border pb-2">
           <h3 className="font-semibold text-sm text-foreground">Default Interest</h3>
           <Checkbox
             checked={isEnabled}
-            onCheckedChange={(checked) => onValueChange(`${prefix}.enabled`, checked ? 'true' : 'false')}
+            onCheckedChange={(checked) => handleParentToggle(!!checked)}
             disabled={disabled}
             className="h-4 w-4"
           />
