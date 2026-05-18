@@ -1,61 +1,64 @@
 ## Goal
 
-Fix the RE851D "Source of Information" checkbox row so it always renders as:
-
-```
-☐ BROKER INQUIRY   ☐ BORROWER   ☑ OTHER (EXPLAIN): Public Record
-```
-
-…regardless of how Word fragmented the original `{{pr_li_sourceInfoBroker_N_glyph}}` / `{{pr_li_sourceInfoBorrower_N_glyph}}` / `{{pr_li_sourceInfoOther_N_glyph}}` / `{{pr_li_sourceInfoOtherText_N}}` tags across `<w:r>` runs (which currently leaks raw `…glyph}}` text and produces no space between the glyph and the label).
-
-This is a generator-only fix. No template re-uploads, no UI changes, no schema changes, no changes to which field drives which checkbox (already correctly published per-property by the existing block at lines ~3818–3823 and ~3937–3943 in `supabase/functions/generate-document/index.ts`).
+In the generated RE851D document, force a single consistent space between each PROPERTY TYPE checkbox glyph (☐/☑/☒) and its label across all seven options, on every property block. Today the template's `{{#if property_type_sfr_owner_N}}☑{{else}}☐{{/if}} SINGLE-FAMILY RESIDENCE …` blocks resolve into runs where the gap between glyph and label is sometimes a tab, sometimes multiple spaces, sometimes nothing — depending on how Word fragmented the conditional. The fix normalizes this gap to exactly one space without touching the glyph state, the labels, the font, the paragraph alignment, or any other section.
 
 ## Scope
 
 Single file edited:
 
-- `supabase/functions/generate-document/index.ts` — add one new label-anchored safety pass (mirroring the existing RE851A Payable / Servicing / RE851D Cure Delinquency safety passes already documented in memory) that runs inside the existing RE851D post-render pipeline.
+- `supabase/functions/generate-document/index.ts` — add ONE new label-anchored post-render normalization pass for the seven PROPERTY TYPE labels. Inserted right after the existing "Source of Information row" safety pass added earlier (same `if (/851d/i.test(template.name || ""))` gate, same `__passUnzip` / `__xmlGet` / `__xmlSet` / `__passZip` helpers, same per-property region pattern used by the cure-delinquency and source-info passes).
 
-No other files are modified. No new edge function, no template rewrite endpoint, no migrations.
+No template re-uploads, no new edge function, no schema changes, no UI changes, no changes to which property type is checked (already correctly published per-property by the existing block around lines 1875–1965 and the `property_type_*_N` family in `RE851D_INDEXED_TAGS`).
 
 ## How it works (technical)
 
-The new pass runs once per property region after all `_N` → `_K` rewrites and Handlebars resolution have completed, scoped exactly like the existing `pr_li_currentDelinqu` and `delinquencyPaidByLoan` safety passes (the same region-walking helper that already iterates property regions in the encumbrance pipeline).
+1. **Label set** (matched case-insensitive, whitespace-flex):
+   - `SINGLE-FAMILY RESIDENCE (owner occupied)`
+   - `SINGLE-FAMILY RESIDENCE (not owner occupied)`
+   - `SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)`
+   - `COMMERCIAL`
+   - `LAND ZONED`
+   - `LAND INCOME PRODUCING`
+   - `OTHER`
 
-For each property region K it:
+   Labels are matched only when they appear in a paragraph whose visible text **starts with a checkbox glyph** (`☐ / ☑ / ☒`), so unrelated body prose containing the word `OTHER` or `COMMERCIAL` is never touched. Word-boundary guards (`(?<![A-Za-z])` / `(?![A-Za-z])`) apply to the bare-word labels (`COMMERCIAL`, `OTHER`, `LAND ZONED`, `LAND INCOME PRODUCING`).
 
-1. Reads the already-published per-property values:
-   - `pr_li_sourceInfoBroker_K` (boolean)
-   - `pr_li_sourceInfoBorrower_K` (boolean)
-   - `pr_li_sourceInfoOther_K` (boolean)
-   - `pr_li_sourceInfoOtherText_K` (string)
-2. Builds an XML-flex regex (whitespace + `<[^>]+>` tolerant, identical to the helper used by the Payable safety pass in `tag-parser.payable-frequency.test.ts`) for each label literal: `BROKER INQUIRY`, `BORROWER`, `OTHER (EXPLAIN)`.
-3. For each label, in the paragraph(s) that contain all three labels:
-   - Forces the glyph immediately preceding the label to `☑` or `☐` based on the boolean.
-   - Scrubs any leaked Handlebars residue (`{{…glyph}}`, `{{pr_li_sourceInfoOtherText_N}}`, stray `_N`/`_K` tokens) inside the matched span — same scrub pattern already used by the RE851D balloon safety pass (memory: *RE851D Balloon Payment Checkboxes*).
-   - Inserts exactly one regular space between glyph and label text when the inter-glyph/label run carries none (handled by emitting `<w:t xml:space="preserve"> </w:t>` so Word keeps the space).
-4. For `OTHER (EXPLAIN)` specifically:
-   - Ensures a single space after the colon, then the resolved `pr_li_sourceInfoOtherText_K` value, or empty string when unchecked.
-   - If no `:` exists in the matched run because it was fragmented, the pass injects `: ` between the label and the value run.
+2. For every matched paragraph, walk `<w:r>` runs in order:
+   - Locate the run whose `<w:t>` text contains the trailing glyph character of the checkbox group (it may be a literal `☐`/`☑` glyph in a static run, or the resolved content of a `<w:sdt>` checkbox SDT).
+   - Locate the next run whose `<w:t>` text begins with the label literal (after stripping leading whitespace).
+   - Rewrite ONLY the whitespace between those two — drop any `<w:tab/>`, drop empty whitespace-only runs, and ensure the **label run** starts with exactly one regular space (`<w:t xml:space="preserve"> LABEL…</w:t>`).
+   - If the glyph and label already share the same `<w:t>` (no inter-run gap), normalize the inline whitespace inside that `<w:t>` to a single space: `☐LABEL` → `☐ LABEL`, `☐\tLABEL` → `☐ LABEL`, `☐   LABEL` → `☐ LABEL`.
 
-Word-boundary guards (`(?<![A-Za-z])` / `(?![A-Za-z])`) follow the same convention as the Payable test fixture so labels like `BORROWERS` or `BROKERAGE` are never touched.
+3. The pass is **idempotent**: a second invocation on already-normalized XML produces no diff.
 
-The pass is idempotent: running it on already-correct XML produces no diff.
+4. **Out of scope for this pass** — explicitly NOT modified:
+   - Which glyph appears (the checked/unchecked state stays whatever the upstream publisher / earlier safety passes set it to).
+   - The label text itself.
+   - The paragraph's `<w:pPr>` (alignment, tab stops, indent, spacing).
+   - The run's `<w:rPr>` (font, size, color).
+   - Anything outside the seven PROPERTY TYPE label paragraphs.
+   - The `property_type_other_text_N` value rendered after the OTHER label — only the gap between `☐/☑` and the word `OTHER` is normalized.
 
 ## Verification
 
-1. Add a Deno test file `supabase/functions/_shared/tag-parser.source-info.test.ts` mirroring the structure of `tag-parser.payable-frequency.test.ts`, covering:
-   - All three single-checked cases (Broker, Borrower, Other) produce exactly one ☑ and two ☐.
-   - `OTHER` checked with text `Public Record` renders as `☑ OTHER (EXPLAIN): Public Record` with exactly one space after the colon.
-   - All three unchecked → three ☐ with single spaces, empty OTHER text.
-   - Fragmented input (label inside a separate `<w:t>` from glyph, with leaked `{{…glyph}}` residue) is normalized.
-   - Word-boundary guard: `BORROWERS` / `BROKERAGE` are not affected.
-2. Regenerate the RE851D doc for the current deal and confirm visually that the row matches `☐ BROKER INQUIRY ☐ BORROWER ☑ OTHER (EXPLAIN): Public Record`.
+1. Regenerate the RE851D doc for the current deal and confirm visually that for every property block, all seven PROPERTY TYPE rows render as:
+   ```
+   ☐ SINGLE-FAMILY RESIDENCE (owner occupied)
+   ☐ SINGLE-FAMILY RESIDENCE (not owner occupied)
+   ☐ SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)
+   ☐ COMMERCIAL …
+   ☐ LAND ZONED …
+   ☐ LAND INCOME PRODUCING …
+   ☐ OTHER …
+   ```
+   with a single uniform gap between glyph and label, on every property page.
+2. Edge function logs include `RE851D post-render property-type spacing pass: N row(s) normalized in word/document.xml` per property page.
 
-## Out of scope (explicitly not changing)
+## Not changing
 
-- The per-property publisher at lines 3818–3824 and 3937–3943 (already correct).
-- The `RE851D_INDEXED_TAGS` list (already includes the four source-info families).
-- The DOCX template file itself.
-- Any other RE851D section (encumbrance YES/NO, delinquency, balloon, multiple properties, etc.).
+- The `property_type_*` publisher (lines 1875–1965).
+- `RE851D_INDEXED_TAGS` entries for property type.
+- The DOCX template file.
+- Any other RE851D safety pass.
+- Source-of-information row pass (just added in the prior turn).
 - UI, database, APIs.
