@@ -162,13 +162,28 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               </div>
             </DirtyFieldWrapper>
             <DirtyFieldWrapper fieldKey={FIELD_KEYS.agreementOnFileDate}>
-              <Input
-                type="date"
-                value={getValue('agreementOnFileDate')}
-                onChange={(e) => handleChange('agreementOnFileDate', e.target.value)}
-                disabled={disabled}
-                className="h-7 text-xs flex-1"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={disabled}
+                    className={cn('h-7 text-xs flex-1 justify-start font-normal', !getValue('agreementOnFileDate') && 'text-muted-foreground')}
+                  >
+                    <CalendarIcon className="mr-2 h-3 w-3" />
+                    {safeFormatAgreementDate(getValue('agreementOnFileDate')) || 'MM/DD/YYYY'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseAgreementDate(getValue('agreementOnFileDate'))}
+                    onSelect={(d) => handleChange('agreementOnFileDate', d ? format(d, 'yyyy-MM-dd') : '')}
+                    onClear={() => handleChange('agreementOnFileDate', '')}
+                    onToday={() => handleChange('agreementOnFileDate', format(new Date(), 'yyyy-MM-dd'))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </DirtyFieldWrapper>
           </div>
         </div>
