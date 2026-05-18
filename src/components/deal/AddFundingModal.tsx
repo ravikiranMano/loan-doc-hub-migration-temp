@@ -1057,7 +1057,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
             <p className="text-xs text-destructive font-medium">Percent Owned cannot exceed 100%</p>
           )}
           {totalPercentError && !percentOwnedError && (
-            <p className="text-xs text-destructive font-medium">Total ownership across all lenders exceeds 100%</p>
+            <p className="text-xs text-destructive font-medium">Funding exceeds loan principal balance.</p>
           )}
 
           {/* Checkboxes row */}
