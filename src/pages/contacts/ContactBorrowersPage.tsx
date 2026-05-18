@@ -247,6 +247,9 @@ const ContactBorrowersPage: React.FC = () => {
 
     // contact_data (supports dot-notation keys like address.street, phone.home)
     const val = cd[columnId] || '';
+    if (columnId === 'agreement_on_file_date' && val) {
+      try { const d = parse(val, 'yyyy-MM-dd', new Date()); if (isValid(d)) return format(d, 'MM/dd/yyyy'); } catch { /* noop */ }
+    }
     return val || '-';
   }, []);
 
