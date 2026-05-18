@@ -163,7 +163,7 @@ export const InsuranceDetailForm: React.FC<InsuranceDetailFormProps> = ({
           <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.property}>
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Property</Label>
-              <Select value={insurance.property} onValueChange={(val) => onChange('property', val)} disabled={disabled}>
+              <Select value={insurance.property || undefined} onValueChange={(val) => onChange('property', val)} disabled={disabled} clearable={false}>
                 <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent className="bg-background border border-border z-50">
                   <SelectItem value="unassigned">Unassigned</SelectItem>
