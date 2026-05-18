@@ -9184,6 +9184,33 @@ async function generateSingleDocument(
                       }
                     }
                   }
+                  // For balloonAmount, widen the dedup beyond <w:tr> to the
+                  // enclosing <w:tbl> (the balloon mini-grid). The template
+                  // commonly places the IF YES, AMOUNT label and the actual
+                  // balloon-amount value in DIFFERENT rows of the same small
+                  // table (label row on top, checkbox + amount row below),
+                  // so the row-scoped check above cannot see the duplicate.
+                  // Without this, the publisher appends the value into the
+                  // label cell AND the template renders it in the row below,
+                  // producing two visible balloon amounts per encumbrance.
+                  if (suffix === "balloonAmount") {
+                    const tblOpenA = xml.lastIndexOf("<w:tbl>", tc.open);
+                    const tblOpenB = xml.lastIndexOf("<w:tbl ", tc.open);
+                    const tblStart = Math.max(tblOpenA, tblOpenB);
+                    const tblEnd = xml.indexOf("</w:tbl>", tc.close);
+                    if (tblStart >= 0 && tblEnd > tblStart) {
+                      const tblXml = xml.slice(tblStart, tblEnd);
+                      const tblVisible = tblXml.replace(/<[^>]+>/g, "");
+                      const tblStripped = tblVisible.replace(rx, "");
+                      const valueDigits = value.replace(/[^0-9A-Za-z]/g, "");
+                      if (
+                        valueDigits.length > 0 &&
+                        tblStripped.replace(/[^0-9A-Za-z]/g, "").includes(valueDigits)
+                      ) {
+                        continue;
+                      }
+                    }
+                  }
                   // Append a new <w:p> just before </w:tc>.
                   const para =
                     `<w:p><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
