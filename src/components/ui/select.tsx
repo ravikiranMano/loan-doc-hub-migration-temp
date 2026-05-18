@@ -114,14 +114,21 @@ const SelectTrigger = React.forwardRef<
             role="button"
             aria-label="Clear selection"
             tabIndex={-1}
+            // Swallow pointer-down so Radix's Trigger doesn't toggle the menu,
+            // but defer the actual clear to onClick so Radix's body
+            // pointer-events cleanup completes normally.
             onPointerDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              effectiveClear?.();
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
             }}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              effectiveClear?.();
             }}
             className="inline-flex h-4 w-4 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent"
           >
