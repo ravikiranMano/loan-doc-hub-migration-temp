@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Outlet, Navigate, useLocation, useNavigate, useNavigation } from 'react-router-dom';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { Outlet, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext';
@@ -33,9 +33,9 @@ const AppLayoutInner: React.FC = () => {
   const { openFiles, activeFileId, closeFile, isFileDirty, setFileDirty } = useWorkspace();
   const contactWs = useContactWorkspace();
   const location = useLocation();
-  const navigation = useNavigation();
   const navigate = useNavigate();
   const [showRouteSkeleton, setShowRouteSkeleton] = useState(false);
+  const hasMountedRef = useRef(false);
 
   // Close confirmation state (files)
   const [closingFileId, setClosingFileId] = useState<string | null>(null);
@@ -148,13 +148,17 @@ const AppLayoutInner: React.FC = () => {
   const showWorkspaceRenderer = hasOpenFiles;
 
   useEffect(() => {
-    if (navigation.state === 'idle') {
-      setShowRouteSkeleton(false);
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
       return;
     }
-    const frame = requestAnimationFrame(() => setShowRouteSkeleton(true));
-    return () => cancelAnimationFrame(frame);
-  }, [navigation.state]);
+    setShowRouteSkeleton(true);
+    const timeout = window.setTimeout(() => setShowRouteSkeleton(false), 180);
+    return () => {
+      window.clearTimeout(timeout);
+      return;
+    }
+  }, [location.pathname, location.search]);
 
   return (
     <div className="min-h-screen bg-background">
