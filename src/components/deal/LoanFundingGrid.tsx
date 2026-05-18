@@ -874,18 +874,46 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         </div>
       )}
 
-      {totalOwnership > 100 && fundingRecords.length > 0 && (
-        <p className="text-sm text-destructive font-medium">⚠ Total ownership exceeds 100% ({formatPercentage(totalOwnership)}). Cannot save new funding until resolved.</p>
+      {fundingStatus === 'over' && (
+        <p className="text-sm text-destructive font-medium">
+          ⚠ Funding exceeds loan principal balance by {formatCurrency(overAmount)}.
+        </p>
       )}
 
       {fundingRecords.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-muted-foreground">
+            {effectiveLoanPrincipal > 0 ? (
+              <>
+                <span className="font-medium text-foreground">Funded:</span>{' '}
+                {formatCurrency(fundedAmount)} of {formatCurrency(effectiveLoanPrincipal)}{' '}
+                ({formatPercentDisplay(fundedPct, 4)}%)
+                {fundingStatus !== 'over' && (
+                  <>
+                    {' '}|{' '}
+                    <span className="font-medium text-foreground">Unfunded:</span>{' '}
+                    {formatCurrency(unfundedAmount)} ({formatPercentDisplay(unfundedPct, 4)}%)
+                  </>
+                )}
+                {fundingStatus === 'over' && (
+                  <>
+                    {' '}|{' '}
+                    <span className="font-medium text-destructive">Over by:</span>{' '}
+                    {formatCurrency(overAmount)}
+                  </>
+                )}
+              </>
+            ) : (
+              <>Total Funding Amount: {formatCurrency(totalFundingAmount)}</>
+            )}
+          </div>
           <div className="text-sm text-muted-foreground">
             {filteredData.length !== fundingRecords.length && `Showing ${filteredData.length} of `}
-            Total Funding Records: {fundingRecords.length} | Total Funding Amount: {formatCurrency(totalFundingAmount)}
+            Total Funding Records: {fundingRecords.length}
           </div>
         </div>
       )}
+
 
       <AddFundingModal
         open={isAddModalOpen}
