@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, X, SlidersHorizontal } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, SlidersHorizontal, Info } from 'lucide-react';
 import { LenderDisbursementModal, type DisbursementFormData } from './LenderDisbursementModal';
 import { cn } from '@/lib/utils';
 import { LenderIdSearch } from './LenderIdSearch';
