@@ -316,46 +316,28 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // Configurable tolerance for penny-rounding (default $0.50).
   const FUNDING_TOLERANCE = 0.5;
 
-  // Per-lender payment computation using Decimal arithmetic.
-  //   lenderMonthlyInterest = lenderCurrentBalance × (lenderRate / 100 / 12)
-  //   lenderMonthlyPrincipal = loanMonthlyPrincipal × (proRata / 100)
-  //   lenderPayment = interest + principal
-  // loanMonthlyPrincipal is derived from the loan-level total payment minus
-  // the loan-level monthly interest (noteRate × loan principal). If the loan
-  // is interest-only or totals aren't available, principal portion = 0.
+  // Per-lender Payment column (GROSS, using the loan-level Note Rate):
+  //   Payment = (Current Balance × Note Rate) / 12
+  // Same Note Rate applies to every lender on the loan. Uses Decimal
+  // arithmetic with banker's rounding (ROUND_HALF_EVEN) to 2 decimals.
   const computedPayments = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
-    const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
-    const totalLoanPayment = parseFloat(String(totalPayment || '').replace(/[$,]/g, '')) || 0;
-    const loanInterest = effectiveLoanPrincipal * (noteRateNum / 100) / 12;
-    const loanMonthlyPrincipal = totalLoanPayment > 0
-      ? Math.max(0, totalLoanPayment - loanInterest)
-      : 0;
-    const exact = fundingRecords.map(r => {
+    const noteRateDec = new Decimal(parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0);
+    fundingRecords.forEach(r => {
       const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
         ? r.currentBalance
         : (r.originalAmount || 0);
-      const lRate = r.lenderRate || 0;
-      const interest = (currBal * (lRate / 100)) / 12;
-      const pct = effectiveLoanPrincipal > 0
-        ? ((r.originalAmount || 0) / effectiveLoanPrincipal) * 100
-        : 0;
-      const principal = loanMonthlyPrincipal * (pct / 100);
-      return new Decimal((interest + principal) || 0);
+      const payment = new Decimal(currBal || 0)
+        .mul(noteRateDec)
+        .div(100)
+        .div(12)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN)
+        .toNumber();
+      map.set(r.id, payment);
     });
-    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
-    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
-    const diff = sumExact.minus(sumRounded);
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    if (adjIdx >= 0 && !diff.isZero()) {
-      rounded[adjIdx] = rounded[adjIdx].plus(diff);
-    }
-    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [fundingRecords, remainingPayments, noteRate, totalPayment, effectiveLoanPrincipal]);
+  }, [fundingRecords, noteRate]);
 
   // Pro Rata: lender funding amount divided by the LOAN PRINCIPAL BALANCE.
   // Does NOT normalize to 100% — when the loan is partially funded, totals
@@ -387,21 +369,36 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const computed = computedPayments.get(record.id);
-    if (computed !== undefined && computed > 0) return computed;
-    if (record.regularPayment > 0) return record.regularPayment;
-    return (record.payments || []).reduce((sum, payment) => sum + parsePaymentAmount(payment.amount), 0);
+    return computed !== undefined ? computed : 0;
   };
   const getDisbursementsTotal = (record: FundingRecord) => {
     return (record.disbursements || []).reduce(
       (sum, d) => sum + parsePaymentAmount(d.amount), 0
     );
   };
+
+  // Net Payment column (what the lender actually receives):
+  //   Net Payment = (Current Balance × Lender Rate) / 12
+  // If Lender Rate is null/empty, defaults to Note Rate (UI shows a warning
+  // indicator on the Lender Rate cell). Banker's rounding to 2 decimals.
+  const noteRateNumValue = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
+  const hasLenderRate = (record: FundingRecord) =>
+    record.lenderRate !== undefined && record.lenderRate !== null && !isNaN(record.lenderRate) && record.lenderRate > 0;
+  const getEffectiveLenderRate = (record: FundingRecord) =>
+    hasLenderRate(record) ? record.lenderRate : noteRateNumValue;
   const getNetPayment = (record: FundingRecord) => {
-    // Net Payment = Funding Amount × Lender Rate / 12
-    const fundingAmount = record.originalAmount || 0;
-    const lenderRateNum = record.lenderRate || 0;
-    return Math.max(0, (fundingAmount * (lenderRateNum / 100)) / 12);
+    const currBal = (record.currentBalance !== undefined && record.currentBalance !== null && !isNaN(record.currentBalance))
+      ? record.currentBalance
+      : (record.originalAmount || 0);
+    const effRate = getEffectiveLenderRate(record);
+    return new Decimal(currBal || 0)
+      .mul(effRate || 0)
+      .div(100)
+      .div(12)
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN)
+      .toNumber();
   };
+
 
   const computeCurrentBalance = (record: FundingRecord): number => {
     if (record.currentBalance !== undefined && record.currentBalance !== null && !isNaN(record.currentBalance)) {
