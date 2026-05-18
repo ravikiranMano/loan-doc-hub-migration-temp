@@ -1,50 +1,44 @@
-## Problem
+## Goal
 
-In `supabase/functions/generate-document/index.ts` (line 131), the encumbrance rendering pipeline is gated by:
+In the Contacts area, display the "Agreement on File" date in `MM/DD/YYYY` format wherever it appears, persist the value through the existing save/update API, and have the saved value populate back into the form after save. No schema/API changes.
 
-```ts
-const isEncumbrancePipeline = isTemplate851D || isLienMappingTemplate;
-```
+## Current State
 
-This gate controls 5 sub-passes that together make `{{pr_li_rem_*_{N}_{S}}}` and `{{pr_li_ant_*_{N}_{S}}}` placeholders resolve:
+- The only editable Agreement on File date input lives in `src/components/contacts/CreateContactModal.tsx` (line 564–569, Broker form), implemented as a native `<Input type="date" />`. Native date inputs always render in the browser locale (often `YYYY-MM-DD`), not `MM/DD/YYYY`.
+- Storage uses key `agreement_on_file_date` inside `contact_data` JSONB, persisted via the existing `useContactsCrud` create/update path. No backend changes needed.
+- The detail forms (Borrower / Lender / Broker) currently only render the Agreement checkbox, not the date — so nothing to change there for this request.
+- Grid columns (`ContactBrokersPage`, `ContactBorrowersPage`, `ContactLendersPage`) read `agreement_on_file_date` (broker) / `servicing_agreement_on_file_date` (lender) and display whatever raw string is in `contact_data` — currently `YYYY-MM-DD`.
 
-1. Line ~4943 — upfront authoring-noise strip (rsid attrs, proofErr, etc.) so XML fragmentation doesn't break tag matching.
-2. Line ~5150 — `{N}`/`{S}` → `_N_S` indexed-tag rewriter (turns `pr_li_rem_priority_{1}_{1}` into a concrete `pr_li_rem_priority_1_1` handlebar).
-3. Line ~6616 — `effectiveValidFieldKeys` seeding so the resolver matches `pr_li_(rem|ant)_*_P[_S]` directly instead of collapsing to a bare key.
-4. Line ~8964 — overflow addendum appender (3rd+ liens) + "set forth in attachment" YES checkbox.
-5. (Already-running publisher at ~4000 is template-agnostic and populates `fieldValues`, but the values never reach the document because passes 1–4 don't run for RE851A.)
+## Change (single file: `src/components/contacts/CreateContactModal.tsx`)
 
-Because RE851A is not in the gate, all four supporting passes are skipped, and every `pr_li_rem_*` / `pr_li_ant_*` placeholder in the RE851A template renders blank — even though the publisher already produced the data (visible in the existing log line "RE851D Remaining Encumbrance data before render"). The RE851D template runs the same publisher and works correctly because the gate enables passes 1–4 for it.
+Replace the native `<Input type="date">` at lines 564–569 with the standard `EnhancedCalendar` popover pattern already used elsewhere in the project (per the `mem://ui/forms/enhanced-calendar-standard` and `mem://ui/forms/standard-date-display-format` memories):
 
-The memory note `mem://features/document-generation/re851a-encumbrance-pipeline` already documents that RE851A should be enrolled in this gate, so the desired state is to restore that enrollment.
+- Trigger button shows the value formatted as `MM/DD/YYYY` (or placeholder when empty), using `format(parseDateOnly(value), 'MM/dd/yyyy')` from `@/lib/dateOnly` + `date-fns`.
+- Popover contains `EnhancedCalendar`; selection writes back to state via `set('agreement_on_file_date', formatDateOnly(date, 'yyyy-MM-dd'))` so the backend value stays the canonical `yyyy-MM-dd` string and existing save/update APIs continue to work unchanged.
+- Keep the existing checkbox + label layout, width classes, and height (`h-7 text-xs flex-1`) so the surrounding UI is untouched.
 
-## Fix (single-line change)
+## Grid display
 
-In `supabase/functions/generate-document/index.ts`, line 131, extend the gate:
+In the three grid pages where `agreement_on_file_date` / `servicing_agreement_on_file_date` columns are rendered, format the cell value with `parseDateOnly(...) → format(..., 'MM/dd/yyyy')` so the saved value populates back as `MM/DD/YYYY`. Files:
+- `src/pages/contacts/ContactBrokersPage.tsx` (column `agreement_on_file_date`)
+- `src/pages/contacts/ContactBorrowersPage.tsx` (column `agreement_on_file_date`)
+- `src/pages/contacts/ContactLendersPage.tsx` (column `servicing_agreement_on_file_date`)
 
-```ts
-const isEncumbrancePipeline =
-  isTemplate851D || isLienMappingTemplate || /851a/i.test(template.name || "");
-```
+Only the render formatter is touched — column id, label, visibility, sorting, and filter logic stay as-is.
 
-That enables all four supporting passes for RE851A without touching the publisher, the RE851D-only multi-property/Q1–Q6/checkbox/safety passes, the template, the UI, the database, or any other behavior. The five passes are already template-agnostic in their internals — they only operate on whatever `pr_li_(rem|ant)_*` placeholders exist in the rendered document and whatever lien data the publisher already produced.
+## Persistence
 
-## Why this is safe (no scope creep)
+No new state, hook, table, or endpoint. Save flows through the existing `useContactsCrud` mutation that already writes `agreement_on_file_date` into `contact_data`. After save, the modal closes and the grid/detail re-renders the saved value (now formatted via the grid formatter above).
 
-- The four passes only look for the `pr_li_(rem|ant)_*_{N}_{S}` token family and known RE851D indexed bases — RE851A doesn't author conflicting tokens, so the rewriter and seeder are no-ops where nothing matches.
-- The authoring-noise strip is whitespace/cosmetic XML only (rsid, proofErr, lastRenderedPageBreak, _GoBack). No structural Word elements are altered.
-- The addendum appender only appends content when a property has >2 remaining or >2 anticipated liens — exactly the same overflow rule RE851D already uses.
-- No change to: publisher logic, indexed publisher set, RE851D-only multi-property cloner, taxes/Q1–Q6/checkbox passes, template XML, RE851A formatting/alignment/table structure, field names, business logic, UI, schema, or any other RE851A safety pass.
+## Out of Scope
 
-## Validation
+- Detail forms (Borrower / Lender / Broker) are not modified — they don't currently expose this date field.
+- No changes to `field_dictionary`, RLS, edge functions, document generation, or any other module.
+- No changes to other date inputs (e.g. `date_authorized` on line 790) — only the Agreement on File date per the request.
 
-After the change, regenerate RE851A for the deals in the existing log (single-lien, multi-lien, remaining-only, anticipated-only) and confirm:
+## Verification
 
-- `pr_li_rem_*_1_1`, `_1_2`, … render real values.
-- `pr_li_ant_*_1_1`, `_1_2`, … render real values.
-- 3rd+ liens appear in the appended addendum.
-- No unresolved `{{pr_li_(rem|ant)_*}}` placeholders remain (the existing post-render log `"RE851D unresolved Remaining placeholders before upload/PDF"` will now also cover RE851A — extend its template gate to log RE851A too only if the existing check is RE851D-gated; otherwise leave alone).
-
-## Out of scope
-
-Template DOCX edits, publisher rewrites, new field aliases, RE851A-specific safety passes, RE851D multi-property/cloner behavior, UI, database, APIs, formatting, alignment, table structure, field names.
+1. Open Create Contact → Broker, click Agreement on File date → calendar opens, pick a date → trigger displays `MM/DD/YYYY`.
+2. Save the contact → modal closes, broker grid row shows the date as `MM/DD/YYYY`.
+3. Reopen the broker (refresh) → value still present and `MM/DD/YYYY` formatted.
+4. Borrower and Lender grids show their respective agreement dates in `MM/DD/YYYY` when present.
