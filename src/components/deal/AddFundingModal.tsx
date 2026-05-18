@@ -494,7 +494,17 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     .filter(r => r.id !== editingRecordId)
     .reduce((sum, r) => sum + r.pctOwned, 0);
   const projectedTotal = otherLendersTotal + percentOwnedNum;
-  const totalPercentError = projectedTotal > 100;
+  // Over-funded check: compare total funding $ against loan-level principal balance with $0.50 tolerance.
+  const FUNDING_TOLERANCE = 0.5;
+  const principalDenomNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+  const loanAmtNum = parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
+  const denomNum = principalDenomNum > 0 ? principalDenomNum : loanAmtNum;
+  const thisFundingNum = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+  const otherFundingTotalNum = (existingRecords || [])
+    .filter(r => r.id !== editingRecordId)
+    .reduce((sum, r) => sum + (Number((r as { originalAmount?: number }).originalAmount) || 0), 0);
+  const projectedFunding = otherFundingTotalNum + thisFundingNum;
+  const totalPercentError = denomNum > 0 && (projectedFunding - denomNum) > FUNDING_TOLERANCE;
 
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
