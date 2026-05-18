@@ -301,25 +301,48 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
 
   const parsePaymentAmount = (value?: string) => parseFloat((value || '').replace(/[$,]/g, '')) || 0;
 
+  // Effective loan principal balance (LOAN-LEVEL, not sum of lender rows).
+  // This is the canonical denominator for Pro Rata and the funding totals
+  // shown in the header and acceptance checks. Falls back to the original
+  // loan amount when loan_terms.principal has not been set yet.
+  const effectiveLoanPrincipal = React.useMemo(() => {
+    const parsed = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, ''));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+    const fallback = parseFloat(String(loanAmount || '').replace(/[$,]/g, ''));
+    if (!isNaN(fallback) && fallback > 0) return fallback;
+    return 0;
+  }, [loanPrincipalBalance, loanAmount]);
+
+  // Configurable tolerance for penny-rounding (default $0.50).
+  const FUNDING_TOLERANCE = 0.5;
+
   // Per-lender payment computation using Decimal arithmetic.
-  // Standard amortization formula:
-  //   payment_i = P_i × [r(1+r)^n] / [(1+r)^n − 1]
-  // where P_i = originalAmount_i, r = lenderRate_i / 100 / 12,
-  //       n = remainingPayments (loan term months).
-  // Falls back to interest-only when n <= 0.
-  // Sum is rounded; any fractional-cent remainder is assigned to the single
-  // lender flagged with `roundingAdjustment`. Recomputes whenever the underlying
-  // funding records change (loan amount, rate, term, or any lender field edit).
+  //   lenderMonthlyInterest = lenderCurrentBalance × (lenderRate / 100 / 12)
+  //   lenderMonthlyPrincipal = loanMonthlyPrincipal × (proRata / 100)
+  //   lenderPayment = interest + principal
+  // loanMonthlyPrincipal is derived from the loan-level total payment minus
+  // the loan-level monthly interest (noteRate × loan principal). If the loan
+  // is interest-only or totals aren't available, principal portion = 0.
   const computedPayments = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
     const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
+    const totalLoanPayment = parseFloat(String(totalPayment || '').replace(/[$,]/g, '')) || 0;
+    const loanInterest = effectiveLoanPrincipal * (noteRateNum / 100) / 12;
+    const loanMonthlyPrincipal = totalLoanPayment > 0
+      ? Math.max(0, totalLoanPayment - loanInterest)
+      : 0;
     const exact = fundingRecords.map(r => {
-      // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
-      const fundingAmount = r.originalAmount || 0;
-      const rate = noteRateNum > 0 ? noteRateNum : (r.lenderRate || 0);
-      const monthly = (fundingAmount * (rate / 100)) / 12;
-      return new Decimal(monthly || 0);
+      const currBal = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
+        ? r.currentBalance
+        : (r.originalAmount || 0);
+      const lRate = r.lenderRate || 0;
+      const interest = (currBal * (lRate / 100)) / 12;
+      const pct = effectiveLoanPrincipal > 0
+        ? ((r.originalAmount || 0) / effectiveLoanPrincipal) * 100
+        : 0;
+      const principal = loanMonthlyPrincipal * (pct / 100);
+      return new Decimal((interest + principal) || 0);
     });
     const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
     const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
@@ -332,48 +355,30 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     }
     fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
     return map;
-  }, [fundingRecords, remainingPayments, noteRate]);
+  }, [fundingRecords, remainingPayments, noteRate, totalPayment, effectiveLoanPrincipal]);
 
-  // Pro Rata: derived from each lender's funding amount over the SUM of all
-  // funding amounts (not the original loan amount). Rounded to 4 decimals.
-  // The lender flagged with `roundingAdjustment` absorbs only the fractional
-  // residual so the column always totals 100.0000%.
+  // Pro Rata: lender funding amount divided by the LOAN PRINCIPAL BALANCE.
+  // Does NOT normalize to 100% — when the loan is partially funded, totals
+  // reflect the actual funded share (e.g. 81.20%). No rounding adjustment is
+  // applied here because the column is no longer forced to sum to 100.
   const computedPctOwned = React.useMemo(() => {
     const map = new Map<string, number>();
     if (!fundingRecords.length) return map;
-    const totalFunded = fundingRecords.reduce(
-      (acc, r) => acc.plus(new Decimal(Number(r.originalAmount) || 0)),
-      new Decimal(0)
-    );
-    if (totalFunded.lte(0)) {
+    if (effectiveLoanPrincipal <= 0) {
       fundingRecords.forEach(r => map.set(r.id, 0));
       return map;
     }
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    let sumOthers = new Decimal(0);
-    fundingRecords.forEach((r, i) => {
-      if (i === adjIdx) return;
+    const den = new Decimal(effectiveLoanPrincipal);
+    fundingRecords.forEach(r => {
       const pct = new Decimal(Number(r.originalAmount) || 0)
-        .div(totalFunded)
+        .div(den)
         .times(100)
-        .toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
-      map.set(r.id, pct.toNumber());
-      sumOthers = sumOthers.plus(pct);
-    });
-    if (adjIdx >= 0) {
-      const adjRec = fundingRecords[adjIdx];
-      const adjPct = new Decimal(100).minus(sumOthers)
         .toDecimalPlaces(4, Decimal.ROUND_HALF_UP)
         .toNumber();
-      map.set(adjRec.id, adjPct);
-      const total = Array.from(map.values()).reduce((a, b) => a + b, 0);
-      if (Math.abs(total - 100) > 0.0001) {
-        // eslint-disable-next-line no-console
-        console.error('Pro Rata total is not 100%:', total);
-      }
-    }
+      map.set(r.id, pct);
+    });
     return map;
-  }, [fundingRecords]);
+  }, [fundingRecords, effectiveLoanPrincipal]);
 
   const getDisplayedPctOwned = (record: FundingRecord) => {
     const v = computedPctOwned.get(record.id);
