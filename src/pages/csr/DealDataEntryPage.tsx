@@ -97,6 +97,35 @@ const SECTION_ORDER: string[] = [
   "seller",
 ];
 
+const DealDataEntrySkeleton = () => (
+  <div className="page-container space-y-4 animate-pulse" aria-hidden="true">
+    <div className="flex items-center justify-between gap-4">
+      <div className="space-y-2">
+        <div className="h-8 w-56 rounded-md bg-muted" />
+        <div className="h-4 w-40 rounded-md bg-muted" />
+      </div>
+      <div className="flex gap-3">
+        <div className="h-9 w-24 rounded-md bg-muted" />
+        <div className="h-9 w-32 rounded-md bg-muted" />
+      </div>
+    </div>
+    <div className="section-card space-y-6">
+      <div className="flex flex-wrap gap-2">
+        <div className="h-9 w-28 rounded-md bg-muted" />
+        <div className="h-9 w-24 rounded-md bg-muted" />
+        <div className="h-9 w-24 rounded-md bg-muted" />
+        <div className="h-9 w-20 rounded-md bg-muted" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="h-12 rounded-md bg-muted" />
+        <div className="h-12 rounded-md bg-muted" />
+        <div className="h-12 rounded-md bg-muted" />
+        <div className="h-12 rounded-md bg-muted" />
+      </div>
+    </div>
+  </div>
+);
+
 interface DealDataEntryInnerProps {
   dealIdProp?: string;
   isActiveTab?: boolean;
@@ -696,20 +725,13 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
   // Show lightweight skeleton for inactive tabs that haven't loaded yet
   if (!hasEverBeenActive && !isActive) {
     return (
-      <div className="page-container flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Waiting to load...</p>
-        </div>
-      </div>
+      <DealDataEntrySkeleton />
     );
   }
 
   if (dealLoading) {
     return (
-      <div className="page-container flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <DealDataEntrySkeleton />
     );
   }
 
@@ -905,9 +927,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
 
       {/* Content */}
       {fieldsLoading || permissionsLoading || formPermLoading ? (
-        <div className="section-card flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <DealDataEntrySkeleton />
       ) : (isExternalUser ? visibleSections : sections).length === 0 ? (
         <div className="section-card text-center py-12">
           <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
