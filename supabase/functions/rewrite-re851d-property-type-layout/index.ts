@@ -347,6 +347,27 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
+    if (debug) {
+      const { text } = buildStrippedIndex(originalXml);
+      const ptIdx = text.indexOf("PROPERTY TYPE");
+      const snippets: Record<string, unknown> = {};
+      snippets.firstPropertyTypeContext = ptIdx >= 0 ? text.slice(ptIdx, ptIdx + 1500) : null;
+      // Find all `{{...}}` tokens containing "property_type" or "property" near PT.
+      const tokenRe = /\{\{[^{}]*property[^{}]*\}\}/gi;
+      const tokens = new Set<string>();
+      let m: RegExpExecArray | null;
+      while ((m = tokenRe.exec(text)) !== null) tokens.add(m[0]);
+      snippets.propertyTokens = Array.from(tokens);
+      // Tokens specifically for sfr/owner/commercial/land/other
+      const ptTokenRe = /\{\{[^{}]*(sfr|commercial|land|other|owner)[^{}]*\}\}/gi;
+      const ptTokens = new Set<string>();
+      while ((m = ptTokenRe.exec(text)) !== null) ptTokens.add(m[0]);
+      snippets.ptTokens = Array.from(ptTokens);
+      return new Response(JSON.stringify({ ok: true, debug: snippets }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { plans, skipped, notFound } = planRewrites(originalXml);
 
     if (plans.length === 0) {
