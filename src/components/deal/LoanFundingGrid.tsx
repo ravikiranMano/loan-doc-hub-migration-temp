@@ -829,18 +829,50 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         </div>
       )}
 
-      {totalOwnership > 100 && fundingRecords.length > 0 && (
-        <p className="text-sm text-destructive font-medium">⚠ Total ownership exceeds 100% ({formatPercentage(totalOwnership)}). Cannot save new funding until resolved.</p>
-      )}
-
-      {fundingRecords.length > 0 && (
-        <div className="flex justify-end">
-          <div className="text-sm text-muted-foreground">
-            {filteredData.length !== fundingRecords.length && `Showing ${filteredData.length} of `}
-            Total Funding Records: {fundingRecords.length} | Total Funding Amount: {formatCurrency(totalFundingAmount)}
+      {fundingRecords.length > 0 && (() => {
+        // Funding status (under / fully / over funded) measured against the
+        // loan-level principal balance. Tolerance: $0.50 absorbs rounding pennies.
+        const TOLERANCE = 0.5;
+        const denom = loanPrincipalDenominator;
+        const funded = totalFundingAmount;
+        const unfunded = Math.max(0, denom - funded);
+        const fundedPct = denom > 0 ? (funded / denom) * 100 : 0;
+        const unfundedPct = denom > 0 ? Math.max(0, 100 - fundedPct) : 0;
+        const overAmount = funded - denom;
+        let status: 'under' | 'full' | 'over' = 'under';
+        if (denom > 0) {
+          if (overAmount > TOLERANCE) status = 'over';
+          else if (Math.abs(overAmount) <= TOLERANCE) status = 'full';
+        }
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              {status === 'over' ? (
+                <Badge variant="destructive">Over-funded</Badge>
+              ) : status === 'full' ? (
+                <Badge className="bg-success text-success-foreground hover:bg-success/90">Fully funded</Badge>
+              ) : (
+                <Badge className="bg-warning text-warning-foreground hover:bg-warning/90">Under-funded</Badge>
+              )}
+              {status === 'over' ? (
+                <span className="text-destructive font-medium">
+                  Funding exceeds loan principal balance by {formatCurrency(overAmount)}.
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  <span className="text-foreground font-medium">Funded:</span> {formatCurrency(funded)} of {formatCurrency(denom)} ({formatPercentDisplay(fundedPct, 2)}%)
+                  <span className="mx-2">·</span>
+                  <span className="text-foreground font-medium">Unfunded:</span> {formatCurrency(unfunded)} ({formatPercentDisplay(unfundedPct, 2)}%)
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {filteredData.length !== fundingRecords.length && `Showing ${filteredData.length} of `}
+              Total Funding Records: {fundingRecords.length}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <AddFundingModal
         open={isAddModalOpen}
