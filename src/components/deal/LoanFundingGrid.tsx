@@ -445,13 +445,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return Math.max(0, (record.originalAmount || 0) - disbSum);
   };
 
-  const totalOwnership = fundingRecords.reduce((sum, r) => sum + r.pctOwned, 0);
-  const totalPrincipalBalance = fundingRecords.reduce((sum, r) => sum + r.principalBalance, 0);
-  const totalCurrentBalance = fundingRecords.reduce((sum, r) => sum + computeCurrentBalance(r), 0);
-  const totalPaymentSum = fundingRecords.reduce((sum, r) => sum + getDisplayedPayment(r), 0);
-  const totalDisbursementsSum = fundingRecords.reduce((sum, r) => sum + getDisbursementsTotal(r), 0);
-  const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
-  const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
+  const totalOwnership = aggregateRecords.reduce((sum, r) => sum + r.pctOwned, 0);
+  const totalPrincipalBalance = aggregateRecords.reduce((sum, r) => sum + r.principalBalance, 0);
+  const totalCurrentBalance = aggregateRecords.reduce((sum, r) => sum + computeCurrentBalance(r), 0);
+  const totalPaymentSum = aggregateRecords.reduce((sum, r) => sum + getDisplayedPayment(r), 0);
+  const totalDisbursementsSum = aggregateRecords.reduce((sum, r) => sum + getDisbursementsTotal(r), 0);
+  const totalNetPaymentSum = aggregateRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
+  const totalFundingAmount = aggregateRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
   // Funded vs unfunded vs over-funded (against loan-level principal balance).
   const fundedAmount = totalFundingAmount;
