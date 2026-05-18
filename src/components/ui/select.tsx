@@ -4,29 +4,99 @@ import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Select = SelectPrimitive.Root;
+/**
+ * Context that mirrors the controlled/uncontrolled value of the nearest Select.Root
+ * so SelectTrigger can render a built-in "Clear" (X) button without per-call wiring.
+ */
+type SelectClearContext = {
+  value: string | undefined;
+  onClear: () => void;
+  /** When false, the auto X is suppressed (e.g. user passed clearable={false}). */
+  clearable: boolean;
+};
+const SelectClearCtx = React.createContext<SelectClearContext | null>(null);
+
+interface SelectRootProps extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root> {
+  /** Disable the auto-clear X button for this Select. Defaults to true. */
+  clearable?: boolean;
+}
+
+const Select: React.FC<SelectRootProps> = ({
+  value,
+  defaultValue,
+  onValueChange,
+  clearable = true,
+  children,
+  ...props
+}) => {
+  const isControlled = value !== undefined;
+  const [internal, setInternal] = React.useState<string | undefined>(defaultValue);
+  const current = isControlled ? value : internal;
+
+  const handleChange = React.useCallback(
+    (v: string) => {
+      if (!isControlled) setInternal(v);
+      onValueChange?.(v);
+    },
+    [isControlled, onValueChange]
+  );
+
+  const handleClear = React.useCallback(() => {
+    if (!isControlled) setInternal(undefined);
+    // Emit empty string so consumers' onValueChange('') paths run (DB persistence,
+    // doc-gen, etc.). Components using the Radix '__none__' workaround translate
+    // empty strings the same way they already do for the "— None —" item.
+    onValueChange?.("");
+  }, [isControlled, onValueChange]);
+
+  const ctx = React.useMemo<SelectClearContext>(
+    () => ({ value: current, onClear: handleClear, clearable }),
+    [current, handleClear, clearable]
+  );
+
+  return (
+    <SelectClearCtx.Provider value={ctx}>
+      <SelectPrimitive.Root
+        {...props}
+        value={value}
+        defaultValue={defaultValue}
+        onValueChange={handleChange}
+      >
+        {children}
+      </SelectPrimitive.Root>
+    </SelectClearCtx.Provider>
+  );
+};
 
 const SelectGroup = SelectPrimitive.Group;
 
 const SelectValue = SelectPrimitive.Value;
 
 interface SelectTriggerProps extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> {
-  /**
-   * When provided, renders a small X button inside the trigger that, when clicked,
-   * fires onClear() without opening the dropdown. Use to make any Select clearable.
-   * Pass the trigger's bound value via `clearableValue` so the X auto-hides when empty.
-   */
+  /** Override or supply an explicit clear handler (otherwise pulled from Select context). */
   onClear?: () => void;
+  /** Override the value used to decide whether to show the X (otherwise from context). */
   clearableValue?: string;
+  /** Set to false to hide the auto-clear X for this trigger only. */
+  clearable?: boolean;
 }
 
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   SelectTriggerProps
->(({ className, children, onClear, clearableValue, disabled, ...props }, ref) => {
-  const showClear = !!onClear && clearableValue !== undefined
-    ? !!(clearableValue && clearableValue !== '__none__')
-    : !!onClear;
+>(({ className, children, onClear, clearableValue, clearable, disabled, ...props }, ref) => {
+  const ctx = React.useContext(SelectClearCtx);
+  const effectiveClearable = clearable ?? ctx?.clearable ?? true;
+  const effectiveValue = clearableValue !== undefined ? clearableValue : ctx?.value;
+  const effectiveClear = onClear ?? ctx?.onClear;
+  const showClear =
+    effectiveClearable &&
+    !disabled &&
+    !!effectiveClear &&
+    !!effectiveValue &&
+    effectiveValue !== "__none__" &&
+    effectiveValue !== "undefined";
+
   return (
     <SelectPrimitive.Trigger
       ref={ref}
@@ -39,7 +109,7 @@ const SelectTrigger = React.forwardRef<
     >
       {children}
       <div className="flex items-center gap-1 shrink-0">
-        {showClear && !disabled && (
+        {showClear && (
           <span
             role="button"
             aria-label="Clear selection"
@@ -47,7 +117,7 @@ const SelectTrigger = React.forwardRef<
             onPointerDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onClear?.();
+              effectiveClear?.();
             }}
             onClick={(e) => {
               e.preventDefault();
