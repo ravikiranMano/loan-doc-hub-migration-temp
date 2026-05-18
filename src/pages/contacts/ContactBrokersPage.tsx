@@ -243,6 +243,9 @@ const ContactBrokersPage: React.FC = () => {
     }
 
     const val = cd[columnId] || '';
+    if ((columnId === 'agreement_on_file_date') && val) {
+      try { const d = parse(val, 'yyyy-MM-dd', new Date()); if (isValid(d)) return format(d, 'MM/dd/yyyy'); } catch { /* noop */ }
+    }
     return val || '-';
   }, []);
 
