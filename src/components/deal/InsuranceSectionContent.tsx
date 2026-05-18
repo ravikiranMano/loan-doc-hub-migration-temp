@@ -161,7 +161,7 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
 
   // Get the selected insurance for detail view
   const selectedInsurance = useMemo(() => {
-    return allInsurances.find(i => i.id === selectedInsurancePrefix) || {
+    return allInsurances.find(i => i.id === selectedInsurancePrefix) || extractedInsurances.find(i => i.id === selectedInsurancePrefix) || {
       id: selectedInsurancePrefix,
       property: '',
       description: '',
@@ -195,7 +195,7 @@ export const InsuranceSectionContent: React.FC<InsuranceSectionContentProps> = (
       lenderNotified: false,
       lenderNotifiedDate: '',
     };
-  }, [allInsurances, selectedInsurancePrefix]);
+  }, [allInsurances, extractedInsurances, selectedInsurancePrefix]);
 
   // Get the selected insurance name for detail view header
   const selectedInsuranceName = useMemo(() => {
