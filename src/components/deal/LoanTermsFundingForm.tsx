@@ -307,7 +307,10 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const lastHealedRef = useRef<string>('');
   useEffect(() => {
     if (!fundingRecords.length) return;
-    const loanAmt = parseFloat(String(loanAmount || '').replace(/[$,]/g, '')) || 0;
+    const principal = parseFloat(String(values['loan_terms.principal'] || '').replace(/[$,]/g, '')) || 0;
+    const loanAmt = principal > 0
+      ? principal
+      : (parseFloat(String(loanAmount || '').replace(/[$,]/g, '')) || 0);
     if (loanAmt <= 0) return;
     let drift = false;
     const healed = fundingRecords.map((r) => {
