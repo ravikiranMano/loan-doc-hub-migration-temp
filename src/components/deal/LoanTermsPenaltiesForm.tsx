@@ -839,14 +839,37 @@ const MaturitySection: React.FC<{
   const prefix = 'loan_terms.penalties.maturity';
   const isEnabled = values[`${prefix}.enabled`] === 'true';
 
+  const childKeys = [`${prefix}.standard_10_percent`, `${prefix}.additional_flat_fee_enabled`];
+  const anyChildChecked = childKeys.some(k => values[k] === 'true');
+
+  useEffect(() => {
+    if (anyChildChecked && !isEnabled) {
+      onValueChange(`${prefix}.enabled`, 'true');
+    } else if (!anyChildChecked && isEnabled) {
+      onValueChange(`${prefix}.enabled`, 'false');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyChildChecked]);
+
+  const handleParentToggle = (checked: boolean) => {
+    onValueChange(`${prefix}.enabled`, checked ? 'true' : 'false');
+    if (!checked) {
+      onValueChange(`${prefix}.grace_period_days`, '');
+      onValueChange(`${prefix}.standard_10_percent`, 'false');
+      onValueChange(`${prefix}.additional_flat_fee_enabled`, 'false');
+      onValueChange(`${prefix}.additional_flat_fee`, '');
+      resetDistribution(prefix, onValueChange);
+    }
+  };
+
   return (
-    <div className="space-y-2 p-4 border border-border rounded-lg bg-card">
+    <div className={cn("space-y-2 p-4 border border-border rounded-lg bg-card", !isEnabled && disabledHighlightClass)}>
       <DirtyFieldWrapper fieldKey={`${prefix}.enabled`}>
         <div className="flex items-center gap-2 border-b border-border pb-2">
           <h3 className="font-semibold text-sm text-foreground">Maturity</h3>
           <Checkbox
             checked={isEnabled}
-            onCheckedChange={(checked) => onValueChange(`${prefix}.enabled`, checked ? 'true' : 'false')}
+            onCheckedChange={(checked) => handleParentToggle(!!checked)}
             disabled={disabled}
             className="h-4 w-4"
           />
@@ -866,7 +889,7 @@ const MaturitySection: React.FC<{
           fieldKey={`${prefix}.standard_10_percent`}
           checkboxValue={values[`${prefix}.standard_10_percent`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.standard_10_percent`, checked ? 'true' : 'false')}
-          disabled={disabled || !isEnabled}
+          disabled={disabled}
         >
           <span />
         </FieldRow>
@@ -875,7 +898,7 @@ const MaturitySection: React.FC<{
           fieldKey={`${prefix}.additional_flat_fee`}
           checkboxValue={values[`${prefix}.additional_flat_fee_enabled`] === 'true'}
           onCheckboxChange={(checked) => onValueChange(`${prefix}.additional_flat_fee_enabled`, checked ? 'true' : 'false')}
-          disabled={disabled || !isEnabled}
+          disabled={disabled}
         >
           <PenaltyCurrencyInput
             value={values[`${prefix}.additional_flat_fee`] || ''}
