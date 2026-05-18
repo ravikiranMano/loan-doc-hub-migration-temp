@@ -3278,18 +3278,51 @@ async function generateSingleDocument(
         // an empty line for liens that don't contribute, so each amount sits on
         // the row of its own lien holder.
         if (isTemplate885) {
-          const perLienAll: Record<string, { cb?: unknown; nrb?: unknown; antAmt?: unknown; ant?: unknown }> = {};
+          // Build a CANONICAL per-lien record covering every column the RE885
+          // Section XVI lien table uses:
+          //   pr_li_lienHolder       <- lien.holder
+          //   pr_p_currentBalanc     <- lien.current_balance / new_remaining_balance
+          //   pr_li_lienPrioriNow    <- lien.lien_priority_now
+          //   li_lt_anticipatedAmount<- lien.anticipated_amount (only when anticipated=true)
+          //   pr_li_lienPrioriAfter  <- lien.lien_priority_after
+          //
+          // The union of lien indices across ALL of these fields becomes the
+          // canonical row ordering. Every column is then re-published as a
+          // newline-joined string of the SAME length, inserting an empty
+          // line on rows where that column has no value. This guarantees
+          // each value lines up with its lienholder row and no column
+          // shifts horizontally because of a missing entry.
+          const perLienAll: Record<string, {
+            holder?: unknown;
+            cb?: unknown;
+            nrb?: unknown;
+            antAmt?: unknown;
+            ant?: unknown;
+            prioNow?: unknown;
+            prioAfter?: unknown;
+          }> = {};
           for (const [key, val] of fieldValues.entries()) {
             const m = key.match(/^lien(\d*)\.(.+)$/);
             if (!m) continue;
             const idx = m[1] || "0";
             const field = m[2];
-            if (field === "current_balance" || field === "new_remaining_balance" || field === "anticipated_amount" || field === "anticipated") {
+            if (
+              field === "holder" ||
+              field === "current_balance" ||
+              field === "new_remaining_balance" ||
+              field === "anticipated_amount" ||
+              field === "anticipated" ||
+              field === "lien_priority_now" ||
+              field === "lien_priority_after"
+            ) {
               if (!perLienAll[idx]) perLienAll[idx] = {};
-              if (field === "current_balance") perLienAll[idx].cb = val?.rawValue;
+              if (field === "holder") perLienAll[idx].holder = val?.rawValue;
+              else if (field === "current_balance") perLienAll[idx].cb = val?.rawValue;
               else if (field === "new_remaining_balance") perLienAll[idx].nrb = val?.rawValue;
               else if (field === "anticipated_amount") perLienAll[idx].antAmt = val?.rawValue;
               else if (field === "anticipated") perLienAll[idx].ant = val?.rawValue;
+              else if (field === "lien_priority_now") perLienAll[idx].prioNow = val?.rawValue;
+              else if (field === "lien_priority_after") perLienAll[idx].prioAfter = val?.rawValue;
             }
           }
           // Use the same dedupe semantics as the lien aggregator: drop index 0
@@ -3307,24 +3340,44 @@ async function generateSingleDocument(
             if (!Number.isFinite(n) || n === 0) return "";
             return formatCurrency(s);
           };
+          const fmtText = (v: unknown): string => {
+            if (v === null || v === undefined) return "";
+            const s = String(v).trim();
+            return s;
+          };
           const isTrueLocal = (v: unknown): boolean => {
             if (v === null || v === undefined) return false;
             const s = String(v).toLowerCase().trim();
             return s === "true" || s === "1" || s === "yes";
           };
 
-          const cbLines = orderedIdx.map((i) => fmtAmt(perLienAll[i]?.cb));
-          const antLines = orderedIdx.map((i) => {
-            const rec = perLienAll[i] || {};
-            // Only output anticipated amount on rows whose lien is flagged
-            // anticipated; otherwise blank to keep the row aligned.
-            if (!isTrueLocal(rec.ant)) return "";
-            return fmtAmt(rec.nrb) || fmtAmt(rec.antAmt);
-          });
-
           if (orderedIdx.length > 0) {
+            const holderLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.holder));
+            const cbLines = orderedIdx.map((i) => fmtAmt(perLienAll[i]?.cb));
+            const prioNowLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.prioNow));
+            const prioAfterLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.prioAfter));
+            const antLines = orderedIdx.map((i) => {
+              const rec = perLienAll[i] || {};
+              // Only output anticipated amount on rows whose lien is flagged
+              // anticipated; otherwise blank to keep the row aligned.
+              if (!isTrueLocal(rec.ant)) return "";
+              return fmtAmt(rec.nrb) || fmtAmt(rec.antAmt);
+            });
+
+            fieldValues.set("pr_li_lienHolder", {
+              rawValue: holderLines.join("\n"),
+              dataType: "text",
+            });
             fieldValues.set("pr_p_currentBalanc", {
               rawValue: cbLines.join("\n"),
+              dataType: "text",
+            });
+            fieldValues.set("pr_li_lienPrioriNow", {
+              rawValue: prioNowLines.join("\n"),
+              dataType: "text",
+            });
+            fieldValues.set("pr_li_lienPrioriAfter", {
+              rawValue: prioAfterLines.join("\n"),
               dataType: "text",
             });
             fieldValues.set("li_lt_anticipatedAmount", {
@@ -3332,12 +3385,16 @@ async function generateSingleDocument(
               dataType: "text",
             });
             debugLog(
-              `[generate-document] RE885 row-aligned Amount Owing: ${orderedIdx.length} rows; ` +
+              `[generate-document] RE885 row-aligned Section XVI lien table: ${orderedIdx.length} rows; ` +
+              `pr_li_lienHolder=[${holderLines.map((s) => s || "·").join("|")}] ` +
               `pr_p_currentBalanc=[${cbLines.map((s) => s || "·").join("|")}] ` +
-              `li_lt_anticipatedAmount=[${antLines.map((s) => s || "·").join("|")}]`
+              `pr_li_lienPrioriNow=[${prioNowLines.map((s) => s || "·").join("|")}] ` +
+              `li_lt_anticipatedAmount=[${antLines.map((s) => s || "·").join("|")}] ` +
+              `pr_li_lienPrioriAfter=[${prioAfterLines.map((s) => s || "·").join("|")}]`
             );
           }
         }
+
       }
 
       // ── Calculated field: pr_netPropertyValue ──
