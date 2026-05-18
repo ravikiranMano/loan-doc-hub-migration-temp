@@ -4831,7 +4831,7 @@ async function generateSingleDocument(
     // label-based replacement candidate filter to scan every paragraph
     // for needles that can never match, contributing to CPU pressure on
     // large templates. Behavior for RE851A is unchanged.
-    const isTemplate851A = /851a/i.test(template.name || "");
+    // isTemplate851A already declared above (line ~131) for the encumbrance pipeline gate.
     const re851aLabelAdditions: Record<string, { fieldKey: string }> = isTemplate851A
       ? {
           "A. Agent in arranging a loan on behalf of another": {
