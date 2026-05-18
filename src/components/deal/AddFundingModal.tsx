@@ -380,22 +380,23 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     }
   }, [formData.lenderRate, formData.rateLenderValue]);
 
-  // Auto-compute Pro Rata (Percent Owned) = this lender's funding amount
-  // divided by the TOTAL LOAN AMOUNT (not the sum of current funded amounts).
-  // A single lender funding only part of the loan should reflect their actual
-  // share — e.g. $2,400 of a $600,000 loan = 0.40%, NOT 100%.
+  // Pro Rata (Percent Owned) = fundingAmount / loan.principalBalance × 100.
+  // Uses the loan-level principal balance, NOT the sum of lender funding
+  // amounts. Falls back to loanAmount only when no principal balance is set.
   React.useEffect(() => {
     const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-    const loanAmt = parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
-    if (loanAmt > 0 && fa > 0) {
-      const computed = roundPctForStorage(fa / loanAmt * 100);
+    const principal = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+    const fallback = parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
+    const denom = principal > 0 ? principal : fallback;
+    if (denom > 0 && fa > 0) {
+      const computed = roundPctForStorage(fa / denom * 100);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
     } else if (fa === 0 && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.fundingAmount, loanAmount]);
+  }, [formData.fundingAmount, loanAmount, loanPrincipalBalance]);
 
   // Auto-default Current Balance from Original Funding minus disbursements (only when not manually edited)
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);
@@ -492,6 +493,24 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     .reduce((sum, r) => sum + r.pctOwned, 0);
   const projectedTotal = otherLendersTotal + percentOwnedNum;
   const totalPercentError = projectedTotal > 100;
+
+  // Over-funded check (Pro Rata uses loan principal balance — see effect above).
+  // Sum funding amounts (this record + sibling records) and compare to loan
+  // principal with a $0.50 tolerance.
+  const FUNDING_TOLERANCE = 0.5;
+  const principalForValidation = (() => {
+    const p = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+    if (p > 0) return p;
+    return parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
+  })();
+  const thisFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+  const otherFundingTotal = existingRecords
+    .filter(r => r.id !== editingRecordId)
+    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+  const projectedFundedTotal = otherFundingTotal + thisFundingAmount;
+  const overFundedError =
+    principalForValidation > 0 && projectedFundedTotal - principalForValidation > FUNDING_TOLERANCE;
+  const overFundedAmount = Math.max(0, projectedFundedTotal - principalForValidation);
 
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -1046,6 +1065,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
           {totalPercentError && !percentOwnedError && (
             <p className="text-xs text-destructive font-medium">Total ownership across all lenders exceeds 100%</p>
           )}
+          {overFundedError && (
+            <p className="text-xs text-destructive font-medium">
+              Funding exceeds loan principal balance by ${overFundedAmount.toFixed(2)}.
+            </p>
+          )}
 
           {/* Checkboxes row */}
           <div className="space-y-1 pt-1">
@@ -1248,7 +1272,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
         <DialogFooter className="shrink-0 border-t border-border px-4 py-2">
           <Button variant="outline" size="sm" onClick={handleCancel}>Cancel</Button>
-          <Button size="sm" onClick={handleSaveClick} disabled={percentOwnedError || totalPercentError || !isFormFilled}>
+          <Button size="sm" onClick={handleSaveClick} disabled={percentOwnedError || totalPercentError || overFundedError || !isFormFilled}>
             {isEditing ? 'Update Funding' : 'Save Funding'}
           </Button>
         </DialogFooter>
