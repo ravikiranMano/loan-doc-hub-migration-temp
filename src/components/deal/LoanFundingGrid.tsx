@@ -421,6 +421,25 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
+  // Funded vs unfunded vs over-funded (against loan-level principal balance).
+  const fundedAmount = totalFundingAmount;
+  const unfundedAmount = Math.max(0, effectiveLoanPrincipal - fundedAmount);
+  const overAmount = Math.max(0, fundedAmount - effectiveLoanPrincipal);
+  const fundedPct = effectiveLoanPrincipal > 0
+    ? (fundedAmount / effectiveLoanPrincipal) * 100
+    : 0;
+  const unfundedPct = effectiveLoanPrincipal > 0
+    ? Math.max(0, 100 - fundedPct)
+    : 0;
+  const fundingStatus: 'under' | 'full' | 'over' | 'none' =
+    effectiveLoanPrincipal <= 0 || fundingRecords.length === 0
+      ? 'none'
+      : overAmount > FUNDING_TOLERANCE
+        ? 'over'
+        : unfundedAmount > FUNDING_TOLERANCE
+          ? 'under'
+          : 'full';
+
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
   const formatPercentage = (value: number, max = 2) => `${formatPercentDisplay(value, max)}%`;
 
