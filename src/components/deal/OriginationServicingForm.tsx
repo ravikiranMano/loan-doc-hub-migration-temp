@@ -124,7 +124,13 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
     };
 
     if (agentValue === 'Company') {
-      writeFromKeys(COMPANY_SOURCE_KEYS);
+      // Company Properties block stores company info separately (cp_*); no auto-populate.
+      // Mirror cp_* into sp_* so "Send Payments To" default reflects company details.
+      const cpMap: [string, string][] = [
+        [FK.cp_name, FK.sp_name], [FK.cp_street, FK.sp_street], [FK.cp_city, FK.sp_city],
+        [FK.cp_state, FK.sp_state], [FK.cp_zip, FK.sp_zip], [FK.cp_phone, FK.sp_phone], [FK.cp_email, FK.sp_email],
+      ];
+      cpMap.forEach(([src, dst]) => sv(dst, values[src] || ''));
     } else if (agentValue === 'Broker') {
       writeFromKeys(BROKER_SOURCE_KEYS);
     } else if (agentValue === 'Lender') {
