@@ -455,7 +455,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineField(FIELD_KEYS.previousLoanNumber, 'Previous Loan Number')}
           {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
           {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
-          {renderInlineField(FIELD_KEYS.originatingVendor, 'Originating Vendor')}
+          {renderInlineSelect(FIELD_KEYS.originatingVendor, 'Originating Vendor', brokerOptions, 'Select Originating Vendor')}
           {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Balance')}
           {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
           {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
