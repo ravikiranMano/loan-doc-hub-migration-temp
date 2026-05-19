@@ -742,21 +742,26 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
-    // Block over-funding: total of all lenders' funding amounts must not exceed
-    // the loan principal balance.
+    // Rule: Funding Amount must be > $0 (Test 7).
+    if (thisLenderShare <= 0) {
+      toast.error('Funding amount must be greater than $0.');
+      return;
+    }
+    // Rule: Funding Amount must not exceed remaining capacity (Tests 4, 6, 12).
     if (totalPercentError) {
-      const over = projectedFundedTotal - principalBalanceNum;
+      const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentTotal);
       toast.error(
-        `Total Funding Amount exceeds Balance by $${over.toFixed(2)}. Reduce the Funding Amount to continue.`
+        `Funding amount of $${thisLenderShare.toFixed(2)} exceeds available capacity. ` +
+        `Maximum allowed: $${remaining.toFixed(2)}.`
       );
       return;
     }
-    // Block over-funding by current balance: total of all lenders' current
-    // balances must not exceed the loan principal balance.
+    // Rule: Current Balance (when editing) must not push total over principal (Test 9).
     if (currentBalanceTotalError) {
-      const over = projectedCurrentBalanceTotal - principalBalanceNum;
+      const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
       toast.error(
-        `Total Current Balance exceeds Balance by $${over.toFixed(2)}. Reduce the Current Balance to continue.`
+        'This change would cause total funding to exceed the loan principal. ' +
+        `Maximum allowed for this lender: $${remaining.toFixed(2)}.`
       );
       return;
     }
