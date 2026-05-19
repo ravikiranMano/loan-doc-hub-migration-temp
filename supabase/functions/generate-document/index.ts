@@ -1605,27 +1605,16 @@ async function generateSingleDocument(
         // merge tags instead of unsupported {{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}
         // conditionals (which currently leak raw into the rendered document).
         // Rule: performedBy === "Broker" → name="BPO Performed by Broker", address="N/A".
-        //       Otherwise → name=property{N}.appraiser_name (or ""), address=joined
-        //       appraiser_street/city/state/zip (or "").
+        //       Otherwise → both blank (mirrors `{{else}}{{/if}}` in the template
+        //       so non-Broker properties render empty cells, never raw `{{#if}}`).
         {
           const performedBy = String(
             fieldValues.get(`property${idx}.appraisal_performed_by`)?.rawValue ?? ""
           ).trim();
           const isBroker = performedBy.toLowerCase() === "broker";
 
-          const nameRaw = String(
-            fieldValues.get(`property${idx}.appraiser_name`)?.rawValue ?? ""
-          ).trim();
-          const addrParts = [
-            fieldValues.get(`property${idx}.appraiser_street`)?.rawValue,
-            fieldValues.get(`property${idx}.appraiser_city`)?.rawValue,
-            fieldValues.get(`property${idx}.appraiser_state`)?.rawValue,
-            fieldValues.get(`property${idx}.appraiser_zip`)?.rawValue,
-          ].map((v) => String(v ?? "").trim()).filter(Boolean);
-          const addrRaw = addrParts.join(", ");
-
-          const nameOut = isBroker ? "BPO Performed by Broker" : nameRaw;
-          const addrOut = isBroker ? "N/A" : addrRaw;
+          const nameOut = isBroker ? "BPO Performed by Broker" : "";
+          const addrOut = isBroker ? "N/A" : "";
 
           fieldValues.set(`pr_p_appraiserName_${idx}`,    { rawValue: nameOut, dataType: "text" });
           fieldValues.set(`pr_p_appraiserAddress_${idx}`, { rawValue: addrOut, dataType: "text" });
