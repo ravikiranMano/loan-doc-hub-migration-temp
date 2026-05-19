@@ -1537,7 +1537,12 @@ function evaluateEqExpression(
   validFieldKeys?: Set<string>,
 ): boolean | null {
   // (eq FIELD LITERAL) — LITERAL is bareword OR "..." OR '...'
-  const m = expr.match(/^\s*eq\s+([A-Za-z0-9_.]+)\s+(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.\-]+))\s*$/i);
+  // Tolerate Word-autocorrected smart quotes around the literal.
+  const normalizedExpr = expr
+    .replace(/&quot;/g, '"')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+  const m = normalizedExpr.match(/^\s*eq\s+([A-Za-z0-9_.]+)\s+(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.\-]+))\s*$/i);
   if (!m) return null;
   const fieldKey = m[1];
   const literal = (m[2] ?? m[3] ?? m[4] ?? "").trim();
