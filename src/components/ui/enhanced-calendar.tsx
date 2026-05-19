@@ -46,8 +46,8 @@ function EnhancedCalendar({
   const goToNextMonth = () => handleMonthChange(addMonths(displayMonth, 1));
 
   const currentYear = new Date().getFullYear();
-  const minYear = currentYear - 120;
-  const maxYear = currentYear + 10;
+  const minYear = currentYear - 100;
+  const maxYear = currentYear + 100;
   const years = React.useMemo(() => {
     const arr: number[] = [];
     for (let y = maxYear; y >= minYear; y--) arr.push(y);
