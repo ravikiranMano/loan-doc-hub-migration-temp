@@ -133,18 +133,6 @@ const AppLayoutInner: React.FC = () => {
 
   const showWorkspaceRenderer = hasOpenFiles;
 
-  useEffect(() => {
-    if (!hasMountedRef.current) {
-      hasMountedRef.current = true;
-      return;
-    }
-    setShowRouteSkeleton(true);
-    const timeout = window.setTimeout(() => setShowRouteSkeleton(false), 180);
-    return () => {
-      window.clearTimeout(timeout);
-      return;
-    }
-  }, [location.pathname, location.search]);
 
   return (
     <div className="min-h-screen bg-background">
