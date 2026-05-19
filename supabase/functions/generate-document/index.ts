@@ -5024,7 +5024,13 @@ async function generateSingleDocument(
     // Slots > 2 are still emitted; the existing addendum/overflow appender
     // handles them. Strictly additive; gated by isLienMappingTemplate so no
     // other template is affected.
-    if (isLienMappingTemplate) {
+    // Extended to RE851A: its authored template uses the same literal
+    // `{{pr_li_(rem|ant)_<field>_{N}_{S}}}` placeholder convention for the
+    // ENCUMBRANCE(S) REMAINING and Encumbrances expected/anticipated sections.
+    // The encumbrance publisher already runs for RE851A (isEncumbrancePipeline),
+    // but without this rewrite the literal `{N}`/`{S}` tokens remain in the
+    // resolved tag and never bind to a value. Gate is strictly additive.
+    if (isLienMappingTemplate || isTemplate851A) {
       try {
         const tLien = performance.now();
         const decompressed = fflate.unzipSync(templateBuffer);
