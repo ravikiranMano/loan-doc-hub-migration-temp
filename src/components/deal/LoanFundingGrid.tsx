@@ -310,8 +310,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return 0;
   }, [loanPrincipalBalance]);
 
-  // Configurable tolerance for penny-rounding (default $0.50).
-  const FUNDING_TOLERANCE = 0.5;
+  // Strict tolerance: only floating-point rounding noise ($0.01) is allowed.
+  const FUNDING_TOLERANCE = 0.01;
 
   // Borrower Regular P&I Payment (from Terms & Balances → Payments).
   // Source of truth for per-lender Payment calculation:
@@ -435,10 +435,11 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
-  // Funding status compares sum of CURRENT BALANCES vs loan principal.
+  // Funding status compares the larger of Funding Amount total and Current
+  // Balance total vs loan principal. Neither total may exceed Balance.
   // Over-funding is blocked at edit time (see AddFundingModal) — this branch
   // remains as a defensive surface to flag any legacy bad data.
-  const fundedAmount = totalCurrentBalance;
+  const fundedAmount = Math.max(totalCurrentBalance, totalFundingAmount);
   const unfundedAmount = Math.max(0, effectiveLoanPrincipal - fundedAmount);
   const overAmount = Math.max(0, fundedAmount - effectiveLoanPrincipal);
   const fundedPct = effectiveLoanPrincipal > 0
@@ -1053,7 +1054,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(effectiveLoanPrincipal)
           : ''}
         remainingPayments={remainingPayments}
-        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount, lenderId: r.lenderAccount, lenderName: r.lenderName }))}
+        existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount, currentBalance: computeCurrentBalance(r), lenderId: r.lenderAccount, lenderName: r.lenderName }))}
         editingRecordId={selectedRecord?.id}
       />
 
