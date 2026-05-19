@@ -257,6 +257,7 @@ const ContactBrokersPage: React.FC = () => {
     return (
       <div className="h-full flex flex-col">
         <ContactBrokerDetailLayout
+          key={selectedContact.id}
           contact={selectedContact}
           onBack={() => {
             if (contactWs) contactWs.closeContact(selectedContact.id);
