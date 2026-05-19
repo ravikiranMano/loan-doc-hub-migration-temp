@@ -182,6 +182,31 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
     'Non-profit',
   ];
 
+  // --- TIN: reformat existing value when TIN type changes ---
+  const tinNumber = get(F.tinNumber);
+  const tinType = get(F.tinType);
+  const prevTinTypeRef = useRef<string>(tinType);
+  useEffect(() => {
+    if (prevTinTypeRef.current !== tinType) {
+      prevTinTypeRef.current = tinType;
+      if (tinNumber) {
+        const reformatted = formatTIN(tinNumber, tinType);
+        if (reformatted !== tinNumber) set(F.tinNumber, reformatted);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tinType]);
+
+  const tinError = useMemo(() => {
+    if (!tinNumber) return '';
+    return isValidTIN(tinNumber, tinType) ? '' : 'Format must meet selected TIN Type';
+  }, [tinNumber, tinType]);
+
+  const tinPlaceholder =
+    tinType === '2' ? 'XXX-XX-XXXX' : tinType === '1' ? 'XX-XXXXXXX' : 'XX-XXXXXXX';
+  const tinMaxLen = tinType === '2' ? 11 : tinType === '1' ? 10 : 11;
+
+
   return (
     <Card className="p-6 max-w-2xl">
       <h4 className="text-lg font-semibold text-foreground mb-4">Tax reporting</h4>
