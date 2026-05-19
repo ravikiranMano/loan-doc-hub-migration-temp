@@ -22,7 +22,6 @@ interface ContactsNavProps {
 
 const directItems = [
   { label: 'Borrower', path: '/contacts/borrowers' },
-  { label: 'Co-borrower', path: '/contacts/co-borrowers' },
   { label: 'Lender', path: '/contacts/lenders' },
   { label: 'Broker', path: '/contacts/brokers' },
   { label: 'Additional Guarantor', path: '/contacts/additional-guarantors' },
