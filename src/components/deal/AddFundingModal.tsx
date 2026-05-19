@@ -742,6 +742,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       ? (formData.lenderRateOverrideValue || '')
       : (formData.lenderRate || formData.rateLenderValue || '');
     const trimmedLR = String(effectiveLenderRateStr).trim();
+    // P4 guard: when neither Sold Rate nor Note Rate is set on the loan and
+    // Override is off, the auto-fill chain returns ''. Block save and tell
+    // the user how to recover (set Note Rate, or check Override to enter manually).
+    if (trimmedLR === '') {
+      toast.error(
+        'Lender Rate is required. Set Note Rate on the loan first, or check Override to enter a rate manually.'
+      );
+      return;
+    }
     if (trimmedLR !== '') {
       const lrNum = parseFloat(trimmedLR);
       const nrNum = parseFloat(String(noteRate || '').replace(/[%,]/g, '')) || 0;
