@@ -30,6 +30,14 @@ const FK = {
   tp_zip: 'origination_svc.third_party.zip',
   tp_phone: 'origination_svc.third_party.phone',
   tp_email: 'origination_svc.third_party.email',
+  // Company Properties
+  cp_name: 'origination_svc.company.name',
+  cp_street: 'origination_svc.company.street',
+  cp_city: 'origination_svc.company.city',
+  cp_state: 'origination_svc.company.state',
+  cp_zip: 'origination_svc.company.zip',
+  cp_phone: 'origination_svc.company.phone',
+  cp_email: 'origination_svc.company.email',
   // Send Payments To
   sp_same_as_tp: 'origination_svc.send_payments.same_as_third_party',
   sp_name: 'origination_svc.send_payments.name',
@@ -116,7 +124,13 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
     };
 
     if (agentValue === 'Company') {
-      writeFromKeys(COMPANY_SOURCE_KEYS);
+      // Company Properties block stores company info separately (cp_*); no auto-populate.
+      // Mirror cp_* into sp_* so "Send Payments To" default reflects company details.
+      const cpMap: [string, string][] = [
+        [FK.cp_name, FK.sp_name], [FK.cp_street, FK.sp_street], [FK.cp_city, FK.sp_city],
+        [FK.cp_state, FK.sp_state], [FK.cp_zip, FK.sp_zip], [FK.cp_phone, FK.sp_phone], [FK.cp_email, FK.sp_email],
+      ];
+      cpMap.forEach(([src, dst]) => sv(dst, values[src] || ''));
     } else if (agentValue === 'Broker') {
       writeFromKeys(BROKER_SOURCE_KEYS);
     } else if (agentValue === 'Lender') {
@@ -182,11 +196,15 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
     // 'Other / Third Party': no auto-populate; fields remain manually editable.
   }, [agentValue]);
 
-  // Auto-copy 3rd party values when "Same as 3rd Party" is checked
+  // Auto-copy source values when "Same as 3rd Party / Same as Company" is checked
   const sameAsTP = bv(FK.sp_same_as_tp);
+  const isCompanyAgent = agentValue === 'Company';
   useEffect(() => {
     if (sameAsTP) {
-      const mappings = [
+      const mappings = isCompanyAgent ? [
+        [FK.cp_name, FK.sp_name], [FK.cp_street, FK.sp_street], [FK.cp_city, FK.sp_city],
+        [FK.cp_state, FK.sp_state], [FK.cp_zip, FK.sp_zip], [FK.cp_phone, FK.sp_phone], [FK.cp_email, FK.sp_email],
+      ] : [
         [FK.tp_name, FK.sp_name], [FK.tp_street, FK.sp_street], [FK.tp_city, FK.sp_city],
         [FK.tp_state, FK.sp_state], [FK.tp_zip, FK.sp_zip], [FK.tp_phone, FK.sp_phone], [FK.tp_email, FK.sp_email],
       ];
@@ -194,7 +212,9 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
         if (v(src) !== v(dst)) sv(dst, v(src));
       });
     }
-  }, [sameAsTP, values[FK.tp_name], values[FK.tp_street], values[FK.tp_city], values[FK.tp_state], values[FK.tp_zip], values[FK.tp_phone], values[FK.tp_email]]);
+  }, [sameAsTP, isCompanyAgent,
+      values[FK.tp_name], values[FK.tp_street], values[FK.tp_city], values[FK.tp_state], values[FK.tp_zip], values[FK.tp_phone], values[FK.tp_email],
+      values[FK.cp_name], values[FK.cp_street], values[FK.cp_city], values[FK.cp_state], values[FK.cp_zip], values[FK.cp_phone], values[FK.cp_email]]);
 
   const renderTextField = (label: string, key: string, extraDisabled = false) => (
     <DirtyFieldWrapper fieldKey={key}>
@@ -284,11 +304,18 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-6">
-        {/* Complete if 3rd Party */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Complete if 3rd Party</h3>
-          {renderAddressBlock('tp', { name: FK.tp_name, street: FK.tp_street, city: FK.tp_city, state: FK.tp_state, zip: FK.tp_zip, phone: FK.tp_phone, email: FK.tp_email })}
-        </div>
+        {/* Company Properties (shown only when Servicing Agent = Company) */}
+        {isCompanyAgent ? (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Company Properties</h3>
+            {renderAddressBlock('cp', { name: FK.cp_name, street: FK.cp_street, city: FK.cp_city, state: FK.cp_state, zip: FK.cp_zip, phone: FK.cp_phone, email: FK.cp_email })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Complete if 3rd Party</h3>
+            {renderAddressBlock('tp', { name: FK.tp_name, street: FK.tp_street, city: FK.tp_city, state: FK.tp_state, zip: FK.tp_zip, phone: FK.tp_phone, email: FK.tp_email })}
+          </div>
+        )}
 
         {/* Send Payments To */}
         <div className="space-y-3">
@@ -297,7 +324,7 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
             <DirtyFieldWrapper fieldKey={FK.sp_same_as_tp}>
               <div className="flex items-center gap-2">
                 <Checkbox checked={sameAsTP} onCheckedChange={(c) => sbv(FK.sp_same_as_tp, !!c)} disabled={disabled} />
-                <Label className="text-sm cursor-pointer">Same as 3rd Party</Label>
+                <Label className="text-sm cursor-pointer">{isCompanyAgent ? 'Same as Company' : 'Same as 3rd Party'}</Label>
               </div>
             </DirtyFieldWrapper>
           </div>
