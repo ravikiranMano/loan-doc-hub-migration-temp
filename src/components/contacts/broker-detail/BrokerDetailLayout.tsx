@@ -48,7 +48,7 @@ const BrokerDetailLayout: React.FC<BrokerDetailLayoutProps> = ({ broker, onBack,
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-border bg-background relative z-[1]">
+      <div className="flex items-center gap-3 px-6 pt-8 pb-4 mt-2 border-b border-border bg-background relative z-[1]">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Back to Brokers
         </Button>
