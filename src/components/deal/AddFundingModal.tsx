@@ -742,21 +742,26 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
-    // Block over-funding: total of all lenders' funding amounts must not exceed
-    // the loan principal balance.
+    // Rule: Funding Amount must be > $0 (Test 7).
+    if (thisLenderShare <= 0) {
+      toast.error('Funding amount must be greater than $0.');
+      return;
+    }
+    // Rule: Funding Amount must not exceed remaining capacity (Tests 4, 6, 12).
     if (totalPercentError) {
-      const over = projectedFundedTotal - principalBalanceNum;
+      const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentTotal);
       toast.error(
-        `Total Funding Amount exceeds Balance by $${over.toFixed(2)}. Reduce the Funding Amount to continue.`
+        `Funding amount of $${thisLenderShare.toFixed(2)} exceeds available capacity. ` +
+        `Maximum allowed: $${remaining.toFixed(2)}.`
       );
       return;
     }
-    // Block over-funding by current balance: total of all lenders' current
-    // balances must not exceed the loan principal balance.
+    // Rule: Current Balance (when editing) must not push total over principal (Test 9).
     if (currentBalanceTotalError) {
-      const over = projectedCurrentBalanceTotal - principalBalanceNum;
+      const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
       toast.error(
-        `Total Current Balance exceeds Balance by $${over.toFixed(2)}. Reduce the Current Balance to continue.`
+        'This change would cause total funding to exceed the loan principal. ' +
+        `Maximum allowed for this lender: $${remaining.toFixed(2)}.`
       );
       return;
     }
@@ -893,31 +898,64 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         {/* Header bar */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 pr-10">
           <span className="text-xs font-bold">Add / Edit Lender Funding</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold">Principal Balance</span>
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                  Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <div className="relative w-24">
-              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-              <Input
-                value={loanPrincipalBalance ?? ''}
-                readOnly
-                tabIndex={-1}
-                aria-readonly="true"
-                className="h-6 text-xs pl-4 bg-muted/50 cursor-not-allowed"
-                placeholder="-"
-              />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold">Principal Balance</span>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs max-w-[260px]">
+                    Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <div className="relative w-24">
+                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                <Input
+                  value={loanPrincipalBalance ?? ''}
+                  readOnly
+                  tabIndex={-1}
+                  aria-readonly="true"
+                  className="h-6 text-xs pl-4 bg-muted/50 cursor-not-allowed"
+                  placeholder="-"
+                />
+              </div>
             </div>
+            {(() => {
+              // Available Capacity = principal − sum(other lenders' current balance)
+              // Excludes the lender currently being edited so the user sees room they can grow into.
+              const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
+              const pct = principalBalanceNum > 0 ? (remaining / principalBalanceNum) * 100 : 0;
+              const isFull = remaining <= FUNDING_TOLERANCE;
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold">Available Capacity</span>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs max-w-[260px]">
+                        Principal balance minus the sum of all other lenders' current balances. Funding amount cannot exceed this value.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <div className={cn(
+                    "text-xs px-2 py-0.5 rounded border",
+                    isFull
+                      ? "bg-red-500/10 text-red-700 border-red-500/30"
+                      : "bg-green-600/10 text-green-700 border-green-600/30"
+                  )}>
+                    ${remaining.toFixed(2)} ({pct.toFixed(2)}% available)
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
+
 
         <div className="flex-1 overflow-y-auto min-h-0 px-4 py-2 sleek-scrollbar space-y-3">
           {/* 3-Column Layout: Lender Details | Fees to Company | Fees to Vendor */}
