@@ -144,26 +144,32 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
   // is now sourced strictly from the saved funding records.
   const computedRegularPayment = useMemo(() => {
     const raw = values['loan_terms.funding_records'];
-    if (!raw) return null;
     let records: any[] = [];
-    try {
-      records = typeof raw === 'string' ? JSON.parse(raw) : (raw as any);
-    } catch {
-      return null;
+    if (raw) {
+      try {
+        records = typeof raw === 'string' ? JSON.parse(raw) : (raw as any);
+      } catch {
+        records = [];
+      }
     }
-    if (!Array.isArray(records) || records.length === 0) return null;
+    if (!Array.isArray(records) || records.length === 0) return '';
     const sum = records.reduce((acc, r) => {
       const v = parseFloat(String(r?.regularPayment ?? '').replace(/[$,]/g, ''));
       return acc + (isNaN(v) ? 0 : v);
     }, 0);
-    if (!isFinite(sum) || sum <= 0) return null;
+    if (!isFinite(sum) || sum <= 0) return '';
     return sum.toFixed(2);
   }, [values['loan_terms.funding_records']]);
 
   useEffect(() => {
     if (disabled) return;
-    if (computedRegularPayment == null) return;
-    const current = getValue(FIELD_KEYS.regularPayment);
+    const current = getValue(FIELD_KEYS.regularPayment) ?? '';
+    if (computedRegularPayment === '') {
+      if (current !== '' && current !== null && current !== undefined) {
+        setValue(FIELD_KEYS.regularPayment, '');
+      }
+      return;
+    }
     const currentNum = parseFloat(current);
     const nextNum = parseFloat(computedRegularPayment);
     if (isNaN(currentNum) || Math.abs(currentNum - nextNum) > 0.005) {
