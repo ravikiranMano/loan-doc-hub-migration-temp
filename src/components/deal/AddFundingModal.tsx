@@ -1415,6 +1415,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       isEditing={editingDisbursementIdx !== null}
     />
     <ModalSaveConfirmation open={showConfirm} onConfirm={handleConfirmSave} onCancel={() => setShowConfirm(false)} />
+    <AlertDialog open={!!duplicateLender} onOpenChange={(o) => { if (!o) setDuplicateLender(null); }}>
+      <AlertDialogContent className="z-[9999]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Duplicate Lender Funding</AlertDialogTitle>
+          <AlertDialogDescription>
+            ⚠️ Lender {duplicateLender?.lenderId}{duplicateLender?.lenderName ? ` (${duplicateLender.lenderName})` : ''} already has a funding record. Are you sure you want to add another funding entry for this lender?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <Button variant="outline" onClick={() => setDuplicateLender(null)}>Cancel</Button>
+          <Button onClick={() => { setDuplicateLender(null); setShowConfirm(true); }}>Add Anyway</Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 };
