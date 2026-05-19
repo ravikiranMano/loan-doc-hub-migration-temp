@@ -360,6 +360,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const [formData, setFormData] = useState<FundingFormData>(getInitialFormData());
   const [showConfirm, setShowConfirm] = useState(false);
+  const [duplicateLender, setDuplicateLender] = useState<{ lenderId: string; lenderName: string } | null>(null);
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
   const [interestFromOpen, setInterestFromOpen] = useState(false);
   const [disbursementModalOpen, setDisbursementModalOpen] = useState(false);
