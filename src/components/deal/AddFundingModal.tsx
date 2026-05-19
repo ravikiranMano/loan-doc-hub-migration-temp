@@ -548,6 +548,25 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   };
 
   const handleDisbursementModalSubmit = (data: DisbursementFormData) => {
+    // Validation: Σ disbursements may not exceed the lender's Payment
+    // (Pro Rata × Borrower Regular P&I). Single source of truth shared with
+    // the Funding grid's Net Payment column.
+    const principalNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+    const cbNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''))
+      || parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
+    const lenderPayment = principalNum > 0
+      ? new Decimal(cbNum).div(principalNum).mul(regPI)
+          .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toNumber()
+      : 0;
+    const incoming = parseFloat(String(data.calculatedAmount || data.plusAmount || data.debitThroughAmount || '0').replace(/[$,]/g, '')) || 0;
+    const otherDisbSum = (formData.disbursements || [])
+      .filter((_, i) => i !== editingDisbursementIdx)
+      .reduce((s, d) => s + (parseFloat(String(d.amount || '').replace(/[$,]/g, '')) || 0), 0);
+    if (lenderPayment > 0 && otherDisbSum + incoming > lenderPayment + 0.005) {
+      toast.error('Disbursement cannot exceed lender payment amount');
+      return;
+    }
     setFormData(prev => {
       const updated = [...prev.disbursements];
       const finalAmount = data.calculatedAmount
