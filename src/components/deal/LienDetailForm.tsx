@@ -479,13 +479,13 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
 
           {renderCheckbox('sltPaidOff', 'Paid Off')}
 
-          {renderField('sltLastPaymentMade', 'Last Payment Made', { type: 'date' })}
-          {renderField('sltNextPaymentDue', 'Next Payment Due', { type: 'date' })}
-          {renderCurrency('sltCurrentBalance', 'Current Balance')}
+          {renderField('sltLastPaymentMade', 'Last Payment Made', { type: 'date' }, lien.sltPaidOff !== 'true')}
+          {renderField('sltNextPaymentDue', 'Next Payment Due', { type: 'date' }, lien.sltPaidOff !== 'true')}
+          {renderCurrency('sltCurrentBalance', 'Current Balance', lien.sltPaidOff !== 'true')}
 
           {renderCheckbox('sltUnableToVerify', 'Unable to Verify')}
 
-          {renderField('sltRequestSubmitted', 'Request Submitted', { type: 'date' })}
+          {renderField('sltRequestSubmitted', 'Request Submitted', { type: 'date' }, lien.sltUnableToVerify !== 'true')}
           {renderField('sltResponseReceived', 'Response Received', { type: 'date' })}
 
           <div className="flex items-center gap-3">
