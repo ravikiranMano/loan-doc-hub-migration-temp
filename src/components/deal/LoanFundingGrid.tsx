@@ -340,13 +340,31 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     if (!fundingRecords.length) return [] as number[];
     if (effectiveLoanPrincipal <= 0) return fundingRecords.map(() => 0);
     const den = new Decimal(effectiveLoanPrincipal);
-    return fundingRecords.map(r =>
-      new Decimal(computeCurrentBalance(r))
-        .div(den)
-        .times(100)
-        .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
-        .toNumber()
+    const exact = fundingRecords.map(r =>
+      new Decimal(computeCurrentBalance(r)).div(den).times(100)
     );
+    const rounded = exact.map(d => d.toDecimalPlaces(6, Decimal.ROUND_HALF_UP));
+    // Pro Rata can never exceed 100% in total. Absorb sub-percent rounding
+    // drift so the displayed total equals exactly the sum of current balances'
+    // share of principal — capped at 100. Adjustment goes to the row flagged
+    // `roundingAdjustment`; otherwise the largest row.
+    const sumExactCapped = exact.reduce((a, b) => a.plus(b), new Decimal(0));
+    const cappedTarget = Decimal.min(sumExactCapped, new Decimal(100))
+      .toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
+    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
+    const diff = cappedTarget.minus(sumRounded);
+    if (!diff.isZero()) {
+      let adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+      if (adjIdx < 0) {
+        let max = new Decimal(-1);
+        rounded.forEach((d, i) => { if (d.gt(max)) { max = d; adjIdx = i; } });
+      }
+      if (adjIdx >= 0) {
+        const adjusted = rounded[adjIdx].plus(diff);
+        rounded[adjIdx] = adjusted.lt(0) ? new Decimal(0) : adjusted;
+      }
+    }
+    return rounded.map(d => d.toNumber());
   }, [fundingRecords, effectiveLoanPrincipal]);
 
   const recordIndexMap = React.useMemo(() => {
