@@ -169,15 +169,8 @@ const AppLayoutInner: React.FC = () => {
           <div className={cn(isWorkspaceRoute && 'app-route-hidden')}>
             <Outlet />
           </div>
-          <div
-            className={cn(
-              'pointer-events-none absolute inset-0 bg-background transition-opacity duration-150 ease-in-out',
-              showRouteSkeleton ? 'opacity-100 visible' : 'opacity-0 invisible'
-            )}
-          >
-            <ContentSkeleton />
-          </div>
         </div>
+
       </main>
 
       <CloseConfirmationDialog
