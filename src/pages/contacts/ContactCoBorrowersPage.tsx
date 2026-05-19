@@ -123,31 +123,32 @@ const ContactCoBorrowersPage: React.FC = () => {
   const isReadOnly = permissionsLoading || isFormViewOnly('borrower');
 
   useEffect(() => {
-    if (!contactId || deepLinkLoaded.current) return;
-    deepLinkLoaded.current = true;
+    if (!contactId) return;
+    if (selectedContact?.id === contactId) return;
+    let cancelled = false;
     (async () => {
       const { supabase } = await import('@/integrations/supabase/client');
       const { data } = await supabase.from('contacts').select('*').eq('id', contactId).maybeSingle();
-      if (data) {
-        setSelectedContact({
-          id: data.id,
-          contact_id: data.contact_id,
-          contact_type: data.contact_type,
-          full_name: data.full_name || '',
-          first_name: data.first_name || '',
-          last_name: data.last_name || '',
-          email: data.email || '',
-          phone: data.phone || '',
-          city: data.city || '',
-          state: data.state || '',
-          company: data.company || '',
-          contact_data: hydrateCoBorrowerSendFields((data.contact_data || {}) as Record<string, string>),
-          created_at: data.created_at || '',
-          updated_at: data.updated_at || '',
-        });
-      }
+      if (cancelled || !data) return;
+      setSelectedContact({
+        id: data.id,
+        contact_id: data.contact_id,
+        contact_type: data.contact_type,
+        full_name: data.full_name || '',
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        city: data.city || '',
+        state: data.state || '',
+        company: data.company || '',
+        contact_data: hydrateCoBorrowerSendFields((data.contact_data || {}) as Record<string, string>),
+        created_at: data.created_at || '',
+        updated_at: data.updated_at || '',
+      });
     })();
-  }, [contactId]);
+    return () => { cancelled = true; };
+  }, [contactId, selectedContact?.id]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -236,6 +237,7 @@ const ContactCoBorrowersPage: React.FC = () => {
   if (selectedContact) {
     return (
       <CoBorrowerDetail
+        key={selectedContact.id}
         contact={selectedContact}
         onBack={() => {
           setSelectedContact(null);

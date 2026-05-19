@@ -106,10 +106,12 @@ const ContactBorrowersPage: React.FC = () => {
   const deepLinkLoaded = useRef(false);
   const isReadOnly = permissionsLoading || isFormViewOnly('borrower');
 
-  // Deep-link: auto-load contact by URL param
+  // Deep-link / tab-switch: load contact whenever URL param changes to a
+  // different contact than the one displayed. Ensures per-tab data isolation.
   useEffect(() => {
-    if (!contactId || deepLinkLoaded.current) return;
-    deepLinkLoaded.current = true;
+    if (!contactId) return;
+    if (selectedContact?.id === contactId) return;
+    let cancelled = false;
     (async () => {
       const { supabase } = await import('@/integrations/supabase/client');
       const { data } = await supabase
@@ -117,36 +119,36 @@ const ContactBorrowersPage: React.FC = () => {
         .select('*')
         .eq('id', contactId)
         .maybeSingle();
-      if (data) {
-        const rec = {
-          id: data.id,
-          contact_id: data.contact_id,
-          contact_type: data.contact_type,
-          full_name: data.full_name || '',
-          first_name: data.first_name || '',
-          last_name: data.last_name || '',
-          email: data.email || '',
-          phone: data.phone || '',
-          city: data.city || '',
-          state: data.state || '',
-          company: data.company || '',
-          contact_data: (data.contact_data || {}) as Record<string, string>,
-          created_at: data.created_at || '',
-          updated_at: data.updated_at || '',
-        };
-        setSelectedContact(rec);
-        if (contactWs) {
-          contactWs.openContact({
-            id: rec.id,
-            kind: 'borrower',
-            contactId: rec.contact_id,
-            fullName: rec.full_name || [rec.first_name, rec.last_name].filter(Boolean).join(' '),
-            openedAt: Date.now(),
-          });
-        }
+      if (cancelled || !data) return;
+      const rec = {
+        id: data.id,
+        contact_id: data.contact_id,
+        contact_type: data.contact_type,
+        full_name: data.full_name || '',
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        city: data.city || '',
+        state: data.state || '',
+        company: data.company || '',
+        contact_data: (data.contact_data || {}) as Record<string, string>,
+        created_at: data.created_at || '',
+        updated_at: data.updated_at || '',
+      };
+      setSelectedContact(rec);
+      if (contactWs) {
+        contactWs.openContact({
+          id: rec.id,
+          kind: 'borrower',
+          contactId: rec.contact_id,
+          fullName: rec.full_name || [rec.first_name, rec.last_name].filter(Boolean).join(' '),
+          openedAt: Date.now(),
+        });
       }
     })();
-  }, [contactId, contactWs]);
+    return () => { cancelled = true; };
+  }, [contactId, contactWs, selectedContact?.id]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -257,6 +259,7 @@ const ContactBorrowersPage: React.FC = () => {
     return (
       <div className="h-full flex flex-col">
         <ContactBorrowerDetailLayout
+          key={selectedContact.id}
           contact={selectedContact}
           onBack={() => {
             if (contactWs) contactWs.closeContact(selectedContact.id);
