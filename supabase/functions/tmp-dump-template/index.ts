@@ -8,5 +8,5 @@ Deno.serve(async (req) => {
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   const buf = new Uint8Array(await data.arrayBuffer());
   let bin = ""; for (let i=0;i<buf.length;i++) bin += String.fromCharCode(buf[i]);
-  return new Response(btoa(bin), { headers: { "content-type": "text/plain" }});
+  return new Response(btoa(bin), { headers: { "content-type": "text/plain", "access-control-allow-origin": "*" }});
 });
