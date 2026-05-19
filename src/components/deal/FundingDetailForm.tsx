@@ -79,19 +79,18 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     }
   }, [data.fundingAmount, loanAmount, siblingFundingTotal]);
 
-  // Regular Payment = Loan Amount × Rate / 12 (always based on TOTAL LOAN)
+  // Regular Payment (per-lender share) = (Percent Owned / 100) × Borrower Regular P&I.
+  // Rates are NOT used here — they drive interest accrual only.
   React.useEffect(() => {
-    const la = parseFloat(loanAmount) || 0;
-    let rate = 0;
-    if (data.rateSelection === 'note_rate') rate = parseFloat(data.rateNoteValue || '') || 0;
-    else if (data.rateSelection === 'sold_rate') rate = parseFloat(data.rateSoldValue || '') || 0;
-    else if (data.rateSelection === 'lender_rate') rate = parseFloat(data.rateLenderValue || '') || 0;
-
-    const payment = la > 0 && rate > 0 ? roundDollarForStorage(la * (rate / 100) / 12) : '';
+    const pct = parseFloat((data.percentOwned || '').replace(/[%,]/g, '')) || 0;
+    const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
+    const payment = pct > 0 && regPI > 0
+      ? roundDollarForStorage(pct / 100 * regPI)
+      : '';
     if (payment !== data.regularPayment) {
       onChange({ ...data, regularPayment: payment });
     }
-  }, [loanAmount, data.rateSelection, data.rateNoteValue, data.rateSoldValue, data.rateLenderValue]);
+  }, [data.percentOwned, totalPayment]);
 
   const percentOwnedNum = parseFloat(data.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
