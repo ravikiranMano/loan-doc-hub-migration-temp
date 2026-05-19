@@ -701,7 +701,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const handleCancel = () => { onOpenChange(false); };
 
   const servicingDisabled = !(formData.overrideServicing ?? false);
-  const vendorDisabled = !(formData.vendorId && String(formData.vendorId).trim() !== '');
+  // Fees to Vendor fields are editable independently of Vendor ID selection.
+  // Role-based access (CSR/Admin) is enforced by the surrounding form / RLS,
+  // so we do NOT gate the inputs on whether a Vendor ID is present.
+  const vendorDisabled = false;
 
   const fundingDate = parseDateOnly(formData.fundingDate);
   const interestFromDate = parseDateOnly(formData.interestFrom);
