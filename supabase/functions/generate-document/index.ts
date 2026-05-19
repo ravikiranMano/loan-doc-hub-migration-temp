@@ -6067,7 +6067,10 @@ async function generateSingleDocument(
           // they print verbatim. Substitute the resolved value directly inside
           // PROPERTY #K regions. Strictly limited to the encumbrance field
           // whitelist; nothing else in the document is touched.
-          if (regions.props.length > 0) {
+          const encValueRegions = regions.props.length > 0
+            ? regions.props
+            : (isTemplate851A ? [{ k: 1, range: [0, xml.length] as [number, number] }] : []);
+          if (encValueRegions.length > 0) {
             const encFields = [
               "priority", "interestRate", "interest_rate", "intRate",
               "beneficiary", "lienHolder", "holder",
@@ -6078,7 +6081,7 @@ async function generateSingleDocument(
               "amountOwing", "amount_owing",
             ];
             const encTagRe = new RegExp(
-              "\\bpr_li_(rem|ant)_(" + encFields.join("|") + ")(?:_N(?:_S)?)?(?![A-Za-z0-9_])",
+              "\\bpr_li_(rem|ant)_(" + encFields.join("|") + ")(?:_(?:N|[1-5])(?:_(?:S|[1-9][0-9]*))?(?:_\\{S\\})?)?(?![A-Za-z0-9_])",
               "g",
             );
             const mergeTagContext = (offset: number): "curly" | "chevron" | null => {
@@ -6095,9 +6098,9 @@ async function generateSingleDocument(
               const start = m2.index;
               const end = start + m2[0].length;
               if (isConsumed(start, end)) continue;
-              const region = resolveRegion(start);
-              if (region.forcedIndex === null) continue;
-              const pIdx = region.forcedIndex;
+              const region = encValueRegions.find((p) => start >= p.range[0] && start < p.range[1]);
+              if (!region) continue;
+              const pIdx = region.k;
               const family = `${m2[1]}_${m2[2]}`;
               const slot = getRegionCounter(region.id, `__enc_${family}`);
               const lookupKey = `pr_li_${family}_${pIdx}_${slot}`;
