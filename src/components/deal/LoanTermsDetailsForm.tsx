@@ -390,6 +390,45 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     );
   };
 
+  // Variant of renderAdjPercentField that reads from `primaryKey` (preferring it
+  // when set) but falls back to `legacyKey` for old data, and writes back to the
+  // primary key only. Used by Sold Rate so Loan Details and Terms & Balances
+  // share a single storage location (`loan_terms.sold_rate_company`) while
+  // still honouring values previously stored under `loan_terms.sold_rate`.
+  const renderAdjPercentFieldMirrored = (primaryKey: string, legacyKey: string, label: string) => {
+    const fieldKey = primaryKey;
+    const isFocused = focusedPercentField === fieldKey;
+    const raw = getValue(primaryKey) || getValue(legacyKey);
+    const display = isFocused ? raw : (raw ? formatPercentDisplay(raw, 3) : '');
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-center gap-2">
+          <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
+          <div className="relative flex-1">
+            <Input
+              value={display}
+              onChange={(e) => {
+                const cleaned = e.target.value.replace(/[^0-9.]/g, '');
+                setValue(primaryKey, cleaned);
+              }}
+              onFocus={() => setFocusedPercentField(fieldKey)}
+              onBlur={() => {
+                setFocusedPercentField(null);
+                const val = getValue(primaryKey);
+                if (val) { const stored = roundPctForStorage(val); if (stored !== '') setValue(primaryKey, stored); }
+              }}
+              disabled={disabled}
+              className="h-8 text-xs pr-5"
+              inputMode="decimal"
+              placeholder="0.00"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   const renderAdjCurrencyField = (fieldKey: string, label: string, suffix: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
