@@ -161,18 +161,14 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     return sum.toFixed(2);
   }, [values['loan_terms.funding_records']]);
 
+  // Auto-populate Regular P & I Payment from funding records ONLY when the
+  // field is empty. A persisted/user-entered value must never be overwritten,
+  // otherwise typing + save appears to do nothing (value reverts on re-render).
   useEffect(() => {
     if (disabled) return;
-    const current = getValue(FIELD_KEYS.regularPayment) ?? '';
-    if (computedRegularPayment === '') {
-      if (current !== '' && current !== null && current !== undefined) {
-        setValue(FIELD_KEYS.regularPayment, '');
-      }
-      return;
-    }
-    const currentNum = parseFloat(current);
-    const nextNum = parseFloat(computedRegularPayment);
-    if (isNaN(currentNum) || Math.abs(currentNum - nextNum) > 0.005) {
+    if (computedRegularPayment === '') return;
+    const current = (getValue(FIELD_KEYS.regularPayment) ?? '').toString().trim();
+    if (current === '') {
       setValue(FIELD_KEYS.regularPayment, computedRegularPayment);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
