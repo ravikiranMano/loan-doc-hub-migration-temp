@@ -293,20 +293,36 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
         </div>
 
         {/* TIN number */}
-        <div className="grid grid-cols-[180px_1fr] items-center gap-3">
-          <Label htmlFor={`${idPrefix}-tin-number`} className="text-sm">
+        <div className="grid grid-cols-[180px_1fr] items-start gap-3">
+          <Label htmlFor={`${idPrefix}-tin-number`} className="text-sm mt-2">
             TIN number
           </Label>
-          <Input
-            id={`${idPrefix}-tin-number`}
-            value={get(F.tinNumber)}
-            onChange={(e) => set(F.tinNumber, e.target.value)}
-            disabled={disabled}
-            maxLength={20}
-            placeholder="XX-XXXXXXXX"
-            className="h-9 max-w-[260px]"
-          />
+          <div className="max-w-[260px]">
+            <Input
+              id={`${idPrefix}-tin-number`}
+              value={tinNumber}
+              onChange={(e) => set(F.tinNumber, formatTIN(e.target.value, tinType))}
+              onPaste={(e) => {
+                e.preventDefault();
+                const pasted = e.clipboardData.getData('text');
+                set(F.tinNumber, formatTIN(pasted, tinType));
+              }}
+              onBlur={(e) => {
+                const reformatted = formatTIN(e.target.value, tinType);
+                if (reformatted !== e.target.value) set(F.tinNumber, reformatted);
+              }}
+              disabled={disabled}
+              maxLength={tinMaxLen}
+              placeholder={tinPlaceholder}
+              aria-invalid={!!tinError}
+              className={cn('h-9', tinError && 'border-destructive focus-visible:ring-destructive')}
+            />
+            {tinError && (
+              <p className="text-xs text-destructive mt-1">{tinError}</p>
+            )}
+          </div>
         </div>
+
 
         {/* TIN type */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
