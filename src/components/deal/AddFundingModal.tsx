@@ -898,31 +898,64 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         {/* Header bar */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30 pr-10">
           <span className="text-xs font-bold">Add / Edit Lender Funding</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold">Principal Balance</span>
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                  Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <div className="relative w-24">
-              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-              <Input
-                value={loanPrincipalBalance ?? ''}
-                readOnly
-                tabIndex={-1}
-                aria-readonly="true"
-                className="h-6 text-xs pl-4 bg-muted/50 cursor-not-allowed"
-                placeholder="-"
-              />
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold">Principal Balance</span>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs max-w-[260px]">
+                    Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <div className="relative w-24">
+                <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                <Input
+                  value={loanPrincipalBalance ?? ''}
+                  readOnly
+                  tabIndex={-1}
+                  aria-readonly="true"
+                  className="h-6 text-xs pl-4 bg-muted/50 cursor-not-allowed"
+                  placeholder="-"
+                />
+              </div>
             </div>
+            {(() => {
+              // Available Capacity = principal − sum(other lenders' current balance)
+              // Excludes the lender currently being edited so the user sees room they can grow into.
+              const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
+              const pct = principalBalanceNum > 0 ? (remaining / principalBalanceNum) * 100 : 0;
+              const isFull = remaining <= FUNDING_TOLERANCE;
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold">Available Capacity</span>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs max-w-[260px]">
+                        Principal balance minus the sum of all other lenders' current balances. Funding amount cannot exceed this value.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <div className={cn(
+                    "text-xs px-2 py-0.5 rounded border",
+                    isFull
+                      ? "bg-red-500/10 text-red-700 border-red-500/30"
+                      : "bg-green-600/10 text-green-700 border-green-600/30"
+                  )}>
+                    ${remaining.toFixed(2)} ({pct.toFixed(2)}% available)
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
+
 
         <div className="flex-1 overflow-y-auto min-h-0 px-4 py-2 sleek-scrollbar space-y-3">
           {/* 3-Column Layout: Lender Details | Fees to Company | Fees to Vendor */}
