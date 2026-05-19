@@ -26,7 +26,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
-import { roundPctForStorage, computeAmortizedPayment, Decimal } from '@/lib/precisionFormat';
+import { roundPctForStorage, computeAmortizedPayment, Decimal, formatPercentDisplay } from '@/lib/precisionFormat';
 import { toast } from 'sonner';
 
 interface AddFundingModalProps {
@@ -1064,7 +1064,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Pro Rata</Label>
-                {renderPercentInput('percentOwned', '%', true)}
+                <div className="relative flex-1">
+                  <Input
+                    value={formData.percentOwned ? formatPercentDisplay(formData.percentOwned, 4) : ''}
+                    className="h-6 text-xs pr-4"
+                    disabled
+                  />
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                </div>
               </div>
             </div>
 
