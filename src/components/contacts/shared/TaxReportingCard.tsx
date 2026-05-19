@@ -1,6 +1,33 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+
+// --- TIN formatting / validation helpers ---
+// TIN Type values: "1" = EIN, "2" = SSN, "0" = Unknown
+const tinDigits = (v: string) => (v || '').replace(/\D/g, '').slice(0, 9);
+const formatTIN = (raw: string, tinType: string): string => {
+  const d = tinDigits(raw);
+  if (tinType === '2') {
+    // SSN: XXX-XX-XXXX
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  }
+  if (tinType === '1') {
+    // EIN: XX-XXXXXXX
+    if (d.length <= 2) return d;
+    return `${d.slice(0, 2)}-${d.slice(2)}`;
+  }
+  return d;
+};
+const isValidTIN = (raw: string, tinType: string): boolean => {
+  const d = tinDigits(raw);
+  if (tinType !== '1' && tinType !== '2') return true; // no rule when type not chosen / Unknown
+  if (d.length !== 9) return false;
+  const formatted = formatTIN(d, tinType);
+  return (raw || '') === formatted;
+};
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
@@ -155,6 +182,31 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
     'Non-profit',
   ];
 
+  // --- TIN: reformat existing value when TIN type changes ---
+  const tinNumber = get(F.tinNumber);
+  const tinType = get(F.tinType);
+  const prevTinTypeRef = useRef<string>(tinType);
+  useEffect(() => {
+    if (prevTinTypeRef.current !== tinType) {
+      prevTinTypeRef.current = tinType;
+      if (tinNumber) {
+        const reformatted = formatTIN(tinNumber, tinType);
+        if (reformatted !== tinNumber) set(F.tinNumber, reformatted);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tinType]);
+
+  const tinError = useMemo(() => {
+    if (!tinNumber) return '';
+    return isValidTIN(tinNumber, tinType) ? '' : 'Format must meet selected TIN Type';
+  }, [tinNumber, tinType]);
+
+  const tinPlaceholder =
+    tinType === '2' ? 'XXX-XX-XXXX' : tinType === '1' ? 'XX-XXXXXXX' : 'XX-XXXXXXX';
+  const tinMaxLen = tinType === '2' ? 11 : tinType === '1' ? 10 : 11;
+
+
   return (
     <Card className="p-6 max-w-2xl">
       <h4 className="text-lg font-semibold text-foreground mb-4">Tax reporting</h4>
@@ -241,20 +293,36 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
         </div>
 
         {/* TIN number */}
-        <div className="grid grid-cols-[180px_1fr] items-center gap-3">
-          <Label htmlFor={`${idPrefix}-tin-number`} className="text-sm">
+        <div className="grid grid-cols-[180px_1fr] items-start gap-3">
+          <Label htmlFor={`${idPrefix}-tin-number`} className="text-sm mt-2">
             TIN number
           </Label>
-          <Input
-            id={`${idPrefix}-tin-number`}
-            value={get(F.tinNumber)}
-            onChange={(e) => set(F.tinNumber, e.target.value)}
-            disabled={disabled}
-            maxLength={20}
-            placeholder="XX-XXXXXXXX"
-            className="h-9 max-w-[260px]"
-          />
+          <div className="max-w-[260px]">
+            <Input
+              id={`${idPrefix}-tin-number`}
+              value={tinNumber}
+              onChange={(e) => set(F.tinNumber, formatTIN(e.target.value, tinType))}
+              onPaste={(e) => {
+                e.preventDefault();
+                const pasted = e.clipboardData.getData('text');
+                set(F.tinNumber, formatTIN(pasted, tinType));
+              }}
+              onBlur={(e) => {
+                const reformatted = formatTIN(e.target.value, tinType);
+                if (reformatted !== e.target.value) set(F.tinNumber, reformatted);
+              }}
+              disabled={disabled}
+              maxLength={tinMaxLen}
+              placeholder={tinPlaceholder}
+              aria-invalid={!!tinError}
+              className={cn('h-9', tinError && 'border-destructive focus-visible:ring-destructive')}
+            />
+            {tinError && (
+              <p className="text-xs text-destructive mt-1">{tinError}</p>
+            )}
+          </div>
         </div>
+
 
         {/* TIN type */}
         <div className="grid grid-cols-[180px_1fr] items-center gap-3">
