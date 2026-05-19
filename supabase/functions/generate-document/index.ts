@@ -8431,24 +8431,18 @@ async function generateSingleDocument(
     if (/851d/i.test(template.name || "")) {
       try {
         const ROW_LABELS: Array<{ row: 1 | 2 | 3; label: RegExp }> = [
-          { row: 1, label: /SINGLE-FAMILY RESIDENCE \(owner occupied\)/i },
-          { row: 1, label: /COMMERCIAL\s*&(?:amp;)?\s*INCOME-PRODUCING/i },
-          { row: 2, label: /SINGLE-FAMILY RESIDENCE \(not owner occupied\)/i },
-          { row: 2, label: /LAND ZONED/i },
+          { row: 1, label: /SINGLE-FAMILY RESIDENCE \(owner\s+occupied\)/i },
+          { row: 1, label: /COMMERCIAL\s*&(?:amp;)?\s*INCOME[-\s]?PRODUCING/i },
+          { row: 2, label: /SINGLE-FAMILY RESIDENCE \(not owner\s+occupied\)/i },
+          { row: 2, label: /LAND\s*\(?zoned\s+commercial\/residential\)?/i },
           { row: 3, label: /SINGLE-FAMILY RESIDENCE \(zoned residential lot\/parcel\)/i },
-          { row: 3, label: /LAND INCOME PRODUCING/i },
+          { row: 3, label: /LAND\s*\(income[-\s]?producing\)/i },
+          { row: 3, label: /(?:^|[\s>\u2610\u2611\u2612])OTHER:/i },
         ];
         const ROW_SPACING: Record<1 | 2 | 3, string> = {
           1: `<w:spacing w:before="26" w:after="100" w:line="181" w:lineRule="auto"/>`,
           2: `<w:spacing w:before="12" w:after="100" w:line="181" w:lineRule="auto"/>`,
           3: `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`,
-        };
-
-        const detectRow = (visible: string): 1 | 2 | 3 | null => {
-          for (const r of ROW_LABELS) {
-            if (r.label.test(visible)) return r.row;
-          }
-          return null;
         };
 
         const setRowSpacing = (para: string, row: 1 | 2 | 3): string => {
@@ -8458,7 +8452,6 @@ async function generateSingleDocument(
           const pprRe = /<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/;
           const pprMatch = para.match(pprRe);
           if (!pprMatch) {
-            // Insert a fresh pPr right after <w:p ...>
             return para.replace(
               open[0],
               `${open[0]}<w:pPr>${spacingXml}</w:pPr>`,
@@ -8472,7 +8465,6 @@ async function generateSingleDocument(
             );
             return para.replace(pprMatch[0], `<w:pPr>${newInner}</w:pPr>`);
           }
-          // Insert spacing after pStyle/numPr if present, else at start.
           let newInner = inner;
           if (/<w:numPr\b[^>]*>[\s\S]*?<\/w:numPr>/.test(newInner)) {
             newInner = newInner.replace(
@@ -8494,10 +8486,6 @@ async function generateSingleDocument(
         let __sdtCounter = 900000;
 
         const wrapPlainGlyphs = (para: string): string => {
-          // Match a <w:r> ... </w:r> whose <w:t> body contains a single
-          // checkbox glyph and nothing else but optional whitespace. Skip
-          // runs that are already inside <w:sdt>...</w:sdt> by parsing
-          // sdt boundaries first.
           const sdtRanges: Array<[number, number]> = [];
           const sdtRe = /<w:sdt\b[\s\S]*?<\/w:sdt>/g;
           let sm: RegExpExecArray | null;
@@ -8521,10 +8509,13 @@ async function generateSingleDocument(
             const body = tMatch[1];
             const glyphMatch = body.match(GLYPH_RE);
             if (!glyphMatch) continue;
-            // Only wrap when the run's text is JUST the glyph (with optional
-            // surrounding whitespace). Mixed-content runs are left alone so
-            // we never split label runs in half.
-            if (!/^[\s\u00A0]*[\u2610\u2611\u2612][\s\u00A0]*$/.test(body)) {
+            // Accept either "just the glyph" OR "glyph + trailing whitespace"
+            // (covers the LAND (income-producing) plain-text "☐ " run that
+            // ships unwrapped on instances 3/4/5). Mixed runs that carry
+            // label text are still left alone — we never split label runs.
+            if (
+              !/^[\s\u00A0]*[\u2610\u2611\u2612][\s\u00A0]*$/.test(body)
+            ) {
               continue;
             }
             const glyph = glyphMatch[0];
@@ -8565,13 +8556,92 @@ async function generateSingleDocument(
           }
           let xml = __xmlGet(filename, bytes);
           if (
-            !/SINGLE-FAMILY RESIDENCE|COMMERCIAL|LAND ZONED|LAND INCOME PRODUCING/i
+            !/SINGLE-FAMILY RESIDENCE|COMMERCIAL|LAND\s*\(?zoned|LAND\s*\(income|OTHER:/i
               .test(xml)
           ) {
             rezip[filename] = [bytes, { level: 0 }];
             continue;
           }
           let count = 0;
+
+          // ── Pre-pass: split instance-5 "LAND (income-producing) … OTHER:" ──
+          // Some instances ship a single <w:p> whose visible text contains
+          // BOTH "LAND (income-producing)" AND "OTHER:" concatenated in one
+          // run. Replace that paragraph with two sibling paragraphs (row 3
+          // spacing) so downstream passes see two well-formed rows.
+          const splitParaRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+          xml = xml.replace(splitParaRe, (para) => {
+            const visible = para
+              .replace(/<w:tab\s*\/?>/g, " ")
+              .replace(/<w:br\s*\/?>/g, " ")
+              .replace(/<[^>]+>/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (
+              !/LAND\s*\(income[-\s]?producing\)/i.test(visible) ||
+              !/OTHER:/i.test(visible)
+            ) {
+              return para;
+            }
+            // Locate the offending mixed-content run that carries both
+            // labels — it's the run whose <w:t> body contains "LAND " AND
+            // "OTHER:".
+            const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+            let offending: { run: string; tStart: number } | null = null;
+            let rm: RegExpExecArray | null;
+            while ((rm = runRe.exec(para)) !== null) {
+              const rXml = rm[0];
+              const tMatch = rXml.match(
+                /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/,
+              );
+              if (!tMatch) continue;
+              if (
+                /LAND\s*\(income/i.test(tMatch[1]) &&
+                /OTHER:/i.test(tMatch[1])
+              ) {
+                offending = { run: rXml, tStart: rm.index };
+                break;
+              }
+            }
+            if (!offending) return para;
+
+            // Extract <w:rPr> from the source run (preserve formatting).
+            const rprMatch = offending.run.match(
+              /<w:rPr\b[\s\S]*?<\/w:rPr>/,
+            );
+            const rPr = rprMatch ? rprMatch[0] : "";
+
+            // Detect index N from any nearby placeholder if present.
+            const idxMatch = para.match(/property_type_other_text_(\d+)/);
+            const idxToken = idxMatch ? idxMatch[1] : "N";
+
+            const sdtFor = (glyph: string, id: number): string =>
+              `<w:sdt><w:sdtPr><w:id w:val="${id}"/><w14:checkbox>` +
+              `<w14:checked w14:val="${
+                glyph === "\u2610" ? 0 : 1
+              }"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/>` +
+              `<w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/>` +
+              `</w14:checkbox></w:sdtPr><w:sdtContent>` +
+              `<w:r>${rPr}<w:t xml:space="preserve">${glyph} </w:t></w:r>` +
+              `</w:sdtContent></w:sdt>`;
+
+            const labelRun = (text: string): string =>
+              `<w:r>${rPr}<w:t xml:space="preserve">${text}</w:t></w:r>`;
+
+            const pPr = `<w:pPr>${ROW_SPACING[3]}</w:pPr>`;
+            const idA = 940001;
+            const idB = 940002;
+            const paraA =
+              `<w:p>${pPr}${sdtFor("\u2610", idA)}` +
+              `${labelRun("LAND (income-producing)")}</w:p>`;
+            const paraB =
+              `<w:p>${pPr}${sdtFor("\u2610", idB)}` +
+              `${labelRun(`OTHER: {{property_type_other_text_${idxToken}}}`)}</w:p>`;
+
+            count++;
+            return `${paraA}${paraB}`;
+          });
+
           const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
           xml = xml.replace(paraRe, (para) => {
             const visible = para
@@ -8589,6 +8659,28 @@ async function generateSingleDocument(
             next = setRowSpacing(next, row);
             // 3) Promote plain-text glyph runs to <w:sdt><w14:checkbox/></w:sdt>.
             next = wrapPlainGlyphs(next);
+            // 4) Normalize "owner   occupied" → "owner occupied" inside <w:t>.
+            if (/SINGLE-FAMILY RESIDENCE \(owner\s+occupied\)/i.test(visible)) {
+              next = next.replace(
+                /<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g,
+                (_m, attrs: string | undefined, t: string) =>
+                  `<w:t${attrs || ""}>${t.replace(
+                    /(owner)[\s\u00A0]{2,}(occupied)/gi,
+                    "$1 $2",
+                  )}</w:t>`,
+              );
+            }
+            // 5) Insert missing space after LAND in "LAND(zoned commercial/residential)".
+            if (/LAND\(zoned\s+commercial\/residential\)/i.test(visible)) {
+              next = next.replace(
+                /<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g,
+                (_m, attrs: string | undefined, t: string) =>
+                  `<w:t${attrs || ""}>${t.replace(
+                    /LAND\(zoned/g,
+                    "LAND (zoned",
+                  )}</w:t>`,
+              );
+            }
             if (next !== para) count++;
             return next;
           });
