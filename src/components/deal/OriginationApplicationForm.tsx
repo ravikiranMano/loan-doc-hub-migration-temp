@@ -356,8 +356,9 @@ export const OriginationApplicationForm: React.FC<OriginationApplicationFormProp
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
-                  <SelectItem value="Broker">Broker</SelectItem>
                   <SelectItem value="Borrower">Borrower</SelectItem>
+                  <SelectItem value="Broker">Broker</SelectItem>
+                  <SelectItem value="Credit Report">Credit Report</SelectItem>
                   <SelectItem value="Third Party">Third Party</SelectItem>
                   <SelectItem value="Internal Referral">Internal Referral</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
