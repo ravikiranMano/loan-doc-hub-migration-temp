@@ -154,6 +154,31 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string | null>>({});
 
+  // Brokers list for "Originating Vendor" dropdown — sourced from contacts master (contact_type='broker')
+  const [brokerOptions, setBrokerOptions] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, first_name, last_name, company, contact_id')
+        .eq('contact_type', 'broker')
+        .order('full_name', { ascending: true });
+      if (cancelled || error || !data) return;
+      const opts = data.map((c: any) => {
+        const name = (c.full_name && c.full_name.trim())
+          || `${c.first_name || ''} ${c.last_name || ''}`.trim()
+          || c.company
+          || c.contact_id
+          || 'Unnamed Broker';
+        return { value: c.id as string, label: name as string };
+      });
+      setBrokerOptions(opts);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+
   const [focusedCurrencyField, setFocusedCurrencyField] = useState<string | null>(null);
   const [focusedPercentField, setFocusedPercentField] = useState<string | null>(null);
 
