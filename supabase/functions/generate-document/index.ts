@@ -5936,6 +5936,21 @@ async function generateSingleDocument(
                 allowedTags: new Set(PART1_TAGS),
               };
             }
+            // RE851A is a single-property document with no PROPERTY #K anchors,
+            // so encumbrance row tags (pr_li_(rem|ant)_*_N_S) would otherwise
+            // fall into GLOBAL where the property index counter is shared with
+            // the slot counter and the _N_S tags never get fanned out properly.
+            // Treat the whole document as a synthetic PROP#1 so the per-region
+            // slot counter increments per family in document order and the
+            // forced property index resolves to 1, matching RE851D behavior
+            // inside its single PROPERTY block. Strictly scoped to RE851A.
+            if (isTemplate851A) {
+              return {
+                id: "RE851A_PROP#1",
+                forcedIndex: 1,
+                allowedTags: new Set(RE851D_INDEXED_TAGS),
+              };
+            }
             return { id: "GLOBAL", forcedIndex: null, allowedTags: null };
           };
 
