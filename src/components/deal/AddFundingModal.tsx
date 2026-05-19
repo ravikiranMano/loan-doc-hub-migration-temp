@@ -728,6 +728,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Block over-funding: total of all lenders' funding amounts must not exceed
+    // the loan principal balance (with $0.50 tolerance).
+    if (totalPercentError) {
+      const over = projectedFundedTotal - principalBalanceNum;
+      toast.error(
+        `Funding exceeds loan principal balance by $${over.toFixed(2)}. Reduce the Funding Amount to continue.`
+      );
+      return;
+    }
     // Validation: Lender Rate vs Note Rate (Funding > Payment rules)
     const effectiveLenderRateStr = formData.lenderRateOverride
       ? (formData.lenderRateOverrideValue || '')
