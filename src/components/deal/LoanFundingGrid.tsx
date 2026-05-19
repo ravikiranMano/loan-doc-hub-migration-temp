@@ -303,12 +303,20 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
 
   // Effective loan principal balance (LOAN-LEVEL): single source of truth.
   // Bound directly to loan_terms.principal (Loan → Balances → Principal).
-  // No fallback to loanAmount — Loan Amount is no longer a UI field.
+  // Fallback: when principal is not yet entered, derive from the sum of
+  // lender Current Balances (or Funding Amounts) so Pro Rata still resolves
+  // for the user — otherwise denominator = 0 and every row shows 0.00%.
   const effectiveLoanPrincipal = React.useMemo(() => {
     const parsed = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, ''));
     if (!isNaN(parsed) && parsed > 0) return parsed;
-    return 0;
-  }, [loanPrincipalBalance]);
+    const sumCurrent = fundingRecords.reduce((s, r) => {
+      const cb = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
+        ? r.currentBalance
+        : (r.originalAmount || 0);
+      return s + (cb || 0);
+    }, 0);
+    return sumCurrent > 0 ? sumCurrent : 0;
+  }, [loanPrincipalBalance, fundingRecords]);
 
   // Strict tolerance: only floating-point rounding noise ($0.01) is allowed.
   const FUNDING_TOLERANCE = 0.01;
