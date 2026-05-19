@@ -554,20 +554,27 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const percentOwnedNum = parseFloat(formData.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
-  // Over-funded: total of ALL lenders' Funding Amounts must be ≤ Loan
-  // Principal Balance (with $0.50 tolerance). Validates funding amounts only —
-  // NOT current balance of the editing row — per spec.
-  const FUNDING_TOLERANCE = 0.5;
+  // Over-funded: total of ALL lenders' Funding Amounts AND Current Balances
+  // must each be ≤ Loan Principal Balance. Strict — only a $0.01 floating-point
+  // rounding tolerance is allowed so cent-level overages are blocked.
+  const FUNDING_TOLERANCE = 0.01;
   const thisLenderShare = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+  const thisLenderCurrentBalance = parseFloat((formData.currentBalance || '').replace(/[$,]/g, '')) || 0;
   const otherLendersCurrentTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
     .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+  const otherLendersCurrentBalanceTotal = existingRecords
+    .filter(r => r.id !== editingRecordId)
+    .reduce((sum, r) => sum + (Number(r.currentBalance) || 0), 0);
   const principalBalanceNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, ''))
     || parseFloat((loanAmount || '').replace(/[$,]/g, ''))
     || 0;
   const projectedFundedTotal = otherLendersCurrentTotal + thisLenderShare;
+  const projectedCurrentBalanceTotal = otherLendersCurrentBalanceTotal + thisLenderCurrentBalance;
   const totalPercentError = principalBalanceNum > 0
     && projectedFundedTotal > principalBalanceNum + FUNDING_TOLERANCE;
+  const currentBalanceTotalError = principalBalanceNum > 0
+    && projectedCurrentBalanceTotal > principalBalanceNum + FUNDING_TOLERANCE;
   // Legacy computed for any callers still reading it.
   const otherLendersTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
