@@ -246,14 +246,33 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     } catch { return null; }
   };
 
+  // Authoritative Lender Rate default priority chain:
+  //   P1 Override+manual → keep manual (handled by caller)
+  //   P2 Sold Rate > 0   → soldRate
+  //   P3 Note Rate > 0   → noteRate  (previously missing — caused blank Lender Rate)
+  //   P4 neither set     → '' (warn user)
+  const getDefaultLenderRate = (): string => {
+    const s = (soldRate || '').trim();
+    if (s !== '' && (parseFloat(s) || 0) > 0) return s;
+    const n = (noteRate || '').trim();
+    if (n !== '' && (parseFloat(n) || 0) > 0) return n;
+    return '';
+  };
+
   const getInitialFormData = (): FundingFormData => {
+    const defaultLR = getDefaultLenderRate();
     // 1. Restore unsaved draft (highest priority — preserves in-progress edits across tab switches)
     const draft = readDraft();
     if (draft) {
+      const draftOverride = !!draft.lenderRateOverride;
+      const draftLR = (draft.lenderRate || draft.rateLenderValue || '').trim();
+      const resolvedLR = draftOverride && draftLR !== ''
+        ? draftLR
+        : (draftLR !== '' && (parseFloat(draftLR) || 0) > 0 ? draftLR : defaultLR);
       const mergedDraft = {
         ...draft,
         rateSoldValue: soldRate || draft.rateSoldValue || '',
-        lenderRate: draft.lenderRate || soldRate || draft.rateLenderValue || '',
+        lenderRate: resolvedLR,
       };
       return {
         ...getDefaultFormData(loanNumber, borrowerName, noteRate, soldRate),
@@ -273,10 +292,17 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       };
     }
     if (editData) {
+      const editOverride = !!editData.lenderRateOverride;
+      const editLR = (editData.lenderRate || editData.rateLenderValue || '').trim();
+      // P1: respect saved override rate. Otherwise apply default chain
+      // (including repairing corrupted null/0 saved rates).
+      const resolvedLR = editOverride && editLR !== '' && (parseFloat(editLR) || 0) > 0
+        ? editLR
+        : defaultLR;
       const mergedEditData = {
         ...editData,
         rateSoldValue: soldRate || editData.rateSoldValue || '',
-        lenderRate: editData.lenderRate || soldRate || editData.rateLenderValue || '',
+        lenderRate: resolvedLR,
       };
       return {
         ...getDefaultFormData(loanNumber, borrowerName, noteRate, soldRate),
