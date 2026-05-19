@@ -421,7 +421,36 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
         <div className="space-y-3">
           <div className="border-b border-border pb-2 flex items-center justify-between gap-3">
             <span className="font-semibold text-sm text-primary">Senior Lien Tracking</span>
-            {renderCheckbox('sltActive', 'Active')}
+            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltActive}>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="sltActive"
+                  checked={lien.sltActive === 'true'}
+                  disabled={disabled}
+                  onCheckedChange={(checked) => {
+                    const on = !!checked;
+                    onChange('sltActive', on ? 'true' : 'false');
+                    if (!on) {
+                      // Cascade: uncheck all child checkboxes and clear all child field values
+                      const childCheckboxes: (keyof LienData)[] = [
+                        'sltCurrent', 'sltDelinquent', 'sltUnderModification',
+                        'sltForeclosure', 'sltPaidOff', 'sltUnableToVerify',
+                        'sltBorrowerNotified', 'sltLenderNotified',
+                      ];
+                      const childFields: (keyof LienData)[] = [
+                        'lastVerified', 'sltDelinquentDays', 'sltForeclosureDate',
+                        'sltLastPaymentMade', 'sltNextPaymentDue', 'sltCurrentBalance',
+                        'sltRequestSubmitted', 'sltResponseReceived',
+                        'sltBorrowerNotifiedDate', 'sltLenderNotifiedDate',
+                      ];
+                      childCheckboxes.forEach((k) => onChange(k, 'false'));
+                      childFields.forEach((k) => onChange(k, ''));
+                    }
+                  }}
+                />
+                <Label htmlFor="sltActive" className="text-sm text-foreground">Active</Label>
+              </div>
+            </DirtyFieldWrapper>
           </div>
 
           {(() => {
