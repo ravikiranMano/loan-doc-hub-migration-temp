@@ -386,7 +386,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     setFormData((prev) => {
       const nextSoldRate = (soldRate || '').trim();
       const nextNoteRate = (noteRate || '').trim();
-      const linkedRate = nextSoldRate !== '' ? nextSoldRate : nextNoteRate;
+      // Guard: a corrupt soldRate (e.g. 44 from a mis-mapped field) must not
+      // poison the lender rate. Fall through to noteRate when soldRate fails
+      // the mortgage-rate sanity check.
+      const soldRateSafe = isValidMortgageRate(nextSoldRate) ? nextSoldRate : '';
+      const noteRateSafe = isValidMortgageRate(nextNoteRate) ? nextNoteRate : '';
+      const linkedRate = soldRateSafe !== '' ? soldRateSafe : noteRateSafe;
 
       const overrideOn = !!prev.lenderRateOverride;
       const overrideVal = (prev.lenderRateOverrideValue || '').trim();
