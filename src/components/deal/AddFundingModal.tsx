@@ -381,25 +381,26 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     }
   }, [formData.lenderRate, formData.rateLenderValue]);
 
-  // Auto-compute Pro Rata (Percent Owned) = this lender's funding amount
-  // divided by the LOAN PRINCIPAL BALANCE (loan-level, not the sum of
-  // currently funded amounts). Prefers loanPrincipalBalance prop; falls back
-  // to loanAmount when principal hasn't been recorded yet.
+  // Auto-compute Pro Rata (Percent Owned) using the SAME formula as the
+  // Funding grid: Lender Current Balance / Loan Principal × 100. Stored at
+  // 6 decimal places (display layer rounds to 4dp + %). Falls back to
+  // fundingAmount when currentBalance has not yet been entered.
   React.useEffect(() => {
-    const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const principal = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
-    const loanAmt = principal > 0
-      ? principal
-      : (parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0);
-    if (loanAmt > 0 && fa > 0) {
-      const computed = roundPctForStorage(fa / loanAmt * 100);
+    const cb = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
+    const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const numerator = (!isNaN(cb) && cb > 0) ? cb : fa;
+    if (principal > 0 && numerator > 0) {
+      const computed = new Decimal(numerator).div(principal).mul(100)
+        .toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
-    } else if (fa === 0 && formData.percentOwned !== '') {
+    } else if (numerator === 0 && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.fundingAmount, loanAmount, loanPrincipalBalance]);
+  }, [formData.fundingAmount, formData.currentBalance, loanPrincipalBalance]);
+
 
   // Auto-default Current Balance from Original Funding minus disbursements (only when not manually edited)
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);
