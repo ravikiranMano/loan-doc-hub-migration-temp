@@ -8415,6 +8415,206 @@ async function generateSingleDocument(
       }
     }
 
+    // ── RE851D POST-RENDER PROPERTY TYPE row alignment + SDT checkbox pass ──
+    // Targets the 6 PROPERTY TYPE rows (3 left, 3 right) per property block
+    // and, for every paragraph whose visible text matches one of the labels:
+    //   1) strips stray <w:br/> runs (the COMMERCIAL & INCOME-PRODUCING row
+    //      is shipped with two extra <w:br/> elements before the glyph, which
+    //      vertically misaligns it against the SFR owner-occupied row);
+    //   2) forces <w:pPr><w:spacing/> to the exact reference attributes for
+    //      that row index (rows 1/2/3 -> before/after/line tuples);
+    //   3) wraps any plain-text checkbox glyph (☐/☑/☒) in a <w:sdt> content
+    //      control with <w14:checkbox>, preserving the checked state derived
+    //      from the existing glyph and the original <w:rPr>.
+    // Idempotent. Leaves placeholders, label text, alignment, tabs, indents,
+    // <w:rPr>, table grid, and column widths untouched.
+    if (/851d/i.test(template.name || "")) {
+      try {
+        const ROW_LABELS: Array<{ row: 1 | 2 | 3; label: RegExp }> = [
+          { row: 1, label: /SINGLE-FAMILY RESIDENCE \(owner occupied\)/i },
+          { row: 1, label: /COMMERCIAL\s*&(?:amp;)?\s*INCOME-PRODUCING/i },
+          { row: 2, label: /SINGLE-FAMILY RESIDENCE \(not owner occupied\)/i },
+          { row: 2, label: /LAND ZONED/i },
+          { row: 3, label: /SINGLE-FAMILY RESIDENCE \(zoned residential lot\/parcel\)/i },
+          { row: 3, label: /LAND INCOME PRODUCING/i },
+        ];
+        const ROW_SPACING: Record<1 | 2 | 3, string> = {
+          1: `<w:spacing w:before="26" w:after="100" w:line="181" w:lineRule="auto"/>`,
+          2: `<w:spacing w:before="12" w:after="100" w:line="181" w:lineRule="auto"/>`,
+          3: `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`,
+        };
+
+        const detectRow = (visible: string): 1 | 2 | 3 | null => {
+          for (const r of ROW_LABELS) {
+            if (r.label.test(visible)) return r.row;
+          }
+          return null;
+        };
+
+        const setRowSpacing = (para: string, row: 1 | 2 | 3): string => {
+          const spacingXml = ROW_SPACING[row];
+          const open = para.match(/^<w:p\b[^>]*>/);
+          if (!open) return para;
+          const pprRe = /<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/;
+          const pprMatch = para.match(pprRe);
+          if (!pprMatch) {
+            // Insert a fresh pPr right after <w:p ...>
+            return para.replace(
+              open[0],
+              `${open[0]}<w:pPr>${spacingXml}</w:pPr>`,
+            );
+          }
+          const inner = pprMatch[1];
+          if (/<w:spacing\b[^/]*\/>/.test(inner)) {
+            const newInner = inner.replace(
+              /<w:spacing\b[^/]*\/>/,
+              spacingXml,
+            );
+            return para.replace(pprMatch[0], `<w:pPr>${newInner}</w:pPr>`);
+          }
+          // Insert spacing after pStyle/numPr if present, else at start.
+          let newInner = inner;
+          if (/<w:numPr\b[^>]*>[\s\S]*?<\/w:numPr>/.test(newInner)) {
+            newInner = newInner.replace(
+              /(<\/w:numPr>)/,
+              `$1${spacingXml}`,
+            );
+          } else if (/<w:pStyle\b[^/]*\/>/.test(newInner)) {
+            newInner = newInner.replace(
+              /(<w:pStyle\b[^/]*\/>)/,
+              `$1${spacingXml}`,
+            );
+          } else {
+            newInner = spacingXml + newInner;
+          }
+          return para.replace(pprMatch[0], `<w:pPr>${newInner}</w:pPr>`);
+        };
+
+        const GLYPH_RE = /[\u2610\u2611\u2612]/;
+        let __sdtCounter = 900000;
+
+        const wrapPlainGlyphs = (para: string): string => {
+          // Match a <w:r> ... </w:r> whose <w:t> body contains a single
+          // checkbox glyph and nothing else but optional whitespace. Skip
+          // runs that are already inside <w:sdt>...</w:sdt> by parsing
+          // sdt boundaries first.
+          const sdtRanges: Array<[number, number]> = [];
+          const sdtRe = /<w:sdt\b[\s\S]*?<\/w:sdt>/g;
+          let sm: RegExpExecArray | null;
+          while ((sm = sdtRe.exec(para)) !== null) {
+            sdtRanges.push([sm.index, sm.index + sm[0].length]);
+          }
+          const inSdt = (pos: number): boolean =>
+            sdtRanges.some(([s, e]) => pos >= s && pos < e);
+
+          const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+          const out: string[] = [];
+          let cursor = 0;
+          let rm: RegExpExecArray | null;
+          while ((rm = runRe.exec(para)) !== null) {
+            if (inSdt(rm.index)) continue;
+            const runXml = rm[0];
+            const tMatch = runXml.match(
+              /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/,
+            );
+            if (!tMatch) continue;
+            const body = tMatch[1];
+            const glyphMatch = body.match(GLYPH_RE);
+            if (!glyphMatch) continue;
+            // Only wrap when the run's text is JUST the glyph (with optional
+            // surrounding whitespace). Mixed-content runs are left alone so
+            // we never split label runs in half.
+            if (!/^[\s\u00A0]*[\u2610\u2611\u2612][\s\u00A0]*$/.test(body)) {
+              continue;
+            }
+            const glyph = glyphMatch[0];
+            const checked = glyph === "\u2610" ? 0 : 1;
+            const id = ++__sdtCounter;
+            const sdt =
+              `<w:sdt>` +
+              `<w:sdtPr>` +
+              `<w:id w:val="${id}"/>` +
+              `<w14:checkbox>` +
+              `<w14:checked w14:val="${checked}"/>` +
+              `<w14:checkedState w14:val="2612" w14:font="MS Gothic"/>` +
+              `<w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/>` +
+              `</w14:checkbox>` +
+              `</w:sdtPr>` +
+              `<w:sdtContent>${runXml}</w:sdtContent>` +
+              `</w:sdt>`;
+            out.push(para.slice(cursor, rm.index));
+            out.push(sdt);
+            cursor = rm.index + runXml.length;
+          }
+          if (out.length === 0) return para;
+          out.push(para.slice(cursor));
+          return out.join("");
+        };
+
+        const unzipped = __passUnzip(processedDocx);
+        const rezip: fflate.Zippable = {};
+        let didMutate = false;
+        for (const [filename, bytes] of Object.entries(unzipped)) {
+          const isContent =
+            filename === "word/document.xml" ||
+            filename.startsWith("word/header") ||
+            filename.startsWith("word/footer");
+          if (!isContent) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let xml = __xmlGet(filename, bytes);
+          if (
+            !/SINGLE-FAMILY RESIDENCE|COMMERCIAL|LAND ZONED|LAND INCOME PRODUCING/i
+              .test(xml)
+          ) {
+            rezip[filename] = [bytes, { level: 0 }];
+            continue;
+          }
+          let count = 0;
+          const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+          xml = xml.replace(paraRe, (para) => {
+            const visible = para
+              .replace(/<w:tab\s*\/?>/g, " ")
+              .replace(/<w:br\s*\/?>/g, " ")
+              .replace(/<[^>]+>/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
+            const row = detectRow(visible);
+            if (!row) return para;
+            let next = para;
+            // 1) Strip stray <w:br/> runs from the row.
+            next = next.replace(/<w:br\s*\/?>/g, "");
+            // 2) Force exact spacing for the row index.
+            next = setRowSpacing(next, row);
+            // 3) Promote plain-text glyph runs to <w:sdt><w14:checkbox/></w:sdt>.
+            next = wrapPlainGlyphs(next);
+            if (next !== para) count++;
+            return next;
+          });
+          if (count > 0) {
+            rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            didMutate = true;
+            debugLog(
+              `[generate-document] RE851D post-render property-type alignment pass: ${count} row(s) normalized in ${filename}`,
+            );
+          } else {
+            rezip[filename] = [bytes, { level: 0 }];
+          }
+        }
+        if (didMutate) {
+          processedDocx = __passZip(rezip);
+        }
+      } catch (postErr) {
+        console.error(
+          `[generate-document] RE851D post-render property-type alignment pass failed (continuing):`,
+          postErr instanceof Error ? postErr.message : String(postErr),
+        );
+      }
+    }
+
+
+
 
 
 
