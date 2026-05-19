@@ -1537,7 +1537,12 @@ function evaluateEqExpression(
   validFieldKeys?: Set<string>,
 ): boolean | null {
   // (eq FIELD LITERAL) — LITERAL is bareword OR "..." OR '...'
-  const m = expr.match(/^\s*eq\s+([A-Za-z0-9_.]+)\s+(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.\-]+))\s*$/i);
+  // Tolerate Word-autocorrected smart quotes around the literal.
+  const normalizedExpr = expr
+    .replace(/&quot;/g, '"')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+  const m = normalizedExpr.match(/^\s*eq\s+([A-Za-z0-9_.]+)\s+(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.\-]+))\s*$/i);
   if (!m) return null;
   const fieldKey = m[1];
   const literal = (m[2] ?? m[3] ?? m[4] ?? "").trim();
@@ -1883,8 +1888,12 @@ export function processConditionalBlocks(
       (result.indexOf('(ne') !== -1 && result.indexOf('(ne ') !== -1)
     );
     // Match either `eq` or `ne` heads. `ne` is treated as the negation of `eq`.
-    const eqIfPattern = /\{\{#if\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/if\}\}/;
-    const eqUnlessPattern = /\{\{#unless\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/unless\}\}/;
+    // Literal forms accepted: &quot;…&quot;, "…", '…', smart-quoted “…”/‘…’,
+    // or a bareword. Word's autocorrect frequently converts straight quotes
+    // around the LITERAL into curly quotes (U+201C/U+201D, U+2018/U+2019) —
+    // without smart-quote support every conditional silently falls through.
+    const eqIfPattern = /\{\{#if\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/if\}\}/;
+    const eqUnlessPattern = /\{\{#unless\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/unless\}\}/;
     const eqIfMatch = hasEqSexp ? eqIfPattern.exec(result) : null;
     const eqUnlessMatch = hasEqSexp ? eqUnlessPattern.exec(result) : null;
     if (eqIfMatch || eqUnlessMatch) {
@@ -1892,7 +1901,10 @@ export function processConditionalBlocks(
       const m = (useUnless ? eqUnlessMatch : eqIfMatch) as RegExpExecArray;
       // Convert (ne FIELD LIT) to (eq FIELD LIT) for evaluation, then negate.
       const head = m[2].toLowerCase();
-      const eqExpr = (head === 'ne' ? m[1].replace(/^\s*ne\b/i, 'eq') : m[1]).replace(/&quot;/g, '"');
+      const eqExpr = (head === 'ne' ? m[1].replace(/^\s*ne\b/i, 'eq') : m[1])
+        .replace(/&quot;/g, '"')
+        .replace(/[\u201C\u201D]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'");
       let truthyEval = evaluateEqExpression(eqExpr, fieldValues, mergeTagMap, validFieldKeys) ?? false;
       if (head === 'ne') truthyEval = !truthyEval;
       const truthy = useUnless ? !truthyEval : truthyEval;
