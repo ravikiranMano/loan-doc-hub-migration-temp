@@ -310,8 +310,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return 0;
   }, [loanPrincipalBalance]);
 
-  // Configurable tolerance for penny-rounding (default $0.50).
-  const FUNDING_TOLERANCE = 0.5;
+  // Strict tolerance: only floating-point rounding noise ($0.01) is allowed.
+  const FUNDING_TOLERANCE = 0.01;
 
   // Borrower Regular P&I Payment (from Terms & Balances → Payments).
   // Source of truth for per-lender Payment calculation:
