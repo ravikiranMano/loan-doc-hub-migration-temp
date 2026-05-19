@@ -138,39 +138,27 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     return loanAmount + oneMonthInterest;
   }, [values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
 
-  // Auto-calculate Regular P & I Payment based on loan amount, note rate,
-  // number of payments, and payment frequency (standard amortization formula).
-  const PERIODS_PER_YEAR: Record<string, number> = {
-    monthly: 12,
-    bi_weekly: 26,
-    weekly: 52,
-    quarterly: 4,
-    annually: 1,
-    semi_annually: 2,
-  };
-
+  // Regular P & I Payment = sum of `regularPayment` across funding records.
+  // Mirrors the "Payment" column total shown at the bottom of the Funding grid.
+  // The amortization formula previously used here has been removed; the value
+  // is now sourced strictly from the saved funding records.
   const computedRegularPayment = useMemo(() => {
-    const principal = parseNum(FIELD_KEYS.loanAmount);
-    const annualRatePct = parseNum(FIELD_KEYS.noteRate);
-    const n = parseNum(FIELD_KEYS.numberOfPayments);
-    const freq = getValue(FIELD_KEYS.paymentFrequency);
-    const periodsPerYear = PERIODS_PER_YEAR[freq];
-    if (!principal || !n || !periodsPerYear) return null;
-    const r = (annualRatePct / 100) / periodsPerYear;
-    let pmt: number;
-    if (r === 0) {
-      pmt = principal / n;
-    } else {
-      pmt = (principal * r) / (1 - Math.pow(1 + r, -n));
+    const raw = values['loan_terms.funding_records'];
+    if (!raw) return null;
+    let records: any[] = [];
+    try {
+      records = typeof raw === 'string' ? JSON.parse(raw) : (raw as any);
+    } catch {
+      return null;
     }
-    if (!isFinite(pmt) || pmt <= 0) return null;
-    return pmt.toFixed(2);
-  }, [
-    values[FIELD_KEYS.loanAmount],
-    values[FIELD_KEYS.noteRate],
-    values[FIELD_KEYS.numberOfPayments],
-    values[FIELD_KEYS.paymentFrequency],
-  ]);
+    if (!Array.isArray(records) || records.length === 0) return null;
+    const sum = records.reduce((acc, r) => {
+      const v = parseFloat(String(r?.regularPayment ?? '').replace(/[$,]/g, ''));
+      return acc + (isNaN(v) ? 0 : v);
+    }, 0);
+    if (!isFinite(sum) || sum <= 0) return null;
+    return sum.toFixed(2);
+  }, [values['loan_terms.funding_records']]);
 
   useEffect(() => {
     if (disabled) return;
