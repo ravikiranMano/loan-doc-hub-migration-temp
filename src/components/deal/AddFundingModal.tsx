@@ -747,6 +747,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         }
       }
     }
+    // Duplicate-lender warning: allow but confirm if this lender already has a funding record
+    const currentLenderId = (formData.lenderId || '').trim();
+    if (currentLenderId) {
+      const dup = existingRecords.find(r => r.id !== editingRecordId && (r.lenderId || '').trim() === currentLenderId);
+      if (dup) {
+        setDuplicateLender({ lenderId: currentLenderId, lenderName: dup.lenderName || formData.lenderFullName || '' });
+        return;
+      }
+    }
     setShowConfirm(true);
   };
   const handleConfirmSave = () => {
