@@ -343,7 +343,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   // Note Rate, Sold Rate, and Lender Rate are dynamically linked.
   // Source of truth: Sold Rate (falls back to Note Rate when Sold is empty).
-  // Lender Rate continuously mirrors the source unless the user has enabled Override.
+  // When Override is ON, lenderRate mirrors lenderRateOverrideValue (the editable
+  // override input) so all in-modal downstream calculations (interest share,
+  // NR/Sit split, payment) immediately use the overridden rate. When Override
+  // is OFF, lenderRate mirrors Sold Rate (falling back to Note Rate).
   React.useEffect(() => {
     if (!open) return;
 
@@ -353,8 +356,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       const linkedRate = nextSoldRate !== '' ? nextSoldRate : nextNoteRate;
 
       const overrideOn = !!prev.lenderRateOverride;
+      const overrideVal = (prev.lenderRateOverrideValue || '').trim();
+      const effectiveRate = overrideOn ? overrideVal : linkedRate;
+
       const shouldSyncLenderRate =
-        !overrideOn && linkedRate !== '' && prev.lenderRate !== linkedRate;
+        effectiveRate !== '' && prev.lenderRate !== effectiveRate;
       const soldChanged = prev.rateSoldValue !== nextSoldRate;
       const noteChanged = (prev.rateNoteValue || '') !== nextNoteRate;
       const noteDisplayChanged = (prev.noteRateDisplay || '') !== nextNoteRate;
@@ -369,11 +375,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         rateNoteValue: nextNoteRate || prev.rateNoteValue,
         noteRateDisplay: nextNoteRate || prev.noteRateDisplay,
         ...(shouldSyncLenderRate
-          ? { lenderRate: linkedRate, rateLenderValue: linkedRate }
+          ? { lenderRate: effectiveRate, rateLenderValue: effectiveRate }
           : {}),
       };
     });
-  }, [open, soldRate, noteRate]);
+  }, [open, soldRate, noteRate, formData.lenderRateOverride, formData.lenderRateOverrideValue]);
 
   // Auto-save in-progress form to sessionStorage on every change (so tab-switch/close keeps the draft).
   // Cleared explicitly on successful save (handleConfirmSave) — Cancel keeps the draft so user can resume.
