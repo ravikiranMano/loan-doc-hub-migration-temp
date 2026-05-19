@@ -30,6 +30,14 @@ const FK = {
   tp_zip: 'origination_svc.third_party.zip',
   tp_phone: 'origination_svc.third_party.phone',
   tp_email: 'origination_svc.third_party.email',
+  // Company Properties
+  cp_name: 'origination_svc.company.name',
+  cp_street: 'origination_svc.company.street',
+  cp_city: 'origination_svc.company.city',
+  cp_state: 'origination_svc.company.state',
+  cp_zip: 'origination_svc.company.zip',
+  cp_phone: 'origination_svc.company.phone',
+  cp_email: 'origination_svc.company.email',
   // Send Payments To
   sp_same_as_tp: 'origination_svc.send_payments.same_as_third_party',
   sp_name: 'origination_svc.send_payments.name',
