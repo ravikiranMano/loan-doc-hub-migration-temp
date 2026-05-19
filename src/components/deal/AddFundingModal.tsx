@@ -259,6 +259,28 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     return '';
   };
 
+  // Sanity guard: a mortgage rate can never legitimately exceed 100%.
+  // Any value above this threshold indicates a wrong field was mapped
+  // into lenderRate (e.g. hold_days = 44, term in months, fee amount).
+  // Returns true when the rate is a valid mortgage rate (> 0 and <= 100).
+  const isValidMortgageRate = (raw: unknown): boolean => {
+    if (raw === null || raw === undefined) return false;
+    const s = String(raw).trim();
+    if (s === '') return false;
+    const n = parseFloat(s.replace(/[%,]/g, ''));
+    if (!Number.isFinite(n)) return false;
+    if (n <= 0) return false;
+    if (n > 100) {
+      console.error(
+        '[AddFundingModal] Lender Rate sanity check failed:',
+        n,
+        '— value exceeds 100%, likely a wrong field mapping. Falling back to default.'
+      );
+      return false;
+    }
+    return true;
+  };
+
   const getInitialFormData = (): FundingFormData => {
     const defaultLR = getDefaultLenderRate();
     // 1. Restore unsaved draft (highest priority — preserves in-progress edits across tab switches)
@@ -266,13 +288,21 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     if (draft) {
       const draftOverride = !!draft.lenderRateOverride;
       const draftLR = (draft.lenderRate || draft.rateLenderValue || '').trim();
-      const resolvedLR = draftOverride && draftLR !== ''
-        ? draftLR
-        : (draftLR !== '' && (parseFloat(draftLR) || 0) > 0 ? draftLR : defaultLR);
+      const draftOverrideVal = (draft.lenderRateOverrideValue || '').trim();
+      // Apply sanity guard: reject any saved/draft value > 100% even when
+      // override is on (a manual override of 44 would still be corruption).
+      const resolvedLR = draftOverride && isValidMortgageRate(draftOverrideVal)
+        ? draftOverrideVal
+        : (isValidMortgageRate(draftLR) ? draftLR : defaultLR);
       const mergedDraft = {
         ...draft,
         rateSoldValue: soldRate || draft.rateSoldValue || '',
         lenderRate: resolvedLR,
+        // If the override value itself is corrupt, clear it so the modal
+        // doesn't re-show 44 the next time override is toggled on.
+        lenderRateOverrideValue: draftOverride && isValidMortgageRate(draftOverrideVal)
+          ? draftOverrideVal
+          : '',
       };
       return {
         ...getDefaultFormData(loanNumber, borrowerName, noteRate, soldRate),
@@ -294,11 +324,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     if (editData) {
       const editOverride = !!editData.lenderRateOverride;
       const editLR = (editData.lenderRate || editData.rateLenderValue || '').trim();
-      // P1: respect saved override rate. Otherwise apply default chain
-      // (including repairing corrupted null/0 saved rates).
-      const resolvedLR = editOverride && editLR !== '' && (parseFloat(editLR) || 0) > 0
-        ? editLR
-        : defaultLR;
+      const editOverrideVal = (editData.lenderRateOverrideValue || '').trim();
+      // P1: respect saved override rate when valid. Otherwise apply default chain
+      // (repairing corrupted null/0/>100% saved rates).
+      const resolvedLR = editOverride && isValidMortgageRate(editOverrideVal)
+        ? editOverrideVal
+        : (isValidMortgageRate(editLR) ? editLR : defaultLR);
       const mergedEditData = {
         ...editData,
         rateSoldValue: soldRate || editData.rateSoldValue || '',
