@@ -199,7 +199,10 @@ const TaxReportingCard: React.FC<TaxReportingCardProps> = ({
 
   const tinError = useMemo(() => {
     if (!tinNumber) return '';
-    return isValidTIN(tinNumber, tinType) ? '' : 'Format must meet selected TIN Type';
+    if (isValidTIN(tinNumber, tinType)) return '';
+    if (tinType === '2') return 'Please enter a valid SSN (XXX-XX-XXXX)';
+    if (tinType === '1') return 'Please enter a valid EIN (XX-XXXXXXX)';
+    return '';
   }, [tinNumber, tinType]);
 
   const tinPlaceholder =
