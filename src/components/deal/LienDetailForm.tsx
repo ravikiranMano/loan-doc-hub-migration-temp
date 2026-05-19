@@ -424,7 +424,7 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
             {renderCheckbox('sltActive', 'Active')}
           </div>
 
-          {renderField('lastVerified', 'Last Verified', { type: 'date' })}
+          {renderField('lastVerified', 'Last Verified', { type: 'date' }, lien.sltActive !== 'true')}
 
           <div className="flex items-center gap-3">
             <Label className="text-sm font-semibold text-foreground min-w-[140px] text-left shrink-0">Status</Label>
