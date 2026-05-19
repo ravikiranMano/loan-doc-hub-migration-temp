@@ -1,44 +1,56 @@
-## Goal
+## RE851D PROPERTY TYPE — alignment & checkbox normalization
 
-In the Contacts area, display the "Agreement on File" date in `MM/DD/YYYY` format wherever it appears, persist the value through the existing save/update API, and have the saved value populate back into the form after save. No schema/API changes.
+Extend the existing post-render passes in `supabase/functions/generate-document/index.ts` with a new RE851D-scoped safety pass that fixes the PROPERTY TYPE block (question 4) without touching template variables, glyph state, table structure, or column widths.
 
-## Current State
+### Scope
 
-- The only editable Agreement on File date input lives in `src/components/contacts/CreateContactModal.tsx` (line 564–569, Broker form), implemented as a native `<Input type="date" />`. Native date inputs always render in the browser locale (often `YYYY-MM-DD`), not `MM/DD/YYYY`.
-- Storage uses key `agreement_on_file_date` inside `contact_data` JSONB, persisted via the existing `useContactsCrud` create/update path. No backend changes needed.
-- The detail forms (Borrower / Lender / Broker) currently only render the Agreement checkbox, not the date — so nothing to change there for this request.
-- Grid columns (`ContactBrokersPage`, `ContactBorrowersPage`, `ContactLendersPage`) read `agreement_on_file_date` (broker) / `servicing_agreement_on_file_date` (lender) and display whatever raw string is in `contact_data` — currently `YYYY-MM-DD`.
+- Applies only when `template.name` matches `/851d/i`.
+- Operates on `word/document.xml`, headers, and footers — same envelope used by the existing PROPERTY TYPE spacing pass at lines 8308–8416.
+- Runs across every paragraph that visibly belongs to a PROPERTY TYPE row, so all 5 per-property instances are normalized in one pass.
 
-## Change (single file: `src/components/contacts/CreateContactModal.tsx`)
+### Row detection
 
-Replace the native `<Input type="date">` at lines 564–569 with the standard `EnhancedCalendar` popover pattern already used elsewhere in the project (per the `mem://ui/forms/enhanced-calendar-standard` and `mem://ui/forms/standard-date-display-format` memories):
+A paragraph qualifies as a PROPERTY TYPE row when its visible text contains exactly one of the 6 right/left-column labels:
 
-- Trigger button shows the value formatted as `MM/DD/YYYY` (or placeholder when empty), using `format(parseDateOnly(value), 'MM/dd/yyyy')` from `@/lib/dateOnly` + `date-fns`.
-- Popover contains `EnhancedCalendar`; selection writes back to state via `set('agreement_on_file_date', formatDateOnly(date, 'yyyy-MM-dd'))` so the backend value stays the canonical `yyyy-MM-dd` string and existing save/update APIs continue to work unchanged.
-- Keep the existing checkbox + label layout, width classes, and height (`h-7 text-xs flex-1`) so the surrounding UI is untouched.
+- Left column: `SINGLE-FAMILY RESIDENCE (owner occupied)`, `SINGLE-FAMILY RESIDENCE (not owner occupied)`, `SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)`
+- Right column: `COMMERCIAL & INCOME-PRODUCING`, `LAND ZONED`, `LAND INCOME PRODUCING` (paired with `OTHER`)
 
-## Grid display
+Rows are grouped by visible-label match — independent of where the paragraph sits in the table — so the pass is idempotent and works on all 5 instances.
 
-In the three grid pages where `agreement_on_file_date` / `servicing_agreement_on_file_date` columns are rendered, format the cell value with `parseDateOnly(...) → format(..., 'MM/dd/yyyy')` so the saved value populates back as `MM/DD/YYYY`. Files:
-- `src/pages/contacts/ContactBrokersPage.tsx` (column `agreement_on_file_date`)
-- `src/pages/contacts/ContactBorrowersPage.tsx` (column `agreement_on_file_date`)
-- `src/pages/contacts/ContactLendersPage.tsx` (column `servicing_agreement_on_file_date`)
+### Fix steps per qualifying paragraph
 
-Only the render formatter is touched — column id, label, visibility, sorting, and filter logic stay as-is.
+1. **Strip stray `<w:br/>` runs** anywhere inside the paragraph (the existing PROPERTY TYPE pass already strips `<w:br/>` from rows that begin with a glyph; this pass widens the gate to also catch the `COMMERCIAL & INCOME-PRODUCING` row whose paragraph begins with an SDT/plain-text checkbox where the leading glyph detection misses).
 
-## Persistence
+2. **Force the spacing element** inside `<w:pPr>` to the exact reference values, matching the row index:
+   - Row 1 (owner occupied / commercial): `<w:spacing w:before="26" w:after="100" w:line="181" w:lineRule="auto"/>`
+   - Row 2 (not owner occupied / land zoned): `<w:spacing w:before="12" w:after="100" w:line="181" w:lineRule="auto"/>`
+   - Row 3 (zoned residential lot / land income producing + other): `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`
+   - If `<w:pPr>` is missing, insert one; if `<w:spacing>` is missing, insert it in schema-correct position; if present, replace its attributes only.
 
-No new state, hook, table, or endpoint. Save flows through the existing `useContactsCrud` mutation that already writes `agreement_on_file_date` into `contact_data`. After save, the modal closes and the grid/detail re-renders the saved value (now formatted via the grid formatter above).
+3. **Promote plain-text checkbox glyphs to SDT content controls.** When the paragraph contains a `☐` / `☑` / `☒` character as a plain `<w:t>` run (not already wrapped in `<w:sdt>` with a `<w14:checkbox>`), replace that run with a `<w:sdt>` block carrying:
+   - `<w:sdtPr>` → `<w14:checkbox><w14:checked w14:val="1|0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox>` plus a stable `<w:id/>`
+   - `<w:sdtContent>` containing the original `<w:r>` with the glyph preserved
+   - `w14:checked` value derived from the existing glyph (`☑`/`☒` → 1, `☐` → 0) so the checked state is unchanged
+   - Original `<w:rPr>` (font/size/color) is carried over verbatim
 
-## Out of Scope
+4. Leave untouched: glyph state (other than wrapping), `{{...}}` placeholders, label text, column widths, table grid, alignment/tabs/indent, `<w:rPr>`.
 
-- Detail forms (Borrower / Lender / Broker) are not modified — they don't currently expose this date field.
-- No changes to `field_dictionary`, RLS, edge functions, document generation, or any other module.
-- No changes to other date inputs (e.g. `date_authorized` on line 790) — only the Agreement on File date per the request.
+### Ordering & integration
 
-## Verification
+- Insert immediately AFTER the existing "RE851D POST-RENDER PROPERTY TYPE checkbox spacing safety pass" (ends line 8416) and BEFORE the encumbrance-question cleanup at 8422.
+- Uses the same `__passUnzip` / `__passZip` / `__xmlGet` / `__xmlSet` helpers and `debugLog` pattern as neighboring passes.
+- Reassigns `processedDocx` only when the pass actually mutates at least one paragraph; otherwise no-op.
+- Wrapped in try/catch so a regex failure logs and continues, matching the surrounding pass style.
 
-1. Open Create Contact → Broker, click Agreement on File date → calendar opens, pick a date → trigger displays `MM/DD/YYYY`.
-2. Save the contact → modal closes, broker grid row shows the date as `MM/DD/YYYY`.
-3. Reopen the broker (refresh) → value still present and `MM/DD/YYYY` formatted.
-4. Borrower and Lender grids show their respective agreement dates in `MM/DD/YYYY` when present.
+### Verification
+
+- Re-run RE851D generation on a 5-property deal; download the docx; unzip; for each of the 5 PROPERTY TYPE blocks confirm:
+  - Zero `<w:br/>` inside any of the 6 row paragraphs
+  - Spacing attributes match the 3-tier table above
+  - Every checkbox glyph is inside `<w:sdt>` with `<w14:checkbox>`
+  - `{{property_type_*_N}}` placeholders untouched, checked/unchecked state preserved
+- Confirm idempotency: running the pass twice yields identical XML on the second run.
+
+### Files touched
+
+- `supabase/functions/generate-document/index.ts` — single additive block (~120 lines) following the established post-render-pass pattern. No schema, no API, no UI, no template storage changes.
