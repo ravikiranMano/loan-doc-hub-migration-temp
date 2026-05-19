@@ -234,6 +234,7 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
   if (selectedContact) {
     return (
       <AuthorizedPartyDetail
+        key={selectedContact.id}
         contact={selectedContact}
         onBack={() => {
           setSelectedContact(null);
