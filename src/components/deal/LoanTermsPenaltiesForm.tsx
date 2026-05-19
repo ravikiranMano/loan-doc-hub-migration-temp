@@ -375,7 +375,7 @@ const LateFeeColumn: React.FC<{
               onValueChange(`${prefix}.enabled`, next ? 'true' : 'false');
               if (!next) {
                 // Reset all fields in this Late Fee column to 0 / empty when unchecked
-                onValueChange(`${prefix}.type`, '0.00');
+                onValueChange(`${prefix}.type`, '');
                 onValueChange(`${prefix}.grace_period`, '0');
                 onValueChange(`${prefix}.calendar_actual`, '0');
                 onValueChange(`${prefix}.minimum_late_fee`, '0.00');
@@ -394,11 +394,48 @@ const LateFeeColumn: React.FC<{
 
       <div className="space-y-2">
         <FieldRow label="Type" fieldKey={`${prefix}.type`}>
-          <PenaltyCurrencyInput
-            value={values[`${prefix}.type`] || ''}
-            onChange={(val) => onValueChange(`${prefix}.type`, val)}
-            disabled={disabled || !isEnabled}
-          />
+          {(() => {
+            const LATE_FEE_TYPE_OPTIONS: { value: string; label: string }[] = [
+              { value: 'fixed_amount', label: 'Fixed Amount' },
+              { value: 'percentage_of_outstanding_balance', label: 'Percentage of Outstanding Balance' },
+              { value: 'daily_fee', label: 'Daily Fee' },
+              { value: 'one_time_fee', label: 'One-Time Fee' },
+              { value: 'monthly_fee', label: 'Monthly Fee' },
+            ];
+            const raw = values[`${prefix}.type`] || '';
+            // Legacy numeric values (e.g. "0.00") are not valid selections — treat as empty.
+            const isLegacyNumeric = raw !== '' && !LATE_FEE_TYPE_OPTIONS.some(o => o.value === raw);
+            const current = isLegacyNumeric ? '' : raw;
+            const isDisabled = disabled || !isEnabled;
+            return (
+              <div className="flex items-center gap-1">
+                <Select
+                  value={current || undefined}
+                  onValueChange={(v) => onValueChange(`${prefix}.type`, v)}
+                  disabled={isDisabled}
+                >
+                  <SelectTrigger className="h-7 text-xs">
+                    <SelectValue placeholder="Select late fee type" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[9999] bg-popover">
+                    {LATE_FEE_TYPE_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {current && !isDisabled && (
+                  <button
+                    type="button"
+                    aria-label="Clear late fee type"
+                    onClick={() => onValueChange(`${prefix}.type`, '')}
+                    className="text-muted-foreground hover:text-foreground text-xs px-1"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </FieldRow>
         <FieldRow label="Grace Period" fieldKey={`${prefix}.grace_period`}>
           <PenaltyIntegerInput
