@@ -550,18 +550,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const percentOwnedNum = parseFloat(formData.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
-  // Over-funded: total funding $ across all lenders exceeds loan principal
-  // balance beyond a $0.50 tolerance. Replaces the old "> 100% ownership"
-  // check which incorrectly assumed the loan was always fully funded.
+  // Over-funded: total of ALL lenders' Funding Amounts must be ≤ Loan
+  // Principal Balance (with $0.50 tolerance). Validates funding amounts only —
+  // NOT current balance of the editing row — per spec.
   const FUNDING_TOLERANCE = 0.5;
-  const currentBalanceNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
-  const currentFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-  const thisLenderShare = (!isNaN(currentBalanceNum) && currentBalanceNum > 0)
-    ? currentBalanceNum
-    : currentFundingAmount;
+  const thisLenderShare = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
   const otherLendersCurrentTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
-    .reduce((sum, r) => sum + (Number((r as any).currentBalance) || Number(r.originalAmount) || 0), 0);
+    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
   const principalBalanceNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, ''))
     || parseFloat((loanAmount || '').replace(/[$,]/g, ''))
     || 0;
