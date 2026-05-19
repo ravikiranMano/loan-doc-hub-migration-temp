@@ -1,56 +1,82 @@
-## RE851D PROPERTY TYPE — alignment & checkbox normalization
+## RE851D PROPERTY TYPE — finish the alignment pass (instances 3, 4, 5)
 
-Extend the existing post-render passes in `supabase/functions/generate-document/index.ts` with a new RE851D-scoped safety pass that fixes the PROPERTY TYPE block (question 4) without touching template variables, glyph state, table structure, or column widths.
+The existing post-render passes in `supabase/functions/generate-document/index.ts` (lines 8308–8416 spacing pass, 8418–~8620 row/SDT pass) only catch the left-column rows and the COMMERCIAL row when the visible text already begins with a glyph. They miss the failures the user is still seeing on instances 3, 4, and 5 because:
 
-### Scope
+- The `ROW_LABELS` regexes target `LAND ZONED` / `LAND INCOME PRODUCING`, but the template ships the labels as `LAND (zoned commercial/residential)` and `LAND (income-producing)` — so those rows never match.
+- The wrap-plain-glyph helper only fires on runs whose `<w:t>` body is *just* the glyph; the LAND (income-producing) row stores it as `<w:t>☐ </w:t>` mixed with a trailing space and is followed by a separate label run, so it slips through.
+- Instance 5 stores `☐ LAND (income-producing) ☐ OTHER: property_type_other_text_N}` as a single concatenated text run with no paragraph break and a malformed placeholder.
 
-- Applies only when `template.name` matches `/851d/i`.
-- Operates on `word/document.xml`, headers, and footers — same envelope used by the existing PROPERTY TYPE spacing pass at lines 8308–8416.
-- Runs across every paragraph that visibly belongs to a PROPERTY TYPE row, so all 5 per-property instances are normalized in one pass.
+Extend the second pass (the row alignment + SDT pass that already starts at 8418) so it owns every one of the 5 issues. Single additive block, no schema/UI/template-storage changes.
 
-### Row detection
+### 1. Fix row-label coverage
 
-A paragraph qualifies as a PROPERTY TYPE row when its visible text contains exactly one of the 6 right/left-column labels:
+Replace the right-column entries in `ROW_LABELS`:
+- row 1 → `/COMMERCIAL\s*&(?:amp;)?\s*INCOME[-\s]?PRODUCING/i`
+- row 2 → `/LAND\s*\(zoned\s+commercial\/residential\)/i`
+- row 3 → `/LAND\s*\(income[-\s]?producing\)/i`
+- row 3 also → `/^OTHER:/i` (so the OTHER row is normalized too)
 
-- Left column: `SINGLE-FAMILY RESIDENCE (owner occupied)`, `SINGLE-FAMILY RESIDENCE (not owner occupied)`, `SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)`
-- Right column: `COMMERCIAL & INCOME-PRODUCING`, `LAND ZONED`, `LAND INCOME PRODUCING` (paired with `OTHER`)
+Keep the left-column entries as they are. Add the same labels to the `xml` early-exit gate at line 8568.
 
-Rows are grouped by visible-label match — independent of where the paragraph sits in the table — so the pass is idempotent and works on all 5 instances.
+### 2. PROBLEM 1 — strip `<w:br/>` before COMMERCIAL glyph and force `w:before="26"`
 
-### Fix steps per qualifying paragraph
+Inside the row-1 branch for the COMMERCIAL row, before running the existing spacing override:
+- Strip all `<w:br/>` and `<w:tab/>` elements from the paragraph (already done globally in the spacing pass for glyph-leading paragraphs; replicate here for the COMMERCIAL paragraph regardless of leading glyph).
+- Then call `setRowSpacing(para, 1)` so `w:before` becomes `26` (matches instance 2 which already renders correctly).
 
-1. **Strip stray `<w:br/>` runs** anywhere inside the paragraph (the existing PROPERTY TYPE pass already strips `<w:br/>` from rows that begin with a glyph; this pass widens the gate to also catch the `COMMERCIAL & INCOME-PRODUCING` row whose paragraph begins with an SDT/plain-text checkbox where the leading glyph detection misses).
+Idempotent — the spacing replacer already overwrites any existing `<w:spacing>` attributes.
 
-2. **Force the spacing element** inside `<w:pPr>` to the exact reference values, matching the row index:
-   - Row 1 (owner occupied / commercial): `<w:spacing w:before="26" w:after="100" w:line="181" w:lineRule="auto"/>`
-   - Row 2 (not owner occupied / land zoned): `<w:spacing w:before="12" w:after="100" w:line="181" w:lineRule="auto"/>`
-   - Row 3 (zoned residential lot / land income producing + other): `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`
-   - If `<w:pPr>` is missing, insert one; if `<w:spacing>` is missing, insert it in schema-correct position; if present, replace its attributes only.
+### 3. PROBLEM 2 — promote LAND (income-producing) plain checkbox to SDT
 
-3. **Promote plain-text checkbox glyphs to SDT content controls.** When the paragraph contains a `☐` / `☑` / `☒` character as a plain `<w:t>` run (not already wrapped in `<w:sdt>` with a `<w14:checkbox>`), replace that run with a `<w:sdt>` block carrying:
-   - `<w:sdtPr>` → `<w14:checkbox><w14:checked w14:val="1|0"/><w14:checkedState w14:val="2612" w14:font="MS Gothic"/><w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/></w14:checkbox>` plus a stable `<w:id/>`
-   - `<w:sdtContent>` containing the original `<w:r>` with the glyph preserved
-   - `w14:checked` value derived from the existing glyph (`☑`/`☒` → 1, `☐` → 0) so the checked state is unchanged
-   - Original `<w:rPr>` (font/size/color) is carried over verbatim
+Loosen `wrapPlainGlyphs` so that, in addition to "run body is just a glyph", it also wraps a run whose `<w:t>` body matches `^[\s\u00A0]*[\u2610\u2611\u2612][\s\u00A0]+$` (glyph + trailing whitespace, no label text). The glyph remains in the run, the trailing space stays, the run is wrapped in `<w:sdt><w14:checkbox>`.
 
-4. Leave untouched: glyph state (other than wrapping), `{{...}}` placeholders, label text, column widths, table grid, alignment/tabs/indent, `<w:rPr>`.
+Apply only when the paragraph's visible text matches one of the PROPERTY TYPE row labels (already gated). Do not split mixed-content runs that carry the label text — those are left alone.
 
-### Ordering & integration
+### 4. PROBLEM 3 — split LAND (income-producing) + OTHER on instance 5
 
-- Insert immediately AFTER the existing "RE851D POST-RENDER PROPERTY TYPE checkbox spacing safety pass" (ends line 8416) and BEFORE the encumbrance-question cleanup at 8422.
-- Uses the same `__passUnzip` / `__passZip` / `__xmlGet` / `__xmlSet` helpers and `debugLog` pattern as neighboring passes.
-- Reassigns `processedDocx` only when the pass actually mutates at least one paragraph; otherwise no-op.
-- Wrapped in try/catch so a regex failure logs and continues, matching the surrounding pass style.
+Add a paragraph-level rewriter that runs only when the paragraph's visible text matches both `LAND (income-producing)` AND `OTHER:`:
+
+- Locate the single offending `<w:t>` run (text contains `LAND (income-producing)` followed by `☐ OTHER:` …).
+- Replace its containing `<w:p>` with two sibling `<w:p>` paragraphs:
+  - Paragraph A: `<w:pPr>` with `ROW_SPACING[3]`, then SDT-wrapped `☐` glyph + run carrying `LAND (income-producing)`.
+  - Paragraph B: `<w:pPr>` with `ROW_SPACING[3]`, then SDT-wrapped `☐` glyph + run carrying `OTHER: {{property_type_other_text_N}}`.
+- Preserve original `<w:rPr>` on both label runs (copy from the source run).
+- Repair the placeholder: replace `property_type_other_text_N}` (missing leading `{{` and trailing `}`) with `{{property_type_other_text_N}}` only in this paragraph. `N` is taken from whatever index the source paragraph already references (regex-captured); if none is present, leave the placeholder as the literal token already in the template.
+
+This whole rewriter is gated on the exact "LAND (income-producing) … OTHER:" co-occurrence, so it only fires on instance 5.
+
+### 5. PROBLEM 4 — normalize "owner   occupied" spacing (all instances)
+
+When a paragraph's visible text matches `/SINGLE-FAMILY RESIDENCE \(owner\s+occupied\)/i` with more than one space, replace inside each `<w:t>` body:
+```
+/(owner)[\s\u00A0]{2,}(occupied)/g  →  "$1 $2"
+```
+Idempotent: a single space is already a no-op.
+
+### 6. PROBLEM 5 — add missing space after LAND in row-2 right (instances 3, 4)
+
+For the row-2 right paragraph, normalize inside each `<w:t>` body:
+```
+/LAND\(zoned/g  →  "LAND (zoned"
+```
+Only run on paragraphs whose visible text contains `LAND(zoned commercial/residential)`. Idempotent.
+
+### Integration & guarantees
+
+- All changes live inside the existing `if (/851d/i.test(template.name || ""))` block at 8431; they reuse `__passUnzip` / `__passZip` / `__xmlGet` / `__xmlSet` / `debugLog` and the same try/catch pattern.
+- Pass is idempotent: re-running on already-fixed XML mutates nothing because every transform is keyed on the broken state.
+- Untouched: glyph checked/unchecked state, `{{...}}` placeholders other than the single malformed `property_type_other_text_N}`, column widths, table grid, borders, `<w:rPr>`, instance 1 (blank template — no row labels visible since values are empty placeholders, but the gates still apply uniformly; spacing/label fixes are safe no-ops on the blank instance), instance 2 (already correct — every transform is keyed on detecting the broken state so instance 2 hits zero mutations).
 
 ### Verification
 
-- Re-run RE851D generation on a 5-property deal; download the docx; unzip; for each of the 5 PROPERTY TYPE blocks confirm:
-  - Zero `<w:br/>` inside any of the 6 row paragraphs
-  - Spacing attributes match the 3-tier table above
-  - Every checkbox glyph is inside `<w:sdt>` with `<w14:checkbox>`
-  - `{{property_type_*_N}}` placeholders untouched, checked/unchecked state preserved
-- Confirm idempotency: running the pass twice yields identical XML on the second run.
+1. Re-render RE851D on the current 5-property deal.
+2. Unzip the output and confirm:
+   - Each of the 5 COMMERCIAL paragraphs has zero `<w:br/>` and `<w:spacing w:before="26" …>`.
+   - Each of the 5 LAND (income-producing) checkboxes is inside `<w:sdt><w14:checkbox>`.
+   - Instance 5 has two separate `<w:p>` elements for LAND (income-producing) and OTHER, with the corrected `{{property_type_other_text_5}}` placeholder.
+   - No `(owner  +occupied)` or `LAND(zoned` strings remain.
+3. Re-run the same RE851D generation a second time on the same deal: byte-diff the two outputs to confirm idempotency.
 
 ### Files touched
 
-- `supabase/functions/generate-document/index.ts` — single additive block (~120 lines) following the established post-render-pass pattern. No schema, no API, no UI, no template storage changes.
+- `supabase/functions/generate-document/index.ts` — extend the existing row alignment + SDT pass (~80 added lines). No other files.
