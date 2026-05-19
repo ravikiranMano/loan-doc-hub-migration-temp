@@ -8445,15 +8445,70 @@ async function generateSingleDocument(
           3: `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`,
         };
 
-        const detectRow = (visible: string): 1 | 2 | 3 | null => {
-          for (const r of ROW_LABELS) {
-            if (r.label.test(visible)) return r.row;
+        const setRowSpacing = (para: string, row: 1 | 2 | 3): string => {
+          const spacingXml = ROW_SPACING[row];
+          const open = para.match(/^<w:p\b[^>]*>/);
+          if (!open) return para;
+          const pprRe = /<w:pPr\b[^>]*>([\s\S]*?)<\/w:pPr>/;
+          const pprMatch = para.match(pprRe);
+          if (!pprMatch) {
+            return para.replace(
+              open[0],
+              `${open[0]}<w:pPr>${spacingXml}</w:pPr>`,
+            );
           }
-          return null;
+          const inner = pprMatch[1];
+          if (/<w:spacing\b[^/]*\/>/.test(inner)) {
+            const newInner = inner.replace(
+              /<w:spacing\b[^/]*\/>/,
+              spacingXml,
+            );
+            return para.replace(pprMatch[0], `<w:pPr>${newInner}</w:pPr>`);
+          }
+          let newInner = inner;
+          if (/<w:numPr\b[^>]*>[\s\S]*?<\/w:numPr>/.test(newInner)) {
+            newInner = newInner.replace(
+              /(<\/w:numPr>)/,
+              `$1${spacingXml}`,
+            );
+          } else if (/<w:pStyle\b[^/]*\/>/.test(newInner)) {
+            newInner = newInner.replace(
+              /(<w:pStyle\b[^/]*\/>)/,
+              `$1${spacingXml}`,
+            );
+          } else {
+            newInner = spacingXml + newInner;
+          }
+          return para.replace(pprMatch[0], `<w:pPr>${newInner}</w:pPr>`);
         };
-...
+
+        const GLYPH_RE = /[\u2610\u2611\u2612]/;
+        let __sdtCounter = 900000;
+
         const wrapPlainGlyphs = (para: string): string => {
-...
+          const sdtRanges: Array<[number, number]> = [];
+          const sdtRe = /<w:sdt\b[\s\S]*?<\/w:sdt>/g;
+          let sm: RegExpExecArray | null;
+          while ((sm = sdtRe.exec(para)) !== null) {
+            sdtRanges.push([sm.index, sm.index + sm[0].length]);
+          }
+          const inSdt = (pos: number): boolean =>
+            sdtRanges.some(([s, e]) => pos >= s && pos < e);
+
+          const runRe = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+          const out: string[] = [];
+          let cursor = 0;
+          let rm: RegExpExecArray | null;
+          while ((rm = runRe.exec(para)) !== null) {
+            if (inSdt(rm.index)) continue;
+            const runXml = rm[0];
+            const tMatch = runXml.match(
+              /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/,
+            );
+            if (!tMatch) continue;
+            const body = tMatch[1];
+            const glyphMatch = body.match(GLYPH_RE);
+            if (!glyphMatch) continue;
             // Accept either "just the glyph" OR "glyph + trailing whitespace"
             // (covers the LAND (income-producing) plain-text "☐ " run that
             // ships unwrapped on instances 3/4/5). Mixed runs that carry
@@ -8463,7 +8518,28 @@ async function generateSingleDocument(
             ) {
               continue;
             }
-...
+            const glyph = glyphMatch[0];
+            const checked = glyph === "\u2610" ? 0 : 1;
+            const id = ++__sdtCounter;
+            const sdt =
+              `<w:sdt>` +
+              `<w:sdtPr>` +
+              `<w:id w:val="${id}"/>` +
+              `<w14:checkbox>` +
+              `<w14:checked w14:val="${checked}"/>` +
+              `<w14:checkedState w14:val="2612" w14:font="MS Gothic"/>` +
+              `<w14:uncheckedState w14:val="2610" w14:font="MS Gothic"/>` +
+              `</w14:checkbox>` +
+              `</w:sdtPr>` +
+              `<w:sdtContent>${runXml}</w:sdtContent>` +
+              `</w:sdt>`;
+            out.push(para.slice(cursor, rm.index));
+            out.push(sdt);
+            cursor = rm.index + runXml.length;
+          }
+          if (out.length === 0) return para;
+          out.push(para.slice(cursor));
+          return out.join("");
         };
 
         const unzipped = __passUnzip(processedDocx);
