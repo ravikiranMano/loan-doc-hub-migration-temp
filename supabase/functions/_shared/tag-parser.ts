@@ -3639,8 +3639,10 @@ export function replaceMergeTags(
     }
 
     if (isBrkBorrower !== null) {
-      const aGlyph = isBrkBorrower ? "☐" : "☑"; // A. Agent
-      const bGlyph = isBrkBorrower ? "☑" : "☐"; // B. Principal
+      // Per UI spec: Yes → 1st (A) checked, 2nd (B) unchecked.
+      //             No  → 1st (A) unchecked, 2nd (B) checked.
+      const aGlyph = isBrkBorrower ? "☑" : "☐"; // A. Agent (1st)
+      const bGlyph = isBrkBorrower ? "☐" : "☑"; // B. Principal (2nd)
       const labelA = "A. Agent in arranging a loan";
       // Allow optional "*" before "Principal" to match the live RE851A wording.
       const labelBCore = "Principal as a borrower";

@@ -64,32 +64,30 @@ function lastGlyphBeforeLabel(xml: string, label: string): string | null {
   return matches ? matches[matches.length - 1] : null;
 }
 
-Deno.test("RE851A broker-capacity — isBrkBorrower=true → A=☐, B=☑", () => {
+Deno.test("RE851A broker-capacity — isBrkBorrower=true → A=☑, B=☐", () => {
   const out = run("true");
   assertEquals(
     lastGlyphBeforeLabel(out, "A. Agent in arranging a loan"),
-    "☐",
-    "A row glyph should be unchecked when broker is also borrower",
+    "☑",
+    "A row glyph should be checked when Yes is selected (1st condition checked)",
   );
-  // Tolerate either "*Principal" or "Principal" — depends on whether the
-  // optional "*" survives between the run boundaries in the rendered XML.
   const bGlyph =
     lastGlyphBeforeLabel(out, "*Principal as a borrower") ??
     lastGlyphBeforeLabel(out, "Principal as a borrower");
-  assertEquals(bGlyph, "☑", "B row glyph should be checked when broker is also borrower");
+  assertEquals(bGlyph, "☐", "B row glyph should be unchecked when Yes is selected");
 });
 
-Deno.test("RE851A broker-capacity — isBrkBorrower=false → A=☑, B=☐", () => {
+Deno.test("RE851A broker-capacity — isBrkBorrower=false → A=☐, B=☑", () => {
   const out = run("false");
   assertEquals(
     lastGlyphBeforeLabel(out, "A. Agent in arranging a loan"),
-    "☑",
-    "A row glyph should be checked when broker is NOT also borrower",
+    "☐",
+    "A row glyph should be unchecked when No is selected",
   );
   const bGlyph =
     lastGlyphBeforeLabel(out, "*Principal as a borrower") ??
     lastGlyphBeforeLabel(out, "Principal as a borrower");
-  assertEquals(bGlyph, "☐", "B row glyph should be unchecked when broker is NOT also borrower");
+  assertEquals(bGlyph, "☑", "B row glyph should be checked when No is selected (2nd condition checked)");
 });
 
 Deno.test("RE851A broker-capacity — missing field leaves glyphs untouched", () => {
