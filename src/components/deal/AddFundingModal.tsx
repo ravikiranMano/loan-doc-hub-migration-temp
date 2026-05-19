@@ -496,14 +496,18 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   // balance beyond a $0.50 tolerance. Replaces the old "> 100% ownership"
   // check which incorrectly assumed the loan was always fully funded.
   const FUNDING_TOLERANCE = 0.5;
+  const currentBalanceNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
   const currentFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-  const otherLendersFundingTotal = existingRecords
+  const thisLenderShare = (!isNaN(currentBalanceNum) && currentBalanceNum > 0)
+    ? currentBalanceNum
+    : currentFundingAmount;
+  const otherLendersCurrentTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
-    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+    .reduce((sum, r) => sum + (Number((r as any).currentBalance) || Number(r.originalAmount) || 0), 0);
   const principalBalanceNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, ''))
     || parseFloat((loanAmount || '').replace(/[$,]/g, ''))
     || 0;
-  const projectedFundedTotal = otherLendersFundingTotal + currentFundingAmount;
+  const projectedFundedTotal = otherLendersCurrentTotal + thisLenderShare;
   const totalPercentError = principalBalanceNum > 0
     && projectedFundedTotal > principalBalanceNum + FUNDING_TOLERANCE;
   // Legacy computed for any callers still reading it.
