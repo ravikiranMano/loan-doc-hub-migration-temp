@@ -333,40 +333,42 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   };
 
   // Pro Rata: lender CURRENT BALANCE / loan PRINCIPAL × 100. Stored at 6dp,
-  // displayed at 4dp. Does NOT normalize to 100% — partial funding shows the
-  // actual funded share (e.g. 7.5531%).
-  const computedPctOwned = React.useMemo(() => {
-    const map = new Map<string, number>();
-    if (!fundingRecords.length) return map;
-    if (effectiveLoanPrincipal <= 0) {
-      fundingRecords.forEach(r => map.set(r.id, 0));
-      return map;
-    }
+  // displayed at 4dp. Indexed by record position (not id) to guarantee each
+  // lender row keeps its own value even if record ids ever collide or are
+  // missing on legacy data.
+  const computedPctOwnedArr = React.useMemo(() => {
+    if (!fundingRecords.length) return [] as number[];
+    if (effectiveLoanPrincipal <= 0) return fundingRecords.map(() => 0);
     const den = new Decimal(effectiveLoanPrincipal);
-    fundingRecords.forEach(r => {
-      const pct = new Decimal(computeCurrentBalance(r))
+    return fundingRecords.map(r =>
+      new Decimal(computeCurrentBalance(r))
         .div(den)
         .times(100)
         .toDecimalPlaces(6, Decimal.ROUND_HALF_UP)
-        .toNumber();
-      map.set(r.id, pct);
-    });
-    return map;
+        .toNumber()
+    );
   }, [fundingRecords, effectiveLoanPrincipal]);
 
+  const recordIndexMap = React.useMemo(() => {
+    const m = new Map<FundingRecord, number>();
+    fundingRecords.forEach((r, i) => m.set(r, i));
+    return m;
+  }, [fundingRecords]);
+
   const getDisplayedPctOwned = (record: FundingRecord) => {
-    const v = computedPctOwned.get(record.id);
+    const i = recordIndexMap.get(record);
+    if (i === undefined) return Number(record.pctOwned) || 0;
+    const v = computedPctOwnedArr[i];
     return v !== undefined ? v : (Number(record.pctOwned) || 0);
   };
 
-  // Per-lender Payment (GROSS): Pro Rata × Regular P&I.
-  // Uses Decimal arithmetic with banker's rounding (ROUND_HALF_EVEN) to 2dp.
-  // Sub-cent drift is absorbed by the row flagged roundingAdjustment.
-  const computedPayments = React.useMemo(() => {
-    const map = new Map<string, number>();
-    if (!fundingRecords.length) return map;
-    const exact = fundingRecords.map(r => {
-      const pct = computedPctOwned.get(r.id) ?? 0;
+  // Per-lender Payment (GROSS): Pro Rata × Regular P&I. Calculated independently
+  // for every lender via .map (no shared scope, no early break). Banker's
+  // rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
+  const computedPaymentsArr = React.useMemo(() => {
+    if (!fundingRecords.length) return [] as number[];
+    const exact = fundingRecords.map((_, i) => {
+      const pct = computedPctOwnedArr[i] ?? 0;
       return new Decimal(pct).div(100).mul(regularPIDec);
     });
     const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
@@ -378,13 +380,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     if (adjIdx >= 0 && !diff.isZero()) {
       rounded[adjIdx] = rounded[adjIdx].plus(diff);
     }
-    fundingRecords.forEach((r, i) => map.set(r.id, rounded[i].toNumber()));
-    return map;
-  }, [fundingRecords, computedPctOwned, regularPIDec]);
+    return rounded.map(d => d.toNumber());
+  }, [fundingRecords, computedPctOwnedArr, regularPIDec]);
 
   const getDisplayedPayment = (record: FundingRecord) => {
-    const computed = computedPayments.get(record.id);
-    return computed !== undefined ? computed : 0;
+    const i = recordIndexMap.get(record);
+    if (i === undefined) return 0;
+    return computedPaymentsArr[i] ?? 0;
   };
   const getDisbursementsTotal = (record: FundingRecord) => {
     return (record.disbursements || []).reduce(
@@ -399,7 +401,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const getEffectiveLenderRate = (record: FundingRecord) =>
     hasLenderRate(record) ? record.lenderRate : noteRateNumValue;
 
-  // Net Payment = Lender Payment − Σ Disbursements. Banker's rounding to 2dp.
+  // Net Payment = Lender Payment − Σ Disbursements (per-lender, never shared).
   // When disbursements = 0, Net Payment === Lender Payment exactly.
   const getNetPayment = (record: FundingRecord) => {
     const payment = new Decimal(getDisplayedPayment(record));
