@@ -281,7 +281,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   // Get loan rates for Rate Selection
   const noteRate = values['loan_terms.note_rate'] || '';
   const soldRate = values['loan_terms.sold_rate_enabled'] ? (values['loan_terms.sold_rate_company'] || values['loan_terms.sold_rate'] || '') : '';
-  const totalPayment = values['loan_terms.total_payment'] || values['loan_terms.regular_payment'] || '';
+  const totalPayment = values['loan_terms.regular_payment'] || values['loan_terms.total_payment'] || '';
   const loanAmount = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || '';
   const loanPrincipalBalance = values['loan_terms.principal'] || '';
   const remainingPayments = parseFloat(values['ln_p_termMonths'] || '') || 0;

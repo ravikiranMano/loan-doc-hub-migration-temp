@@ -346,7 +346,6 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
         <div className="space-y-3">
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Terms</h3>
           <div className="space-y-2">
-            {renderCurrencyField(FIELD_KEYS.loanAmount, "Loan Amount")}
             {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Amount")}
             {renderPercentField(FIELD_KEYS.noteRate, "Note Rate")}
 
@@ -829,17 +828,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>Payment Due Date</Label>
-              <Input
-                value={getValue(FIELD_KEYS.dayDue)}
-                onChange={(e) => setValue(FIELD_KEYS.dayDue, e.target.value.replace(/\D/g, ''))}
-                onKeyDown={(e) => { if (!/\d/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
-                disabled={disabled}
-                className="h-8 text-sm flex-1"
-                inputMode="numeric"
-              />
-            </div>
+            {renderDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
 
             {renderDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
             {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}

@@ -25,7 +25,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
-import { roundPctForStorage, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { roundPctForStorage, computeAmortizedPayment, Decimal } from '@/lib/precisionFormat';
 import { toast } from 'sonner';
 
 interface AddFundingModalProps {
@@ -381,25 +381,26 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     }
   }, [formData.lenderRate, formData.rateLenderValue]);
 
-  // Auto-compute Pro Rata (Percent Owned) = this lender's funding amount
-  // divided by the LOAN PRINCIPAL BALANCE (loan-level, not the sum of
-  // currently funded amounts). Prefers loanPrincipalBalance prop; falls back
-  // to loanAmount when principal hasn't been recorded yet.
+  // Auto-compute Pro Rata (Percent Owned) using the SAME formula as the
+  // Funding grid: Lender Current Balance / Loan Principal × 100. Stored at
+  // 6 decimal places (display layer rounds to 4dp + %). Falls back to
+  // fundingAmount when currentBalance has not yet been entered.
   React.useEffect(() => {
-    const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const principal = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
-    const loanAmt = principal > 0
-      ? principal
-      : (parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0);
-    if (loanAmt > 0 && fa > 0) {
-      const computed = roundPctForStorage(fa / loanAmt * 100);
+    const cb = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
+    const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const numerator = (!isNaN(cb) && cb > 0) ? cb : fa;
+    if (principal > 0 && numerator > 0) {
+      const computed = new Decimal(numerator).div(principal).mul(100)
+        .toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
-    } else if (fa === 0 && formData.percentOwned !== '') {
+    } else if (numerator === 0 && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.fundingAmount, loanAmount, loanPrincipalBalance]);
+  }, [formData.fundingAmount, formData.currentBalance, loanPrincipalBalance]);
+
 
   // Auto-default Current Balance from Original Funding minus disbursements (only when not manually edited)
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);
@@ -495,14 +496,18 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   // balance beyond a $0.50 tolerance. Replaces the old "> 100% ownership"
   // check which incorrectly assumed the loan was always fully funded.
   const FUNDING_TOLERANCE = 0.5;
+  const currentBalanceNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
   const currentFundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-  const otherLendersFundingTotal = existingRecords
+  const thisLenderShare = (!isNaN(currentBalanceNum) && currentBalanceNum > 0)
+    ? currentBalanceNum
+    : currentFundingAmount;
+  const otherLendersCurrentTotal = existingRecords
     .filter(r => r.id !== editingRecordId)
-    .reduce((sum, r) => sum + (Number(r.originalAmount) || 0), 0);
+    .reduce((sum, r) => sum + (Number((r as any).currentBalance) || Number(r.originalAmount) || 0), 0);
   const principalBalanceNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, ''))
     || parseFloat((loanAmount || '').replace(/[$,]/g, ''))
     || 0;
-  const projectedFundedTotal = otherLendersFundingTotal + currentFundingAmount;
+  const projectedFundedTotal = otherLendersCurrentTotal + thisLenderShare;
   const totalPercentError = principalBalanceNum > 0
     && projectedFundedTotal > principalBalanceNum + FUNDING_TOLERANCE;
   // Legacy computed for any callers still reading it.
@@ -543,6 +548,25 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   };
 
   const handleDisbursementModalSubmit = (data: DisbursementFormData) => {
+    // Validation: Σ disbursements may not exceed the lender's Payment
+    // (Pro Rata × Borrower Regular P&I). Single source of truth shared with
+    // the Funding grid's Net Payment column.
+    const principalNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
+    const cbNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''))
+      || parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
+    const lenderPayment = principalNum > 0
+      ? new Decimal(cbNum).div(principalNum).mul(regPI)
+          .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toNumber()
+      : 0;
+    const incoming = parseFloat(String(data.calculatedAmount || data.plusAmount || data.debitThroughAmount || '0').replace(/[$,]/g, '')) || 0;
+    const otherDisbSum = (formData.disbursements || [])
+      .filter((_, i) => i !== editingDisbursementIdx)
+      .reduce((s, d) => s + (parseFloat(String(d.amount || '').replace(/[$,]/g, '')) || 0), 0);
+    if (lenderPayment > 0 && otherDisbSum + incoming > lenderPayment + 0.005) {
+      toast.error('Disbursement cannot exceed lender payment amount');
+      return;
+    }
     setFormData(prev => {
       const updated = [...prev.disbursements];
       const finalAmount = data.calculatedAmount
