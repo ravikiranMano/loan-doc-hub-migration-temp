@@ -22,8 +22,6 @@ const AppLayoutInner: React.FC = () => {
   const contactWs = useContactWorkspace();
   const location = useLocation();
   const navigate = useNavigate();
-  const [showRouteSkeleton, setShowRouteSkeleton] = useState(false);
-  const hasMountedRef = useRef(false);
 
   // Close confirmation state (files)
   const [closingFileId, setClosingFileId] = useState<string | null>(null);
