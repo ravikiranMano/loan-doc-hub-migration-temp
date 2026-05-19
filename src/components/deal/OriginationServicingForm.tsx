@@ -304,11 +304,18 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-6">
-        {/* Complete if 3rd Party */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Complete if 3rd Party</h3>
-          {renderAddressBlock('tp', { name: FK.tp_name, street: FK.tp_street, city: FK.tp_city, state: FK.tp_state, zip: FK.tp_zip, phone: FK.tp_phone, email: FK.tp_email })}
-        </div>
+        {/* Company Properties (shown only when Servicing Agent = Company) */}
+        {isCompanyAgent ? (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Company Properties</h3>
+            {renderAddressBlock('cp', { name: FK.cp_name, street: FK.cp_street, city: FK.cp_city, state: FK.cp_state, zip: FK.cp_zip, phone: FK.cp_phone, email: FK.cp_email })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground border-b border-border pb-1">Complete if 3rd Party</h3>
+            {renderAddressBlock('tp', { name: FK.tp_name, street: FK.tp_street, city: FK.tp_city, state: FK.tp_state, zip: FK.tp_zip, phone: FK.tp_phone, email: FK.tp_email })}
+          </div>
+        )}
 
         {/* Send Payments To */}
         <div className="space-y-3">
@@ -317,7 +324,7 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
             <DirtyFieldWrapper fieldKey={FK.sp_same_as_tp}>
               <div className="flex items-center gap-2">
                 <Checkbox checked={sameAsTP} onCheckedChange={(c) => sbv(FK.sp_same_as_tp, !!c)} disabled={disabled} />
-                <Label className="text-sm cursor-pointer">Same as 3rd Party</Label>
+                <Label className="text-sm cursor-pointer">{isCompanyAgent ? 'Same as Company' : 'Same as 3rd Party'}</Label>
               </div>
             </DirtyFieldWrapper>
           </div>
