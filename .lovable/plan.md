@@ -1,82 +1,106 @@
-## RE851D PROPERTY TYPE — finish the alignment pass (instances 3, 4, 5)
+## Goal
 
-The existing post-render passes in `supabase/functions/generate-document/index.ts` (lines 8308–8416 spacing pass, 8418–~8620 row/SDT pass) only catch the left-column rows and the COMMERCIAL row when the visible text already begins with a glyph. They miss the failures the user is still seeing on instances 3, 4, and 5 because:
+Fix RE851D PROPERTY TYPE rendering so all 5 property sections look identical to Image 2, and fix the `10.64%%` double-percent bug. Do it at the **template source**, not with another post-render patch — the existing post-render passes have proven brittle and order-dependent.
 
-- The `ROW_LABELS` regexes target `LAND ZONED` / `LAND INCOME PRODUCING`, but the template ships the labels as `LAND (zoned commercial/residential)` and `LAND (income-producing)` — so those rows never match.
-- The wrap-plain-glyph helper only fires on runs whose `<w:t>` body is *just* the glyph; the LAND (income-producing) row stores it as `<w:t>☐ </w:t>` mixed with a trailing space and is followed by a separate label run, so it slips through.
-- Instance 5 stores `☐ LAND (income-producing) ☐ OTHER: property_type_other_text_N}` as a single concatenated text run with no paragraph break and a malformed placeholder.
+## Approach
 
-Extend the second pass (the row alignment + SDT pass that already starts at 8418) so it owns every one of the 5 issues. Single additive block, no schema/UI/template-storage changes.
+Mirror the pattern already used by `supabase/functions/rewrite-re851d-template/index.ts` and `rewrite-re851d-encumbrance-layout/index.ts`: a one-shot admin edge function that downloads the template from the `templates` bucket, rewrites `word/document.xml`, and re-uploads. Idempotent, safe to re-run.
 
-### 1. Fix row-label coverage
+Then retire the now-redundant PROPERTY TYPE post-render passes in `generate-document/index.ts` so we have a single source of truth.
 
-Replace the right-column entries in `ROW_LABELS`:
-- row 1 → `/COMMERCIAL\s*&(?:amp;)?\s*INCOME[-\s]?PRODUCING/i`
-- row 2 → `/LAND\s*\(zoned\s+commercial\/residential\)/i`
-- row 3 → `/LAND\s*\(income[-\s]?producing\)/i`
-- row 3 also → `/^OTHER:/i` (so the OTHER row is normalized too)
+## New edge function: `rewrite-re851d-property-type-layout`
 
-Keep the left-column entries as they are. Add the same labels to the `xml` early-exit gate at line 8568.
+Default `templatePath`: `1778746922135_RE851D-V12.1.docx` (same as the other rewriters).
 
-### 2. PROBLEM 1 — strip `<w:br/>` before COMMERCIAL glyph and force `w:before="26"`
+### 1. Locate every PROPERTY TYPE table
 
-Inside the row-1 branch for the COMMERCIAL row, before running the existing spacing override:
-- Strip all `<w:br/>` and `<w:tab/>` elements from the paragraph (already done globally in the spacing pass for glyph-leading paragraphs; replicate here for the COMMERCIAL paragraph regardless of leading glyph).
-- Then call `setRowSpacing(para, 1)` so `w:before` becomes `26` (matches instance 2 which already renders correctly).
+Scan `word/document.xml` for `<w:tbl>` blocks whose tag-stripped text contains all of:
+- `SINGLE-FAMILY RESIDENCE (owner`
+- `COMMERCIAL`
+- `LAND`
 
-Idempotent — the spacing replacer already overwrites any existing `<w:spacing>` attributes.
+Expect 5 matches (one per property section). Log a warning if the count differs but still process whatever is found.
 
-### 3. PROBLEM 2 — promote LAND (income-producing) plain checkbox to SDT
+### 2. Rebuild each matched table deterministically
 
-Loosen `wrapPlainGlyphs` so that, in addition to "run body is just a glyph", it also wraps a run whose `<w:t>` body matches `^[\s\u00A0]*[\u2610\u2611\u2612][\s\u00A0]+$` (glyph + trailing whitespace, no label text). The glyph remains in the run, the trailing space stays, the run is wrapped in `<w:sdt><w14:checkbox>`.
+For each match, replace the table with a freshly generated `<w:tbl>` built from a fixed XML template string. The new table:
 
-Apply only when the paragraph's visible text matches one of the PROPERTY TYPE row labels (already gated). Do not split mixed-content runs that carry the label text — those are left alone.
+- `<w:tblPr>` includes:
+  - `<w:tblW w:w="5000" w:type="pct"/>` (100% page width)
+  - `<w:tblLayout w:type="fixed"/>` (FIXED layout — never auto)
+  - Preserves borders from the original (`<w:tblBorders>` copied verbatim if present, else none)
+- `<w:tblGrid>` = two columns of equal DXA derived from the original table's grid sum (fallback: 4680 + 4680)
+- Two `<w:tc>` per row, each with `<w:tcW w:w="2500" w:type="pct"/>`
+- Cell margins copied from original `<w:tblCellMar>` if present (consistent across all 5)
 
-### 4. PROBLEM 3 — split LAND (income-producing) + OTHER on instance 5
+Capture the property index `N` by reading the existing `{{property_type_*_N}}` placeholders inside the matched table (regex on `property_type_sfr_owner_(\d+)`). If absent (blank template instance 1), default to the literal token `N`.
 
-Add a paragraph-level rewriter that runs only when the paragraph's visible text matches both `LAND (income-producing)` AND `OTHER:`:
+### 3. Left cell — exactly 3 paragraphs
 
-- Locate the single offending `<w:t>` run (text contains `LAND (income-producing)` followed by `☐ OTHER:` …).
-- Replace its containing `<w:p>` with two sibling `<w:p>` paragraphs:
-  - Paragraph A: `<w:pPr>` with `ROW_SPACING[3]`, then SDT-wrapped `☐` glyph + run carrying `LAND (income-producing)`.
-  - Paragraph B: `<w:pPr>` with `ROW_SPACING[3]`, then SDT-wrapped `☐` glyph + run carrying `OTHER: {{property_type_other_text_N}}`.
-- Preserve original `<w:rPr>` on both label runs (copy from the source run).
-- Repair the placeholder: replace `property_type_other_text_N}` (missing leading `{{` and trailing `}`) with `{{property_type_other_text_N}}` only in this paragraph. `N` is taken from whatever index the source paragraph already references (regex-captured); if none is present, leave the placeholder as the literal token already in the template.
-
-This whole rewriter is gated on the exact "LAND (income-producing) … OTHER:" co-occurrence, so it only fires on instance 5.
-
-### 5. PROBLEM 4 — normalize "owner   occupied" spacing (all instances)
-
-When a paragraph's visible text matches `/SINGLE-FAMILY RESIDENCE \(owner\s+occupied\)/i` with more than one space, replace inside each `<w:t>` body:
 ```
-/(owner)[\s\u00A0]{2,}(occupied)/g  →  "$1 $2"
+{{property_type_sfr_owner_N}} SINGLE-FAMILY RESIDENCE (owner occupied)
+{{property_type_sfr_non_owner_N}} SINGLE-FAMILY RESIDENCE (not owner occupied)
+{{property_type_sfr_zoned_N}} SINGLE-FAMILY RESIDENCE (zoned residential lot/parcel)
 ```
-Idempotent: a single space is already a no-op.
 
-### 6. PROBLEM 5 — add missing space after LAND in row-2 right (instances 3, 4)
+Each as a single `<w:p>` with `<w:pPr><w:jc w:val="left"/></w:pPr>`, no tabs, no `<w:br/>`, no justified alignment. The checkbox glyph stays as a Handlebars merge tag (existing rendering pipeline converts it to an SDT content control later).
 
-For the row-2 right paragraph, normalize inside each `<w:t>` body:
+### 4. Right cell — exactly 4 paragraphs (OTHER on its own row)
+
 ```
-/LAND\(zoned/g  →  "LAND (zoned"
+{{property_type_commercial_N}} COMMERCIAL & INCOME-PRODUCING
+{{property_type_land_zoned_N}} LAND (zoned commercial/residential)
+{{property_type_land_income_N}} LAND (income-producing)
+{{property_type_other_N}} OTHER: {{property_type_other_text_N}}
 ```
-Only run on paragraphs whose visible text contains `LAND(zoned commercial/residential)`. Idempotent.
 
-### Integration & guarantees
+Same `<w:pPr>` rules. The `&` is encoded `&amp;`. The OTHER paragraph is always emitted, even when the row is currently inlined or merged in the source.
 
-- All changes live inside the existing `if (/851d/i.test(template.name || ""))` block at 8431; they reuse `__passUnzip` / `__passZip` / `__xmlGet` / `__xmlSet` / `debugLog` and the same try/catch pattern.
-- Pass is idempotent: re-running on already-fixed XML mutates nothing because every transform is keyed on the broken state.
-- Untouched: glyph checked/unchecked state, `{{...}}` placeholders other than the single malformed `property_type_other_text_N}`, column widths, table grid, borders, `<w:rPr>`, instance 1 (blank template — no row labels visible since values are empty placeholders, but the gates still apply uniformly; spacing/label fixes are safe no-ops on the blank instance), instance 2 (already correct — every transform is keyed on detecting the broken state so instance 2 hits zero mutations).
+### 5. Left cell paragraph 4
 
-### Verification
+No 4th paragraph. The right cell's 4th row simply makes the row taller; the left cell remains 3 paragraphs and visually empty below row 3, matching Image 2.
 
-1. Re-render RE851D on the current 5-property deal.
-2. Unzip the output and confirm:
-   - Each of the 5 COMMERCIAL paragraphs has zero `<w:br/>` and `<w:spacing w:before="26" …>`.
-   - Each of the 5 LAND (income-producing) checkboxes is inside `<w:sdt><w14:checkbox>`.
-   - Instance 5 has two separate `<w:p>` elements for LAND (income-producing) and OTHER, with the corrected `{{property_type_other_text_5}}` placeholder.
-   - No `(owner  +occupied)` or `LAND(zoned` strings remain.
-3. Re-run the same RE851D generation a second time on the same deal: byte-diff the two outputs to confirm idempotency.
+### 6. Fix double-% on LTV (same function, separate pass)
 
-### Files touched
+Scan the full XML for any `<w:t>` run whose text contains `{{ln_p_loanToValueRatio_N}}%` or `{{ln_p_loanToValueRatio_<digit>}}%` (and entity-escaped variants). Strip the trailing literal `%`. The resolved value already includes `%` because the field is `dataType: "percentage"` (confirmed at `generate-document/index.ts:1793`, `2327`, `4505`).
 
-- `supabase/functions/generate-document/index.ts` — extend the existing row alignment + SDT pass (~80 added lines). No other files.
+This is tag-stripped-index safe (the same buildStrippedIndex helper used by the existing rewriter) so it survives run splits across `{{`, `ln_p_loanToValueRatio_N`, `}}`, and `%`.
+
+### 7. Repack and upload
+
+- `fflate.zipSync` → upload back to same path with `upsert: true`.
+- Response: `{ ok, rewrittenTables, ltvPercentsStripped, originalSize, newSize }`.
+
+### Idempotency
+
+- Property-type rewrite keys on text content `SINGLE-FAMILY RESIDENCE (owner` + `COMMERCIAL` + `LAND` co-occurring inside a `<w:tbl>`. After rewrite the table still matches — so re-running rebuilds it from the same deterministic template, byte-identical output.
+- LTV `%` strip is a no-op once the trailing `%` is gone.
+
+## Retire redundant post-render passes in `generate-document/index.ts`
+
+Once the template is rewritten, remove (or gate behind `template.name !~ /re851d.*v12\.2/i`) the following passes inside `if (/851d/i.test(template.name))`:
+
+- The PROPERTY TYPE spacing/row pass (lines ~8290–8416)
+- The PROPERTY TYPE row alignment + SDT wrapping pass (lines ~8418–~8620) — but **keep** the `wrapPlainGlyphs`→SDT conversion, since the checkbox glyphs still need SDT promotion. Extract just that helper and run it scoped to the PROPERTY TYPE tables. Drop the row-detection, `<w:br/>` stripping, spacing overrides, "owner occupied" normalization, "LAND(zoned" fix, and the instance-5 OTHER splitter — all obsoleted by the template fix.
+
+This deletes ~250 lines of fragile post-render code.
+
+## Files touched
+
+- `supabase/functions/rewrite-re851d-property-type-layout/index.ts` — new (~250 lines)
+- `supabase/functions/generate-document/index.ts` — remove obsolete PROPERTY TYPE passes, keep glyph→SDT wrapper
+- `.lovable/plan.md` — replace with this plan
+
+No schema changes. No UI changes. No new tables. No changes to merge-tag names or server-side data resolution.
+
+## Verification
+
+1. Deploy `rewrite-re851d-property-type-layout` and invoke it once. Expect `rewrittenTables: 5` (or 5+ depending on extra blank copies) and `ltvPercentsStripped >= 5`.
+2. Re-invoke — expect `rewrittenTables: 5, ltvPercentsStripped: 0` (idempotent).
+3. Re-generate RE851D for the current 5-property deal. Check:
+   - All 5 PROPERTY TYPE blocks visually match Image 2
+   - Right column shows OTHER on its own 4th row in every section
+   - `owner occupied` never has extra spacing
+   - `COMMERCIAL` never wraps mid-word
+   - `LOAN TO VALUE RATIO*` shows `10.64%` (single `%`)
+4. Re-generate a second time, byte-diff output → identical.
