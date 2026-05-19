@@ -237,6 +237,7 @@ const ContactCoBorrowersPage: React.FC = () => {
   if (selectedContact) {
     return (
       <CoBorrowerDetail
+        key={selectedContact.id}
         contact={selectedContact}
         onBack={() => {
           setSelectedContact(null);
