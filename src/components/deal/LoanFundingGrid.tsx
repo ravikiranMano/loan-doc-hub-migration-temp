@@ -435,10 +435,11 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
-  // Funding status compares sum of CURRENT BALANCES vs loan principal.
+  // Funding status compares the larger of Funding Amount total and Current
+  // Balance total vs loan principal. Neither total may exceed Balance.
   // Over-funding is blocked at edit time (see AddFundingModal) — this branch
   // remains as a defensive surface to flag any legacy bad data.
-  const fundedAmount = totalCurrentBalance;
+  const fundedAmount = Math.max(totalCurrentBalance, totalFundingAmount);
   const unfundedAmount = Math.max(0, effectiveLoanPrincipal - fundedAmount);
   const overAmount = Math.max(0, fundedAmount - effectiveLoanPrincipal);
   const fundedPct = effectiveLoanPrincipal > 0
