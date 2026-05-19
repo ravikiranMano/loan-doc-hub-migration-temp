@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -152,6 +153,31 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   const setBoolValue = (key: string, value: boolean) => onValueChange(key, String(value));
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string | null>>({});
+
+  // Brokers list for "Originating Vendor" dropdown — sourced from contacts master (contact_type='broker')
+  const [brokerOptions, setBrokerOptions] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, first_name, last_name, company, contact_id')
+        .eq('contact_type', 'broker')
+        .order('full_name', { ascending: true });
+      if (cancelled || error || !data) return;
+      const opts = data.map((c: any) => {
+        const name = (c.full_name && c.full_name.trim())
+          || `${c.first_name || ''} ${c.last_name || ''}`.trim()
+          || c.company
+          || c.contact_id
+          || 'Unnamed Broker';
+        return { value: c.id as string, label: name as string };
+      });
+      setBrokerOptions(opts);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
 
   const [focusedCurrencyField, setFocusedCurrencyField] = useState<string | null>(null);
   const [focusedPercentField, setFocusedPercentField] = useState<string | null>(null);
@@ -429,7 +455,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineField(FIELD_KEYS.previousLoanNumber, 'Previous Loan Number')}
           {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
           {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
-          {renderInlineField(FIELD_KEYS.originatingVendor, 'Originating Vendor')}
+          {renderInlineSelect(FIELD_KEYS.originatingVendor, 'Originating Vendor', brokerOptions, 'Select Originating Vendor')}
           {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Balance')}
           {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
           {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
