@@ -738,11 +738,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   const handleSaveClick = () => {
     // Block over-funding: total of all lenders' funding amounts must not exceed
-    // the loan principal balance (with $0.50 tolerance).
+    // the loan principal balance.
     if (totalPercentError) {
       const over = projectedFundedTotal - principalBalanceNum;
       toast.error(
-        `Funding exceeds loan principal balance by $${over.toFixed(2)}. Reduce the Funding Amount to continue.`
+        `Total Funding Amount exceeds Balance by $${over.toFixed(2)}. Reduce the Funding Amount to continue.`
+      );
+      return;
+    }
+    // Block over-funding by current balance: total of all lenders' current
+    // balances must not exceed the loan principal balance.
+    if (currentBalanceTotalError) {
+      const over = projectedCurrentBalanceTotal - principalBalanceNum;
+      toast.error(
+        `Total Current Balance exceeds Balance by $${over.toFixed(2)}. Reduce the Current Balance to continue.`
       );
       return;
     }
