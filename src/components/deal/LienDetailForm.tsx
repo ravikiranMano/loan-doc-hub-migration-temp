@@ -424,114 +424,135 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
             {renderCheckbox('sltActive', 'Active')}
           </div>
 
-          {renderField('lastVerified', 'Last Verified', { type: 'date' }, lien.sltActive !== 'true')}
+          {(() => {
+            const sltInactive = lien.sltActive !== 'true';
+            const delinquentDisabled = sltInactive || lien.sltDelinquent !== 'true';
+            const foreclosureDateDisabled = sltInactive || lien.sltForeclosure !== 'true';
+            const paidOffGateDisabled = sltInactive || lien.sltPaidOff !== 'true';
+            const unableVerifyDisabled = sltInactive || lien.sltUnableToVerify !== 'true';
+            const borrowerNotifiedDisabled = sltInactive || lien.sltBorrowerNotified !== 'true';
+            const lenderNotifiedDisabled = sltInactive || lien.sltLenderNotified !== 'true';
+            return (
+              <>
+                {renderField('lastVerified', 'Last Verified', { type: 'date' }, sltInactive)}
 
-          <div className="flex items-center gap-3">
-            <Label className="text-sm font-semibold text-foreground min-w-[140px] text-left shrink-0">Status</Label>
-          </div>
+                <div className="flex items-center gap-3">
+                  <Label className="text-sm font-semibold text-foreground min-w-[140px] text-left shrink-0">Status</Label>
+                </div>
 
-          {renderCheckbox('sltCurrent', 'Current')}
+                {renderCheckbox('sltCurrent', 'Current', sltInactive)}
 
-          <div className="flex items-center gap-3">
-            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltDelinquent}>
-              <div className="flex items-center gap-2 min-w-[140px] shrink-0">
-                <Checkbox id="sltDelinquent" checked={lien.sltDelinquent === 'true'} onCheckedChange={(checked) => onChange('sltDelinquent', checked ? 'true' : 'false')} disabled={disabled} />
-                <Label htmlFor="sltDelinquent" className="text-sm text-foreground">Delinquent</Label>
-              </div>
-            </DirtyFieldWrapper>
-            {lien.sltDelinquent === 'true' && (
-              <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltDelinquentDays} className="flex-1">
-                <Input value={lien.sltDelinquentDays} onChange={(e) => onChange('sltDelinquentDays', e.target.value)} disabled={disabled} className="h-7 text-sm w-full" placeholder="# of Days" />
-              </DirtyFieldWrapper>
-            )}
-          </div>
+                <div className="flex items-center gap-3">
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltDelinquent}>
+                    <div className="flex items-center gap-2 min-w-[140px] shrink-0">
+                      <Checkbox id="sltDelinquent" checked={lien.sltDelinquent === 'true'} onCheckedChange={(checked) => onChange('sltDelinquent', checked ? 'true' : 'false')} disabled={disabled || sltInactive} />
+                      <Label htmlFor="sltDelinquent" className="text-sm text-foreground">Delinquent</Label>
+                    </div>
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltDelinquentDays} className="flex-1">
+                    <Input
+                      value={lien.sltDelinquentDays}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, '');
+                        onChange('sltDelinquentDays', v);
+                      }}
+                      onKeyDown={numericKeyDown}
+                      inputMode="numeric"
+                      disabled={disabled || delinquentDisabled}
+                      className={cn('h-7 text-sm w-full', delinquentDisabled && 'opacity-50 bg-muted cursor-not-allowed')}
+                      placeholder="# of Days"
+                    />
+                  </DirtyFieldWrapper>
+                </div>
 
-          <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltUnderModification}>
-            <div className="flex items-center gap-2">
-              <Checkbox id="sltUnderModification" checked={lien.sltUnderModification === 'true'} onCheckedChange={(checked) => onChange('sltUnderModification', checked ? 'true' : 'false')} disabled={disabled} />
-              <Label htmlFor="sltUnderModification" className="text-sm text-foreground whitespace-nowrap">Under Modification / FB Plan</Label>
-            </div>
-          </DirtyFieldWrapper>
+                <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltUnderModification}>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="sltUnderModification" checked={lien.sltUnderModification === 'true'} onCheckedChange={(checked) => onChange('sltUnderModification', checked ? 'true' : 'false')} disabled={disabled || sltInactive} />
+                    <Label htmlFor="sltUnderModification" className="text-sm text-foreground whitespace-nowrap">Under Modification / FB Plan</Label>
+                  </div>
+                </DirtyFieldWrapper>
 
-          <div className="flex items-center gap-3">
-            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltForeclosure}>
-              <div className="flex items-center gap-2 min-w-[140px] shrink-0">
-                <Checkbox id="sltForeclosure" checked={lien.sltForeclosure === 'true'} onCheckedChange={(checked) => onChange('sltForeclosure', checked ? 'true' : 'false')} disabled={disabled} />
-                <Label htmlFor="sltForeclosure" className="text-sm text-foreground">Foreclosure</Label>
-              </div>
-            </DirtyFieldWrapper>
-            {lien.sltForeclosure === 'true' && (
-              <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltForeclosureDate} className="flex-1">
-                <Popover open={datePickerStates['sltForeclosureDate'] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: open }))}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltForeclosureDate && 'text-muted-foreground')} disabled={disabled}>
-                      {lien.sltForeclosureDate && safeParseDateStr(lien.sltForeclosureDate) ? format(safeParseDateStr(lien.sltForeclosureDate)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                      <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                    <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltForeclosureDate)} onSelect={(date) => { if (date) onChange('sltForeclosureDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onClear={() => { onChange('sltForeclosureDate', ''); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onToday={() => { onChange('sltForeclosureDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              </DirtyFieldWrapper>
-            )}
-          </div>
+                <div className="flex items-center gap-3">
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltForeclosure}>
+                    <div className="flex items-center gap-2 min-w-[140px] shrink-0">
+                      <Checkbox id="sltForeclosure" checked={lien.sltForeclosure === 'true'} onCheckedChange={(checked) => onChange('sltForeclosure', checked ? 'true' : 'false')} disabled={disabled || sltInactive} />
+                      <Label htmlFor="sltForeclosure" className="text-sm text-foreground">Foreclosure</Label>
+                    </div>
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltForeclosureDate} className="flex-1">
+                    <Popover open={!foreclosureDateDisabled && (datePickerStates['sltForeclosureDate'] || false)} onOpenChange={(open) => { if (foreclosureDateDisabled) return; setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: open })); }}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltForeclosureDate && 'text-muted-foreground', foreclosureDateDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || foreclosureDateDisabled}>
+                          {lien.sltForeclosureDate && safeParseDateStr(lien.sltForeclosureDate) ? format(safeParseDateStr(lien.sltForeclosureDate)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
+                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltForeclosureDate)} onSelect={(date) => { if (date) onChange('sltForeclosureDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onClear={() => { onChange('sltForeclosureDate', ''); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onToday={() => { onChange('sltForeclosureDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </DirtyFieldWrapper>
+                </div>
 
-          {renderCheckbox('sltPaidOff', 'Paid Off')}
+                {renderCheckbox('sltPaidOff', 'Paid Off', sltInactive)}
 
-          {renderField('sltLastPaymentMade', 'Last Payment Made', { type: 'date' }, lien.sltPaidOff !== 'true')}
-          {renderField('sltNextPaymentDue', 'Next Payment Due', { type: 'date' }, lien.sltPaidOff !== 'true')}
-          {renderCurrency('sltCurrentBalance', 'Current Balance', lien.sltPaidOff !== 'true')}
+                {renderField('sltLastPaymentMade', 'Last Payment Made', { type: 'date' }, paidOffGateDisabled)}
+                {renderField('sltNextPaymentDue', 'Next Payment Due', { type: 'date' }, paidOffGateDisabled)}
+                {renderCurrency('sltCurrentBalance', 'Current Balance', paidOffGateDisabled)}
 
-          {renderCheckbox('sltUnableToVerify', 'Unable to Verify')}
+                {renderCheckbox('sltUnableToVerify', 'Unable to Verify', sltInactive)}
 
-          {renderField('sltRequestSubmitted', 'Request Submitted', { type: 'date' }, lien.sltUnableToVerify !== 'true')}
-          {renderField('sltResponseReceived', 'Response Received', { type: 'date' })}
+                {renderField('sltRequestSubmitted', 'Request Submitted', { type: 'date' }, unableVerifyDisabled)}
+                {renderField('sltResponseReceived', 'Response Received', { type: 'date' }, unableVerifyDisabled)}
 
-          <div className="flex items-center gap-3">
-            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltBorrowerNotified}>
-              <div className="flex items-center gap-2 min-w-[140px]">
-                <Checkbox id="sltBorrowerNotified" checked={lien.sltBorrowerNotified === 'true'} onCheckedChange={(checked) => onChange('sltBorrowerNotified', checked ? 'true' : 'false')} disabled={disabled} />
-                <Label htmlFor="sltBorrowerNotified" className="text-sm text-foreground">Borrower Notified</Label>
-              </div>
-            </DirtyFieldWrapper>
-            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltBorrowerNotifiedDate} className="flex-1">
-              <Popover open={datePickerStates['sltBorrowerNotifiedDate'] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: open }))}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltBorrowerNotifiedDate && 'text-muted-foreground', lien.sltBorrowerNotified !== 'true' && 'opacity-50 cursor-not-allowed')} disabled={disabled || lien.sltBorrowerNotified !== 'true'}>
-                    {lien.sltBorrowerNotifiedDate && safeParseDateStr(lien.sltBorrowerNotifiedDate) ? format(safeParseDateStr(lien.sltBorrowerNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
-                    <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltBorrowerNotifiedDate)} onSelect={(date) => { if (date) onChange('sltBorrowerNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onClear={() => { onChange('sltBorrowerNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onToday={() => { onChange('sltBorrowerNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </DirtyFieldWrapper>
-          </div>
+                <div className="flex items-center gap-3">
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltBorrowerNotified}>
+                    <div className="flex items-center gap-2 min-w-[140px]">
+                      <Checkbox id="sltBorrowerNotified" checked={lien.sltBorrowerNotified === 'true'} onCheckedChange={(checked) => onChange('sltBorrowerNotified', checked ? 'true' : 'false')} disabled={disabled || sltInactive} />
+                      <Label htmlFor="sltBorrowerNotified" className="text-sm text-foreground">Borrower Notified</Label>
+                    </div>
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltBorrowerNotifiedDate} className="flex-1">
+                    <Popover open={!borrowerNotifiedDisabled && (datePickerStates['sltBorrowerNotifiedDate'] || false)} onOpenChange={(open) => { if (borrowerNotifiedDisabled) return; setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: open })); }}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltBorrowerNotifiedDate && 'text-muted-foreground', borrowerNotifiedDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || borrowerNotifiedDisabled}>
+                          {lien.sltBorrowerNotifiedDate && safeParseDateStr(lien.sltBorrowerNotifiedDate) ? format(safeParseDateStr(lien.sltBorrowerNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
+                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltBorrowerNotifiedDate)} onSelect={(date) => { if (date) onChange('sltBorrowerNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onClear={() => { onChange('sltBorrowerNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onToday={() => { onChange('sltBorrowerNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </DirtyFieldWrapper>
+                </div>
 
-          <div className="flex items-center gap-3">
-            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltLenderNotified}>
-              <div className="flex items-center gap-2 min-w-[140px]">
-                <Checkbox id="sltLenderNotified" checked={lien.sltLenderNotified === 'true'} onCheckedChange={(checked) => onChange('sltLenderNotified', checked ? 'true' : 'false')} disabled={disabled} />
-                <Label htmlFor="sltLenderNotified" className="text-sm text-foreground">Lender Notified</Label>
-              </div>
-            </DirtyFieldWrapper>
-            <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltLenderNotifiedDate} className="flex-1">
-              <Popover open={datePickerStates['sltLenderNotifiedDate'] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: open }))}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltLenderNotifiedDate && 'text-muted-foreground', lien.sltLenderNotified !== 'true' && 'opacity-50 cursor-not-allowed')} disabled={disabled || lien.sltLenderNotified !== 'true'}>
-                    {lien.sltLenderNotifiedDate && safeParseDateStr(lien.sltLenderNotifiedDate) ? format(safeParseDateStr(lien.sltLenderNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
-                    <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltLenderNotifiedDate)} onSelect={(date) => { if (date) onChange('sltLenderNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onClear={() => { onChange('sltLenderNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onToday={() => { onChange('sltLenderNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} initialFocus />
-                </PopoverContent>
-              </Popover>
-            </DirtyFieldWrapper>
-          </div>
+                <div className="flex items-center gap-3">
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltLenderNotified}>
+                    <div className="flex items-center gap-2 min-w-[140px]">
+                      <Checkbox id="sltLenderNotified" checked={lien.sltLenderNotified === 'true'} onCheckedChange={(checked) => onChange('sltLenderNotified', checked ? 'true' : 'false')} disabled={disabled || sltInactive} />
+                      <Label htmlFor="sltLenderNotified" className="text-sm text-foreground">Lender Notified</Label>
+                    </div>
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltLenderNotifiedDate} className="flex-1">
+                    <Popover open={!lenderNotifiedDisabled && (datePickerStates['sltLenderNotifiedDate'] || false)} onOpenChange={(open) => { if (lenderNotifiedDisabled) return; setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: open })); }}>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltLenderNotifiedDate && 'text-muted-foreground', lenderNotifiedDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || lenderNotifiedDisabled}>
+                          {lien.sltLenderNotifiedDate && safeParseDateStr(lien.sltLenderNotifiedDate) ? format(safeParseDateStr(lien.sltLenderNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
+                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltLenderNotifiedDate)} onSelect={(date) => { if (date) onChange('sltLenderNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onClear={() => { onChange('sltLenderNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onToday={() => { onChange('sltLenderNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </DirtyFieldWrapper>
+                </div>
+              </>
+            );
+          })()}
         </div>
+
       </div>
 
     </div>
