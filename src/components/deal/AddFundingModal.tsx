@@ -25,7 +25,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
-import { roundPctForStorage, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { roundPctForStorage, computeAmortizedPayment, Decimal } from '@/lib/precisionFormat';
 import { toast } from 'sonner';
 
 interface AddFundingModalProps {
