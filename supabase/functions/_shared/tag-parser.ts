@@ -1883,8 +1883,12 @@ export function processConditionalBlocks(
       (result.indexOf('(ne') !== -1 && result.indexOf('(ne ') !== -1)
     );
     // Match either `eq` or `ne` heads. `ne` is treated as the negation of `eq`.
-    const eqIfPattern = /\{\{#if\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/if\}\}/;
-    const eqUnlessPattern = /\{\{#unless\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/unless\}\}/;
+    // Literal forms accepted: &quot;…&quot;, "…", '…', smart-quoted “…”/‘…’,
+    // or a bareword. Word's autocorrect frequently converts straight quotes
+    // around the LITERAL into curly quotes (U+201C/U+201D, U+2018/U+2019) —
+    // without smart-quote support every conditional silently falls through.
+    const eqIfPattern = /\{\{#if\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/if\}\}/;
+    const eqUnlessPattern = /\{\{#unless\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/unless\}\}/;
     const eqIfMatch = hasEqSexp ? eqIfPattern.exec(result) : null;
     const eqUnlessMatch = hasEqSexp ? eqUnlessPattern.exec(result) : null;
     if (eqIfMatch || eqUnlessMatch) {
