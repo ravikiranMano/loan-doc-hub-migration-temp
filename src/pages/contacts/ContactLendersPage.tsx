@@ -223,6 +223,7 @@ const ContactLendersPage: React.FC = () => {
     return (
       <div className="h-full flex flex-col">
         <ContactLenderDetailLayout
+          key={selectedContact.id}
           contact={selectedContact}
           onBack={() => {
             if (contactWs) contactWs.closeContact(selectedContact.id);
