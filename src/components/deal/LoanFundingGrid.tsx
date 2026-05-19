@@ -929,13 +929,21 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
           // stale-closure races when clearing the flag on other records.
           if (selectedRecord) {
             const soldRateVal = (data.rateSoldValue || '').trim();
-            const hasSoldRate = soldRateVal !== '' && !isNaN(parseFloat(soldRateVal));
+            const hasSoldRate = soldRateVal !== '' && !isNaN(parseFloat(soldRateVal)) && parseFloat(soldRateVal) > 0;
+            const noteRateVal = (data.rateNoteValue || data.noteRateDisplay || noteRate || '').trim();
+            const modalLenderRate = parseFloat((data.lenderRate || '').toString().replace(/[%,]/g, '')) || 0;
             let lenderRate = 0;
             if (data.lenderRateOverride) lenderRate = parseFloat(data.lenderRateOverrideValue || '') || 0;
+            else if (modalLenderRate > 0) lenderRate = modalLenderRate;
             else if (hasSoldRate) lenderRate = parseFloat(soldRateVal) || 0;
             else if (data.rateSelection === 'note_rate') lenderRate = parseFloat(data.rateNoteValue) || 0;
             else if (data.rateSelection === 'sold_rate') lenderRate = parseFloat(data.rateSoldValue) || 0;
             else if (data.rateSelection === 'lender_rate') lenderRate = parseFloat(data.rateLenderValue) || 0;
+            // Final fallback: Note Rate (when Sold Rate is not configured and nothing else resolved)
+            if (!lenderRate || lenderRate <= 0) {
+              const nrNum = parseFloat(noteRateVal.replace(/[%,]/g, '')) || 0;
+              if (nrNum > 0) lenderRate = nrNum;
+            }
 
             const safeParse = (v: string) => parseFloat((v || '').replace(/[$,]/g, '')) || 0;
             onUpdateRecord(selectedRecord.id, {
