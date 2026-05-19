@@ -346,7 +346,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
         <div className="space-y-3">
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Terms</h3>
           <div className="space-y-2">
-            
+            {renderCurrencyField(FIELD_KEYS.loanAmount, "Loan Amount")}
             {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Amount")}
             {renderPercentField(FIELD_KEYS.noteRate, "Note Rate")}
 
