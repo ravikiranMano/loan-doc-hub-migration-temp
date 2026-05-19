@@ -478,7 +478,17 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Terms</h3>
           {renderInlineDateField('loan_terms.day_due', 'Day Due')}
           {renderAdjPercentField('loan_terms.note_rate', 'Note Rate')}
-          {renderAdjPercentField('loan_terms.sold_rate', 'Sold Rate')}
+          {/* Sold Rate is a single source of truth shared with Terms & Balances.
+              Both screens read/write `loan_terms.sold_rate_company` (the value
+              users actually enter on Balances). `loan_terms.sold_rate` is kept
+              as a legacy fallback for older deals that wrote to that key, but
+              new writes go to sold_rate_company so the two screens stay in sync
+              and the funding modal sees one truthful value. */}
+          {renderAdjPercentFieldMirrored(
+            'loan_terms.sold_rate_company',
+            'loan_terms.sold_rate',
+            'Sold Rate'
+          )}
           {renderAdjPercentField('loan_terms.current_rate', 'Current Rate')}
           {renderInlineField('loan_terms.interest_split', 'Interest Split')}
           {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
