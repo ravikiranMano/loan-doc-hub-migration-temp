@@ -14,18 +14,6 @@ import { DealDataEntryInner } from '@/pages/csr/DealDataEntryPage';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const ContentSkeleton = () => (
-  <div className="page-container space-y-4 animate-pulse" aria-hidden="true">
-    <div className="h-8 w-64 rounded-md bg-muted" />
-    <div className="h-4 w-96 max-w-full rounded-md bg-muted" />
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-      <div className="h-28 rounded-lg bg-muted" />
-      <div className="h-28 rounded-lg bg-muted" />
-      <div className="h-28 rounded-lg bg-muted" />
-    </div>
-    <div className="h-72 rounded-lg bg-muted" />
-  </div>
-);
 
 const AppLayoutInner: React.FC = () => {
   const { isCollapsed } = useSidebar();
