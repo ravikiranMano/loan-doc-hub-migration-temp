@@ -587,7 +587,25 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'fundingDate':
         return formatDate(record.fundingDate) || '-';
       case 'interestFrom':
-        return formatDate(record.interestFrom) || '-';
+        if (!record.interestFrom) {
+          return (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1 text-amber-600">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-xs">Not set</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs max-w-[260px]">
+                  Interest From date is missing. Pro Rata and Payment are unaffected,
+                  but interest accrual for this lender cannot be calculated until a date is set.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        }
+        return formatDate(record.interestFrom);
       case 'noteRate':
         // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
         return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
