@@ -247,23 +247,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     } catch { return null; }
   };
 
-  // Authoritative Lender Rate default priority chain:
-  //   P1 Override+manual → keep manual (handled by caller)
-  //   P2 Sold Rate > 0   → soldRate
-  //   P3 Note Rate > 0   → noteRate  (previously missing — caused blank Lender Rate)
-  //   P4 neither set     → '' (warn user)
-  const getDefaultLenderRate = (): string => {
-    const s = (soldRate || '').trim();
-    if (s !== '' && (parseFloat(s) || 0) > 0) return s;
-    const n = (noteRate || '').trim();
-    if (n !== '' && (parseFloat(n) || 0) > 0) return n;
-    return '';
-  };
-
-  // Sanity guard: a mortgage rate can never legitimately exceed 100%.
-  // Any value above this threshold indicates a wrong field was mapped
-  // into lenderRate (e.g. hold_days = 44, term in months, fee amount).
-  // Returns true when the rate is a valid mortgage rate (> 0 and <= 100).
+  // Sanity guard: US private mortgage rates legally cap around 18-20%. Anything
+  // above 25% is almost certainly a wrong field mapped into a rate slot
+  // (e.g. hold_days = 44, term in months, fee amount, an integer ID).
+  // Returns true when the rate is a valid mortgage rate (> 0 and <= 25).
   const isValidMortgageRate = (raw: unknown): boolean => {
     if (raw === null || raw === undefined) return false;
     const s = String(raw).trim();
@@ -271,15 +258,28 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     const n = parseFloat(s.replace(/[%,]/g, ''));
     if (!Number.isFinite(n)) return false;
     if (n <= 0) return false;
-    if (n > 100) {
+    if (n > 25) {
       console.error(
         '[AddFundingModal] Lender Rate sanity check failed:',
         n,
-        '— value exceeds 100%, likely a wrong field mapping. Falling back to default.'
+        '— value exceeds 25%, likely a wrong field mapping. Falling back to default.'
       );
       return false;
     }
     return true;
+  };
+
+  // Authoritative Lender Rate default priority chain:
+  //   P1 Override+manual → keep manual (handled by caller)
+  //   P2 Sold Rate valid → soldRate
+  //   P3 Note Rate valid → noteRate  (previously missing — caused blank Lender Rate)
+  //   P4 neither valid   → '' (warn user)
+  const getDefaultLenderRate = (): string => {
+    const s = (soldRate || '').trim();
+    if (isValidMortgageRate(s)) return s;
+    const n = (noteRate || '').trim();
+    if (isValidMortgageRate(n)) return n;
+    return '';
   };
 
   const getInitialFormData = (): FundingFormData => {
@@ -386,7 +386,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     setFormData((prev) => {
       const nextSoldRate = (soldRate || '').trim();
       const nextNoteRate = (noteRate || '').trim();
-      const linkedRate = nextSoldRate !== '' ? nextSoldRate : nextNoteRate;
+      // Guard: a corrupt soldRate (e.g. 44 from a mis-mapped field) must not
+      // poison the lender rate. Fall through to noteRate when soldRate fails
+      // the mortgage-rate sanity check.
+      const soldRateSafe = isValidMortgageRate(nextSoldRate) ? nextSoldRate : '';
+      const noteRateSafe = isValidMortgageRate(nextNoteRate) ? nextNoteRate : '';
+      const linkedRate = soldRateSafe !== '' ? soldRateSafe : noteRateSafe;
 
       const overrideOn = !!prev.lenderRateOverride;
       const overrideVal = (prev.lenderRateOverrideValue || '').trim();
