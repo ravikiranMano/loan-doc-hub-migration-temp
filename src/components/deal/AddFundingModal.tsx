@@ -497,18 +497,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     prevCurrentBalanceRef.current = formData.currentBalance;
   }, [formData.currentBalance, formData.fundingAmount, formData.baseFee]);
 
-  // Regular Payment calculation — standard amortization formula
-  // Payment = P × [r(1+r)^n] / [(1+r)^n − 1] with r = rate/100/12, n = remaining payments
+  // Lender Payment (per-lender share of borrower's scheduled P&I):
+  //   Lender Payment = (Pro Rata / 100) × Borrower Regular P&I
+  // Pro Rata is derived from Current Balance / Principal (computed above).
+  // Rate (Note/Lender) is NOT used here — rates only drive interest accrual.
   React.useEffect(() => {
-    // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
-    const fundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || parseFloat((loanAmount || '').replace(/[$,]/g, '')) || 0;
-    const rate = parseFloat((formData.noteRateDisplay || noteRate || '').replace(/[%,]/g, '')) || 0;
-    const monthly = (fundingAmount * (rate / 100)) / 12;
-    const payment = monthly > 0 ? monthly.toFixed(2) : '';
-    if (payment !== formData.regularPayment) {
-      setFormData(prev => ({ ...prev, regularPayment: payment }));
+    const pct = parseFloat((formData.percentOwned || '').replace(/[%,]/g, '')) || 0;
+    const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
+    const share = pct > 0 && regPI > 0
+      ? new Decimal(pct).div(100).mul(regPI).toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toFixed(2)
+      : '';
+    if (share !== formData.regularPayment) {
+      setFormData(prev => ({ ...prev, regularPayment: share }));
     }
-  }, [loanAmount, formData.fundingAmount, formData.noteRateDisplay, noteRate]);
+  }, [formData.percentOwned, totalPayment]);
 
   // Auto-compute total columns for default fees
   const computeTotal = (lender: string, company: string, broker: string): string => {
