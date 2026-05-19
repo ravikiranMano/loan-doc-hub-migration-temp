@@ -1,6 +1,33 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+
+// --- TIN formatting / validation helpers ---
+// TIN Type values: "1" = EIN, "2" = SSN, "0" = Unknown
+const tinDigits = (v: string) => (v || '').replace(/\D/g, '').slice(0, 9);
+const formatTIN = (raw: string, tinType: string): string => {
+  const d = tinDigits(raw);
+  if (tinType === '2') {
+    // SSN: XXX-XX-XXXX
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  }
+  if (tinType === '1') {
+    // EIN: XX-XXXXXXX
+    if (d.length <= 2) return d;
+    return `${d.slice(0, 2)}-${d.slice(2)}`;
+  }
+  return d;
+};
+const isValidTIN = (raw: string, tinType: string): boolean => {
+  const d = tinDigits(raw);
+  if (tinType !== '1' && tinType !== '2') return true; // no rule when type not chosen / Unknown
+  if (d.length !== 9) return false;
+  const formatted = formatTIN(d, tinType);
+  return (raw || '') === formatted;
+};
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
