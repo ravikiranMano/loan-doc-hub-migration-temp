@@ -222,6 +222,7 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
   if (selectedContact) {
     return (
       <AdditionalGuarantorDetail
+        key={selectedContact.id}
         contact={selectedContact}
         onBack={() => {
           setSelectedContact(null);
