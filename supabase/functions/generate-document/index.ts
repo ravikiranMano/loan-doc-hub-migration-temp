@@ -3626,6 +3626,46 @@ async function generateSingleDocument(
           }
         }
         if (bridged) debugLog(`[generate-document] Insurance oc_* → policy_* bridge: published ${bridged} alias(es)`);
+
+        // ── Insurance amount aliases ────────────────────────────────────────
+        // Template documents reference canonical amount keys
+        //   {{origination_ins.general_liability_amount}}
+        //   {{origination_ins.umbrella_excess_coverage_amount}}
+        //   {{origination_ins.umbrella_excess_coverage_months}}
+        // but the UI persists those numbers under the "Other Coverages" oc_*
+        // keys (oc_general_liability_amount, oc_umbrella_per, oc_umbrella_months).
+        // Mirror src → target only when the target slot is empty so any
+        // explicitly-stored canonical value still wins.
+        const insAmountAliasMap: Record<string, { target: string; dataType: "currency" | "number" | "text" }[]> = {
+          "origination_ins.oc_general_liability_amount": [
+            { target: "origination_ins.general_liability_amount", dataType: "currency" },
+          ],
+          "origination_ins.oc_umbrella_per": [
+            { target: "origination_ins.umbrella_excess_coverage_amount", dataType: "currency" },
+          ],
+          "origination_ins.oc_umbrella_months": [
+            { target: "origination_ins.umbrella_excess_coverage_months", dataType: "number" },
+          ],
+        };
+        let amtBridged = 0;
+        for (const [src, targets] of Object.entries(insAmountAliasMap)) {
+          const srcVal = fieldValues.get(src);
+          if (!srcVal || srcVal.rawValue === null || srcVal.rawValue === undefined || String(srcVal.rawValue).trim() === "") continue;
+          // Normalize string amounts like "800.00" to a number for proper currency formatting
+          let raw: string | number = srcVal.rawValue as any;
+          if (typeof raw === "string" && /^-?\d+(\.\d+)?$/.test(raw.trim())) {
+            const n = parseFloat(raw.trim());
+            if (Number.isFinite(n)) raw = n;
+          }
+          for (const { target, dataType } of targets) {
+            const existing = fieldValues.get(target);
+            if (!existing || existing.rawValue === null || existing.rawValue === undefined || String(existing.rawValue).trim() === "") {
+              fieldValues.set(target, { rawValue: raw as any, dataType });
+              amtBridged++;
+            }
+          }
+        }
+        if (amtBridged) debugLog(`[generate-document] Insurance oc_*_amount → canonical bridge: published ${amtBridged} alias(es)`);
       }
 
       // ── Bridge: "Anticipated Balance (if new lien)" → li_lt_anticipatedAmount ──
