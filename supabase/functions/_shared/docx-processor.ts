@@ -6,6 +6,7 @@
  */
 
 import * as fflate from "https://esm.sh/fflate@0.8.2";
+import { DOMParser } from "https://esm.sh/@xmldom/xmldom@0.8.10";
 import type { DocxProcessingOptions, FieldValueData, LabelMapping } from "./types.ts";
 import { replaceMergeTags } from "./tag-parser.ts";
 
@@ -386,6 +387,35 @@ export function validateContentXmlPart(partName: string, xml: string): void {
 
   if (rootClose && !trimmed.endsWith(rootClose)) {
     throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+  }
+
+  const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
+  const parserError = parsed.getElementsByTagName("parsererror")[0];
+  if (parserError) {
+    const parserMessage = (parserError.textContent || "XML parser rejected content")
+      .replace(/\s+/g, " ")
+      .trim();
+    const lineMatch = parserMessage.match(/line\s+(\d+)/i);
+    const colMatch = parserMessage.match(/col(?:umn)?\s+(\d+)/i);
+    let offset = -1;
+    if (lineMatch && colMatch) {
+      const line = parseInt(lineMatch[1], 10);
+      const col = parseInt(colMatch[1], 10);
+      if (Number.isFinite(line) && Number.isFinite(col)) {
+        offset = 0;
+        for (let i = 1; i < line && offset < trimmed.length; i++) {
+          const nl = trimmed.indexOf("\n", offset);
+          if (nl === -1) break;
+          offset = nl + 1;
+        }
+        offset = Math.min(trimmed.length, offset + Math.max(0, col - 1));
+      }
+    }
+    throw new Error(
+      `DOCX_INTEGRITY: ${partName} is not XML-parser-valid` +
+        (offset >= 0 ? ` at offset ${offset}` : "") +
+        ` (${parserMessage})`
+    );
   }
 
   const stack: string[] = [];

@@ -34,6 +34,28 @@ const debugLog = (...args: unknown[]) => {
   }
 };
 
+const repairOoXmlTagBoundaries = (xml: string): { xml: string; repaired: number } => {
+  let repaired = 0;
+  const fixed = xml.replace(/<[^<>]*>/g, (tag) => {
+    let next = tag;
+    let prev: string;
+    do {
+      prev = next;
+      next = next.replace(
+        /(<\/?[A-Za-z][\w.-]*:[A-Za-z][\w.-]*)([A-Za-z][\w.-]*:[A-Za-z][\w.-]*=)/g,
+        "$1 $2",
+      );
+      next = next.replace(
+        /(="[^"]*")([A-Za-z][\w.-]*:[A-Za-z][\w.-]*=)/g,
+        "$1 $2",
+      );
+    } while (next !== prev);
+    if (next !== tag) repaired += next.length - tag.length;
+    return next;
+  });
+  return { xml: fixed, repaired };
+};
+
 let cachedValidFieldKeys: Set<string> | null = null;
 let validFieldKeysCacheTimestamp = 0;
 const VALID_FIELD_KEYS_TTL_MS = 5 * 60 * 1000;
@@ -8504,6 +8526,11 @@ async function generateSingleDocument(
           3: `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`,
         };
 
+        const detectRow = (visible: string): 1 | 2 | 3 | null => {
+          const hit = ROW_LABELS.find(({ label }) => label.test(visible));
+          return hit ? hit.row : null;
+        };
+
         const setRowSpacing = (para: string, row: 1 | 2 | 3): string => {
           const spacingXml = ROW_SPACING[row];
           const open = para.match(/^<w:p\b[^>]*>/);
@@ -10427,18 +10454,11 @@ async function generateSingleDocument(
             // scoped, idempotent way without touching any other content.
             {
               const before = __xmlStrCache[k];
-              let fixed = before.replace(
-                /(<\/?[A-Za-z][A-Za-z0-9]*:[A-Za-z][A-Za-z0-9]*)([a-zA-Z][a-zA-Z0-9]*:[A-Za-z][A-Za-z0-9]*=)/g,
-                "$1 $2",
-              );
-              fixed = fixed.replace(
-                /(="[^"]*")([A-Za-z][A-Za-z0-9]*:[A-Za-z][A-Za-z0-9]*=)/g,
-                "$1 $2",
-              );
-              if (fixed !== before) {
-                __xmlStrCache[k] = fixed;
+              const fixed = repairOoXmlTagBoundaries(before);
+              if (fixed.xml !== before) {
+                __xmlStrCache[k] = fixed.xml;
                 console.log(
-                  `[generate-document] RE851D post-render flush: repaired malformed attribute whitespace in ${k} (Δ=${fixed.length - before.length} chars)`,
+                  `[generate-document] RE851D post-render flush: repaired malformed OOXML tag boundaries in ${k} (Δ=${fixed.repaired} chars)`,
                 );
               }
             }
