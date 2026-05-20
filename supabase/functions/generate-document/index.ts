@@ -7428,11 +7428,17 @@ async function generateSingleDocument(
               partInjected += 1;
               return para.replace(labelRunRe, `$1${nameRun}`);
             });
+            // CRITICAL: only mutate the shared rezip/cache when this part
+            // actually changed. The rezip object IS __re851dPassCache (same
+            // reference), so unconditionally wrapping bare bytes in a
+            // [Uint8Array, {level:0}] tuple here taints the cache. The
+            // final post-render flush then wraps the tuple AGAIN, and
+            // fflate writes the nested structure as a directory
+            // (word/document.xml/0, word/document.xml/1/level/) — which
+            // Word reports as "The file is corrupt and cannot be opened".
             if (partInjected > 0) {
               totalInjected += partInjected;
               rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
-            } else {
-              rezip[filename] = [bytes, { level: 0 }];
             }
           }
           if (totalInjected > 0) {
