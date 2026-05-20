@@ -5650,7 +5650,7 @@ async function generateSingleDocument(
           if (remainingDynamicHits.length > 0) {
             console.log(`[generate-document] RE851D Remaining parsed placeholder keys in ${filename}: ${remainingDynamicHits.join(", ")}`);
           }
-          if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)")) {
+          if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)") && !xml.includes("ld_p_vestin")) {
             out[filename] = bytes;
             continue;
           }
