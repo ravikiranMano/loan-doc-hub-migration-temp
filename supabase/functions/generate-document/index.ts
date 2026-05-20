@@ -5959,9 +5959,18 @@ async function generateSingleDocument(
           xml = xml.replace(
             /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
             (_m, open: string, body: string, close: string) => {
-              const repaired = body.replace(
+              let repaired = body.replace(
                 /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
                 "{{ld_p_vestin}}",
+              );
+              // Also handle the case where braces were stripped entirely
+              // and the identifier is leaking as bare text (e.g. RE851D
+              // ACKNOWLEDGEMENT OF RECEIPT line). Only fires when the
+              // identifier is NOT already adjacent to a `{`/`}` (so we
+              // never double-wrap a tag the previous branch just fixed).
+              repaired = repaired.replace(
+                /(^|[^{A-Za-z0-9_])ld_p_vestin(?:g)?(?![A-Za-z0-9_}])/g,
+                "$1{{ld_p_vestin}}",
               );
               return `${open}${repaired}${close}`;
             },
@@ -10802,7 +10811,7 @@ async function generateSingleDocument(
           const xml = decoder.decode(bytes as Uint8Array);
           const hits = xml.match(/\{\{\s*pr_li_rem_[^{}<]*(?:\{N\}|\{S\}|\{P\})[^{}<]*\}\}|pr_li_rem_[A-Za-z]+_(?:\{N\}_\{S\}|\{P\}_\{S\}|\(N\)_\(S\)|\(P\)_\(S\)|N_S)/g) || [];
           hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
-          const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
+          const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
           vestingHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
         }
         if (unresolved.length > 0) {

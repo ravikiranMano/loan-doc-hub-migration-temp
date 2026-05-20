@@ -1,54 +1,80 @@
 ## Problem
 
-`{{ln_p_originalAmount}}` renders blank in RE851A even though the field is saved.
+In the latest RE851D generation, the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell renders the literal text:
+
+```
+ld_p_vesting     k
+```
+
+instead of the lender's vesting value (e.g. `JOHN K SMITH, TRUSTEE OF ...`). The tag is being printed verbatim — the merge engine never replaces it. Every other tag in the same line (first / middle / last name) renders normally, which is why a stray "k" (initial) survives next to the unresolved identifier.
 
 ## Root cause
 
-`field_dictionary.ln_p_originalAmount` exists (section `loan_terms`, currency) and the deal `deal_section_values` row stores its value (`value_number`). The generic publisher in `supabase/functions/generate-document/index.ts` (~L390–470) does set `fieldValues.set("ln_p_originalAmount", ...)` when the dictionary id is present in the JSONB row.
+1. The data pipeline IS publishing `ld_p_vesting` correctly:
+   - `supabase/functions/generate-document/index.ts` L860–870 sets `ld_p_vesting`, `ld_p_vestin`, `lender.vesting`, `lender1.vesting` from `lcd.vesting`.
+   - L4817–4836 then normalizes it (adds trailing space for entity types, mirrors to truncated alias `ld_p_vestin`).
+   - `ld_p_vesting` is present in `field_dictionary` (`aab82127-…`), so `validFieldKeys` accepts it.
 
-However, RE851A goes through `isEncumbrancePipeline`, which runs several extra passes (upfront authoring-noise strip, label-anchored ENCUMBRANCE rewrite at L9761 keyed on the literal label "ORIGINAL AMOUNT", anti-fallback shield, post-render flush). Two of those interact badly with a standalone `{{ln_p_originalAmount}}` tag:
+2. The RE851D V12.1 template authored the lender‑vesting placeholder with malformed braces around the identifier. Earlier post‑processing landed several known‑bad variants: `{ld_p_vestin`, `{ld_p_vestin}`, `{{ld_p_vestin}`. A targeted repair pass exists at `supabase/functions/generate-document/index.ts` L5952–5968:
 
-1. The label-anchored encumbrance pass treats every paragraph whose visible text contains `ORIGINAL AMOUNT` as a `pr_li_*_originalAmount_*` cell and overwrites the cell run with the encumbrance value (or an empty string when no lien slot resolves), wiping the unrelated `{{ln_p_originalAmount}}` tag that happens to share that label.
-2. There is no explicit RE851A publisher for `ln_p_originalAmount`, so it relies entirely on the generic dictionary publisher; any path that falls back to canonical `loan_terms.*` or to a composite `loan::<uuid>` key never reaches the resolver and the tag is left unresolved, after which the post-render flush blanks the placeholder.
-
-Additionally, `LOAN_TERMS_BALANCES_KEYS.originalAmount` in `src/lib/fieldKeyMap.ts` is `'loan.original_amount'` (mismatched with the rest of the section which uses `'loan_terms.*'`). The legacy bridge resolves it on save, but it means no `loan_terms.original_amount` alias exists in `fieldValues` for the encumbrance label pass to consult.
-
-## Fix (scoped, additive)
-
-### 1. `supabase/functions/generate-document/index.ts`
-
-Add a small, explicit RE851A publisher near the existing `ln_p_loanAmount` / `ln_p_estimateBallooPaymen` auto-compute block (~L2440–L2520). It will:
-
-- Read the value from any of: `ln_p_originalAmount`, `loan_terms.original_amount`, `loan.original_amount`, `ln_p_originalBalance`, `loan_terms.original_balance` (first non-empty wins).
-- Set `fieldValues.set("ln_p_originalAmount", { rawValue, dataType: "currency" })` unconditionally so the merge tag always resolves.
-- Also publish a `loan_terms.original_amount` alias so any downstream label/canonical lookups find it.
-
-Then, in the RE851A/encumbrance label-anchored pass at ~L9757–L9767, narrow the `ORIGINAL AMOUNT` rule to only fire when the enclosing cell sits inside an `ENCUMBRANCE(S)` table region. Concretely: keep a `seenEncumbranceAnchor` flag (toggled when the visible text crosses `ENCUMBRANCE` headings) and skip the rewrite for paragraphs that contain a non-`pr_li_` Handlebars tag (e.g. `{{ln_p_…}}`). This preserves all current encumbrance behavior while leaving standalone loan-level tags alone.
-
-### 2. `src/lib/fieldKeyMap.ts`
-
-Change line 401:
-
-```
-originalAmount: 'loan.original_amount',
+```ts
+xml = xml.replace(
+  /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
+  (_m, open, body, close) => {
+    const repaired = body.replace(
+      /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
+      "{{ld_p_vestin}}",
+    );
+    return `${open}${repaired}${close}`;
+  },
+);
 ```
 
-to
+The inner regex `\{\{?\s*ld_p_vesting?\s*\}?\}?` REQUIRES at least one literal `{` (the leading `\{` is mandatory). In the current template the identifier text run no longer carries ANY brace — the opening `{{` lives in a previous run that was stripped/separated during normalize, and the trailing `}}` lives in a later run. After `normalizeWordXml` merged runs, what survives in the single `<w:t>` body is just:
 
 ```
-originalAmount: 'loan_terms.original_amount',
+ld_p_vesting
 ```
 
-so the UI persists the value under the same section prefix as every other Loan Terms field. The legacy bridge (`legacyKeyMap.ts` line 398) already maps `loan.original_amount → ln_p_originalAmount`; we add a parallel mapping `'loan_terms.original_amount' → 'ln_p_originalAmount'` to cover both legacy rows and new saves.
+with no braces. The repair regex therefore does not match, the body is returned unchanged, Handlebars sees no tag, and the post‑render unresolved scanner (L10805, `/\{+\s*ld_p_vestin(?:g)?\s*\}*/g`) also requires `{`, so it logs `unresolved: none` even though the bare identifier is leaking to the rendered document.
+
+This is why the bug regressed silently — every guard in the pipeline is keyed on the presence of `{`.
+
+## Fix (minimal, additive, RE851D‑only)
+
+### `supabase/functions/generate-document/index.ts`
+
+1. **Broaden repair (h) at L5952–5968** to also rewrite a bare `ld_p_vesting` / `ld_p_vestin` identifier (no braces) into `{{ld_p_vestin}}`, but only when it is NOT already adjacent to a `{` (so we never double‑wrap a tag that the existing branch already fixed). Scope stays limited to a single `<w:t>` body and only fires for this exact identifier — no other prose can be affected because `ld_p_vesting` cannot legitimately appear as document text.
+
+   Concretely, after the existing inner replace, add a second pass on the same body:
+   ```ts
+   const repaired2 = repaired.replace(
+     /(^|[^{A-Za-z0-9_])ld_p_vestin(?:g)?(?![A-Za-z0-9_}])/g,
+     "$1{{ld_p_vestin}}",
+   );
+   ```
+   This converts a bare leading/standalone identifier into the canonical `{{ld_p_vestin}}` tag, which the existing Handlebars resolver then renders from the already‑published `ld_p_vestin` value.
+
+2. **Tighten the post‑render unresolved scanner at L10805** so it also catches a bare identifier (no braces) and logs it. Replace:
+   ```ts
+   const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
+   ```
+   with:
+   ```ts
+   const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
+   ```
+   so future regressions surface in the logs instead of being silently uploaded.
+
+No changes to: data publishers (L840–870, L4817–4836), the template, the field dictionary, the field map, RLS, UI, or any other template/pipeline. Repair stays scoped to the literal identifier `ld_p_vestin[g]` inside `<w:t>` bodies that already match the existing guard.
 
 ## Validation
 
-1. Regenerate RE851A for a deal that has Original Amount populated → `{{ln_p_originalAmount}}` renders as `$1,000,000.00`.
-2. Edge function log: confirm `ln_p_originalAmount = 1000000` appears in the pre-render debug fields list (already wired via `debugFields` at L1023; add `ln_p_originalAmount` to that array as part of the diff so future regressions are visible).
-3. Confirm no regression in the existing ENCUMBRANCE `ORIGINAL AMOUNT` columns (they still resolve via the per-slot `pr_li_rem/ant_originalAmount_N_S` publisher).
+1. Regenerate RE851D for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` → the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell now shows the lender's vesting value followed by the name, with no literal `ld_p_vesting` text.
+2. Edge function logs print `RE851D unresolved Remaining placeholders before upload/PDF: none` after the run (or, if it doesn't, the new scanner will print the offending identifier so we can keep narrowing).
+3. No regression on RE851D documents whose templates already use clean `{{ld_p_vesting}}` / `{{ld_p_vestin}}` — the new branch is a no‑op for those because braces are already present and adjacent to the identifier.
 
 ## Out of scope
 
-- Field dictionary, RLS, packets, templates table — no changes.
-- RE851D, RE885, charges, liens — no changes.
-- UI layout, styling, validation — no changes; only the persistence key path for the existing "Original Amount" input is corrected.
+- Field dictionary, RLS, packets, templates table, template storage — no changes.
+- RE851A, RE851D, RE885 logic unrelated to the vesting tag — untouched.
+- UI, styling, validation — no changes.
