@@ -10252,14 +10252,10 @@ async function generateSingleDocument(
           // Boundary safety: an edit must start at a safe XML position. For
           // pure inserts (start === end) the position must be either at end-of-
           // doc, immediately before a `<`, or immediately after a `>`.
-            // For replacements, start must point at `<`, end must be one past
-            // `>`, and the replaced fragment must be exactly one safe text run
-            // (`<w:r>...</w:r>`), one text node (`<w:t>...</w:t>`), or one
-            // native Word checkbox content control (`<w:sdt>...</w:sdt>` with
-            // `<w14:checkbox>`). The SDT allowance is required for RE851D
-            // cloned Property 2+ BALLOON PAYMENT? controls; without it their
-            // queued checkbox-state replacements are dropped as unsafe.
-            // This prevents a stale offset from splicing inside an
+          // For replacements, start must point at `<`, end must be one past
+          // `>`, and the replaced fragment must be exactly one safe text run
+          // (`<w:r>...</w:r>`) or one text node (`<w:t>...</w:t>`). This
+          // prevents a stale offset from splicing inside an
           // attribute (e.g. `<w:color w:v|`) and producing the malformed
           // `</w:rPr> before </w:p>` failure observed on RE851D.
           const isSafeBoundary = (e: { start: number; end: number }): boolean => {
@@ -10272,9 +10268,7 @@ async function generateSingleDocument(
             }
             if (xml.charAt(e.start) !== "<" || xml.charAt(e.end - 1) !== ">") return false;
             const frag = xml.slice(e.start, e.end);
-            return /^<w:r\b[^>]*>[\s\S]*<\/w:r>$/.test(frag) ||
-              /^<w:t\b[^>]*>[\s\S]*<\/w:t>$/.test(frag) ||
-              (/^<w:sdt\b[^>]*>[\s\S]*<\/w:sdt>$/.test(frag) && /<w14:checkbox\b/.test(frag));
+            return /^<w:r\b[^>]*>[\s\S]*<\/w:r>$/.test(frag) || /^<w:t\b[^>]*>[\s\S]*<\/w:t>$/.test(frag);
           };
           for (const e of edits) {
             if (e.start < cursor) {
