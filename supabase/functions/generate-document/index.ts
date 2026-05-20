@@ -825,6 +825,18 @@ async function generateSingleDocument(
           setIfEmpty("Lender.Name", lFullName);
           setIfEmpty("ld_p_fullNameIfEntity", lFullName);
 
+          // Bridge Lender Vesting (CSR Lender Info → Vesting) to ALL aliases
+          // the templates may reference. Field dictionary uses `ld_p_vesting`,
+          // but some templates (e.g. RE851D) reference the truncated legacy
+          // tag `{{ld_p_vestin}}` and the dot-key `lender.vesting`.
+          const lVesting = (lcd.vesting ?? "").toString();
+          if (lVesting) {
+            setIfEmpty("ld_p_vesting", lVesting);
+            setIfEmpty("ld_p_vestin", lVesting);
+            setIfEmpty("lender.vesting", lVesting);
+            setIfEmpty("lender1.vesting", lVesting);
+          }
+
           // Bridge lender type from contact_data
           if (lcd.type) {
             setIfEmpty("ld_p_lenderType", lcd.type);
@@ -4750,6 +4762,12 @@ async function generateSingleDocument(
           dataType: 'text',
         });
       }
+
+      // Mirror the normalized vesting value into the truncated legacy alias
+      // `ld_p_vestin` so templates referencing either spelling render the
+      // same value (RE851D template uses `{{ld_p_vestin}}`).
+      const finalVesting = (fieldValues.get('ld_p_vesting')?.rawValue ?? '').toString();
+      fieldValues.set('ld_p_vestin', { rawValue: finalVesting, dataType: 'text' });
     }
 
     // Build set of all valid field keys once and reuse it across invocations.
