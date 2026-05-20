@@ -7398,6 +7398,53 @@ async function generateSingleDocument(
       return processedDocx;
     };
 
+    // ── Guaranty signature fallback ───────────────────────────────────────
+    // Some uploaded guaranty templates have a bare signature line:
+    //   Guarantor:
+    // with no usable merge tag in the XML (Word can leave an empty HTMLCode run).
+    // If the AG publisher resolved a name, populate that signature line at
+    // runtime so existing templates do not need to be re-authored/re-uploaded.
+    if (/guaranty/i.test(template.name || "")) {
+      const agName = String(fieldValues.get("ag_p_fullName")?.rawValue ?? "").trim();
+      if (agName) {
+        try {
+          const rezip = __passUnzip(processedDocx);
+          const encoder = new TextEncoder();
+          const xmlEntries = Object.keys(rezip).filter((n) =>
+            n === "word/document.xml" || /^word\/(header|footer)\d*\.xml$/.test(n)
+          );
+          let totalInjected = 0;
+          const nameRun = `<w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve"> ${escapeXmlValue(agName)}</w:t></w:r>`;
+          for (const filename of xmlEntries) {
+            const bytes = rezip[filename] as Uint8Array;
+            let xml = __xmlGet(filename, bytes);
+            let partInjected = 0;
+            xml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (para) => {
+              const visible = para.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+              if (!/^Guarantor:\s*(?:\{\{\s*ag_p_fullName\s*\}\})?\s*$/.test(visible)) return para;
+              if (visible.includes(agName)) return para;
+              const labelRunRe = /(<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:t[^>]*>\s*Guarantor:\s*<\/w:t>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>)/;
+              if (!labelRunRe.test(para)) return para;
+              partInjected += 1;
+              return para.replace(labelRunRe, `$1${nameRun}`);
+            });
+            if (partInjected > 0) {
+              totalInjected += partInjected;
+              rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            } else {
+              rezip[filename] = [bytes, { level: 0 }];
+            }
+          }
+          if (totalInjected > 0) {
+            processedDocx = __passZip(rezip);
+            console.log(`[generate-document] Guaranty signature fallback populated ${totalInjected} Guarantor line(s) with ag_p_fullName`);
+          }
+        } catch (sigErr) {
+          console.warn("[generate-document] Guaranty signature fallback skipped:", sigErr instanceof Error ? sigErr.message : String(sigErr));
+        }
+      }
+    }
+
     // ── RE851D MULTI-PROPERTY LIEN-DETAIL CLONER ─────────────────────────
     // The shipped RE851D template carries the lien-detail block (ENCUMBRANCE
     // grids + "Additional encumbrances…" YES/NO row + Broker/Lender initials
