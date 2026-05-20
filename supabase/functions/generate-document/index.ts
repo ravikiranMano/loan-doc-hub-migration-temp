@@ -173,7 +173,7 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D || /851a/i.test(template.name || "")) {
+      if (isTemplate851D || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "")) {
         throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
@@ -832,12 +832,15 @@ async function generateSingleDocument(
       // Order by sequence_order ASC NULLS LAST, then created_at ASC. First = default.
       {
         const isAg = (p: any) => {
+          const pName = String(p.name || "").toLowerCase();
+          if (pName.includes("additional guarantor") || pName.includes("adtn guarantor")) return true;
           if (!p.contact_id) return false;
           const c = contactRowsByUuid.get(p.contact_id);
           if (!c) return false;
           if (String(c.contact_type || "").toLowerCase() === "additional_guarantor") return true;
           const cap = c.contact_data?.capacity;
-          return !!(cap && String(cap).toLowerCase().includes("additional guarantor"));
+          const capLower = cap ? String(cap).toLowerCase() : "";
+          return capLower.includes("additional guarantor") || capLower.includes("adtn guarantor");
         };
         const agParticipants = participantRows
           .filter(isAg)
@@ -850,13 +853,13 @@ async function generateSingleDocument(
 
         debugLog(`[generate-document] Additional Guarantor participants: ${agParticipants.length}`);
 
-        const publishAg = (contact: any, suffix: string) => {
+        const publishAg = (contact: any, suffix: string, participant?: any) => {
           const cd = contact?.contact_data || {};
           const firstName = cd.first_name || contact?.first_name || "";
           const middleName = cd.middle_initial || cd.middle_name || "";
           const lastName = cd.last_name || contact?.last_name || "";
           const assembledName = [firstName, middleName, lastName].filter(Boolean).join(" ");
-          const fullName = (assembledName || cd.full_name || contact?.full_name || "").trim();
+          const fullName = (assembledName || cd.full_name || contact?.full_name || participant?.name || "").trim();
           fieldValues.set(`ag_p_fullName${suffix}`, { rawValue: fullName, dataType: "text" });
           fieldValues.set(`ag_p_first${suffix}`, { rawValue: String(firstName).trim(), dataType: "text" });
           fieldValues.set(`ag_p_middle${suffix}`, { rawValue: String(middleName).trim(), dataType: "text" });
@@ -871,10 +874,10 @@ async function generateSingleDocument(
         } else {
           // Default (no suffix) = first AG
           const firstAgContact = contactRowsByUuid.get(agParticipants[0].contact_id);
-          publishAg(firstAgContact, "");
+          publishAg(firstAgContact, "", agParticipants[0]);
           agParticipants.forEach((p: any, idx: number) => {
             const c = contactRowsByUuid.get(p.contact_id);
-            publishAg(c, `_${idx + 1}`);
+            publishAg(c, `_${idx + 1}`, p);
           });
           debugLog(`[generate-document] Published ag_p_fullName="${fieldValues.get("ag_p_fullName")?.rawValue}" (+${agParticipants.length} indexed)`);
         }
@@ -7072,7 +7075,12 @@ async function generateSingleDocument(
     // resolver falls through to fallbacks. Seeding them here forces priority-1
     // direct match and removes any chance of the resolver returning a different
     // ultimate key for our publisher-set values. Template-gated.
-    let effectiveValidFieldKeys = validFieldKeys;
+    let effectiveValidFieldKeys = /guaranty/i.test(template.name || "") ? new Set(validFieldKeys) : validFieldKeys;
+    if (/guaranty/i.test(template.name || "")) {
+      for (const key of ["ag_p_fullName", "ag_p_first", "ag_p_middle", "ag_p_last"]) {
+        effectiveValidFieldKeys.add(key);
+      }
+    }
     if (isEncumbrancePipeline) {
       effectiveValidFieldKeys = new Set(validFieldKeys);
       const SUFFIXED_BASES = [
@@ -7389,6 +7397,53 @@ async function generateSingleDocument(
       // populated. Avoids an O(N) zip per pass.
       return processedDocx;
     };
+
+    // ── Guaranty signature fallback ───────────────────────────────────────
+    // Some uploaded guaranty templates have a bare signature line:
+    //   Guarantor:
+    // with no usable merge tag in the XML (Word can leave an empty HTMLCode run).
+    // If the AG publisher resolved a name, populate that signature line at
+    // runtime so existing templates do not need to be re-authored/re-uploaded.
+    if (/guaranty/i.test(template.name || "")) {
+      const agName = String(fieldValues.get("ag_p_fullName")?.rawValue ?? "").trim();
+      if (agName) {
+        try {
+          const rezip = __passUnzip(processedDocx);
+          const encoder = new TextEncoder();
+          const xmlEntries = Object.keys(rezip).filter((n) =>
+            n === "word/document.xml" || /^word\/(header|footer)\d*\.xml$/.test(n)
+          );
+          let totalInjected = 0;
+          const nameRun = `<w:r><w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve"> ${escapeXmlValue(agName)}</w:t></w:r>`;
+          for (const filename of xmlEntries) {
+            const bytes = rezip[filename] as Uint8Array;
+            let xml = __xmlGet(filename, bytes);
+            let partInjected = 0;
+            xml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (para) => {
+              const visible = para.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+              if (!/^Guarantor:\s*(?:\{\{\s*ag_p_fullName\s*\}\})?\s*$/.test(visible)) return para;
+              if (visible.includes(agName)) return para;
+              const labelRunRe = /(<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:t[^>]*>\s*Guarantor:\s*<\/w:t>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>)/;
+              if (!labelRunRe.test(para)) return para;
+              partInjected += 1;
+              return para.replace(labelRunRe, `$1${nameRun}`);
+            });
+            if (partInjected > 0) {
+              totalInjected += partInjected;
+              rezip[filename] = [__xmlSet(filename, xml), { level: 0 }];
+            } else {
+              rezip[filename] = [bytes, { level: 0 }];
+            }
+          }
+          if (totalInjected > 0) {
+            processedDocx = __passZip(rezip);
+            console.log(`[generate-document] Guaranty signature fallback populated ${totalInjected} Guarantor line(s) with ag_p_fullName`);
+          }
+        } catch (sigErr) {
+          console.warn("[generate-document] Guaranty signature fallback skipped:", sigErr instanceof Error ? sigErr.message : String(sigErr));
+        }
+      }
+    }
 
     // ── RE851D MULTI-PROPERTY LIEN-DETAIL CLONER ─────────────────────────
     // The shipped RE851D template carries the lien-detail block (ENCUMBRANCE
