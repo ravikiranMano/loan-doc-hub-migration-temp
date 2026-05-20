@@ -935,6 +935,7 @@ async function generateSingleDocument(
           forceSet("bk_p_middleInitia", middleName);
           forceSet("bk_p_email", email);
           forceSet("bk_p_company", company);
+          forceSet("bk_p_licenseeNameIfEntity", company);
           forceSet("bk_p_phone", phone);
           forceSet("bk_p_cellPhone", cd["phone.cell"] || cd["phone.mobile"] || "");
           forceSet("bk_p_fax", fax);
