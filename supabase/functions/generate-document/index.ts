@@ -2446,7 +2446,38 @@ async function generateSingleDocument(
         fieldValues.set("ld_fd_fundingAmount", { rawValue: String(fundingVal), dataType: "currency" });
         debugLog(`[generate-document] Auto-bridged ld_fd_fundingAmount = ${fundingVal}`);
       }
+
+    // Bridge ln_p_originalAmount (Loan Terms → Original Amount) so the
+    // {{ln_p_originalAmount}} merge tag always resolves regardless of the
+    // section-key path the UI used when persisting the value. Sourced from
+    // the canonical dictionary field_key first; falls back to legacy
+    // section-prefixed keys ('loan.original_amount', 'loan_terms.original_amount')
+    // and to ln_p_originalBalance / loan_terms.original_balance as last resort.
+    // No overwrite when ln_p_originalAmount is already populated.
+    {
+      const existingOrigAmt = fieldValues.get("ln_p_originalAmount");
+      const hasVal = existingOrigAmt && existingOrigAmt.rawValue !== undefined
+        && existingOrigAmt.rawValue !== null && String(existingOrigAmt.rawValue) !== "";
+      if (!hasVal) {
+        const candidate =
+          fieldValues.get("loan_terms.original_amount")?.rawValue ??
+          fieldValues.get("loan.original_amount")?.rawValue ??
+          fieldValues.get("ln_p_originalBalance")?.rawValue ??
+          fieldValues.get("loan_terms.original_balance")?.rawValue;
+        if (candidate !== undefined && candidate !== null && String(candidate) !== "") {
+          fieldValues.set("ln_p_originalAmount", { rawValue: String(candidate), dataType: "currency" });
+          debugLog(`[generate-document] Auto-bridged ln_p_originalAmount = ${candidate}`);
+        }
+      }
+      // Mirror back to the loan_terms.* canonical alias so any downstream
+      // label/canonical lookup paths find a value as well.
+      const finalOrig = fieldValues.get("ln_p_originalAmount")?.rawValue;
+      if (finalOrig !== undefined && finalOrig !== null && String(finalOrig) !== ""
+          && !fieldValues.get("loan_terms.original_amount")?.rawValue) {
+        fieldValues.set("loan_terms.original_amount", { rawValue: String(finalOrig), dataType: "currency" });
+      }
     }
+
 
     // Bridge ld_fd_baseFee from funding_records JSON (sum of baseFee across records)
     const existingBaseFee = fieldValues.get("ld_fd_baseFee");
