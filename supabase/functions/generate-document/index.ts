@@ -825,6 +825,18 @@ async function generateSingleDocument(
           setIfEmpty("Lender.Name", lFullName);
           setIfEmpty("ld_p_fullNameIfEntity", lFullName);
 
+          // Bridge Lender Vesting (CSR Lender Info → Vesting) to ALL aliases
+          // the templates may reference. Field dictionary uses `ld_p_vesting`,
+          // but some templates (e.g. RE851D) reference the truncated legacy
+          // tag `{{ld_p_vestin}}` and the dot-key `lender.vesting`.
+          const lVesting = (lcd.vesting ?? "").toString();
+          if (lVesting) {
+            setIfEmpty("ld_p_vesting", lVesting);
+            setIfEmpty("ld_p_vestin", lVesting);
+            setIfEmpty("lender.vesting", lVesting);
+            setIfEmpty("lender1.vesting", lVesting);
+          }
+
           // Bridge lender type from contact_data
           if (lcd.type) {
             setIfEmpty("ld_p_lenderType", lcd.type);
