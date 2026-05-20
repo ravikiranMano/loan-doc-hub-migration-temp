@@ -10278,6 +10278,206 @@ async function generateSingleDocument(
                   }
                 }
               }
+
+              // ── FINAL BALLOON ENFORCEMENT ─────────────────────────────
+              // Bug 1: "IF YES, AMOUNT" header cell must contain ONLY its
+              //   label. Some authored templates carry a stray balloon-
+              //   amount merge tag inside that same cell's second <w:p>,
+              //   which then renders the amount twice (once in the header
+              //   cell, once in the checkbox row's amount cell). Strip
+              //   <w:t> bodies of any non-label paragraph inside the cell
+              //   that carries numeric content.
+              // Bug 2: For cloned property regions (P2..P5) and any cell
+              //   whose template did not survive as an SDT or as a
+              //   {{handlebars}} run, the YES / NO / UNKNOWN labels render
+              //   as plain text with no leading ☑/☐ glyph. Prepend the
+              //   correct glyph + space to each label's <w:t> when no
+              //   checkbox glyph is already visible immediately before it.
+              try {
+                // Bug 1 — scrub stray amount paragraphs from the
+                // "IF YES, AMOUNT" header cells (slots 1 & 2).
+                {
+                  const ifYesLabelRx = /\bIF\s+YES,\s*AMOUNT\b/i;
+                  const ifYesRe = /\bIF\s+YES,\s*AMOUNT\b/gi;
+                  ifYesRe.lastIndex = visHeaderEnd;
+                  let occI = 0;
+                  let lm: RegExpExecArray | null;
+                  while ((lm = ifYesRe.exec(txt)) !== null && occI < 2) {
+                    if (lm.index >= winEnd) break;
+                    const rawAt = map[lm.index] ?? -1;
+                    if (rawAt < region.start) continue;
+                    occI++;
+                    const tc = findEnclosingTc(rawAt);
+                    if (!tc) continue;
+                    const cellXml = xml.slice(tc.open, tc.close);
+                    const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+                    let pm: RegExpExecArray | null;
+                    while ((pm = paraRe.exec(cellXml)) !== null) {
+                      const paraXml = pm[0];
+                      const visible = paraXml.replace(/<[^>]+>/g, "");
+                      // Keep the label paragraph itself untouched.
+                      if (ifYesLabelRx.test(visible)) continue;
+                      // Only scrub paragraphs that carry numeric content
+                      // (the doubled balloon amount). Leave empty
+                      // paragraphs alone.
+                      if (!/\d/.test(visible)) continue;
+                      const wtRe = /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g;
+                      let wmm: RegExpExecArray | null;
+                      while ((wmm = wtRe.exec(paraXml)) !== null) {
+                        if (wmm[2].length === 0) continue;
+                        const absStart = tc.open + pm.index + wmm.index;
+                        const absEnd = absStart + wmm[0].length;
+                        const replacement = `${wmm[1]}${wmm[3]}`;
+                        inserts.push({
+                          at: -absEnd,
+                          html: `${replacement}|||REPLACE|||${absStart}`,
+                        });
+                      }
+                    }
+                  }
+                }
+
+                // Bug 2 — prepend ☑/☐ to YES/NO/UNKNOWN labels following
+                // each BALLOON PAYMENT? anchor that still render bare.
+                {
+                  const balloonRe = /BALLOON\s+PAYMENT\?/gi;
+                  balloonRe.lastIndex = visHeaderEnd;
+                  for (let bSlot = 1; bSlot <= 2; bSlot++) {
+                    const bm = balloonRe.exec(txt);
+                    if (!bm || bm.index >= winEnd) break;
+                    const winVisStart = bm.index + bm[0].length;
+                    const winVisEnd = Math.min(winEnd, winVisStart + 600);
+                    const yesK = `${tagPrefix}_balloonYes_${region.k}_${bSlot}`;
+                    const noK = `${tagPrefix}_balloonNo_${region.k}_${bSlot}`;
+                    const unkK = `${tagPrefix}_balloonUnknown_${region.k}_${bSlot}`;
+                    const isYes = truthy(fieldValues.get(yesK)?.rawValue);
+                    const isNo = truthy(fieldValues.get(noK)?.rawValue);
+                    const isUnk = truthy(fieldValues.get(unkK)?.rawValue);
+                    const winner: "yes" | "no" | "unk" = isYes
+                      ? "yes"
+                      : isNo
+                      ? "no"
+                      : isUnk
+                      ? "unk"
+                      : "unk";
+                    const glyphFor = (l: "yes" | "no" | "unk") =>
+                      l === winner ? "\u2611" : "\u2610";
+
+                    const lblRe = /\b(YES|NO|UNKNOWN)\b/gi;
+                    lblRe.lastIndex = winVisStart;
+                    const seenLbl = new Set<string>();
+                    let prevRawBoundary =
+                      map[bm.index] ?? region.start;
+                    let lM: RegExpExecArray | null;
+                    while (
+                      (lM = lblRe.exec(txt)) !== null &&
+                      lM.index < winVisEnd
+                    ) {
+                      const w = lM[1].toUpperCase();
+                      const lbl: "yes" | "no" | "unk" =
+                        w === "YES" ? "yes" : w === "NO" ? "no" : "unk";
+                      if (seenLbl.has(lbl)) continue;
+
+                      // Skip "YES" inside "IF YES, AMOUNT" header.
+                      const lookBackStart = Math.max(0, lM.index - 6);
+                      const lookBack = txt.slice(lookBackStart, lM.index);
+                      if (/\bIF\s*$/i.test(lookBack)) continue;
+
+                      seenLbl.add(lbl);
+
+                      // Already has a checkbox glyph visible just before
+                      // the label (e.g. forced via the SDT pass or already
+                      // present in the template) — leave it alone.
+                      if (/[\u2610\u2611\u2612]/.test(lookBack)) {
+                        const endRawApprox =
+                          (map[lM.index + lM[0].length - 1] ?? prevRawBoundary) + 1;
+                        prevRawBoundary = Math.max(
+                          prevRawBoundary,
+                          endRawApprox,
+                        );
+                        continue;
+                      }
+
+                      const rawIdx = map[lM.index] ?? -1;
+                      if (rawIdx < 0) continue;
+
+                      // If an SDT lives between the previous boundary and
+                      // this label, the dedicated SDT pass owns the glyph
+                      // for this slot — do not double-prepend.
+                      if (
+                        xml
+                          .slice(prevRawBoundary, rawIdx)
+                          .includes("<w:sdt")
+                      ) {
+                        const endRawApprox =
+                          (map[lM.index + lM[0].length - 1] ?? rawIdx) + 1;
+                        prevRawBoundary = Math.max(
+                          prevRawBoundary,
+                          endRawApprox,
+                        );
+                        continue;
+                      }
+
+                      // Locate the enclosing <w:t> for this label.
+                      const wtOpenA = xml.lastIndexOf("<w:t>", rawIdx);
+                      const wtOpenB = xml.lastIndexOf("<w:t ", rawIdx);
+                      const wtOpen = Math.max(wtOpenA, wtOpenB);
+                      if (wtOpen < 0) continue;
+                      const openTagEnd =
+                        xml.indexOf(">", wtOpen) + 1;
+                      if (openTagEnd <= wtOpen) continue;
+                      const wtCloseStart = xml.indexOf(
+                        "</w:t>",
+                        openTagEnd,
+                      );
+                      if (wtCloseStart < 0) continue;
+                      const wtCloseEnd =
+                        wtCloseStart + "</w:t>".length;
+                      const openTag = xml.slice(wtOpen, openTagEnd);
+                      const body = xml.slice(openTagEnd, wtCloseStart);
+                      if (/[\u2610\u2611\u2612]/.test(body)) continue;
+                      // Guard against accidentally rewriting the
+                      // "IF YES, AMOUNT" / similar composite labels.
+                      if (/IF\s+YES|AMOUNT/i.test(body)) continue;
+                      if (!new RegExp(`\\b${w}\\b`, "i").test(body))
+                        continue;
+
+                      const openWithSpace = /xml:space="preserve"/.test(
+                        openTag,
+                      )
+                        ? openTag
+                        : openTag.replace(
+                            /<w:t/,
+                            `<w:t xml:space="preserve"`,
+                          );
+                      const newBody = `${glyphFor(lbl)} ${body.replace(
+                        /^\s+/,
+                        "",
+                      )}`;
+                      const replacement = `${openWithSpace}${newBody}</w:t>`;
+                      inserts.push({
+                        at: -wtCloseEnd,
+                        html: `${replacement}|||REPLACE|||${wtOpen}`,
+                      });
+
+                      const endRawApprox =
+                        (map[lM.index + lM[0].length - 1] ?? rawIdx) + 1;
+                      prevRawBoundary = Math.max(
+                        prevRawBoundary,
+                        endRawApprox,
+                      );
+                    }
+                  }
+                }
+              } catch (balloonEnforceErr) {
+                debugLog(
+                  `[generate-document] RE851D balloon enforcement pass error P${region.k}: ${
+                    balloonEnforceErr instanceof Error
+                      ? balloonEnforceErr.message
+                      : String(balloonEnforceErr)
+                  }`,
+                );
+              }
             }
           }
 
