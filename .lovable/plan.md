@@ -1,80 +1,66 @@
-## Problem
-
-In the latest RE851D generation, the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell renders the literal text:
-
-```
-ld_p_vesting     k
-```
-
-instead of the lender's vesting value (e.g. `JOHN K SMITH, TRUSTEE OF ...`). The tag is being printed verbatim — the merge engine never replaces it. Every other tag in the same line (first / middle / last name) renders normally, which is why a stray "k" (initial) survives next to the unresolved identifier.
+# Fix RE851D ADDRESS OF APPRAISER conditional leak
 
 ## Root cause
 
-1. The data pipeline IS publishing `ld_p_vesting` correctly:
-   - `supabase/functions/generate-document/index.ts` L860–870 sets `ld_p_vesting`, `ld_p_vestin`, `lender.vesting`, `lender1.vesting` from `lcd.vesting`.
-   - L4817–4836 then normalizes it (adds trailing space for entity types, mirrors to truncated alias `ld_p_vestin`).
-   - `ld_p_vesting` is present in `field_dictionary` (`aab82127-…`), so `validFieldKeys` accepts it.
+The RE851D template uses two **if/else** conditionals per property:
 
-2. The RE851D V12.1 template authored the lender‑vesting placeholder with malformed braces around the identifier. Earlier post‑processing landed several known‑bad variants: `{ld_p_vestin`, `{ld_p_vestin}`, `{{ld_p_vestin}`. A targeted repair pass exists at `supabase/functions/generate-document/index.ts` L5952–5968:
+- NAME:    `{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{else}}{{/if}}`
+- ADDRESS: `{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{else}}{{/if}}`
 
-```ts
-xml = xml.replace(
-  /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
-  (_m, open, body, close) => {
-    const repaired = body.replace(
-      /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
-      "{{ld_p_vestin}}",
-    );
-    return `${open}${repaired}${close}`;
-  },
-);
-```
-
-The inner regex `\{\{?\s*ld_p_vesting?\s*\}?\}?` REQUIRES at least one literal `{` (the leading `\{` is mandatory). In the current template the identifier text run no longer carries ANY brace — the opening `{{` lives in a previous run that was stripped/separated during normalize, and the trailing `}}` lives in a later run. After `normalizeWordXml` merged runs, what survives in the single `<w:t>` body is just:
+In `supabase/functions/generate-document/index.ts` (lines ~6247–6300) we already have a "RE851D appraiser conditional → merge-tag" rewriter that converts these blocks to the pre-published `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}` tags. It currently matches:
 
 ```
-ld_p_vesting
+{{#if (eq pr_p_perform(e|ed)By_(N|1-5) "Broker")}}<payload>{{/if}}
 ```
 
-with no braces. The repair regex therefore does not match, the body is returned unchanged, Handlebars sees no tag, and the post‑render unresolved scanner (L10805, `/\{+\s*ld_p_vestin(?:g)?\s*\}*/g`) also requires `{`, so it logs `unresolved: none` even though the bare identifier is leaking to the rendered document.
+and accepts the payload only if its stripped text is exactly `BPO Performed by Broker` or `N/A`.
 
-This is why the bug regressed silently — every guard in the pipeline is keyed on the presence of `{`.
+With the `{{else}}{{/if}}` form (now in the live template), the lazy `[\s\S]*?` swallows up to the *first* `{{/if}}`, so the captured payload becomes `N/A{{else}}` (or `BPO Performed by Broker{{else}}`). The exact-match check fails, no rewrite is applied, and the literal Handlebars block then partially survives the downstream cleanup — producing the `#if (eq pr_p_performeBy_N "Broker")N/A{{else}}{{/if}}` text the user sees (the leading `{{` is consumed by another sanitizer; the rest leaks through).
 
-## Fix (minimal, additive, RE851D‑only)
+Properties 1, 2, 3+ all hit the same bug because the rewriter exits before publishing the merge tag, so per-property substitution never happens.
 
-### `supabase/functions/generate-document/index.ts`
+## Fix (single, surgical edit)
 
-1. **Broaden repair (h) at L5952–5968** to also rewrite a bare `ld_p_vesting` / `ld_p_vestin` identifier (no braces) into `{{ld_p_vestin}}`, but only when it is NOT already adjacent to a `{` (so we never double‑wrap a tag that the existing branch already fixed). Scope stays limited to a single `<w:t>` body and only fires for this exact identifier — no other prose can be affected because `ld_p_vesting` cannot legitimately appear as document text.
+Update **only** the appraiser conditional rewriter at `supabase/functions/generate-document/index.ts` ~lines 6247–6300:
 
-   Concretely, after the existing inner replace, add a second pass on the same body:
-   ```ts
-   const repaired2 = repaired.replace(
-     /(^|[^{A-Za-z0-9_])ld_p_vestin(?:g)?(?![A-Za-z0-9_}])/g,
-     "$1{{ld_p_vestin}}",
-   );
+1. Broaden the regex to also accept an optional `{{else}}…{{/if}}` tail:
    ```
-   This converts a bare leading/standalone identifier into the canonical `{{ld_p_vestin}}` tag, which the existing Handlebars resolver then renders from the already‑published `ld_p_vestin` value.
-
-2. **Tighten the post‑render unresolved scanner at L10805** so it also catches a bare identifier (no braces) and logs it. Replace:
-   ```ts
-   const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
+   {{#if (eq pr_p_perform(e|ed)By_(N|1-5) "Broker")}}<IF_PAYLOAD>(?:{{else}}<ELSE_PAYLOAD>)?{{/if}}
    ```
-   with:
-   ```ts
-   const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
-   ```
-   so future regressions surface in the logs instead of being silently uploaded.
+   Capture group 1 = IF payload only; ELSE payload is captured but ignored (must be empty or whitespace — guard with a check so we never silently drop real content).
 
-No changes to: data publishers (L840–870, L4817–4836), the template, the field dictionary, the field map, RLS, UI, or any other template/pipeline. Repair stays scoped to the literal identifier `ld_p_vestin[g]` inside `<w:t>` bodies that already match the existing guard.
+2. Keep the existing IF-payload classification unchanged:
+   - `^BPO Performed by Broker$` → `kind = "name"` → replace whole block with `{{pr_p_appraiserName_K}}`
+   - `^N/A$` → `kind = "addr"` → replace whole block with `{{pr_p_appraiserAddress_K}}`
+   - Anything else → skip (do not touch).
 
-## Validation
+3. Also require ELSE payload (after stripping XML tags and whitespace) to be empty. If a future template adds non-empty else content, the rewriter skips that block instead of dropping the else branch — safe-by-default.
 
-1. Regenerate RE851D for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` → the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell now shows the lender's vesting value followed by the name, with no literal `ld_p_vesting` text.
-2. Edge function logs print `RE851D unresolved Remaining placeholders before upload/PDF: none` after the run (or, if it doesn't, the new scanner will print the offending identifier so we can keep narrowing).
-3. No regression on RE851D documents whose templates already use clean `{{ld_p_vesting}}` / `{{ld_p_vestin}}` — the new branch is a no‑op for those because braces are already present and adjacent to the identifier.
+4. No change to:
+   - Pre-publishing of `pr_p_appraiserName_K` / `pr_p_appraiserAddress_K` (already correct: Broker → `BPO Performed by Broker` / `N/A`; Third Party → blank / blank).
+   - The downstream `pr_p_performeBy_N` safety rewrite, the region cloner, or any other RE851D pass.
+   - Field-resolver, schema, UI, or document layout.
 
-## Out of scope
+## Why this is sufficient
 
-- Field dictionary, RLS, packets, templates table, template storage — no changes.
-- RE851A, RE851D, RE885 logic unrelated to the vesting tag — untouched.
-- UI, styling, validation — no changes.
+- Properties 1–5 are already region-scoped by the existing `regions.props` loop, so the broader regex automatically applies per property with the correct `K` index.
+- The address pre-publisher already returns `"N/A"` for Broker and `""` for Third Party — once the conditional is replaced by the merge tag, the document renders exactly the required output:
+  - Broker → `N/A`
+  - Third Party → blank
+- No other conditional block in any template matches both the `(eq pr_p_perform(e|ed)By_N "Broker")` predicate and the `BPO Performed by Broker` / `N/A` payloads, so other templates and other fields are untouched.
+
+## Verification
+
+1. Regenerate RE851D for a deal with mixed performedBy values (P1 = Third Party, P2 = Broker, P3 = Broker).
+2. Confirm:
+   - P1: NAME blank, ADDRESS blank.
+   - P2: NAME = `BPO Performed by Broker`, ADDRESS = `N/A`.
+   - P3: same as P2.
+3. Confirm no raw `{{#if …}}`, `#if …`, `{{else}}`, or `{{/if}}` text appears anywhere in the generated DOCX.
+4. Spot-check unrelated conditionals (balloon payment YES/NO, servicing checkboxes, amortization) still render normally.
+
+## Files touched
+
+- `supabase/functions/generate-document/index.ts` — single block, ~lines 6247–6300 (regex + payload guard only).
+
+No other files, no DB, no UI, no schema changes.
