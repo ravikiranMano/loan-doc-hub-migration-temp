@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
   const matched: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
 
-  for (const f of allFiles) {
+  for (const f of batch) {
     try {
       const { data: blob, error: dlErr } = await supabase.storage
         .from("templates")
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       dryRun,
-      total: allFiles.length,
+      total: allFiles.length, batchStart: startIdx, batchSize: batch.length, nextStart: startIdx + batch.length,
       matchedCount: matched.length,
       updatedCount: updated.length,
       matched,
