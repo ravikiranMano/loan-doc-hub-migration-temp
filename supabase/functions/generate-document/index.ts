@@ -2446,6 +2446,9 @@ async function generateSingleDocument(
         fieldValues.set("ld_fd_fundingAmount", { rawValue: String(fundingVal), dataType: "currency" });
         debugLog(`[generate-document] Auto-bridged ld_fd_fundingAmount = ${fundingVal}`);
       }
+    }
+
+
 
     // Bridge ln_p_originalAmount (Loan Terms → Original Amount) so the
     // {{ln_p_originalAmount}} merge tag always resolves regardless of the
