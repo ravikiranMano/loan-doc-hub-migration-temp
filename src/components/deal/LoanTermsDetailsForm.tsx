@@ -114,11 +114,12 @@ const VALIDATION_CONFIGS: Record<string, ValidationConfig> = {
     },
   },
   loanNumber: {
-    allowedPattern: /^[A-Za-z0-9\-]$/,
+    allowedPattern: /^[A-Za-z0-9]$/,
     validate: (val) => {
-      if (!val) return null;
-      if (/\s/.test(val) || !/^[A-Za-z0-9\-]+$/.test(val))
-        return 'Enter a valid loan number (alphanumeric, no spaces)';
+      const trimmed = (val || '').trim();
+      if (!trimmed) return null;
+      if (!/^[A-Za-z0-9]{14}$/.test(trimmed))
+        return 'Loan Number must be exactly 14 alphanumeric characters.';
       return null;
     },
   },
