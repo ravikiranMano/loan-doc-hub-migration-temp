@@ -3009,6 +3009,37 @@ async function generateSingleDocument(
       }
     }
 
+    // Borrower vesting bridge: ensure {{br_p_vesting}}, {{br_p_vestin}},
+    // {{borrower.vesting}} and {{borrower1.vesting}} all resolve to the same
+    // value regardless of source (CSR contact_data.vesting via injectContact
+    // or deal_section_values stored under the truncated dictionary key
+    // br_p_vestin). Mirrors the existing lender vesting pattern.
+    {
+      const vestingSources = [
+        "br_p_vesting",
+        "br_p_vestin",
+        "borrower.vesting",
+        "borrower1.vesting",
+      ];
+      let resolvedVesting = "";
+      for (const k of vestingSources) {
+        const v = fieldValues.get(k)?.rawValue;
+        if (v !== undefined && v !== null && String(v).trim() !== "") {
+          resolvedVesting = String(v);
+          break;
+        }
+      }
+      if (resolvedVesting) {
+        for (const k of vestingSources) {
+          const existing = fieldValues.get(k)?.rawValue;
+          if (existing === undefined || existing === null || String(existing).trim() === "") {
+            fieldValues.set(k, { rawValue: resolvedVesting, dataType: "text" });
+          }
+        }
+        debugLog(`[generate-document] Borrower vesting bridge mirrored value = "${resolvedVesting}"`);
+      }
+    }
+
     // Auto-compute Broker.Name from broker1 name components if not already set
     const existingBrokerName = fieldValues.get("Broker.Name") || fieldValues.get("broker.name");
     if (!existingBrokerName || !existingBrokerName.rawValue) {
