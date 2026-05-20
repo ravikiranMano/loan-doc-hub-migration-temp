@@ -826,6 +826,62 @@ async function generateSingleDocument(
         debugLog(`[generate-document] WARNING: No guarantor participant found!`);
       }
 
+      // ── Additional Guarantor (ag_p_*) publisher ──
+      // Source: any participant whose linked contact has contact_type='additional_guarantor',
+      // OR a borrower-role participant whose capacity contains "additional guarantor".
+      // Order by sequence_order ASC NULLS LAST, then created_at ASC. First = default.
+      {
+        const isAg = (p: any) => {
+          if (!p.contact_id) return false;
+          const c = contactRowsByUuid.get(p.contact_id);
+          if (!c) return false;
+          if (String(c.contact_type || "").toLowerCase() === "additional_guarantor") return true;
+          const cap = c.contact_data?.capacity;
+          return !!(cap && String(cap).toLowerCase().includes("additional guarantor"));
+        };
+        const agParticipants = participantRows
+          .filter(isAg)
+          .sort((a: any, b: any) => {
+            const aSeq = typeof a.sequence_order === "number" ? a.sequence_order : Number.MAX_SAFE_INTEGER;
+            const bSeq = typeof b.sequence_order === "number" ? b.sequence_order : Number.MAX_SAFE_INTEGER;
+            if (aSeq !== bSeq) return aSeq - bSeq;
+            return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+          });
+
+        debugLog(`[generate-document] Additional Guarantor participants: ${agParticipants.length}`);
+
+        const publishAg = (contact: any, suffix: string) => {
+          const cd = contact?.contact_data || {};
+          const firstName = cd.first_name || contact?.first_name || "";
+          const middleName = cd.middle_initial || cd.middle_name || "";
+          const lastName = cd.last_name || contact?.last_name || "";
+          const assembledName = [firstName, middleName, lastName].filter(Boolean).join(" ");
+          const fullName = (assembledName || cd.full_name || contact?.full_name || "").trim();
+          fieldValues.set(`ag_p_fullName${suffix}`, { rawValue: fullName, dataType: "text" });
+          fieldValues.set(`ag_p_first${suffix}`, { rawValue: String(firstName).trim(), dataType: "text" });
+          fieldValues.set(`ag_p_middle${suffix}`, { rawValue: String(middleName).trim(), dataType: "text" });
+          fieldValues.set(`ag_p_last${suffix}`, { rawValue: String(lastName).trim(), dataType: "text" });
+        };
+
+        if (agParticipants.length === 0) {
+          // Fallback: reuse guarantorParticipant resolved above so existing templates keep working
+          const fc = guarantorParticipant?.contact_id ? contactRowsByUuid.get(guarantorParticipant.contact_id) : null;
+          publishAg(fc, "");
+          publishAg(fc, "_1");
+        } else {
+          // Default (no suffix) = first AG
+          const firstAgContact = contactRowsByUuid.get(agParticipants[0].contact_id);
+          publishAg(firstAgContact, "");
+          agParticipants.forEach((p: any, idx: number) => {
+            const c = contactRowsByUuid.get(p.contact_id);
+            publishAg(c, `_${idx + 1}`);
+          });
+          debugLog(`[generate-document] Published ag_p_fullName="${fieldValues.get("ag_p_fullName")?.rawValue}" (+${agParticipants.length} indexed)`);
+        }
+      }
+
+
+
       // Inject lender
       const orderedLenderParticipants = [...lenderParticipants].sort((a: any, b: any) => {
         const aSeq = typeof a.sequence_order === "number" ? a.sequence_order : Number.MAX_SAFE_INTEGER;
