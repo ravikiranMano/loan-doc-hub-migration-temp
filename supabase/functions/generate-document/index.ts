@@ -6257,7 +6257,7 @@ async function generateSingleDocument(
           // scoped: only matches the two literal payloads ("BPO Performed by
           // Broker" and "N/A") so unrelated conditionals are never touched.
           {
-            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))/g;
+            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*else\s*\}\}([\s\S]*?))?(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))/g;
             let acm: RegExpExecArray | null;
             let appraiserBlocksRewritten = 0;
             const appraiserPairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
@@ -6266,6 +6266,10 @@ async function generateSingleDocument(
               const fullEnd = fullStart + acm[0].length;
               if (isConsumed(fullStart, fullEnd)) continue;
               const payload = String(acm[1] || "").replace(/<[^>]+>/g, "").trim();
+              const elsePayload = String(acm[2] || "").replace(/<[^>]+>/g, "").trim();
+              // Safe-by-default: only rewrite when else branch is empty/missing,
+              // so a future non-empty else is never silently dropped.
+              if (elsePayload !== "") continue;
               let kind: "name" | "addr" | null = null;
               if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
               else if (/^N\/A$/i.test(payload)) kind = "addr";
