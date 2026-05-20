@@ -972,45 +972,61 @@ async function generateSingleDocument(
         }
       }
 
-      // ─── Per-lender indexed aliases (ld1_p_*, ld2_p_*, ld3_p_*, …) ───
-      // Publish independent field mappings for every lender on the loan, so
-      // documents can reference Lender N's first/middle/last/full/vesting
-      // separately. Order follows participants.sequence_order (then created_at)
-      // so Lender 1 = the primary lender (matches existing ld_p_* aliases).
+      // ─── Multi-lender repeatable aliases (lien-style pattern) ───
+      // Mirrors Property → Liens approach: publishes dot-notation source keys
+      // (lender1.first_name, lender2.first_name, …) plus per-index ld_p_*_N
+      // aliases and bare ld_p_* aliases newline-joined across all lenders.
+      // Order follows participants.sequence_order (then created_at), so
+      // Lender 1 = the primary lender (backward-compatible with existing ld_p_*).
       {
         const setForceAlias = (key: string, value: string) => {
-          // Always overwrite — these are deterministic per-index aliases.
           fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
+        };
+        const perField: Record<string, string[]> = {
+          firstName: [], middleName: [], lastName: [], fullName: [], vesting: [],
         };
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
-          if (!lp?.contact_id) {
-            setForceAlias(`ld${n}_p_firstName`, "");
-            setForceAlias(`ld${n}_p_middleName`, "");
-            setForceAlias(`ld${n}_p_lastName`, "");
-            setForceAlias(`ld${n}_p_fullName`, "");
-            setForceAlias(`ld${n}_p_vesting`, "");
-            return;
+          let first = "", middle = "", last = "", full = "", vesting = "";
+          if (lp?.contact_id) {
+            const lc = contactRowsByUuid.get(lp.contact_id);
+            const lcd = lc?.contact_data || {};
+            first = (lcd.first_name || lc?.first_name || "").toString().trim();
+            middle = (lcd.middle_initial || lcd.middle_name || "").toString().trim();
+            last = (lcd.last_name || lc?.last_name || "").toString().trim();
+            // Full Name = First + Middle + Last with single-space join, blanks
+            // skipped so no double-spaces appear when middle is empty.
+            const assembled = [first, middle, last].filter(Boolean).join(" ");
+            full = assembled || (lcd.full_name || lc?.full_name || "").toString().trim();
+            vesting = (lcd.vesting !== undefined && lcd.vesting !== null)
+              ? String(lcd.vesting).trim()
+              : "";
           }
-          const lc = contactRowsByUuid.get(lp.contact_id);
-          const lcd = lc?.contact_data || {};
-          const first = (lcd.first_name || lc?.first_name || "").toString().trim();
-          const middle = (lcd.middle_initial || lcd.middle_name || "").toString().trim();
-          const last = (lcd.last_name || lc?.last_name || "").toString().trim();
-          // Full Name = First + Middle + Last with single-space join, skipping
-          // blanks so no double-spaces appear when middle is empty.
-          const assembled = [first, middle, last].filter(Boolean).join(" ");
-          const full = assembled || (lcd.full_name || lc?.full_name || "").toString().trim();
-          const vesting = (lcd.vesting !== undefined && lcd.vesting !== null)
-            ? String(lcd.vesting).trim()
-            : "";
-          setForceAlias(`ld${n}_p_firstName`, first);
-          setForceAlias(`ld${n}_p_middleName`, middle);
-          setForceAlias(`ld${n}_p_lastName`, last);
-          setForceAlias(`ld${n}_p_fullName`, full);
-          setForceAlias(`ld${n}_p_vesting`, vesting);
+          // Dot-notation source keys (mirrors lienN.* shape)
+          setForceAlias(`lender${n}.first_name`, first);
+          setForceAlias(`lender${n}.middle_name`, middle);
+          setForceAlias(`lender${n}.last_name`, last);
+          setForceAlias(`lender${n}.full_name`, full);
+          setForceAlias(`lender${n}.vesting`, vesting);
+          // Per-index ld_p_*_N aliases for repeatable template tables
+          setForceAlias(`ld_p_firstName_${n}`, first);
+          setForceAlias(`ld_p_middleName_${n}`, middle);
+          setForceAlias(`ld_p_lastName_${n}`, last);
+          setForceAlias(`ld_p_fullName_${n}`, full);
+          setForceAlias(`ld_p_vesting_${n}`, vesting);
+          perField.firstName.push(first);
+          perField.middleName.push(middle);
+          perField.lastName.push(last);
+          perField.fullName.push(full);
+          perField.vesting.push(vesting);
         });
-        debugLog(`[generate-document] Published per-lender indexed aliases for ${orderedLenderParticipants.length} lender(s): ld1..ld${orderedLenderParticipants.length}`);
+        // Bare aliases — newline-joined across all lenders (mirrors lien aggregation).
+        // Lender 1 is first in join order, preserving backward compat for single-lender templates.
+        for (const [field, vals] of Object.entries(perField)) {
+          const joined = vals.filter(v => v !== "").join("\n");
+          setForceAlias(`ld_p_${field}`, joined);
+        }
+        debugLog(`[generate-document] Published repeatable lender aliases for ${orderedLenderParticipants.length} lender(s): ld_p_*_1..${orderedLenderParticipants.length} + bare ld_p_* (newline-joined)`);
       }
 
       // Inject broker (force-override since broker data is authoritative from Contacts)
