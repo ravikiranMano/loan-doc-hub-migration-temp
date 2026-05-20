@@ -2756,11 +2756,11 @@ async function generateSingleDocument(
       debugLog(`[generate-document] Derived ln_pn_principalPaydownType checkboxes from "${ppdRaw}" (norm="${ppdNorm}")`);
     }
 
-    // Payment Frequency dropdown → checkbox glyphs.
+    // Payment Frequency dropdown → boolean checkbox fields + glyph aliases.
     // Templates reference {{ln_p_paymentMonthly}} / {{ln_p_paymentWeekly}}
-    // (no _glyph suffix) directly as the checkbox character, so publish the
-    // ☑/☐ glyph as the rawValue. Also publish _glyph and boolean aliases for
-    // any templates that use those variants.
+    // both as direct merge tags and inside {{#if ...}} checkbox conditionals.
+    // Direct boolean merge tags are formatted as ☑/☐ by tag-parser, while the
+    // raw true/false value keeps conditional blocks evaluating correctly.
     {
       const payFreqVal = (
         fieldValues.get("ln_p_paymentFreque")?.rawValue ||
@@ -2779,7 +2779,7 @@ async function generateSingleDocument(
         const isMatch = matches.includes(payFreqVal);
         const glyph = isMatch ? "☑" : "☐";
         const key = `ln_p_payment${suffix}`;
-        fieldValues.set(key, { rawValue: glyph, dataType: "text" });
+        fieldValues.set(key, { rawValue: isMatch ? "true" : "false", dataType: "boolean" });
         fieldValues.set(`${key}_glyph`, { rawValue: glyph, dataType: "text" });
         fieldValues.set(`${key}_bool`, { rawValue: isMatch ? "true" : "false", dataType: "boolean" });
       }
