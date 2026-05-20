@@ -2449,12 +2449,40 @@ async function generateSingleDocument(
       }
     }
 
-    // Bridge ld_fd_fundingAmount from lender funding data or loan amount if not set
+    // Bridge ld_fd_fundingAmount from lender funding data, funding_records sum, or loan amount if not set
     const existingFundingAmt = fieldValues.get("ld_fd_fundingAmount");
     if (!existingFundingAmt || !existingFundingAmt.rawValue) {
       const lenderFunding = fieldValues.get("lender.funding.amount")?.rawValue;
+
+      // Sum originalAmount across loan_terms.funding_records (same source as ld_fd_baseFee bridge)
+      let fundingRecordsSum: string | null = null;
+      const fundingRecordsRaw =
+        fieldValues.get("loan_terms.funding_records")?.rawValue ||
+        fieldValues.get("ln_p_fundingRecord")?.rawValue;
+      if (fundingRecordsRaw) {
+        try {
+          const arr = typeof fundingRecordsRaw === "string"
+            ? JSON.parse(fundingRecordsRaw)
+            : fundingRecordsRaw;
+          if (Array.isArray(arr)) {
+            let sum = 0;
+            let found = false;
+            for (const rec of arr) {
+              const v = rec?.originalAmount;
+              if (v === undefined || v === null || v === "") continue;
+              const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+              if (!isNaN(n)) { sum += n; found = true; }
+            }
+            if (found) fundingRecordsSum = sum.toFixed(2);
+          }
+        } catch (e) {
+          debugLog(`[generate-document] ld_fd_fundingAmount funding_records parse error: ${e}`);
+        }
+      }
+
+      const originalAmount = fieldValues.get("ln_p_originalAmount")?.rawValue;
       const loanAmount = fieldValues.get("ln_p_loanAmount")?.rawValue || fieldValues.get("loan_terms.loan_amount")?.rawValue;
-      const fundingVal = lenderFunding || loanAmount;
+      const fundingVal = lenderFunding || fundingRecordsSum || originalAmount || loanAmount;
       if (fundingVal) {
         fieldValues.set("ld_fd_fundingAmount", { rawValue: String(fundingVal), dataType: "currency" });
         debugLog(`[generate-document] Auto-bridged ld_fd_fundingAmount = ${fundingVal}`);
