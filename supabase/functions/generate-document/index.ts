@@ -892,7 +892,24 @@ async function generateSingleDocument(
           // Pre-rendered checkbox glyph for templates that prefer a single placeholder
           setIfEmpty("ld_p_investorQuestiDueCheckbox", iqDueChecked ? "☑" : "☐");
 
-          debugLog(`[generate-document] Injected lender contact fields from participant (contact ${lc.contact_id}), lenderName="${lFullName}"`);
+          // Bridge Lender Authorized Party name → authorized_signer.full_name
+          // (template Borrower_Certification_of_Loan_Purpose_Occupancy_and_Material_Facts_Integrated
+          // uses {{authorized_signer.full_name}} in multiple places).
+          // Source: Lender contact_data.authorized_party.{first,middle,last}_name written by
+          // LenderAuthorizedPartyForm in the Lender Authorized Party section.
+          const apFirst = (lcd["authorized_party.first_name"] ?? lcd.authorized_party?.first_name ?? "").toString().trim();
+          const apMiddle = (lcd["authorized_party.middle_name"] ?? lcd.authorized_party?.middle_name ?? "").toString().trim();
+          const apLast = (lcd["authorized_party.last_name"] ?? lcd.authorized_party?.last_name ?? "").toString().trim();
+          const authorizedSignerFullName = [apFirst, apMiddle, apLast].filter(Boolean).join(" ");
+          if (authorizedSignerFullName) {
+            forceSet("authorized_signer.full_name", authorizedSignerFullName);
+            // Also publish ld_p_authorized* aliases so any future template can reference them
+            forceSet("ld_p_authorizedFirst", apFirst);
+            forceSet("ld_p_authorizedMiddle", apMiddle);
+            forceSet("ld_p_authorizedLast", apLast);
+          }
+
+          debugLog(`[generate-document] Injected lender contact fields from participant (contact ${lc.contact_id}), lenderName="${lFullName}", authorizedSigner="${authorizedSignerFullName}"`);
         }
       }
 
