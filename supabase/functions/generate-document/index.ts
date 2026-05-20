@@ -6179,10 +6179,7 @@ async function generateSingleDocument(
           // scoped: only matches the two literal payloads ("BPO Performed by
           // Broker" and "N/A") so unrelated conditionals are never touched.
           {
-            // Capture only the true-branch payload; tolerate an optional
-            // `{{else}}…` tail before `{{/if}}` (the authored RE851D template
-            // uses `{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{else}}{{/if}}`).
-            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*else\s*\}\}[\s\S]*?)?(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))/g;
+            const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))/g;
             let acm: RegExpExecArray | null;
             let appraiserBlocksRewritten = 0;
             const appraiserPairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };

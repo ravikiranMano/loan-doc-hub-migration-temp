@@ -1,40 +1,21 @@
-# RE851D — Fix `pr_p_performeBy_N` per-property conditional
+## Plan to fix RE851D Lender Vesting
 
-## Problem
+**Root cause found**
+- The generated output still shows `{ld_p_vestin` / `{{ld_p_vestin` style text, which means the template has a malformed single-brace version of the merge tag in this area.
+- The previous alias fix only helps when the tag is parsed as a valid merge tag (`{{ld_p_vestin}}`). It does not catch malformed brace variants, so the parser never replaces it.
+- The database confirms loan `DL-2026-0250` has multiple lenders; the currently selected lender records include vesting values, including `Vesting123` for `Adwait Verma`.
 
-In the RE851D template, both the NAME OF APPRAISER and ADDRESS OF APPRAISER rows are authored as:
+**Implementation**
+1. In `supabase/functions/generate-document/index.ts`, add a narrowly scoped RE851D pre-render repair for the lender vesting tag variants:
+   - `{ld_p_vestin`
+   - `{ld_p_vestin}`
+   - `{{ld_p_vestin}`
+   - whitespace/run-fragmented equivalents inside the ACKNOWLEDGEMENT / prospective lender area
+2. Normalize those variants into the resolved value directly, or into a valid `{{ld_p_vestin}}` token before the standard renderer runs.
+3. Strengthen the lender vesting value source so `ld_p_vestin` is populated from the first lender with a non-empty vesting value if the initially selected participant has no usable vesting.
+4. Keep the change scoped to RE851D document generation only. No UI, schema, template layout, or PDF layout changes.
 
-```
-{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{else}}{{/if}}
-{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{else}}{{/if}}
-```
-
-Currently each PROPERTY #K section renders the literal text `#if (eq pr_p_performeBy_1 "Broker")N/A` (and `_2`, `_3`, …) instead of evaluating the conditional per property. Property #1 is also affected; Properties #2–#5 inherit Property #1's value when they do render.
-
-## Root cause
-
-`supabase/functions/generate-document/index.ts` already contains a targeted RE851D rewrite block (around lines 6181–6222) that converts the broker conditional into the resolved per-property merge tags `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}`. The rewrite uses this payload guard:
-
-```ts
-const payload = String(acm[1] || "").replace(/<[^>]+>/g, "").trim();
-if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
-else if (/^N\/A$/i.test(payload)) kind = "addr";
-```
-
-The authored template includes an empty `{{else}}` branch, so the captured payload is `BPO Performed by Broker{{else}}` or `N/A{{else}}`. Neither matches the strict equality regex, the rewrite is skipped, and a later brace-stripping pass leaves the raw Handlebars text visible in the document.
-
-## Fix (scope: backend only — single file)
-
-Edit `supabase/functions/generate-document/index.ts` inside the existing RE851D appraiser conditional block only. No UI, schema, template, other generator stages, or unrelated rewrites change.
-
-1. **Tolerate the `{{else}}` branch** in the appraiser conditional regex (line 6182). Update the capture to grab only the true-branch text and consume an optional `{{else}} … {{/if}}` tail so the trimmed payload is exactly `BPO Performed by Broker` or `N/A`.
-2. **Keep payload classification strict** — only the two literal payloads are accepted; any other conditional content is left untouched.
-3. **Property index resolution stays as-is** — region-based PROPERTY #K lookup with the existing occurrence-pair fallback for properties 1–5.
-4. **Preserve all existing safety passes**, including the literal `pr_p_performeBy_N` reindexer (lines 6224–6276) and per-property `pr_p_appraiserName_K` / `pr_p_appraiserAddress_K` aliases already published upstream.
-
-## Verification
-
-- Regenerate RE851D for `DL-2026-0250`.
-- Confirm each PROPERTY #K (1 through 5) renders its own appraiser name and address based on that property's `appraisal_performed_by` value, with no `#if (eq pr_p_performeBy_K "Broker")` text leaking through.
-- Confirm Word preview and the downloaded PDF match.
-- Confirm other RE851D fields, other templates, and the UI are unchanged.
+**Validation**
+1. Generate RE851D for deal `DL-2026-0250`.
+2. Verify the ACKNOWLEDGEMENT OF RECEIPT / `NAME OF PROSPECTIVE LENDER/PURCHASER` line no longer contains raw `{ld_p_vestin` text.
+3. Confirm the line renders the lender vesting value and remains aligned in both preview/docx output and PDF generation path.
