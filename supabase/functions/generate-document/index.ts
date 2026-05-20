@@ -10865,6 +10865,8 @@ async function generateSingleDocument(
           hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
           const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
           vestingHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
+          const apprBareHits = xml.match(/#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_[N1-5]\s*"\s*Broker\s*"\s*\)\s*(?:BPO Performed by Broker|N\/A)/g) || [];
+          apprBareHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
         }
         if (unresolved.length > 0) {
           console.warn(`[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: ${unresolved.slice(0, 30).join(" | ")}`);
