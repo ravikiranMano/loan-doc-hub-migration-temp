@@ -194,8 +194,19 @@ function getValueFromRecord(record: FieldValue, dataType: FieldDataType): string
   switch (dataType) {
     case 'number':
     case 'currency':
-    case 'percentage':
-      return record.value_number?.toString() || '';
+    case 'percentage': {
+      if (record.value_number !== null && record.value_number !== undefined) {
+        return record.value_number.toString();
+      }
+      // Fallback: recover values that were mistakenly persisted into value_text
+      // for numeric fields (legacy data introduced before the dataType lookup fix).
+      const txt = record.value_text;
+      if (txt != null && txt !== '') {
+        const n = parseFloat(String(txt).replace(/[,$%\s]/g, ''));
+        if (!isNaN(n)) return n.toString();
+      }
+      return '';
+    }
     case 'date':
       return record.value_date || '';
     case 'boolean':
