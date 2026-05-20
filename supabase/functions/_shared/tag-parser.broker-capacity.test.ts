@@ -6,6 +6,9 @@
  *   or_p_isBrkBorrower = false -> A (Agent)     becomes ☑, B (Principal) becomes ☐
  *   or_p_isBrkBorrower missing -> glyphs are left untouched
  *
+ * "Is Broker Also a Borrower?" Yes means the broker is acting as a Principal
+ * on the loan, so the B row (Principal as a borrower) is the checked option.
+ *
  * These tests exercise replaceMergeTags() (the same entry point used by
  * generate-document) with XML shaped like re851a_v64.docx — literal
  * "A. Agent in arranging a loan…" and "B. *Principal as a borrower…"
