@@ -927,7 +927,14 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
             sectionUpdates[section] = {};
           }
 
-          const dataType = (fieldDataTypes[canonicalKey] || fieldDataTypes[fieldKey] || fallbackMeta?.data_type || 'text') as FieldDataType;
+          const dataType = (
+            fieldDataTypes[canonicalKey]
+            || fieldDataTypes[fieldKey]
+            || (dbMappedKey !== canonicalKey ? fieldDataTypes[dbMappedKey] : undefined)
+            || (dictMappedKey ? fieldDataTypes[dictMappedKey] : undefined)
+            || fallbackMeta?.data_type
+            || 'text'
+          ) as FieldDataType;
           const stringValue = finalValues[fieldKey];
 
           // Build the JSONB field value object
