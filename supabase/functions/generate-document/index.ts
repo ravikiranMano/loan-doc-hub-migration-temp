@@ -5959,9 +5959,18 @@ async function generateSingleDocument(
           xml = xml.replace(
             /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
             (_m, open: string, body: string, close: string) => {
-              const repaired = body.replace(
+              let repaired = body.replace(
                 /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
                 "{{ld_p_vestin}}",
+              );
+              // Also handle the case where braces were stripped entirely
+              // and the identifier is leaking as bare text (e.g. RE851D
+              // ACKNOWLEDGEMENT OF RECEIPT line). Only fires when the
+              // identifier is NOT already adjacent to a `{`/`}` (so we
+              // never double-wrap a tag the previous branch just fixed).
+              repaired = repaired.replace(
+                /(^|[^{A-Za-z0-9_])ld_p_vestin(?:g)?(?![A-Za-z0-9_}])/g,
+                "$1{{ld_p_vestin}}",
               );
               return `${open}${repaired}${close}`;
             },
