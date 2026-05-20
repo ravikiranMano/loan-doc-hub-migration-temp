@@ -6303,6 +6303,66 @@ async function generateSingleDocument(
             }
           }
 
+          // ── RE851D appraiser conditional → TOLERANT fallback rewrite ──
+          // Production templates have been observed leaking the conditional
+          // into rendered output as raw text with missing/partial braces,
+          // e.g. `#if (eq pr_p_performeBy_1 "Broker")N/A{{else}}{{/if}}` —
+          // the opener `{{` and the `}}` after `)` are gone (stripped by an
+          // upstream brace-repair pass or split across <w:r> runs Word can't
+          // recombine). The strict matcher above never fires for these.
+          //
+          // This tolerant pass anchors on the recognized payload (exactly
+          // "N/A" or "BPO Performed by Broker") and accepts the opener with
+          // OR without `{{`/`}}`, and the closer as `{{/if}}`, `{{else}}{{/if}}`,
+          // or missing entirely. Strictly scoped to the appraiser payloads
+          // so unrelated conditionals are never touched.
+          {
+            const Q = `(?:"|&quot;|\\u201C|\\u201D)`;
+            const apprTolRe = new RegExp(
+              `(?:\\{\\{)?\\s*#\\s*if\\s*\\(\\s*eq\\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\\s*${Q}\\s*Broker\\s*${Q}\\s*\\)\\s*(?:\\}\\})?\\s*(N\\/A|BPO Performed by Broker)\\s*(?:\\{\\{\\s*else\\s*\\}\\}\\s*)?(?:\\{\\{\\s*\\/\\s*if\\s*\\}\\}|\\{\\{\\s*\\/\\s*if\\s*\\}(?!\\}))?`,
+              "gi",
+            );
+            let tm: RegExpExecArray | null;
+            let tolRewrites = 0;
+            const tolCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
+            while ((tm = apprTolRe.exec(xml)) !== null) {
+              const fullStart = tm.index;
+              const fullEnd = fullStart + tm[0].length;
+              if (isConsumed(fullStart, fullEnd)) continue;
+              const payload = String(tm[1] || "").trim();
+              let kind: "name" | "addr" | null = null;
+              if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
+              else if (/^N\/A$/i.test(payload)) kind = "addr";
+              if (kind === null) continue;
+              // Resolve PROPERTY #K by region; fall back to per-kind order.
+              let pIdx: number | null = null;
+              for (const p of regions.props) {
+                if (fullStart >= p.range[0] && fullStart < p.range[1]) {
+                  pIdx = p.k;
+                  break;
+                }
+              }
+              if (pIdx === null) {
+                tolCounter[kind] += 1;
+                pIdx = Math.min(Math.max(tolCounter[kind], 1), 5);
+              }
+              const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
+              rewrites.push({
+                start: fullStart,
+                end: fullEnd,
+                replacement: `{{${tagBase}_${pIdx}}}`,
+              });
+              consumed.push([fullStart, fullEnd]);
+              totalRewrites++;
+              tolRewrites++;
+            }
+            if (tolRewrites > 0) {
+              try {
+                debugLog(`[generate-document] RE851D appraiser conditional TOLERANT rewrite: ${tolRewrites} brace-less/partial block(s) collapsed to merge tags`);
+              } catch (_) { /* ignore */ }
+            }
+          }
+
           // ── RE851D pr_p_performeBy_N targeted safety rewrite ──
           // Some authored RE851D templates split the
           // `{{#if (eq pr_p_performeBy_N "Broker")}}` opener across multiple
