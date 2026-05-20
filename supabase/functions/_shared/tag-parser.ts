@@ -3651,10 +3651,15 @@ export function replaceMergeTags(
     }
 
     if (isBrkBorrower !== null) {
-      // Per UI spec: Yes → 1st (A) checked, 2nd (B) unchecked.
-      //             No  → 1st (A) unchecked, 2nd (B) checked.
-      const aGlyph = isBrkBorrower ? "☑" : "☐"; // A. Agent (1st)
-      const bGlyph = isBrkBorrower ? "☐" : "☑"; // B. Principal (2nd)
+      // Per UI spec: "Is Broker Also a Borrower?" Yes means the broker is
+      // acting as a Principal (a borrower on the loan), so:
+      //   Yes → A. Agent unchecked, B. Principal checked
+      //   No  → A. Agent checked,   B. Principal unchecked
+      // This matches both the label-binding path (or_p_brkCapacityAgent /
+      // or_p_brkCapacityPrincipal) and any inline {{#if or_p_isBrkBorrower}}
+      // conditionals authored directly in the template.
+      const aGlyph = isBrkBorrower ? "☐" : "☑"; // A. Agent (1st)
+      const bGlyph = isBrkBorrower ? "☑" : "☐"; // B. Principal (2nd)
       const labelA = "A. Agent in arranging a loan";
       // Allow optional "*" before "Principal" to match the live RE851A wording.
       const labelBCore = "Principal as a borrower";
