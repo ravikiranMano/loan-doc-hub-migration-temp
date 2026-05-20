@@ -3598,6 +3598,36 @@ async function generateSingleDocument(
 
       debugLog(`[generate-document] Lien field bridging complete`);
 
+      // ── Insurance: bridge UI "Other Coverages" (oc_*) booleans to template-referenced
+      // policy_* keys. The UI persists checkboxes under origination_ins.oc_<name>
+      // while document templates use {{#if origination_ins.policy_<name>}}.
+      // Without this bridge those conditionals always evaluate false. Also
+      // bridge oc_loss_of_rents → coverage_loss_rents_checkbox for the same reason.
+      {
+        const insAliasMap: Record<string, string[]> = {
+          "origination_ins.oc_flood":             ["origination_ins.policy_flood"],
+          "origination_ins.oc_earthquake":        ["origination_ins.policy_earthquake"],
+          "origination_ins.oc_wind_hail":         ["origination_ins.policy_wind_hail"],
+          "origination_ins.oc_umbrella":          ["origination_ins.policy_umbrella"],
+          "origination_ins.oc_loss_of_rents":     ["origination_ins.policy_loss_of_rents", "origination_ins.coverage_loss_rents_checkbox"],
+          "origination_ins.oc_vacancy":           ["origination_ins.policy_vacancy"],
+          "origination_ins.oc_general_liability": ["origination_ins.policy_general_liability"],
+        };
+        let bridged = 0;
+        for (const [src, targets] of Object.entries(insAliasMap)) {
+          const srcVal = fieldValues.get(src);
+          if (!srcVal || srcVal.rawValue === null || srcVal.rawValue === undefined || srcVal.rawValue === "") continue;
+          for (const t of targets) {
+            const existing = fieldValues.get(t);
+            if (!existing || existing.rawValue === null || existing.rawValue === undefined || existing.rawValue === "") {
+              fieldValues.set(t, { rawValue: srcVal.rawValue, dataType: "boolean" });
+              bridged++;
+            }
+          }
+        }
+        if (bridged) debugLog(`[generate-document] Insurance oc_* → policy_* bridge: published ${bridged} alias(es)`);
+      }
+
       // ── Bridge: "Anticipated Balance (if new lien)" → li_lt_anticipatedAmount ──
       // {{li_lt_anticipatedAmount}} is the document's TOTAL "encumbrances anticipated
       // or expected to be junior to this loan". Source: Property → Liens →
