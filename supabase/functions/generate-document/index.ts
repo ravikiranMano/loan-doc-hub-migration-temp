@@ -4762,6 +4762,12 @@ async function generateSingleDocument(
           dataType: 'text',
         });
       }
+
+      // Mirror the normalized vesting value into the truncated legacy alias
+      // `ld_p_vestin` so templates referencing either spelling render the
+      // same value (RE851D template uses `{{ld_p_vestin}}`).
+      const finalVesting = (fieldValues.get('ld_p_vesting')?.rawValue ?? '').toString();
+      fieldValues.set('ld_p_vestin', { rawValue: finalVesting, dataType: 'text' });
     }
 
     // Build set of all valid field keys once and reuse it across invocations.
