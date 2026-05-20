@@ -1020,7 +1020,7 @@ async function generateSingleDocument(
     const sampleKeys = [...fieldValues.keys()].slice(0, 30);
     debugLog(`[generate-document] Sample field keys: ${sampleKeys.join(", ")}`);
     // Log specific fields we expect to find
-    const debugFields = ["ln_p_loanAmount", "of_fe_801LenderLoanOrigin", "pr_p_street", "br_p_fullName", "of_re_interestRate", "of_re_impoundHazardIns", "of_re_subtotalDeductions", "origination_esc.estimated_closing", "of_re_estimatedClosing"];
+    const debugFields = ["ln_p_loanAmount", "ln_p_originalAmount", "of_fe_801LenderLoanOrigin", "pr_p_street", "br_p_fullName", "of_re_interestRate", "of_re_impoundHazardIns", "of_re_subtotalDeductions", "origination_esc.estimated_closing", "of_re_estimatedClosing"];
     for (const df of debugFields) {
       const val = fieldValues.get(df);
       debugLog(`[generate-document] Field "${df}" = ${val ? JSON.stringify(val) : "NOT FOUND"}`);
