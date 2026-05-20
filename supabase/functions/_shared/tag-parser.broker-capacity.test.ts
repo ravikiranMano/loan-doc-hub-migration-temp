@@ -6,6 +6,9 @@
  *   or_p_isBrkBorrower = false -> A (Agent)     becomes ☑, B (Principal) becomes ☐
  *   or_p_isBrkBorrower missing -> glyphs are left untouched
  *
+ * "Is Broker Also a Borrower?" Yes means the broker is acting as a Principal
+ * on the loan, so the B row (Principal as a borrower) is the checked option.
+ *
  * These tests exercise replaceMergeTags() (the same entry point used by
  * generate-document) with XML shaped like re851a_v64.docx — literal
  * "A. Agent in arranging a loan…" and "B. *Principal as a borrower…"
@@ -64,30 +67,30 @@ function lastGlyphBeforeLabel(xml: string, label: string): string | null {
   return matches ? matches[matches.length - 1] : null;
 }
 
-Deno.test("RE851A broker-capacity — isBrkBorrower=true → A=☑, B=☐", () => {
+Deno.test("RE851A broker-capacity — isBrkBorrower=true → A=☐, B=☑", () => {
   const out = run("true");
   assertEquals(
     lastGlyphBeforeLabel(out, "A. Agent in arranging a loan"),
-    "☑",
-    "A row glyph should be checked when Yes is selected (1st condition checked)",
+    "☐",
+    "A row glyph should be unchecked when Yes is selected (broker is Principal)",
   );
   const bGlyph =
     lastGlyphBeforeLabel(out, "*Principal as a borrower") ??
     lastGlyphBeforeLabel(out, "Principal as a borrower");
-  assertEquals(bGlyph, "☐", "B row glyph should be unchecked when Yes is selected");
+  assertEquals(bGlyph, "☑", "B row glyph should be checked when Yes is selected (broker is Principal)");
 });
 
-Deno.test("RE851A broker-capacity — isBrkBorrower=false → A=☐, B=☑", () => {
+Deno.test("RE851A broker-capacity — isBrkBorrower=false → A=☑, B=☐", () => {
   const out = run("false");
   assertEquals(
     lastGlyphBeforeLabel(out, "A. Agent in arranging a loan"),
-    "☐",
-    "A row glyph should be unchecked when No is selected",
+    "☑",
+    "A row glyph should be checked when No is selected (broker acts only as Agent)",
   );
   const bGlyph =
     lastGlyphBeforeLabel(out, "*Principal as a borrower") ??
     lastGlyphBeforeLabel(out, "Principal as a borrower");
-  assertEquals(bGlyph, "☑", "B row glyph should be checked when No is selected (2nd condition checked)");
+  assertEquals(bGlyph, "☐", "B row glyph should be unchecked when No is selected");
 });
 
 Deno.test("RE851A broker-capacity — missing field leaves glyphs untouched", () => {
