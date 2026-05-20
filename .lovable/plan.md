@@ -1,59 +1,61 @@
-# Fix: RE851A `{{#if or_p_isBrkBorrower}}` inline checkboxes render unchecked
+## Issue
 
-## Symptom
-In RE851A, with the dropdown *Origination App → Borrower → "Is Borrower also the Broker"* set to **Yes**, the user's two inline conditionals on the Broker Capacity row render with **neither** box checked:
+`{{br_p_vesting}}` does not populate in generated documents even though the Borrower's Vesting field contains data in CSR → Contact → Borrower.
 
-```text
-{{#if or_p_isBrkBorrower}}☐{{else}}☑{{/if}}, {{#if or_p_isBrkBorrower}}☑{{else}}☐{{/if}}
-```
+## Root Cause
 
-Expected for YES: `☐, ☑`  ·  Expected for NO: `☑, ☐`.
+There are TWO storage paths for borrower vesting, and the template tag the user wrote (`{{br_p_vesting}}`, full) only lines up with one of them:
 
-## Cause (verified in code, not changing here)
-Two stages both try to drive these checkboxes; the second clobbers the first.
+1. **CSR Contact value** (`contacts.contact_data.vesting`)
+   - Published by `injectContact` in `supabase/functions/generate-document/index.ts` (line ~696) as `br_p_vesting` (full) and `borrower.vesting` / `borrower1.vesting`.
+   - Only runs if the borrower contact is a resolved deal participant.
 
-1. **Handlebars stage** (`supabase/functions/_shared/tag-parser.ts` `processConditionalBlocks` → `isConditionTruthy`, lines 1737–1960) correctly resolves `or_p_isBrkBorrower`. The publisher at `supabase/functions/generate-document/index.ts` lines 2788–2839 sets it to `"true"`/`"false"` from the same dropdown key (`origination_app.borrower.is_borrower_also_broker`, confirmed at `src/components/deal/OriginationApplicationForm.tsx` line 45). So the inline blocks correctly emit `☐, ☑` (YES) or `☑, ☐` (NO).
-2. **RE851A label-anchored safety pass** (`supabase/functions/generate-document/index.ts` lines 5024–5064) registers label bindings that flip the single static glyph preceding `A. Agent …` / `B. Principal as a borrower …` from `or_p_brkCapacityAgent` / `or_p_brkCapacityPrincipal`. When the row contains the user's two-glyph `{{#if}}` output instead of one static glyph per label, this pass anchor-matches the wrong glyph (or matches the same glyph twice), erasing the conditional's result and leaving both as `☐`.
+2. **Deal-section value** (`deal_section_values`, UI key `borrower.vesting`)
+   - Field dictionary canonical key is `br_p_vestin` (truncated — see `src/lib/legacyKeyMap.ts:58`: `'borrower.vesting' → 'br_p_vestin'`).
+   - Loaded into `fieldValues` as `br_p_vestin` only — never mirrored to `br_p_vesting`.
 
-The two paths are redundant by design: the safety pass exists so unmodified templates keep working without `{{#if}}`. Once an author opts into `{{#if or_p_isBrkBorrower}}`, the safety pass must step aside for those two anchors only — nothing else.
+The tag resolver (`resolveFieldKeyWithBackwardCompat` in `supabase/functions/_shared/field-resolver.ts`) does NOT collapse `br_p_vesting` → `br_p_vestin` because:
+- `br_p_vesting` is not a `validFieldKey` (dictionary stores `br_p_vestin`)
+- It is not in `field_key_migrations` or `canonical_key` maps
+- Trailing-underscore stripping (line 211) does not strip a trailing letter
 
-## Change (single, surgical, RE851A-only)
+So `{{br_p_vesting}}` only resolves when `injectContact` ran AND `contact_data.vesting` is non-empty. In every other scenario (deal-only vesting, contact missing the field, contact not in participants for this generation) the tag stays blank.
 
-Make the RE851A label-anchored bindings for the two Broker-Capacity anchors **conditionally registered**:
+The lender side already has the equivalent bridge at lines 4948–4952 (`ld_p_vesting` ↔ `ld_p_vestin`); borrower has no such bridge.
 
-- Detect, once per generation, whether `word/document.xml` (and headers/footers) contains the token `{{#if or_p_isBrkBorrower}}` or `{{#unless or_p_isBrkBorrower}}` anywhere.
-- If detected, **omit** these entries from `re851aLabelAdditions` (lines 5026–5064):
-  - `"A. Agent in arranging a loan on behalf of another"`
-  - `"A. Agent in arranging a loan"`
-  - `"A. Agent"`
-  - `"B. Principal as a borrower on funds from which broker will directly or indirectly benefit"`
-  - `"B. Principal as a borrower on funds from which broker will benefit"`
-  - `"B. Principal as a borrower on funds"`
-  - `"B. Principal as a borrower"`
-  - `"B. *Principal …"` variants (all four)
-- Keep every other entry (`Servicing`, `Amortization`, etc.) and the rest of the pipeline untouched.
+## Fix
 
-Net effect:
-- Templates **without** `{{#if or_p_isBrkBorrower}}` → behavior is byte-identical to today (safety pass still drives both glyphs from the booleans).
-- Templates **with** `{{#if or_p_isBrkBorrower}}` → the Handlebars stage is the sole source of truth for those two glyphs; safety pass no longer collides.
+Add a small, additive borrower-vesting bridge in `supabase/functions/generate-document/index.ts`, right after the existing `br_p_fullName` bridge block (around line 3010), modeled exactly on the existing reverse-bridge pattern used there. **No publisher rewrite, no schema change, no UI change, no removal of any existing logic.**
 
-## Files touched
+The bridge resolves the vesting value once by checking, in order:
+1. `br_p_vesting` (already published by `injectContact` from contact_data)
+2. `br_p_vestin` (the truncated dictionary key, populated by deal_section_values)
+3. `borrower.vesting`
+4. `borrower1.vesting`
 
-- `supabase/functions/generate-document/index.ts` — add the inline-conditional detection (~6 lines) just above `const re851aLabelAdditions` and gate the 11 Broker-Capacity entries on `!hasInlineBrkBorrowerIf`. No new exports, no schema, no UI changes.
+The first non-empty value is then mirrored, **only when the target key is missing or empty** (using the same `setIfEmpty`-style guard already used by the `br_p_fullName` bridge), into all four aliases:
+- `br_p_vesting`
+- `br_p_vestin`
+- `borrower.vesting`
+- `borrower1.vesting`
 
-## Out of scope (per minimal-change policy)
-- No change to the publisher (`or_p_isBrkBorrower`, `or_p_brkCapacityAgent`, `or_p_brkCapacityPrincipal`, `*_Glyph`) — they continue to be set for any template that still needs them.
-- No change to `tag-parser.ts` conditional engine.
-- No change to the UI dropdown, field dictionary, or persistence.
-- No change to RE851D or any other template's safety passes.
-- No change to Servicing / Amortization label bindings.
+This guarantees `{{br_p_vesting}}`, `{{br_p_vestin}}`, `{{borrower.vesting}}`, and `{{borrower1.vesting}}` all render the same value, regardless of which path supplied it.
+
+## Files Changed
+
+- `supabase/functions/generate-document/index.ts` — add ~15 lines after the existing `br_p_fullName` reverse-bridge block (~line 3010). No other file is touched.
+
+## What Stays Untouched
+
+- Field dictionary / canonical keys (`br_p_vestin` stays the canonical dictionary key)
+- `src/lib/legacyKeyMap.ts` mapping
+- `injectContact`, deal-section value loaders, `tag-parser.ts`, `field-resolver.ts`
+- Lender vesting pipeline (lines 856–869, 4934–4952)
+- Co-borrower / guarantor vesting sync logic in `BorrowerSectionContent.tsx`
+- Document templates and any other tag
 
 ## Verification
 
-1. Open deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65`, set *Is Borrower also the Broker* = **Yes**, generate RE851A using the user's template containing the two inline blocks → expect `☐, ☑` on the Broker Capacity row.
-2. Toggle to **No**, regenerate → expect `☑, ☐`.
-3. Generate an **unmodified** RE851A template (no inline `{{#if}}`) for the same deal in both YES and NO states → expect identical output to today (regression check that the safety pass still drives the glyphs when authors haven't opted in).
-4. Confirm `[generate-document] Derived broker capacity checkboxes from "yes": agent=false, principal=true, isBrkBorrower=true` log line still appears (publisher unchanged).
-
-## Memory update (after implementation)
-Add one note under `mem://features/document-generation/re851a-checkbox-automation`: *"Broker-Capacity Agent/Principal label-anchored safety pass auto-disables for RE851A templates that contain inline `{{#if or_p_isBrkBorrower}}` so the Handlebars conditional becomes the sole glyph source on that row."*
+1. Generate the user-uploaded `Assignment_of_Rents_and_Profits_Agreement_With_Field_Codes.docx` for a deal where borrower B-00053 (Sunset Equity Holdings LLC, `contact_data.vesting = "4"`) is the primary borrower. `{{br_p_vesting}}` should render `4`.
+2. Repeat with a deal where vesting was edited only in the deal's Borrower section (not on the contact). `{{br_p_vesting}}` must still render the value.
+3. Regression: confirm `{{br_p_vestin}}`, `{{borrower.vesting}}`, and `{{borrower1.vesting}}` still render correctly on existing templates that use those forms (e.g., legacy templates).
