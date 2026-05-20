@@ -805,7 +805,13 @@ async function generateSingleDocument(
       }
 
       // Inject lender
-      const primaryLender = lenderParticipants[0];
+      const orderedLenderParticipants = [...lenderParticipants].sort((a: any, b: any) => {
+        const aSeq = typeof a.sequence_order === "number" ? a.sequence_order : Number.MAX_SAFE_INTEGER;
+        const bSeq = typeof b.sequence_order === "number" ? b.sequence_order : Number.MAX_SAFE_INTEGER;
+        if (aSeq !== bSeq) return aSeq - bSeq;
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+      const primaryLender = orderedLenderParticipants[0];
       if (primaryLender?.contact_id) {
         const lc = contactRowsByUuid.get(primaryLender.contact_id);
         if (lc) {
@@ -829,7 +835,13 @@ async function generateSingleDocument(
           // the templates may reference. Field dictionary uses `ld_p_vesting`,
           // but some templates (e.g. RE851D) reference the truncated legacy
           // tag `{{ld_p_vestin}}` and the dot-key `lender.vesting`.
-          const lVesting = (lcd.vesting ?? "").toString();
+          const lVesting = (
+            lcd.vesting ??
+            orderedLenderParticipants
+              .map((p: any) => p.contact_id ? contactRowsByUuid.get(p.contact_id)?.contact_data?.vesting : "")
+              .find((v: any) => v !== undefined && v !== null && String(v).trim() !== "") ??
+            ""
+          ).toString();
           if (lVesting) {
             setIfEmpty("ld_p_vesting", lVesting);
             setIfEmpty("ld_p_vestin", lVesting);
