@@ -2744,13 +2744,43 @@ async function generateSingleDocument(
     // Derived from "Is Broker Also a Borrower?" UI checkbox. The UI persists this
     // under origination_app.doc.is_broker_also_borrower_yes (legacy alias
     // or_p_isBrokerAlsoBorrower_yes); also accept legacy variants.
-    const brkBorrowerRaw = (
-      fieldValues.get("or_p_isBrokerAlsoBorrower_yes")?.rawValue ??
-      fieldValues.get("origination_app.doc.is_broker_also_borrower_yes")?.rawValue ??
-      fieldValues.get("or_p_isBrkBorrower")?.rawValue ??
-      fieldValues.get("origination.is_broker_also_a_borrower")?.rawValue ??
+    // Resolution order (first non-empty wins):
+    //   1. Borrower-side dropdown (Yes/No) — origination_app.borrower.is_borrower_also_broker
+    //      (this is the field the UI actually surfaces in OriginationApplicationForm)
+    //   2. Doc-section YES checkbox (legacy + canonical aliases)
+    //   3. Doc-section NO checkbox (inverted)
+    //   4. Other legacy aliases
+    const dropdownRaw = (
+      fieldValues.get("origination_app.borrower.is_borrower_also_broker")?.rawValue ??
+      fieldValues.get("or_p_isBorrowerAlsoBroker")?.rawValue ??
       ""
     ).toString().trim().toLowerCase();
+    const yesRaw = (
+      fieldValues.get("or_p_isBrokerAlsoBorrower_yes")?.rawValue ??
+      fieldValues.get("origination_app.doc.is_broker_also_borrower_yes")?.rawValue ??
+      ""
+    ).toString().trim().toLowerCase();
+    const noRaw = (
+      fieldValues.get("or_p_isBrokerAlsoBorrower_no")?.rawValue ??
+      fieldValues.get("origination_app.doc.is_broker_also_borrower_no")?.rawValue ??
+      ""
+    ).toString().trim().toLowerCase();
+    let brkBorrowerRaw = "";
+    if (dropdownRaw) {
+      brkBorrowerRaw = dropdownRaw;
+    } else if (yesRaw) {
+      brkBorrowerRaw = yesRaw;
+    } else if (noRaw) {
+      // Invert NO checkbox into the YES truthiness used downstream
+      const noTrue = ["true", "yes", "y", "1", "checked", "on"].includes(noRaw);
+      brkBorrowerRaw = noTrue ? "false" : "true";
+    } else {
+      brkBorrowerRaw = (
+        fieldValues.get("or_p_isBrkBorrower")?.rawValue ??
+        fieldValues.get("origination.is_broker_also_a_borrower")?.rawValue ??
+        ""
+      ).toString().trim().toLowerCase();
+    }
     const brkBorrowerTrue = ["true", "yes", "y", "1", "checked", "on"].includes(brkBorrowerRaw);
     fieldValues.set("or_p_brkCapacityPrincipal", { rawValue: brkBorrowerTrue ? "true" : "false", dataType: "boolean" });
     fieldValues.set("or_p_brkCapacityAgent", { rawValue: brkBorrowerTrue ? "false" : "true", dataType: "boolean" });
