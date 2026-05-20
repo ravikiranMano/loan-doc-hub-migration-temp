@@ -1,20 +1,53 @@
-I found two likely causes for the RE851A `{{#if or_p_isBrkBorrower}}...{{else}}...{{/if}}` failure:
+# Fix: `{{bk_p_licenseeNameIfEntity}}` Empty in Generated Documents
 
-1. The generator currently writes `or_p_isBrkBorrower` as the strings `"true"` / `"false"`. The custom parser treats those correctly, but any remaining native/standard Handlebars-style evaluation can treat non-empty `"false"` as truthy.
-2. The shared RE851A broker-capacity safety pass is still active after conditional rendering and its comments/tests are internally inconsistent with the intended row behavior. Based on your template snippets, the intended result is:
-   - Yes / true: A. Agent = unchecked, B. Principal as borrower = checked
-   - No / false: A. Agent = checked, B. Principal as borrower = unchecked
+## Root cause
 
-Plan:
+In `supabase/functions/generate-document/index.ts` (line 928), the broker injection block reads the company value as:
 
-1. Update the broker-borrower publisher in `supabase/functions/generate-document/index.ts` so `or_p_isBrkBorrower`, `or_p_brkCapacityAgent`, and `or_p_brkCapacityPrincipal` are stored as real booleans, not string booleans, while keeping glyph aliases unchanged.
-2. Remove the later overwrite risk from the duplicate `or_p_isBrokerAlsoBorrower` derivation by making it respect the borrower dropdown/source-of-truth value instead of defaulting to false when only the dropdown is present.
-3. Correct the RE851A broker-capacity post-render safety pass in `supabase/functions/_shared/tag-parser.ts` so it enforces the same intended mapping as your inline conditionals:
-   - `or_p_isBrkBorrower=true` → A `☐`, B `☑`
-   - `or_p_isBrkBorrower=false` → A `☑`, B `☐`
-4. Add/update focused regression tests for:
-   - direct inline conditional blocks with `or_p_isBrkBorrower=true/false`
-   - static A/B label fallback safety pass with true/false
-   - soft-break A/B paragraph case
+```ts
+const company = cd.company || cr.company || "";
+```
 
-No schema/UI changes are needed.
+The Broker profile UI was renamed from **Broker Company** to **Licensee Name If Entity**, and it now persists into `contact_data.licensee_name_if_entity` (see `ContactBrokersPage.tsx` line 51 and `ContactBrokerDetailLayout.tsx` line 138, which already reads both keys).
+
+Because `generate-document` never looks at `licensee_name_if_entity`, any broker whose value was entered via the new field has an empty `company` → `forceSet("bk_p_licenseeNameIfEntity", "")` → the tag renders blank in `Addendum_to_LPDS` and every other template.
+
+The previous template tag replacement (`{{bk_p_company}}` → `{{bk_p_licenseeNameIfEntity}}`) was correct and is not the problem; the missing piece is the data payload mapping.
+
+## Fix (single, surgical change)
+
+Update the broker injection in `supabase/functions/generate-document/index.ts` around line 928 to prefer the new field, falling back to the legacy one for older records:
+
+```ts
+const company =
+  cd.licensee_name_if_entity ||
+  cd["licensee_name_if_entity"] ||
+  cd.company ||
+  cr.company ||
+  "";
+```
+
+This single `company` variable already feeds:
+- `bk_p_company` (legacy / backward-compat)
+- `bk_p_licenseeNameIfEntity` (new tag)
+- `bk_p_brokerName`
+
+so fixing it here propagates to **every** template that uses any of those tags — including `Addendum_to_LPDS` and the other ~127 templates updated previously.
+
+## Out of scope (no changes needed)
+
+- `legacyKeyMap.ts` — already maps both `broker.company` and `broker.licensee_name_if_entity` to `bk_p_licenseeNameIfEntity`.
+- `field_dictionary` — already migrated.
+- Template `.docx` files — tag replacement already completed in prior batches.
+- UI form (`BrokerInfoForm.tsx`) — already saving to the correct key.
+
+## Verification
+
+1. Open a Broker whose **Licensee Name If Entity** is set (e.g. `BR-00009 → BR-NM-Star Enterprises`).
+2. Regenerate `Addendum_to_LPDS` for a deal that uses this broker.
+3. Confirm the `{{bk_p_licenseeNameIfEntity}}` position renders `BR-NM-Star Enterprises` instead of a blank.
+4. Spot-check one legacy broker whose value lives in `contact_data.company` to confirm the fallback still works.
+
+## Remaining template batch
+
+The prior task left ~115 templates still to scan/replace for the `{{bk_p_company}}` → `{{bk_p_licenseeNameIfEntity}}` tag rename. After approval, I will also re-run `replace-broker-company-tag` to finish those batches so every template uses the new tag name consistently.
