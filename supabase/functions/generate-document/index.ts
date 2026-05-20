@@ -5895,6 +5895,24 @@ async function generateSingleDocument(
             "{{$1}}",
           );
 
+          // (h) RE851D lender vesting tag repair. The live template's
+          // ACKNOWLEDGEMENT OF RECEIPT line has appeared with malformed brace
+          // variants such as `{ld_p_vestin`, `{ld_p_vestin}`, and
+          // `{{ld_p_vestin}`. These never reach the generic merge-tag parser,
+          // so normalize only this legacy lender-vesting token inside text
+          // runs before rendering. Layout XML and all other placeholders are
+          // left untouched.
+          xml = xml.replace(
+            /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
+            (_m, open: string, body: string, close: string) => {
+              const repaired = body.replace(
+                /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
+                "{{ld_p_vestin}}",
+              );
+              return `${open}${repaired}${close}`;
+            },
+          );
+
           if (!xml.includes("_N")) {
             out[filename] = encoder.encode(xml);
             continue;
