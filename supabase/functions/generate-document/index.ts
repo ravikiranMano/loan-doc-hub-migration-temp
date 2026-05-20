@@ -874,10 +874,10 @@ async function generateSingleDocument(
         } else {
           // Default (no suffix) = first AG
           const firstAgContact = contactRowsByUuid.get(agParticipants[0].contact_id);
-          publishAg(firstAgContact, "");
+          publishAg(firstAgContact, "", agParticipants[0]);
           agParticipants.forEach((p: any, idx: number) => {
             const c = contactRowsByUuid.get(p.contact_id);
-            publishAg(c, `_${idx + 1}`);
+            publishAg(c, `_${idx + 1}`, p);
           });
           debugLog(`[generate-document] Published ag_p_fullName="${fieldValues.get("ag_p_fullName")?.rawValue}" (+${agParticipants.length} indexed)`);
         }
