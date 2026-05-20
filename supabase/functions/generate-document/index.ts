@@ -42,7 +42,7 @@ const repairOoXmlTagBoundaries = (xml: string): { xml: string; repaired: number 
     do {
       prev = next;
       next = next.replace(
-        /(<\/?[A-Za-z][\w.-]*:[A-Za-z][\w.-]*?)([A-Za-z][\w.-]*:[A-Za-z][\w.-]*=)/g,
+        /(<\/?[A-Za-z][\w.-]*:[A-Za-z][\w.-]*)([A-Za-z][\w.-]*:[A-Za-z][\w.-]*=)/g,
         "$1 $2",
       );
       next = next.replace(
