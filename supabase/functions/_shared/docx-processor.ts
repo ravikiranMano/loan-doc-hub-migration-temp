@@ -6,6 +6,7 @@
  */
 
 import * as fflate from "https://esm.sh/fflate@0.8.2";
+import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.49/deno-dom-wasm.ts";
 import type { DocxProcessingOptions, FieldValueData, LabelMapping } from "./types.ts";
 import { replaceMergeTags } from "./tag-parser.ts";
 
