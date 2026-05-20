@@ -9931,7 +9931,96 @@ async function generateSingleDocument(
                 // per Handlebars branch — true-branch ☑ + else-branch ☐ as
                 // separate runs) cannot misalign the forced state.
                 const winner: "yes" | "no" | "unk" = isYes ? "yes" : isNo ? "no" : "unk";
-                const wantFor = (l: "yes" | "no" | "unk") => (l === winner ? "\u2611" : "\u2610");
+                 const wantFor = (l: "yes" | "no" | "unk") => (l === winner ? "\u2611" : "\u2610");
+
+                 // ── SDT-first sub-pass ──
+                 // Cloned property regions (P2..P5) and ANT P1 typically carry
+                 // <w:sdt><w14:checkbox>…</w:sdt> content controls for YES/NO/
+                 // UNKNOWN (earlier RE851D passes promote bare glyphs to SDTs).
+                 // The glyph-run pass below filters those out via
+                 // `insideExistingSdt`, leaving the row unchecked. Force the
+                 // SDT's <w14:checked w14:val> + inner ☐/☒ glyph here, then
+                 // skip the glyph/handlebars pass for this bSlot.
+                 {
+                   const sliceForSdt = xml.slice(rawWinStart, rawWinEnd);
+                   const sdtRe = /<w:sdt\b[^>]*>[\s\S]*?<w14:checkbox\b[\s\S]*?<\/w:sdt>/g;
+                   type SdtMatch = { absStart: number; absEnd: number; block: string; labelVisIdx: number };
+                   const sdtMatches: SdtMatch[] = [];
+                   let sM: RegExpExecArray | null;
+                   while ((sM = sdtRe.exec(sliceForSdt)) !== null) {
+                     const absStart = rawWinStart + sM.index;
+                     const absEnd = absStart + sM[0].length;
+                     sdtMatches.push({ absStart, absEnd, block: sM[0], labelVisIdx: -1 });
+                   }
+                   if (sdtMatches.length > 0) {
+                     // Pair each SDT with the next visible YES/NO/UNKNOWN label
+                     // that follows it in document order.
+                     const lblRe = /\b(YES|NO|UNKNOWN)\b/gi;
+                     lblRe.lastIndex = winVisStart;
+                     const labels: { label: "yes" | "no" | "unk"; visIdx: number; rawIdx: number }[] = [];
+                     let lM: RegExpExecArray | null;
+                     while ((lM = lblRe.exec(txt)) !== null && lM.index < winVisEnd) {
+                       const w = lM[1].toUpperCase();
+                       const lbl: "yes" | "no" | "unk" = w === "YES" ? "yes" : w === "NO" ? "no" : "unk";
+                       const rawIdx = map[lM.index] ?? -1;
+                       if (rawIdx >= 0) labels.push({ label: lbl, visIdx: lM.index, rawIdx });
+                     }
+                     const pairings: { sdt: SdtMatch; label: "yes" | "no" | "unk" }[] = [];
+                     const usedLabels = new Set<number>();
+                     for (const sdt of sdtMatches) {
+                       // First label whose raw position is >= the SDT's end.
+                       let chosen = -1;
+                       for (let li = 0; li < labels.length; li++) {
+                         if (usedLabels.has(li)) continue;
+                         if (labels[li].rawIdx >= sdt.absEnd) { chosen = li; break; }
+                       }
+                       if (chosen < 0) continue;
+                       usedLabels.add(chosen);
+                       pairings.push({ sdt, label: labels[chosen].label });
+                     }
+                     // Dedup: keep only first SDT per label.
+                     const seenLbl = new Set<string>();
+                     const dedupedPairings = pairings.filter(p => {
+                       if (seenLbl.has(p.label)) return false;
+                       seenLbl.add(p.label);
+                       return true;
+                     });
+                     if (dedupedPairings.length > 0) {
+                       let sdtTouched = 0;
+                       for (const { sdt, label } of dedupedPairings) {
+                         const checked = label === winner ? "1" : "0";
+                         const glyph = label === winner ? "\u2612" : "\u2610";
+                         let newBlock = sdt.block;
+                         // Force <w14:checked w14:val="…"/> (insert if missing).
+                         if (/<w14:checked\b[^/]*?w14:val="[01]"\s*\/?>/.test(newBlock)) {
+                           newBlock = newBlock.replace(
+                             /(<w14:checked\b[^/]*?w14:val=")[01]("\s*\/?>)/,
+                             `$1${checked}$2`,
+                           );
+                         } else {
+                           newBlock = newBlock.replace(
+                             /(<w14:checkbox\b[^>]*>)/,
+                             `$1<w14:checked w14:val="${checked}"/>`,
+                           );
+                         }
+                         // Force inner <w:sdtContent> glyph so PDF renderers
+                         // that ignore <w14:checked> still display correctly.
+                         newBlock = newBlock.replace(
+                           /(<w:sdtContent\b[^>]*>[\s\S]*?<w:t(?:\s[^>]*)?>)[\u2610\u2611\u2612]?([\s\S]*?<\/w:t>)/,
+                           `$1${glyph}$2`,
+                         );
+                         inserts.push({ at: -sdt.absEnd, html: `${newBlock}|||REPLACE|||${sdt.absStart}` });
+                         sdtTouched++;
+                       }
+                       debugLog(
+                         `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${winner.toUpperCase()} mode=sdt sdtTouched=${sdtTouched}`,
+                       );
+                       continue;
+                     }
+                   }
+                 }
+
+
 
                 // Collect only standalone checkbox-bearing text runs in window order.
                 // Do NOT target glyphs that already live inside native Word SDT
