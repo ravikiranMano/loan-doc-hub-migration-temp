@@ -10811,7 +10811,7 @@ async function generateSingleDocument(
           const xml = decoder.decode(bytes as Uint8Array);
           const hits = xml.match(/\{\{\s*pr_li_rem_[^{}<]*(?:\{N\}|\{S\}|\{P\})[^{}<]*\}\}|pr_li_rem_[A-Za-z]+_(?:\{N\}_\{S\}|\{P\}_\{S\}|\(N\)_\(S\)|\(P\)_\(S\)|N_S)/g) || [];
           hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
-          const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
+          const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
           vestingHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
         }
         if (unresolved.length > 0) {
