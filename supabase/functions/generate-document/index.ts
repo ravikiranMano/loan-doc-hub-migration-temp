@@ -3659,7 +3659,10 @@ async function generateSingleDocument(
         };
 
         const estimateRaw = readFirst("pr_pd_estimateValue", "pr_p_appraiseValue", "property1.appraise_value");
-        const loanAmtRaw = readFirst("ln_p_loanAmount", "loan_terms.loan_amount");
+        // NOTE: "Loan Amount" UI was replaced by ln_p_originalAmount (see ~line 2392).
+        // Include it as the primary source so the net-property-value formula no longer
+        // treats the loan amount as 0 when only ln_p_originalAmount is populated.
+        const loanAmtRaw = readFirst("ln_p_loanAmount", "ln_p_originalAmount", "loan_terms.loan_amount", "loan_terms.original_amount");
 
         // Group lien fields by index so we can compute current-balance and
         // anticipated-amount sums using the same sources the UI/bridge use.
