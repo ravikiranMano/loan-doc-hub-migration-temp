@@ -6286,58 +6286,6 @@ async function generateSingleDocument(
             }
           }
 
-          // ── RE851D appraiser conditional (brace-less) safety rewrite ──
-          // Some templates have lost the surrounding `{{`/`}}` braces around the
-          // appraiser conditional (e.g. property 2 ADDRESS OF APPRAISER cell),
-          // leaving only the raw inner text:
-          //   #if (eq pr_p_performeBy_2 "Broker")N/A
-          // (optionally followed by `{{/if}}` or `/if`). The brace-anchored
-          // rewrite above cannot match this. Strictly scoped to the two known
-          // payloads so no other prose can be affected.
-          {
-            const apprBareRe = /(?:\{\{\s*)?#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(N|[1-5])\s*"\s*Broker\s*"\s*\)(?:\s*\}\})?\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*\/\s*if\s*\}\}|\/\s*if)?/g;
-            let bcm: RegExpExecArray | null;
-            let bareAppraiserBlocksRewritten = 0;
-            const barePairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
-            while ((bcm = apprBareRe.exec(xml)) !== null) {
-              const fullStart = bcm.index;
-              const fullEnd = fullStart + bcm[0].length;
-              if (isConsumed(fullStart, fullEnd)) continue;
-              const rawIdx = bcm[1];
-              const payload = String(bcm[2] || "").trim();
-              const kind: "name" | "addr" = /^BPO Performed by Broker$/i.test(payload) ? "name" : "addr";
-              let pIdx: number | null = null;
-              if (/^[1-5]$/.test(rawIdx)) {
-                pIdx = parseInt(rawIdx, 10);
-              } else {
-                for (const p of regions.props) {
-                  if (fullStart >= p.range[0] && fullStart < p.range[1]) {
-                    pIdx = p.k;
-                    break;
-                  }
-                }
-                if (pIdx === null) {
-                  barePairCounter[kind] += 1;
-                  pIdx = Math.min(Math.max(barePairCounter[kind], 1), 5);
-                }
-              }
-              const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
-              rewrites.push({
-                start: fullStart,
-                end: fullEnd,
-                replacement: `{{${tagBase}_${pIdx}}}`,
-              });
-              consumed.push([fullStart, fullEnd]);
-              totalRewrites++;
-              bareAppraiserBlocksRewritten++;
-            }
-            if (bareAppraiserBlocksRewritten > 0) {
-              try {
-                debugLog(`[generate-document] RE851D appraiser conditional rewrite (brace-less): ${bareAppraiserBlocksRewritten} block(s) repaired`);
-              } catch (_) { /* ignore */ }
-            }
-          }
-
           // ── RE851D pr_p_performeBy_N targeted safety rewrite ──
           // Some authored RE851D templates split the
           // `{{#if (eq pr_p_performeBy_N "Broker")}}` opener across multiple
@@ -10865,8 +10813,6 @@ async function generateSingleDocument(
           hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
           const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
           vestingHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
-          const apprBareHits = xml.match(/#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_[N1-5]\s*"\s*Broker\s*"\s*\)\s*(?:BPO Performed by Broker|N\/A)/g) || [];
-          apprBareHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
         }
         if (unresolved.length > 0) {
           console.warn(`[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: ${unresolved.slice(0, 30).join(" | ")}`);

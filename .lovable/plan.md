@@ -1,60 +1,80 @@
+## Problem
+
+In the latest RE851D generation, the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell renders the literal text:
+
+```
+ld_p_vesting     k
+```
+
+instead of the lender's vesting value (e.g. `JOHN K SMITH, TRUSTEE OF ...`). The tag is being printed verbatim — the merge engine never replaces it. Every other tag in the same line (first / middle / last name) renders normally, which is why a stray "k" (initial) survives next to the unresolved identifier.
+
 ## Root cause
 
-The RE851D "ADDRESS OF APPRAISER" cell for Property 2 renders the literal string:
+1. The data pipeline IS publishing `ld_p_vesting` correctly:
+   - `supabase/functions/generate-document/index.ts` L860–870 sets `ld_p_vesting`, `ld_p_vestin`, `lender.vesting`, `lender1.vesting` from `lcd.vesting`.
+   - L4817–4836 then normalizes it (adds trailing space for entity types, mirrors to truncated alias `ld_p_vestin`).
+   - `ld_p_vesting` is present in `field_dictionary` (`aab82127-…`), so `validFieldKeys` accepts it.
+
+2. The RE851D V12.1 template authored the lender‑vesting placeholder with malformed braces around the identifier. Earlier post‑processing landed several known‑bad variants: `{ld_p_vestin`, `{ld_p_vestin}`, `{{ld_p_vestin}`. A targeted repair pass exists at `supabase/functions/generate-document/index.ts` L5952–5968:
+
+```ts
+xml = xml.replace(
+  /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
+  (_m, open, body, close) => {
+    const repaired = body.replace(
+      /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
+      "{{ld_p_vestin}}",
+    );
+    return `${open}${repaired}${close}`;
+  },
+);
+```
+
+The inner regex `\{\{?\s*ld_p_vesting?\s*\}?\}?` REQUIRES at least one literal `{` (the leading `\{` is mandatory). In the current template the identifier text run no longer carries ANY brace — the opening `{{` lives in a previous run that was stripped/separated during normalize, and the trailing `}}` lives in a later run. After `normalizeWordXml` merged runs, what survives in the single `<w:t>` body is just:
 
 ```
-#if (eq pr_p_performeBy_2 "Broker")N/A
+ld_p_vesting
 ```
 
-This is the same class of bug as the recently fixed `ld_p_vesting` regression. The authored template wrapped this block as:
+with no braces. The repair regex therefore does not match, the body is returned unchanged, Handlebars sees no tag, and the post‑render unresolved scanner (L10805, `/\{+\s*ld_p_vestin(?:g)?\s*\}*/g`) also requires `{`, so it logs `unresolved: none` even though the bare identifier is leaking to the rendered document.
 
-```
-{{#if (eq pr_p_performeBy_2 "Broker")}}N/A{{/if}}
-```
+This is why the bug regressed silently — every guard in the pipeline is keyed on the presence of `{`.
 
-but at some point — during a prior template edit or during `normalizeWordXml`'s run-merging — every `{` and `}` brace around this specific block was stripped from the `<w:t>` body. The opener and the closer are gone, leaving only the bare inner Handlebars text. The other blocks in the document (e.g. Property 1 NAME OF APPRAISER → "BPO Performed by Broker") still have their braces intact, which is why only this one cell regressed.
-
-Why every existing guard misses it:
-
-1. `supabase/functions/rewrite-re851d-template/index.ts` rewrites at upload time using a regex that REQUIRES literal `{{ … }}` around `#if` and `{{/if}}`. With no braces in the run, nothing matches and the block is left as-is.
-2. The runtime guard at `supabase/functions/generate-document/index.ts` L6247 uses `\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))` — also brace-anchored on both ends. No match.
-3. The legacy `_N` safety rewrite at L6305 only matches the bare identifier `pr_p_performeBy_N`, not the literal `_2`/`_3`/etc that this cell carries.
-4. The Handlebars renderer sees no `{{` tag, so it emits the body verbatim.
-5. The unresolved-placeholder scanner at the end also requires `{{`, so the leak is never logged.
-
-Net effect: a brace-less `#if (eq pr_p_performeBy_K "Broker")PAYLOAD` (and optionally a brace-less `/if`) survives all 5 layers and ships in the final DOCX.
-
-## Fix (minimal, additive, RE851D-only)
+## Fix (minimal, additive, RE851D‑only)
 
 ### `supabase/functions/generate-document/index.ts`
 
-1. **Add a third pass immediately after the existing appraiser-conditional rewrite (L6246–6287)** that matches the brace-less form, strictly scoped to the two known payloads so no other prose can be touched:
+1. **Broaden repair (h) at L5952–5968** to also rewrite a bare `ld_p_vesting` / `ld_p_vestin` identifier (no braces) into `{{ld_p_vestin}}`, but only when it is NOT already adjacent to a `{` (so we never double‑wrap a tag that the existing branch already fixed). Scope stays limited to a single `<w:t>` body and only fires for this exact identifier — no other prose can be affected because `ld_p_vesting` cannot legitimately appear as document text.
 
+   Concretely, after the existing inner replace, add a second pass on the same body:
+   ```ts
+   const repaired2 = repaired.replace(
+     /(^|[^{A-Za-z0-9_])ld_p_vestin(?:g)?(?![A-Za-z0-9_}])/g,
+     "$1{{ld_p_vestin}}",
+   );
    ```
-   /(?:\{\{\s*)?#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(N|[1-5])\s*"\s*Broker\s*"\s*\)(?:\s*\}\})?\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*\/\s*if\s*\}\}|\/\s*if)?/g
+   This converts a bare leading/standalone identifier into the canonical `{{ld_p_vestin}}` tag, which the existing Handlebars resolver then renders from the already‑published `ld_p_vestin` value.
+
+2. **Tighten the post‑render unresolved scanner at L10805** so it also catches a bare identifier (no braces) and logs it. Replace:
+   ```ts
+   const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
    ```
+   with:
+   ```ts
+   const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
+   ```
+   so future regressions surface in the logs instead of being silently uploaded.
 
-   For each match:
-   - Resolve `K` from the raw `_N|_1..5` index, the enclosing PROPERTY region (`regions.props`), and a fallback pair counter — identical to the existing logic on L6260–6271.
-   - Choose `tagBase = "pr_p_appraiserName"` for `BPO Performed by Broker` payload, `"pr_p_appraiserAddress"` for `N/A`.
-   - Push a `{ start, end, replacement: "{{tagBase_K}}" }` rewrite, mark consumed, and increment `totalRewrites` — same shape as the existing branch.
-
-   Because `pr_p_performeBy` / `BPO Performed by Broker` / `N/A` cannot appear as legitimate document prose anywhere else in RE851D, this is safe to run unconditionally for that template.
-
-2. **Tighten the post-render unresolved scanner** so any future brace-less leakage is logged instead of shipping silently. Add a brace-optional scan for `#if (eq pr_p_perform(?:e|ed)By_…` and the two payloads next to the existing `vestingHits` block (around L10805), printing them under the same `RE851D unresolved placeholders before upload/PDF` log line.
-
-No changes to:
-- The field dictionary, publishers, or `pr_p_appraiserName_K` / `pr_p_appraiserAddress_K` value resolution (already correct — Property 2 has the values published).
-- The `rewrite-re851d-template` upload-time function.
-- The UI, RLS, schema, or any other template's logic.
+No changes to: data publishers (L840–870, L4817–4836), the template, the field dictionary, the field map, RLS, UI, or any other template/pipeline. Repair stays scoped to the literal identifier `ld_p_vestin[g]` inside `<w:t>` bodies that already match the existing guard.
 
 ## Validation
 
-1. Regenerate RE851D for the active deal → Property 2's ADDRESS OF APPRAISER cell now renders the resolved `pr_p_appraiserAddress_2` value (`N/A` when performedBy === "Broker", empty otherwise). Property 1 NAME OF APPRAISER continues to render `BPO Performed by Broker` unchanged.
-2. Edge-function logs show the new pass count under `RE851D appraiser conditional rewrite: N block(s) replaced` (incremented by however many brace-less blocks were repaired).
-3. Templates that still have well-formed `{{#if … }}…{{/if}}` braces are unaffected — the existing branch consumes them first, so the new brace-less branch finds nothing to do.
+1. Regenerate RE851D for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` → the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell now shows the lender's vesting value followed by the name, with no literal `ld_p_vesting` text.
+2. Edge function logs print `RE851D unresolved Remaining placeholders before upload/PDF: none` after the run (or, if it doesn't, the new scanner will print the offending identifier so we can keep narrowing).
+3. No regression on RE851D documents whose templates already use clean `{{ld_p_vesting}}` / `{{ld_p_vestin}}` — the new branch is a no‑op for those because braces are already present and adjacent to the identifier.
 
 ## Out of scope
 
-- Field dictionary, RLS, storage, packets, other templates (RE851A, RE885).
-- The legacy `rewrite-re851d-template` admin function (only used at upload time; a separate cleanup pass there is not needed to unblock the live document).
+- Field dictionary, RLS, packets, templates table, template storage — no changes.
+- RE851A, RE851D, RE885 logic unrelated to the vesting tag — untouched.
+- UI, styling, validation — no changes.
