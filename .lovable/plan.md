@@ -1,39 +1,43 @@
-## Plan
+## Plan: populate `{{ld_fd_fundingAmount}}` in generated documents
 
-1. **Keep the fix scoped to RE851D document generation only**
-   - Edit only `supabase/functions/generate-document/index.ts`.
-   - Do not change UI, database schema, APIs, save flow, calculations, validations, session handling, or document layout.
+### Problem
 
-2. **Harden the appraiser conditional rewrite**
-   - Update the existing RE851D appraiser conditional matcher so it recognizes the broken DOCX/template variants shown in the generated output, including:
-     - `{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{else}}{{/if}}`
-     - `#if (eq pr_p_performeBy_N "Broker")N/A{{else}}{{/if}}`
-     - missing/partial closing braces from Word XML run splitting
-     - optional empty `{{else}}` branches
-     - both `pr_p_performeBy_*` and `pr_p_performedBy_*`
-     - `_N` and `_1` through `_5`
-   - Preserve the existing safe rule that only rewrites recognized appraiser payloads:
-     - `BPO Performed by Broker` → `{{pr_p_appraiserName_K}}`
-     - `N/A` → `{{pr_p_appraiserAddress_K}}`
-   - Keep the guard that skips any non-empty `else` payload so unrelated conditionals are not silently changed.
+The merge tag `{{ld_fd_fundingAmount}}` (Lender → Funding → Funding Amount) renders empty in generated documents for deals like `DL-2026-0250`, even though the UI shows a funding record with a valid Original/Funding Amount.
 
-3. **Preserve per-property business logic**
-   - Use the already-published per-property values:
-     - Broker → `pr_p_appraiserAddress_K = "N/A"`
-     - Third Party → `pr_p_appraiserAddress_K = ""`
-   - Ensure the property index is resolved by the PROPERTY #1–#5 region, so DL-2026-0250 renders independently for each property.
-   - Based on the backend data checked for `DL-2026-0250`, expected address results are:
-     - Property #1 Third Party → blank
-     - Property #2 Broker → N/A
-     - Property #3 Broker → N/A
-     - Property #4 Third Party → blank
-     - Property #5 Broker → N/A
+### Root cause
 
-4. **Validate narrowly**
-   - Verify the updated logic contains no broad formatting/layout changes.
-   - Deploy only the updated `generate-document` backend function.
-   - Validate by generating/previewing RE851D for the current deal and confirming:
-     - no raw `#if`, `{{else}}`, or `{{/if}}` appears in ADDRESS OF APPRAISER
-     - Broker renders `N/A`
-     - Third Party renders blank
-     - existing NAME OF APPRAISER behavior remains unchanged
+In `supabase/functions/generate-document/index.ts` (lines 2452–2462), the existing bridge for `ld_fd_fundingAmount` only looks at three keys:
+
+- `lender.funding.amount`
+- `ln_p_loanAmount`
+- `loan_terms.loan_amount`
+
+None of these are persisted for this deal. The actual lender funding amount lives inside the funding records array stored under `loan_terms.funding_records` (also mirrored as `ln_p_fundingRecord`), where each record has an `originalAmount` field — exactly the same source the neighboring `ld_fd_baseFee` bridge (lines 2498–2527) already reads to compute its sum.
+
+Verified for DL-2026-0250: `funding_records[0].originalAmount = 100000`, but `ld_fd_fundingAmount` is unset, so the merge tag resolves to empty.
+
+### Fix (scoped, generation-only)
+
+Edit only `supabase/functions/generate-document/index.ts`. Update the `ld_fd_fundingAmount` bridge (lines 2452–2462) to:
+
+1. Keep the existing no-overwrite guard — only populate when `ld_fd_fundingAmount` is empty.
+2. New resolution order (first non-empty wins):
+   a. `lender.funding.amount` (existing)
+   b. **NEW**: sum of `originalAmount` across `loan_terms.funding_records` / `ln_p_fundingRecord` (parse JSON the same way the `ld_fd_baseFee` bridge already does)
+   c. `ln_p_originalAmount` (newly added — this is the canonical Loan Terms → Original Amount that is already bridged earlier in the same function)
+   d. `ln_p_loanAmount` / `loan_terms.loan_amount` (existing fallback)
+3. Store as `{ rawValue: String(value), dataType: "currency" }` so existing currency formatting handles it.
+4. Add a debugLog line matching the existing style.
+
+No changes to:
+- UI, form bindings, save flow, validations, calculations, session handling
+- Database schema, RLS, APIs
+- Template files or document layout
+- Any other bridge, alias, or per-property logic
+- `ld_fd_baseFee` and other neighbouring bridges
+
+### Validation
+
+- Deploy only `generate-document`.
+- Regenerate a document for `DL-2026-0250` and confirm `{{ld_fd_fundingAmount}}` renders `$100,000.00`.
+- Confirm `ld_fd_baseFee`, `ln_p_originalAmount`, `ln_p_loanAmountDivByEstimateValue`, and the RE851D appraiser logic are unaffected.
