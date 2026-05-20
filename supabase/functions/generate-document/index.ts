@@ -10454,18 +10454,11 @@ async function generateSingleDocument(
             // scoped, idempotent way without touching any other content.
             {
               const before = __xmlStrCache[k];
-              let fixed = before.replace(
-                /(<\/?[A-Za-z][A-Za-z0-9]*:[A-Za-z][A-Za-z0-9]*)([a-zA-Z][a-zA-Z0-9]*:[A-Za-z][A-Za-z0-9]*=)/g,
-                "$1 $2",
-              );
-              fixed = fixed.replace(
-                /(="[^"]*")([A-Za-z][A-Za-z0-9]*:[A-Za-z][A-Za-z0-9]*=)/g,
-                "$1 $2",
-              );
-              if (fixed !== before) {
-                __xmlStrCache[k] = fixed;
+              const fixed = repairOoXmlTagBoundaries(before);
+              if (fixed.xml !== before) {
+                __xmlStrCache[k] = fixed.xml;
                 console.log(
-                  `[generate-document] RE851D post-render flush: repaired malformed attribute whitespace in ${k} (Δ=${fixed.length - before.length} chars)`,
+                  `[generate-document] RE851D post-render flush: repaired malformed OOXML tag boundaries in ${k} (Δ=${fixed.repaired} chars)`,
                 );
               }
             }
