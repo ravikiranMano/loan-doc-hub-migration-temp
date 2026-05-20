@@ -571,7 +571,7 @@ async function generateSingleDocument(
     {
       const { data: participants, error: partError } = await supabase
         .from("deal_participants")
-        .select("role, contact_id, name, email, phone")
+        .select("role, contact_id, name, email, phone, sequence_order, created_at")
         .eq("deal_id", dealId);
 
       if (partError) {
@@ -805,7 +805,13 @@ async function generateSingleDocument(
       }
 
       // Inject lender
-      const primaryLender = lenderParticipants[0];
+      const orderedLenderParticipants = [...lenderParticipants].sort((a: any, b: any) => {
+        const aSeq = typeof a.sequence_order === "number" ? a.sequence_order : Number.MAX_SAFE_INTEGER;
+        const bSeq = typeof b.sequence_order === "number" ? b.sequence_order : Number.MAX_SAFE_INTEGER;
+        if (aSeq !== bSeq) return aSeq - bSeq;
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+      const primaryLender = orderedLenderParticipants[0];
       if (primaryLender?.contact_id) {
         const lc = contactRowsByUuid.get(primaryLender.contact_id);
         if (lc) {
@@ -829,7 +835,11 @@ async function generateSingleDocument(
           // the templates may reference. Field dictionary uses `ld_p_vesting`,
           // but some templates (e.g. RE851D) reference the truncated legacy
           // tag `{{ld_p_vestin}}` and the dot-key `lender.vesting`.
-          const lVesting = (lcd.vesting ?? "").toString();
+          const primaryVesting = lcd.vesting !== undefined && lcd.vesting !== null ? String(lcd.vesting).trim() : "";
+          const fallbackVesting = orderedLenderParticipants
+            .map((p: any) => p.contact_id ? contactRowsByUuid.get(p.contact_id)?.contact_data?.vesting : "")
+            .find((v: any) => v !== undefined && v !== null && String(v).trim() !== "");
+          const lVesting = primaryVesting || (fallbackVesting !== undefined && fallbackVesting !== null ? String(fallbackVesting).trim() : "");
           if (lVesting) {
             setIfEmpty("ld_p_vesting", lVesting);
             setIfEmpty("ld_p_vestin", lVesting);
@@ -5640,7 +5650,7 @@ async function generateSingleDocument(
           if (remainingDynamicHits.length > 0) {
             console.log(`[generate-document] RE851D Remaining parsed placeholder keys in ${filename}: ${remainingDynamicHits.join(", ")}`);
           }
-          if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)")) {
+          if (!xml.includes("_N") && !xml.includes("_{N}") && !xml.includes("_(N)") && !xml.includes("_{P}") && !xml.includes("_(P)") && !xml.includes("ld_p_vestin")) {
             out[filename] = bytes;
             continue;
           }
@@ -5881,6 +5891,24 @@ async function generateSingleDocument(
           xml = xml.replace(
             /\{\{(\s*[A-Za-z0-9_.]+\s*)\}(?!\})(?=\s|<)/g,
             "{{$1}}",
+          );
+
+          // (h) RE851D lender vesting tag repair. The live template's
+          // ACKNOWLEDGEMENT OF RECEIPT line has appeared with malformed brace
+          // variants such as `{ld_p_vestin`, `{ld_p_vestin}`, and
+          // `{{ld_p_vestin}`. These never reach the generic merge-tag parser,
+          // so normalize only this legacy lender-vesting token inside text
+          // runs before rendering. Layout XML and all other placeholders are
+          // left untouched.
+          xml = xml.replace(
+            /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
+            (_m, open: string, body: string, close: string) => {
+              const repaired = body.replace(
+                /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
+                "{{ld_p_vestin}}",
+              );
+              return `${open}${repaired}${close}`;
+            },
           );
 
           if (!xml.includes("_N")) {
@@ -10436,6 +10464,8 @@ async function generateSingleDocument(
           const xml = decoder.decode(bytes as Uint8Array);
           const hits = xml.match(/\{\{\s*pr_li_rem_[^{}<]*(?:\{N\}|\{S\}|\{P\})[^{}<]*\}\}|pr_li_rem_[A-Za-z]+_(?:\{N\}_\{S\}|\{P\}_\{S\}|\(N\)_\(S\)|\(P\)_\(S\)|N_S)/g) || [];
           hits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
+          const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
+          vestingHits.slice(0, 10).forEach((h) => unresolved.push(`${name}:${h}`));
         }
         if (unresolved.length > 0) {
           console.warn(`[generate-document] RE851D unresolved Remaining placeholders before upload/PDF: ${unresolved.slice(0, 30).join(" | ")}`);
