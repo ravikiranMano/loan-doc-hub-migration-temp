@@ -571,7 +571,7 @@ async function generateSingleDocument(
     {
       const { data: participants, error: partError } = await supabase
         .from("deal_participants")
-        .select("role, contact_id, name, email, phone")
+        .select("role, contact_id, name, email, phone, sequence_order, created_at")
         .eq("deal_id", dealId);
 
       if (partError) {
