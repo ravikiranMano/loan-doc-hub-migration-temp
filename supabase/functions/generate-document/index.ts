@@ -10412,21 +10412,25 @@ async function generateSingleDocument(
                       const rawIdx = map[lM.index] ?? -1;
                       if (rawIdx < 0) continue;
 
-                      // If an SDT lives between the previous boundary and
-                      // this label, the dedicated SDT pass owns the glyph
-                      // for this slot — do not double-prepend.
-                      if (
-                        xml
-                          .slice(prevRawBoundary, rawIdx)
-                          .includes("<w:sdt")
-                      ) {
-                        const endRawApprox =
-                          (map[lM.index + lM[0].length - 1] ?? rawIdx) + 1;
-                        prevRawBoundary = Math.max(
-                          prevRawBoundary,
-                          endRawApprox,
-                        );
-                        continue;
+                      // If the enclosing cell ALREADY shows a checkbox glyph
+                      // (template SDT rendered correctly, or another pass
+                      // prepended one), skip — do not double-prepend. For
+                      // cloned property regions (P2..P5) the right-side
+                      // cell's SDT often survives in xml but never produced
+                      // a glyph; in that case we MUST still prepend.
+                      const labelTc = findEnclosingTc(rawIdx);
+                      if (labelTc) {
+                        const labelCellXml = xml.slice(labelTc.open, labelTc.close);
+                        const labelCellVisible = labelCellXml.replace(/<[^>]+>/g, "");
+                        if (/[\u2610\u2611\u2612]/.test(labelCellVisible)) {
+                          const endRawApprox =
+                            (map[lM.index + lM[0].length - 1] ?? rawIdx) + 1;
+                          prevRawBoundary = Math.max(
+                            prevRawBoundary,
+                            endRawApprox,
+                          );
+                          continue;
+                        }
                       }
 
                       // Locate the enclosing <w:t> for this label.
