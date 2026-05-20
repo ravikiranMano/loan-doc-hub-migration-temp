@@ -390,7 +390,7 @@ export function validateContentXmlPart(partName: string, xml: string): void {
   }
 
   const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
-  const parserError = parsed.querySelector("parsererror");
+  const parserError = parsed.getElementsByTagName("parsererror")[0];
   if (parserError) {
     const parserMessage = (parserError.textContent || "XML parser rejected content")
       .replace(/\s+/g, " ")
