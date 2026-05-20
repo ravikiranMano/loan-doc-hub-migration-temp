@@ -10127,12 +10127,23 @@ async function generateSingleDocument(
                   let injectedGlyphs = 0;
                   for (const anchor of dedupedAnchors) {
                     const labelRawAbs = anchor.rawIdx;
-                    const labelRunStart = xml.lastIndexOf("<w:r", labelRawAbs);
+                    let labelRunStart = -1;
+                    let runScanAt = labelRawAbs;
+                    while (runScanAt >= injectPrevRawBoundary) {
+                      const candidate = xml.lastIndexOf("<w:r", runScanAt);
+                      if (candidate < injectPrevRawBoundary) break;
+                      const nextChar = xml.charAt(candidate + 4);
+                      if (nextChar === ">" || /\s/.test(nextChar || "")) {
+                        labelRunStart = candidate;
+                        break;
+                      }
+                      runScanAt = candidate - 1;
+                    }
                     const labelRunEnd = labelRunStart >= 0 ? xml.indexOf("</w:r>", labelRunStart) : -1;
                     const validLabelRun =
                       labelRunStart >= injectPrevRawBoundary &&
                       labelRunEnd >= labelRawAbs &&
-                      (xml.charAt(labelRunStart + 4) === ">" || /\s/.test(xml.charAt(labelRunStart + 4) || ""));
+                      labelRunEnd < rawWinEnd;
                     if (validLabelRun) {
                       const localSpan = xml.slice(injectPrevRawBoundary, labelRunStart);
                       const hasExistingCheckbox = /[\u2610\u2611\u2612]|<w14:checkbox\b/i.test(localSpan);
