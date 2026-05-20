@@ -34,6 +34,28 @@ const debugLog = (...args: unknown[]) => {
   }
 };
 
+const repairOoXmlTagBoundaries = (xml: string): { xml: string; repaired: number } => {
+  let repaired = 0;
+  const fixed = xml.replace(/<[^<>]*>/g, (tag) => {
+    let next = tag;
+    let prev: string;
+    do {
+      prev = next;
+      next = next.replace(
+        /(<\/?[A-Za-z][\w.-]*:[A-Za-z][\w.-]*?)([A-Za-z][\w.-]*:[A-Za-z][\w.-]*=)/g,
+        "$1 $2",
+      );
+      next = next.replace(
+        /(="[^"]*")([A-Za-z][\w.-]*:[A-Za-z][\w.-]*=)/g,
+        "$1 $2",
+      );
+    } while (next !== prev);
+    if (next !== tag) repaired += next.length - tag.length;
+    return next;
+  });
+  return { xml: fixed, repaired };
+};
+
 let cachedValidFieldKeys: Set<string> | null = null;
 let validFieldKeysCacheTimestamp = 0;
 const VALID_FIELD_KEYS_TTL_MS = 5 * 60 * 1000;
