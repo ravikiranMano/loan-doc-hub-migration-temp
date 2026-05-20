@@ -10004,14 +10004,57 @@ async function generateSingleDocument(
                       }
                     }
                   }
-                  // Bug 1 guard: NEVER append a balloon amount value into the
-                  // "IF YES, AMOUNT" label cell. The dedicated checkbox-row
-                  // amount cell is the only correct destination; appending
-                  // here doubles the rendered amount.
+                  // Bug 1 (v174): NEVER append a balloon amount value into the
+                  // "IF YES, AMOUNT" label cell. Redirect the write to the
+                  // dedicated checkbox-row amount cell (the Nth "$"-only cell
+                  // in the enclosing balloon mini-table, indexed by slot).
                   if (suffix === "balloonAmount") {
                     const cellXmlForGuard = xml.slice(tc.open, tc.close);
                     const cellVisibleForGuard = cellXmlForGuard.replace(/<[^>]+>/g, "");
                     if (/\bIF\s+YES,\s*AMOUNT\b/i.test(cellVisibleForGuard)) {
+                      const tblOpenA = xml.lastIndexOf("<w:tbl>", tc.open);
+                      const tblOpenB = xml.lastIndexOf("<w:tbl ", tc.open);
+                      const tblStart = Math.max(tblOpenA, tblOpenB);
+                      const tblCloseStart = xml.indexOf("</w:tbl>", tc.close);
+                      if (tblStart >= 0 && tblCloseStart > tblStart) {
+                        const tblEnd = tblCloseStart + "</w:tbl>".length;
+                        const tblXml = xml.slice(tblStart, tblEnd);
+                        const tcScanRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+                        const dollarCells: { absOpen: number; absClose: number }[] = [];
+                        let tcM: RegExpExecArray | null;
+                        while ((tcM = tcScanRe.exec(tblXml)) !== null) {
+                          const cellXml2 = tcM[0];
+                          const visible2 = cellXml2.replace(/<[^>]+>/g, "").trim();
+                          // Empty "$" cell: a "$" with no digits and very few visible chars.
+                          if (visible2 === "$" || (/\$/.test(visible2) && !/\d/.test(visible2) && visible2.length <= 3)) {
+                            const absOpen = tblStart + tcM.index;
+                            const absClose = absOpen + cellXml2.length - "</w:tc>".length;
+                            dollarCells.push({ absOpen, absClose });
+                          }
+                        }
+                        const target = dollarCells[slot - 1];
+                        if (target) {
+                          const cellXml3 = xml.slice(target.absOpen, target.absClose + "</w:tc>".length);
+                          const wtRe = /<w:t(?:\s[^>]*)?>\s*\$\s*<\/w:t>/;
+                          const wM = wtRe.exec(cellXml3);
+                          if (wM) {
+                            const wAbsStart = target.absOpen + wM.index;
+                            const wAbsEnd = wAbsStart + wM[0].length;
+                            const openM = /^<w:t(?:\s[^>]*)?>/.exec(wM[0]);
+                            const openTag = openM ? openM[0] : "<w:t>";
+                            const openWithSpace = /xml:space="preserve"/.test(openTag)
+                              ? openTag
+                              : openTag.replace(/<w:t/, `<w:t xml:space="preserve"`);
+                            const replacement = `${openWithSpace}${xmlEsc(value)}</w:t>`;
+                            inserts.push({ at: -wAbsEnd, html: `${replacement}|||REPLACE|||${wAbsStart}` });
+                          } else {
+                            const para =
+                              `<w:p><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
+                              `<w:t xml:space="preserve">${xmlEsc(value)}</w:t></w:r></w:p>`;
+                            inserts.push({ at: target.absClose, html: para });
+                          }
+                        }
+                      }
                       continue;
                     }
                   }
@@ -10382,8 +10425,12 @@ async function generateSingleDocument(
                   }
                 }
 
-                // Bug 2 — prepend ☑/☐ to YES/NO/UNKNOWN labels following
-                // each BALLOON PAYMENT? anchor that still render bare.
+                // Bug 2 (v174) — prepend ☑/☐ to YES/NO/UNKNOWN labels following
+                // each BALLOON PAYMENT? anchor. Track per-cell + per-<w:t> so
+                // the right-lien cell (which lives in a separate <w:tc> but in
+                // the same scan window as the left-lien cell, and which often
+                // packs YES/NO/UNKNOWN into a single <w:t> body) still gets
+                // every glyph forced.
                 {
                   const balloonRe = /BALLOON\s+PAYMENT\?/gi;
                   balloonRe.lastIndex = visHeaderEnd;
@@ -10408,113 +10455,108 @@ async function generateSingleDocument(
                     const glyphFor = (l: "yes" | "no" | "unk") =>
                       l === winner ? "\u2611" : "\u2610";
 
+                    // Group all label ops by their enclosing <w:t>, and dedup
+                    // per-cell so an SDT-forced glyph elsewhere in the same
+                    // cell does not prevent bare labels from being decorated.
+                    type WtEdit = {
+                      wtCloseEnd: number;
+                      openTag: string;
+                      body: string;
+                      ops: Array<{ lbl: "yes" | "no" | "unk"; w: string }>;
+                    };
+                    const wtEdits = new Map<number, WtEdit>();
+                    const cellLabelSeen = new Map<number, Set<string>>();
+
                     const lblRe = /\b(YES|NO|UNKNOWN)\b/gi;
                     lblRe.lastIndex = winVisStart;
-                    const seenLbl = new Set<string>();
-                    let prevRawBoundary =
-                      map[bm.index] ?? region.start;
                     let lM: RegExpExecArray | null;
-                    while (
-                      (lM = lblRe.exec(txt)) !== null &&
-                      lM.index < winVisEnd
-                    ) {
+                    while ((lM = lblRe.exec(txt)) !== null && lM.index < winVisEnd) {
                       const w = lM[1].toUpperCase();
                       const lbl: "yes" | "no" | "unk" =
                         w === "YES" ? "yes" : w === "NO" ? "no" : "unk";
-                      if (seenLbl.has(lbl)) continue;
 
-                      // Skip "YES" inside "IF YES, AMOUNT" header.
+                      // Skip "YES" inside "IF YES, AMOUNT".
                       const lookBackStart = Math.max(0, lM.index - 6);
                       const lookBack = txt.slice(lookBackStart, lM.index);
                       if (/\bIF\s*$/i.test(lookBack)) continue;
-
-                      seenLbl.add(lbl);
-
-                      // Already has a checkbox glyph visible just before
-                      // the label (e.g. forced via the SDT pass or already
-                      // present in the template) — leave it alone.
-                      if (/[\u2610\u2611\u2612]/.test(lookBack)) {
-                        const endRawApprox =
-                          (map[lM.index + lM[0].length - 1] ?? prevRawBoundary) + 1;
-                        prevRawBoundary = Math.max(
-                          prevRawBoundary,
-                          endRawApprox,
-                        );
-                        continue;
-                      }
+                      // Skip if a checkbox glyph is already immediately before
+                      // the label (within the 6 visible chars look-back).
+                      if (/[\u2610\u2611\u2612]/.test(lookBack)) continue;
 
                       const rawIdx = map[lM.index] ?? -1;
                       if (rawIdx < 0) continue;
-
-                      // If the enclosing cell ALREADY shows a checkbox glyph
-                      // (template SDT rendered correctly, or another pass
-                      // prepended one), skip — do not double-prepend. For
-                      // cloned property regions (P2..P5) the right-side
-                      // cell's SDT often survives in xml but never produced
-                      // a glyph; in that case we MUST still prepend.
                       const labelTc = findEnclosingTc(rawIdx);
-                      if (labelTc) {
-                        const labelCellXml = xml.slice(labelTc.open, labelTc.close);
-                        const labelCellVisible = labelCellXml.replace(/<[^>]+>/g, "");
-                        if (/[\u2610\u2611\u2612]/.test(labelCellVisible)) {
-                          const endRawApprox =
-                            (map[lM.index + lM[0].length - 1] ?? rawIdx) + 1;
-                          prevRawBoundary = Math.max(
-                            prevRawBoundary,
-                            endRawApprox,
-                          );
-                          continue;
-                        }
+                      if (!labelTc) continue;
+                      let seen = cellLabelSeen.get(labelTc.open);
+                      if (!seen) {
+                        seen = new Set();
+                        cellLabelSeen.set(labelTc.open, seen);
                       }
+                      if (seen.has(lbl)) continue;
+                      seen.add(lbl);
 
-                      // Locate the enclosing <w:t> for this label.
+                      // Locate enclosing <w:t>.
                       const wtOpenA = xml.lastIndexOf("<w:t>", rawIdx);
                       const wtOpenB = xml.lastIndexOf("<w:t ", rawIdx);
                       const wtOpen = Math.max(wtOpenA, wtOpenB);
                       if (wtOpen < 0) continue;
-                      const openTagEnd =
-                        xml.indexOf(">", wtOpen) + 1;
+                      const openTagEnd = xml.indexOf(">", wtOpen) + 1;
                       if (openTagEnd <= wtOpen) continue;
-                      const wtCloseStart = xml.indexOf(
-                        "</w:t>",
-                        openTagEnd,
-                      );
+                      const wtCloseStart = xml.indexOf("</w:t>", openTagEnd);
                       if (wtCloseStart < 0) continue;
-                      const wtCloseEnd =
-                        wtCloseStart + "</w:t>".length;
+                      const wtCloseEnd = wtCloseStart + "</w:t>".length;
                       const openTag = xml.slice(wtOpen, openTagEnd);
                       const body = xml.slice(openTagEnd, wtCloseStart);
-                      if (/[\u2610\u2611\u2612]/.test(body)) continue;
-                      // Guard against accidentally rewriting the
-                      // "IF YES, AMOUNT" / similar composite labels.
                       if (/IF\s+YES|AMOUNT/i.test(body)) continue;
-                      if (!new RegExp(`\\b${w}\\b`, "i").test(body))
-                        continue;
+                      if (!new RegExp(`\\b${w}\\b`, "i").test(body)) continue;
+                      // Already glyphed in body?
+                      const alreadyRe = new RegExp(
+                        `[\\u2610\\u2611\\u2612]\\s*${w}\\b`,
+                        "i",
+                      );
+                      if (alreadyRe.test(body)) continue;
 
+                      const existing = wtEdits.get(wtOpen);
+                      if (existing) {
+                        existing.ops.push({ lbl, w });
+                      } else {
+                        wtEdits.set(wtOpen, {
+                          wtCloseEnd,
+                          openTag,
+                          body,
+                          ops: [{ lbl, w }],
+                        });
+                      }
+                    }
+
+                    // Emit one combined replacement per <w:t>.
+                    for (const [wtOpen, ed] of wtEdits) {
+                      let newBody = ed.body;
+                      for (const { lbl, w } of ed.ops) {
+                        const already = new RegExp(
+                          `[\\u2610\\u2611\\u2612]\\s*${w}\\b`,
+                          "i",
+                        );
+                        if (already.test(newBody)) continue;
+                        newBody = newBody.replace(
+                          new RegExp(`\\b${w}\\b`),
+                          `${glyphFor(lbl)} ${w}`,
+                        );
+                      }
+                      if (newBody === ed.body) continue;
                       const openWithSpace = /xml:space="preserve"/.test(
-                        openTag,
+                        ed.openTag,
                       )
-                        ? openTag
-                        : openTag.replace(
+                        ? ed.openTag
+                        : ed.openTag.replace(
                             /<w:t/,
                             `<w:t xml:space="preserve"`,
                           );
-                      const newBody = `${glyphFor(lbl)} ${body.replace(
-                        /^\s+/,
-                        "",
-                      )}`;
                       const replacement = `${openWithSpace}${newBody}</w:t>`;
                       inserts.push({
-                        at: -wtCloseEnd,
+                        at: -ed.wtCloseEnd,
                         html: `${replacement}|||REPLACE|||${wtOpen}`,
                       });
-
-                      const endRawApprox =
-                        (map[lM.index + lM[0].length - 1] ?? rawIdx) + 1;
-                      prevRawBoundary = Math.max(
-                        prevRawBoundary,
-                        endRawApprox,
-                      );
                     }
                   }
                 }
