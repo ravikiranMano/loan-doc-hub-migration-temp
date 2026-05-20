@@ -114,11 +114,12 @@ const VALIDATION_CONFIGS: Record<string, ValidationConfig> = {
     },
   },
   loanNumber: {
-    allowedPattern: /^[A-Za-z0-9\-]$/,
+    allowedPattern: /^[A-Za-z0-9]$/,
     validate: (val) => {
-      if (!val) return null;
-      if (/\s/.test(val) || !/^[A-Za-z0-9\-]+$/.test(val))
-        return 'Enter a valid loan number (alphanumeric, no spaces)';
+      const trimmed = (val || '').trim();
+      if (!trimmed) return null;
+      if (!/^[A-Za-z0-9]{14}$/.test(trimmed))
+        return 'Loan Number must be exactly 14 alphanumeric characters.';
       return null;
     },
   },
@@ -491,7 +492,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Details</h3>
           {renderInlineField(FIELD_KEYS.companyId, 'Company ID')}
-          {renderInlineField(FIELD_KEYS.loanNumber, 'Loan Number')}
+          {renderValidatedField(FIELD_KEYS.loanNumber, 'Loan Number', 'loanNumber')}
           {renderInlineField(FIELD_KEYS.previousLoanNumber, 'Previous Loan Number')}
           {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
           {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
