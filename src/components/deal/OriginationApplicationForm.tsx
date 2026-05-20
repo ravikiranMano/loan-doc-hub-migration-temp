@@ -463,6 +463,9 @@ export const OriginationApplicationForm: React.FC<OriginationApplicationFormProp
           {renderDropdownField('Performed By', FIELD_KEYS.fin_performed_by, PERFORMED_BY_OPTIONS)}
           {renderYNToggle('Rent Rolls / Leases', FIELD_KEYS.fin_rent_rolls_leases_yn)}
           {renderDropdownField('Status', FIELD_KEYS.fin_rent_rolls_leases_status, STATUS_OPTIONS)}
+          <div className="pt-2">
+            {renderCheckboxField('Additional Information Attached', FIELD_KEYS.doc_additional_info)}
+          </div>
         </div>
 
       </div>
