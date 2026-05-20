@@ -2364,21 +2364,34 @@ async function generateSingleDocument(
     }
 
     // Auto-compute ln_p_loanAmountDivByEstimateValue if not already set
-    // Formula: Loan Amount / Estimate of Value (pr_p_appraiseValue)
+    // Formula: (ln_p_originalAmount / pr_pd_estimateValue) * 100
     // Renders blank when Estimate is missing or 0 (no divide-by-zero).
+    // Note: "Loan amount" field was removed from the UI and replaced by ln_p_originalAmount.
+    // Denominator prefers pr_pd_estimateValue, falls back to pr_p_appraiseValue/property1.appraise_value.
     const existingLoanDivEstimate = fieldValues.get("ln_p_loanAmountDivByEstimateValue");
     if (!existingLoanDivEstimate || !existingLoanDivEstimate.rawValue) {
-      const loanAmountVal2 = fieldValues.get("ln_p_loanAmount")?.rawValue || fieldValues.get("loan_terms.loan_amount")?.rawValue;
-      const estimateVal = fieldValues.get("pr_p_appraiseValue")?.rawValue || fieldValues.get("property1.appraise_value")?.rawValue;
-      const loanNum2 = parseFloat(String(loanAmountVal2 || "").replace(/[^0-9.-]/g, ""));
+      const originalAmountVal =
+        fieldValues.get("ln_p_originalAmount")?.rawValue ||
+        fieldValues.get("loan_terms.original_amount")?.rawValue ||
+        // Legacy fallbacks (kept so historical deals that still hold the old key continue to render)
+        fieldValues.get("ln_p_loanAmount")?.rawValue ||
+        fieldValues.get("loan_terms.loan_amount")?.rawValue;
+      const estimateVal =
+        fieldValues.get("pr_pd_estimateValue")?.rawValue ||
+        fieldValues.get("pr_p_appraiseValue")?.rawValue ||
+        fieldValues.get("property1.appraise_value")?.rawValue;
+      const originalNum = parseFloat(String(originalAmountVal || "").replace(/[^0-9.-]/g, ""));
       const estimateNum = parseFloat(String(estimateVal || "").replace(/[^0-9.-]/g, ""));
-      if (!isNaN(loanNum2) && !isNaN(estimateNum) && estimateNum > 0) {
-        const ratio = loanNum2 / estimateNum;
+      if (!isNaN(originalNum) && !isNaN(estimateNum) && estimateNum > 0) {
+        const ratio = originalNum / estimateNum;
         const ratioStr = ratio.toFixed(4);
         const pctStr = (ratio * 100).toFixed(2);
-        fieldValues.set("ln_p_loanAmountDivByEstimateValue", { rawValue: ratioStr, dataType: "number" });
+        // Primary key now stores the percentage value so {{ln_p_loanAmountDivByEstimateValue}}
+        // renders as a percentage per the updated requirement.
+        fieldValues.set("ln_p_loanAmountDivByEstimateValue", { rawValue: pctStr, dataType: "percentage" });
         fieldValues.set("ln_p_loanAmountDivByEstimateValue_pct", { rawValue: pctStr, dataType: "percentage" });
-        debugLog(`[generate-document] Auto-computed ln_p_loanAmountDivByEstimateValue = ${ratioStr} (pct=${pctStr}%)`);
+        fieldValues.set("ln_p_loanAmountDivByEstimateValue_ratio", { rawValue: ratioStr, dataType: "number" });
+        debugLog(`[generate-document] Auto-computed ln_p_loanAmountDivByEstimateValue = ${pctStr}% (ratio=${ratioStr}) from ln_p_originalAmount/pr_pd_estimateValue`);
       }
     }
 
