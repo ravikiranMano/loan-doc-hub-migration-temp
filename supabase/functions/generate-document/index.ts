@@ -5051,45 +5051,53 @@ async function generateSingleDocument(
     }
     const re851aLabelAdditions: Record<string, { fieldKey: string }> = isTemplate851A
       ? {
-          "A. Agent in arranging a loan on behalf of another": {
-            fieldKey: "or_p_brkCapacityAgent",
-          },
-          "A. Agent in arranging a loan": {
-            fieldKey: "or_p_brkCapacityAgent",
-          },
-          "A. Agent": {
-            fieldKey: "or_p_brkCapacityAgent",
-          },
-          "B. Principal as a borrower on funds from which broker will directly or indirectly benefit": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          // Shorter variant used in the live RE851A wording — matches both static
-          // glyph templates and tagless SDT checkboxes during label fallback.
-          "B. Principal as a borrower on funds from which broker will benefit": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          "B. Principal as a borrower on funds": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          "B. Principal as a borrower": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          // RE851A live wording prefixes "Principal" with a literal asterisk
-          // ("B. *Principal as a borrower..."). Without these label variants
-          // the broker-capacity B checkbox falls back to its static unchecked
-          // glyph even when the CSR "IS BROKER ALSO A BORROWER?" box is true.
-          "B. *Principal as a borrower on funds from which broker will directly or indirectly benefit": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          "B. *Principal as a borrower on funds from which broker will benefit": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          "B. *Principal as a borrower on funds": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
-          "B. *Principal as a borrower": {
-            fieldKey: "or_p_brkCapacityPrincipal",
-          },
+          // ── Broker-Capacity (A. Agent / B. Principal as a borrower) ──
+          // Only registered when the template does NOT use inline
+          // {{#if or_p_isBrkBorrower}} for these two glyphs. See the probe
+          // above for the rationale.
+          ...(hasInlineBrkBorrowerIf
+            ? {}
+            : {
+                "A. Agent in arranging a loan on behalf of another": {
+                  fieldKey: "or_p_brkCapacityAgent",
+                },
+                "A. Agent in arranging a loan": {
+                  fieldKey: "or_p_brkCapacityAgent",
+                },
+                "A. Agent": {
+                  fieldKey: "or_p_brkCapacityAgent",
+                },
+                "B. Principal as a borrower on funds from which broker will directly or indirectly benefit": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                // Shorter variant used in the live RE851A wording — matches both static
+                // glyph templates and tagless SDT checkboxes during label fallback.
+                "B. Principal as a borrower on funds from which broker will benefit": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                "B. Principal as a borrower on funds": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                "B. Principal as a borrower": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                // RE851A live wording prefixes "Principal" with a literal asterisk
+                // ("B. *Principal as a borrower..."). Without these label variants
+                // the broker-capacity B checkbox falls back to its static unchecked
+                // glyph even when the CSR "IS BROKER ALSO A BORROWER?" box is true.
+                "B. *Principal as a borrower on funds from which broker will directly or indirectly benefit": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                "B. *Principal as a borrower on funds from which broker will benefit": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                "B. *Principal as a borrower on funds": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+                "B. *Principal as a borrower": {
+                  fieldKey: "or_p_brkCapacityPrincipal",
+                },
+              }),
           // RE851A Servicing section labels → derived boolean keys.
           // Mirrors the broker A/B pattern above so the static ☐ glyph that
           // sits immediately before each label flips to ☑ when the matching
