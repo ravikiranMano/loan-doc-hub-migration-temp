@@ -7075,7 +7075,12 @@ async function generateSingleDocument(
     // resolver falls through to fallbacks. Seeding them here forces priority-1
     // direct match and removes any chance of the resolver returning a different
     // ultimate key for our publisher-set values. Template-gated.
-    let effectiveValidFieldKeys = validFieldKeys;
+    let effectiveValidFieldKeys = /guaranty/i.test(template.name || "") ? new Set(validFieldKeys) : validFieldKeys;
+    if (/guaranty/i.test(template.name || "")) {
+      for (const key of ["ag_p_fullName", "ag_p_first", "ag_p_middle", "ag_p_last"]) {
+        effectiveValidFieldKeys.add(key);
+      }
+    }
     if (isEncumbrancePipeline) {
       effectiveValidFieldKeys = new Set(validFieldKeys);
       const SUFFIXED_BASES = [
