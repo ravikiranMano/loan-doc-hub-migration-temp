@@ -9970,6 +9970,17 @@ async function generateSingleDocument(
                       }
                     }
                   }
+                  // Bug 1 guard: NEVER append a balloon amount value into the
+                  // "IF YES, AMOUNT" label cell. The dedicated checkbox-row
+                  // amount cell is the only correct destination; appending
+                  // here doubles the rendered amount.
+                  if (suffix === "balloonAmount") {
+                    const cellXmlForGuard = xml.slice(tc.open, tc.close);
+                    const cellVisibleForGuard = cellXmlForGuard.replace(/<[^>]+>/g, "");
+                    if (/\bIF\s+YES,\s*AMOUNT\b/i.test(cellVisibleForGuard)) {
+                      continue;
+                    }
+                  }
                   // Append a new <w:p> just before </w:tc>.
                   const para =
                     `<w:p><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
