@@ -28,6 +28,8 @@ Deno.serve(async (req) => {
   // Optional ?dryRun=1 to only scan and report
   const url = new URL(req.url);
   const dryRun = url.searchParams.get("dryRun") === "1";
+  const startIdx = parseInt(url.searchParams.get("start") || "0", 10);
+  const limit = parseInt(url.searchParams.get("limit") || "50", 10);
 
   const allFiles: { name: string }[] = [];
   let offset = 0;
@@ -49,6 +51,9 @@ Deno.serve(async (req) => {
     if (data.length < PAGE) break;
     offset += PAGE;
   }
+
+  const batch = allFiles.slice(startIdx, startIdx + limit);
+
 
   const updated: string[] = [];
   const matched: string[] = [];
