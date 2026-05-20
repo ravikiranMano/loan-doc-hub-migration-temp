@@ -10415,6 +10415,33 @@ async function generateSingleDocument(
                 `[generate-document] RE851D post-render flush: removed ${straySdtRepaired.repaired} stray </w:sdtContent></w:sdt> pair(s) in ${k}`,
               );
             }
+            // Final XML attribute-space sanitization. Earlier rsid-strip
+            // and bookmark-strip passes (combined with cross-run merge tag
+            // consolidation around `{{ld_p_vesting}}` / `{{ld_p_vestin}}`)
+            // have occasionally produced malformed element starts like
+            // `<w:bookmarkEndw:id="2"/>` and `<w:szw:val="16"/>` — i.e. a
+            // missing whitespace between the element name and its first
+            // attribute, or between two adjacent attributes. Word refuses
+            // to open the resulting DOCX with "Xml parsing error". This
+            // pass restores the required separating space in a narrowly
+            // scoped, idempotent way without touching any other content.
+            {
+              const before = __xmlStrCache[k];
+              let fixed = before.replace(
+                /(<\/?[A-Za-z][A-Za-z0-9]*:[A-Za-z][A-Za-z0-9]*)([a-zA-Z][a-zA-Z0-9]*:[A-Za-z][A-Za-z0-9]*=)/g,
+                "$1 $2",
+              );
+              fixed = fixed.replace(
+                /(="[^"]*")([A-Za-z][A-Za-z0-9]*:[A-Za-z][A-Za-z0-9]*=)/g,
+                "$1 $2",
+              );
+              if (fixed !== before) {
+                __xmlStrCache[k] = fixed;
+                console.log(
+                  `[generate-document] RE851D post-render flush: repaired malformed attribute whitespace in ${k} (Δ=${fixed.length - before.length} chars)`,
+                );
+              }
+            }
             // Validate the FINAL XML before re-encoding — fail loudly rather
             // than upload a corrupt DOCX that Word will refuse to open.
             try {
