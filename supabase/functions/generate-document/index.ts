@@ -6286,65 +6286,6 @@ async function generateSingleDocument(
             }
           }
 
-          // ── RE851D appraiser conditional BRACE-TOLERANT fallback ──
-          // Some authored RE851D templates leak the `{{#if (eq pr_p_performeBy_K
-          // "Broker")}}…{{/if}}` block with zero or partial brace characters
-          // (the `{{` / `}}` lived in adjacent runs that were stripped by
-          // normalize). The strict apprCondRe above requires both `{{` and
-          // `}}`, so those leaked fragments survive and render as literal
-          // `#if (eq pr_p_performeBy_1 "Broker")N/A` text. This pass anchors
-          // strictly on the two known payloads ("BPO Performed by Broker" and
-          // "N/A") so no unrelated document text can ever be consumed.
-          {
-            const apprCondLooseRe =
-              /\{*\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(N|[1-5])\s*(?:"|&quot;|\u201C|\u201D)\s*Broker\s*(?:"|&quot;|\u201C|\u201D)\s*\)\s*\}*\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*else\s*\}\}\s*)?\{*\s*\/\s*if\s*\}*/g;
-            let lcm: RegExpExecArray | null;
-            let appraiserLooseRewritten = 0;
-            const looseCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
-            while ((lcm = apprCondLooseRe.exec(xml)) !== null) {
-              const fullStart = lcm.index;
-              const fullEnd = fullStart + lcm[0].length;
-              if (isConsumed(fullStart, fullEnd)) continue;
-              const slot = String(lcm[1] || "N");
-              const payload = String(lcm[2] || "").trim();
-              let kind: "name" | "addr" | null = null;
-              if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
-              else if (/^N\/A$/i.test(payload)) kind = "addr";
-              if (kind === null) continue;
-              let pIdx: number | null = null;
-              if (/^[1-5]$/.test(slot)) {
-                pIdx = parseInt(slot, 10);
-              } else {
-                for (const p of regions.props) {
-                  if (fullStart >= p.range[0] && fullStart < p.range[1]) {
-                    pIdx = p.k;
-                    break;
-                  }
-                }
-                if (pIdx === null) {
-                  looseCounter[kind] += 1;
-                  pIdx = Math.min(Math.max(looseCounter[kind], 1), 5);
-                }
-              }
-              const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
-              rewrites.push({
-                start: fullStart,
-                end: fullEnd,
-                replacement: `{{${tagBase}_${pIdx}}}`,
-              });
-              consumed.push([fullStart, fullEnd]);
-              totalRewrites++;
-              appraiserLooseRewritten++;
-            }
-            if (appraiserLooseRewritten > 0) {
-              try {
-                debugLog(`[generate-document] RE851D appraiser conditional LOOSE rewrite: ${appraiserLooseRewritten} brace-tolerant block(s) replaced`);
-              } catch (_) { /* ignore */ }
-            }
-          }
-
-
-
           // ── RE851D pr_p_performeBy_N targeted safety rewrite ──
           // Some authored RE851D templates split the
           // `{{#if (eq pr_p_performeBy_N "Broker")}}` opener across multiple

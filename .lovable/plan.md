@@ -1,93 +1,80 @@
 ## Problem
 
-RE851D is rendering literal text in the appraiser cells:
+In the latest RE851D generation, the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell renders the literal text:
 
-- `#if (eq pr_p_performeBy_1 "Broker")N/A` (Property 1, ADDRESS OF APPRAISER)
-- `#if (eq pr_p_performeBy_2 "Broker")N/A` (Property 2, ADDRESS OF APPRAISER)
+```
+ld_p_vesting     k
+```
 
-Property 1 NAME shows nothing; Property 2 NAME shows `BPO Performed by Broker`. So the renumbering of `_N → _K` is already working (we see `_1` and `_2`), but the surrounding `{{` / `}}` braces of the Handlebars `{{#if (eq pr_p_performeBy_K "Broker")}}…{{/if}}` block are missing in the underlying `<w:t>` runs of the template. With no braces, the merge engine ignores the conditional and the raw `#if …` syntax leaks to the rendered DOCX.
+instead of the lender's vesting value (e.g. `JOHN K SMITH, TRUSTEE OF ...`). The tag is being printed verbatim — the merge engine never replaces it. Every other tag in the same line (first / middle / last name) renders normally, which is why a stray "k" (initial) survives next to the unresolved identifier.
 
 ## Root cause
 
-`supabase/functions/generate-document/index.ts` L6247 holds the appraiser-conditional rewriter:
+1. The data pipeline IS publishing `ld_p_vesting` correctly:
+   - `supabase/functions/generate-document/index.ts` L860–870 sets `ld_p_vesting`, `ld_p_vestin`, `lender.vesting`, `lender1.vesting` from `lcd.vesting`.
+   - L4817–4836 then normalizes it (adds trailing space for entity types, mirrors to truncated alias `ld_p_vestin`).
+   - `ld_p_vesting` is present in `field_dictionary` (`aab82127-…`), so `validFieldKeys` accepts it.
+
+2. The RE851D V12.1 template authored the lender‑vesting placeholder with malformed braces around the identifier. Earlier post‑processing landed several known‑bad variants: `{ld_p_vestin`, `{ld_p_vestin}`, `{{ld_p_vestin}`. A targeted repair pass exists at `supabase/functions/generate-document/index.ts` L5952–5968:
 
 ```ts
-const apprCondRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*\}\}([\s\S]*?)(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\}(?!\}))/g;
+xml = xml.replace(
+  /(<w:t(?:\s[^>]*)?>)([^<]*ld_p_vestin[^<]*)(<\/w:t>)/g,
+  (_m, open, body, close) => {
+    const repaired = body.replace(
+      /\{\{?\s*ld_p_vesting?\s*\}?\}?/g,
+      "{{ld_p_vestin}}",
+    );
+    return `${open}${repaired}${close}`;
+  },
+);
 ```
 
-It hard-requires `{{ … }}` on both opener and closer. The RE851D V12.1 template authoring (and our earlier brace-repair passes) leave some opener/closer pairs with **zero** brace characters left in the live `<w:t>` body — the `{{` and `}}` lived in adjacent runs that were stripped, and `normalizeWordXml` merged what's left into a single brace-less run. The regex never matches, so the cell never gets rewritten into `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}`, and the literal `#if (eq pr_p_performeBy_K "Broker")…/if` (or just the payload `N/A` with the `#if` opener as a separate fragment) survives to the rendered document.
+The inner regex `\{\{?\s*ld_p_vesting?\s*\}?\}?` REQUIRES at least one literal `{` (the leading `\{` is mandatory). In the current template the identifier text run no longer carries ANY brace — the opening `{{` lives in a previous run that was stripped/separated during normalize, and the trailing `}}` lives in a later run. After `normalizeWordXml` merged runs, what survives in the single `<w:t>` body is just:
 
-The renumber-`_N`-to-`_K` safety pass at L6305 already runs successfully (logs show `_1` / `_2` in the leaked text), confirming the regions detector is correct — only the brace-tolerant payload collapse is missing.
+```
+ld_p_vesting
+```
 
-The publishers at L1655–L1664 already set the per-property resolved values:
+with no braces. The repair regex therefore does not match, the body is returned unchanged, Handlebars sees no tag, and the post‑render unresolved scanner (L10805, `/\{+\s*ld_p_vestin(?:g)?\s*\}*/g`) also requires `{`, so it logs `unresolved: none` even though the bare identifier is leaking to the rendered document.
 
-- `pr_p_appraiserName_K` = `"BPO Performed by Broker"` when broker, else `""`
-- `pr_p_appraiserAddress_K` = `"N/A"` when broker, else `""`
+This is why the bug regressed silently — every guard in the pipeline is keyed on the presence of `{`.
 
-so once we collapse the leaked `#if` block into the right merge tag, the existing pipeline renders the correct text.
-
-## Fix (minimal, RE851D-only, additive)
+## Fix (minimal, additive, RE851D‑only)
 
 ### `supabase/functions/generate-document/index.ts`
 
-Add **one** brace-tolerant fallback pass immediately after the existing appraiser conditional rewrite (after L6287, before the L6289 `_N → _K` literal renumber). Scope: only the literal identifier `pr_p_perform(e|ed)By_(K|N)` followed by either of the two known payloads (`BPO Performed by Broker` or `N/A`) and a trailing `/if` token, with `{` / `}` characters **optional** at every position.
+1. **Broaden repair (h) at L5952–5968** to also rewrite a bare `ld_p_vesting` / `ld_p_vestin` identifier (no braces) into `{{ld_p_vestin}}`, but only when it is NOT already adjacent to a `{` (so we never double‑wrap a tag that the existing branch already fixed). Scope stays limited to a single `<w:t>` body and only fires for this exact identifier — no other prose can be affected because `ld_p_vesting` cannot legitimately appear as document text.
 
-Conceptually:
+   Concretely, after the existing inner replace, add a second pass on the same body:
+   ```ts
+   const repaired2 = repaired.replace(
+     /(^|[^{A-Za-z0-9_])ld_p_vestin(?:g)?(?![A-Za-z0-9_}])/g,
+     "$1{{ld_p_vestin}}",
+   );
+   ```
+   This converts a bare leading/standalone identifier into the canonical `{{ld_p_vestin}}` tag, which the existing Handlebars resolver then renders from the already‑published `ld_p_vestin` value.
 
-```ts
-// Brace-tolerant fallback. Strictly anchored to the two known payloads so
-// no unrelated text can ever be consumed.
-const apprCondLooseRe =
-  /\{*\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(N|[1-5])\s*(?:"|&quot;|\u201C|\u201D)\s*Broker\s*(?:"|&quot;|\u201C|\u201D)\s*\)\s*\}*\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*else\s*\}\}\s*)?\{*\s*\/\s*if\s*\}*/g;
-```
+2. **Tighten the post‑render unresolved scanner at L10805** so it also catches a bare identifier (no braces) and logs it. Replace:
+   ```ts
+   const vestingHits = xml.match(/\{+\s*ld_p_vestin(?:g)?\s*\}*/g) || [];
+   ```
+   with:
+   ```ts
+   const vestingHits = xml.match(/(?:\{+\s*)?ld_p_vestin(?:g)?(?:\s*\}+)?/g) || [];
+   ```
+   so future regressions surface in the logs instead of being silently uploaded.
 
-For each match (skipped if `isConsumed(...)` is true):
-
-1. Strip-tag the payload group to determine `kind` (`name` for `BPO Performed by Broker`, `addr` for `N/A`).
-2. Resolve `pIdx`:
-   - If the captured slot is `1`..`5`, use it directly.
-   - If `N`, locate the enclosing `regions.props` range (same logic as L6262–L6267); fall back to the existing `appraiserPairCounter` ordering.
-3. Push a rewrite that replaces the **entire** matched run with `{{pr_p_appraiserName_K}}` or `{{pr_p_appraiserAddress_K}}`, mark `consumed.push([start,end])`, increment `totalRewrites`.
-
-This collapses every leaked `#if (eq pr_p_performeBy_K "Broker") N/A /if`–style fragment (with or without any braces) into the canonical merge tag, which the already-published `pr_p_appraiserName_K` / `pr_p_appraiserAddress_K` values render correctly. The strict payload anchors (`BPO Performed by Broker` / `N/A`) guarantee no other document text can be matched.
-
-### Post-render scanner tightening (optional, additive)
-
-In the unresolved-placeholder log scanner that runs before upload/PDF (same area as the existing vesting scan), also count residual occurrences of:
-
-```ts
-/(?:#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_[1-5N]|pr_p_perform(?:e|ed)By_[1-5N])/g
-```
-
-so any future regression surfaces in the edge-function logs instead of silently uploading bad text. Log only — do not fail the run.
-
-### What is NOT changing
-
-- No edit to the stored RE851D template in storage.
-- No edit to field dictionary, field map, RLS, publishers (L1630–L1664 / L1655–L1664), data resolver, or UI.
-- No change to RE851A, RE885, or any non-appraiser RE851D logic.
-- The existing strict `apprCondRe` (L6247) stays; the new pass only fires for matches the strict pass already missed (`isConsumed` guard).
-
-## Technical details
-
-- File touched: `supabase/functions/generate-document/index.ts` only.
-- Insertion point: a new block between L6287 and L6289.
-- Net addition: ~30 lines.
-- The new regex never matches well-formed `{{#if … }}…{{/if}}` blocks already handled by the strict pass because those are added to `consumed` first.
-- DOCX integrity preserved: rewrites operate on the same `xml` string the strict pass already mutates via `rewrites[]` / `applyRanges(...)`, so XML balance and `<w:t>` containment are unchanged.
+No changes to: data publishers (L840–870, L4817–4836), the template, the field dictionary, the field map, RLS, UI, or any other template/pipeline. Repair stays scoped to the literal identifier `ld_p_vestin[g]` inside `<w:t>` bodies that already match the existing guard.
 
 ## Validation
 
-1. Regenerate RE851D for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65`.
-2. In the output DOCX, every PROPERTY #1..#5 block shows:
-   - NAME OF APPRAISER → `BPO Performed by Broker` when `appraisal_performed_by === "Broker"`, else the appraiser name (or blank).
-   - ADDRESS OF APPRAISER → `N/A` when broker, else the appraiser address (or blank).
-   - No literal `#if`, `pr_p_performeBy_*`, or `/if` text anywhere in the document.
-3. Open the file in Microsoft Word AND in Google Drive → document opens cleanly with no "unreadable content" repair prompt.
-4. Edge-function logs print `RE851D appraiser conditional rewrite: N block(s) replaced` for both the strict and loose passes, and the new scanner reports `0` residual `pr_p_performeBy_*` leaks.
+1. Regenerate RE851D for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65` → the "NAME OF PROSPECTIVE LENDER/PURCHASER" cell now shows the lender's vesting value followed by the name, with no literal `ld_p_vesting` text.
+2. Edge function logs print `RE851D unresolved Remaining placeholders before upload/PDF: none` after the run (or, if it doesn't, the new scanner will print the offending identifier so we can keep narrowing).
+3. No regression on RE851D documents whose templates already use clean `{{ld_p_vesting}}` / `{{ld_p_vestin}}` — the new branch is a no‑op for those because braces are already present and adjacent to the identifier.
 
 ## Out of scope
 
-- Field dictionary, packets, templates table, storage uploads.
-- RE851A / RE885 / non-RE851D paths.
-- UI / styling / validation.
+- Field dictionary, RLS, packets, templates table, template storage — no changes.
+- RE851A, RE851D, RE885 logic unrelated to the vesting tag — untouched.
+- UI, styling, validation — no changes.
