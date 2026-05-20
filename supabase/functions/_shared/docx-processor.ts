@@ -388,6 +388,35 @@ export function validateContentXmlPart(partName: string, xml: string): void {
     throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
   }
 
+  const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
+  const parserError = parsed.querySelector("parsererror");
+  if (parserError) {
+    const parserMessage = (parserError.textContent || "XML parser rejected content")
+      .replace(/\s+/g, " ")
+      .trim();
+    const lineMatch = parserMessage.match(/line\s+(\d+)/i);
+    const colMatch = parserMessage.match(/col(?:umn)?\s+(\d+)/i);
+    let offset = -1;
+    if (lineMatch && colMatch) {
+      const line = parseInt(lineMatch[1], 10);
+      const col = parseInt(colMatch[1], 10);
+      if (Number.isFinite(line) && Number.isFinite(col)) {
+        offset = 0;
+        for (let i = 1; i < line && offset < trimmed.length; i++) {
+          const nl = trimmed.indexOf("\n", offset);
+          if (nl === -1) break;
+          offset = nl + 1;
+        }
+        offset = Math.min(trimmed.length, offset + Math.max(0, col - 1));
+      }
+    }
+    throw new Error(
+      `DOCX_INTEGRITY: ${partName} is not XML-parser-valid` +
+        (offset >= 0 ? ` at offset ${offset}` : "") +
+        ` (${parserMessage})`
+    );
+  }
+
   const stack: string[] = [];
   const tagRe = /<(!\[CDATA\[[\s\S]*?\]\]|!--[\s\S]*?--|\?[^>]*\?|\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?)>/g;
   let tagMatch: RegExpExecArray | null;
