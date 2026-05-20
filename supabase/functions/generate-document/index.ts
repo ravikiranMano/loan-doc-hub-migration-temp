@@ -173,7 +173,7 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D || /851a/i.test(template.name || "")) {
+      if (isTemplate851D || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "")) {
         throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
@@ -832,12 +832,15 @@ async function generateSingleDocument(
       // Order by sequence_order ASC NULLS LAST, then created_at ASC. First = default.
       {
         const isAg = (p: any) => {
+          const pName = String(p.name || "").toLowerCase();
+          if (pName.includes("additional guarantor") || pName.includes("adtn guarantor")) return true;
           if (!p.contact_id) return false;
           const c = contactRowsByUuid.get(p.contact_id);
           if (!c) return false;
           if (String(c.contact_type || "").toLowerCase() === "additional_guarantor") return true;
           const cap = c.contact_data?.capacity;
-          return !!(cap && String(cap).toLowerCase().includes("additional guarantor"));
+          const capLower = cap ? String(cap).toLowerCase() : "";
+          return capLower.includes("additional guarantor") || capLower.includes("adtn guarantor");
         };
         const agParticipants = participantRows
           .filter(isAg)
@@ -850,13 +853,13 @@ async function generateSingleDocument(
 
         debugLog(`[generate-document] Additional Guarantor participants: ${agParticipants.length}`);
 
-        const publishAg = (contact: any, suffix: string) => {
+        const publishAg = (contact: any, suffix: string, participant?: any) => {
           const cd = contact?.contact_data || {};
           const firstName = cd.first_name || contact?.first_name || "";
           const middleName = cd.middle_initial || cd.middle_name || "";
           const lastName = cd.last_name || contact?.last_name || "";
           const assembledName = [firstName, middleName, lastName].filter(Boolean).join(" ");
-          const fullName = (assembledName || cd.full_name || contact?.full_name || "").trim();
+          const fullName = (assembledName || cd.full_name || contact?.full_name || participant?.name || "").trim();
           fieldValues.set(`ag_p_fullName${suffix}`, { rawValue: fullName, dataType: "text" });
           fieldValues.set(`ag_p_first${suffix}`, { rawValue: String(firstName).trim(), dataType: "text" });
           fieldValues.set(`ag_p_middle${suffix}`, { rawValue: String(middleName).trim(), dataType: "text" });
