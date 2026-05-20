@@ -972,6 +972,47 @@ async function generateSingleDocument(
         }
       }
 
+      // ─── Per-lender indexed aliases (ld1_p_*, ld2_p_*, ld3_p_*, …) ───
+      // Publish independent field mappings for every lender on the loan, so
+      // documents can reference Lender N's first/middle/last/full/vesting
+      // separately. Order follows participants.sequence_order (then created_at)
+      // so Lender 1 = the primary lender (matches existing ld_p_* aliases).
+      {
+        const setForceAlias = (key: string, value: string) => {
+          // Always overwrite — these are deterministic per-index aliases.
+          fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
+        };
+        orderedLenderParticipants.forEach((lp: any, idx: number) => {
+          const n = idx + 1;
+          if (!lp?.contact_id) {
+            setForceAlias(`ld${n}_p_firstName`, "");
+            setForceAlias(`ld${n}_p_middleName`, "");
+            setForceAlias(`ld${n}_p_lastName`, "");
+            setForceAlias(`ld${n}_p_fullName`, "");
+            setForceAlias(`ld${n}_p_vesting`, "");
+            return;
+          }
+          const lc = contactRowsByUuid.get(lp.contact_id);
+          const lcd = lc?.contact_data || {};
+          const first = (lcd.first_name || lc?.first_name || "").toString().trim();
+          const middle = (lcd.middle_initial || lcd.middle_name || "").toString().trim();
+          const last = (lcd.last_name || lc?.last_name || "").toString().trim();
+          // Full Name = First + Middle + Last with single-space join, skipping
+          // blanks so no double-spaces appear when middle is empty.
+          const assembled = [first, middle, last].filter(Boolean).join(" ");
+          const full = assembled || (lcd.full_name || lc?.full_name || "").toString().trim();
+          const vesting = (lcd.vesting !== undefined && lcd.vesting !== null)
+            ? String(lcd.vesting).trim()
+            : "";
+          setForceAlias(`ld${n}_p_firstName`, first);
+          setForceAlias(`ld${n}_p_middleName`, middle);
+          setForceAlias(`ld${n}_p_lastName`, last);
+          setForceAlias(`ld${n}_p_fullName`, full);
+          setForceAlias(`ld${n}_p_vesting`, vesting);
+        });
+        debugLog(`[generate-document] Published per-lender indexed aliases for ${orderedLenderParticipants.length} lender(s): ld1..ld${orderedLenderParticipants.length}`);
+      }
+
       // Inject broker (force-override since broker data is authoritative from Contacts)
       const primaryBroker = brokerParticipants[0];
       if (primaryBroker?.contact_id) {
