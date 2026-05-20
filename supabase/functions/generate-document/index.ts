@@ -10115,6 +10115,44 @@ async function generateSingleDocument(
                     }
                     prevRawBoundary = labelRawAbs;
                   }
+
+                  // Fallback for cloned RE851D regions whose YES / NO /
+                  // UNKNOWN labels survived as plain text with no checkbox
+                  // glyph, unresolved Handlebars run, or SDT to rewrite. Inject
+                  // a fresh glyph run immediately before the label run, but only
+                  // when the slot truly has no checkbox candidate in its local
+                  // label span. This keeps Property 1 and already-normalized
+                  // rows idempotent while making P2..P5 render visibly checked.
+                  let injectPrevRawBoundary = rawWinStart;
+                  let injectedGlyphs = 0;
+                  for (const anchor of dedupedAnchors) {
+                    const labelRawAbs = anchor.rawIdx;
+                    const labelRunStart = xml.lastIndexOf("<w:r", labelRawAbs);
+                    const labelRunEnd = labelRunStart >= 0 ? xml.indexOf("</w:r>", labelRunStart) : -1;
+                    const validLabelRun =
+                      labelRunStart >= injectPrevRawBoundary &&
+                      labelRunEnd >= labelRawAbs &&
+                      (xml.charAt(labelRunStart + 4) === ">" || /\s/.test(xml.charAt(labelRunStart + 4) || ""));
+                    if (validLabelRun) {
+                      const localSpan = xml.slice(injectPrevRawBoundary, labelRunStart);
+                      const hasExistingCheckbox = /[\u2610\u2611\u2612]|<w14:checkbox\b/i.test(localSpan);
+                      const hasQueuedHit = hits.some(h => {
+                        const hStart = rawWinStart + h.idx;
+                        const hEnd = hStart + h.len;
+                        return hStart >= injectPrevRawBoundary && hEnd <= labelRawAbs;
+                      });
+                      if (!hasExistingCheckbox && !hasQueuedHit) {
+                        const glyph = wantFor(anchor.label);
+                        const injection = `<w:r><w:rPr><w:rFonts w:ascii="Segoe UI Symbol" w:hAnsi="Segoe UI Symbol" w:cs="Segoe UI Symbol"/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">${glyph} </w:t></w:r>`;
+                        inserts.push({ at: labelRunStart, html: injection });
+                        injectedGlyphs++;
+                      }
+                    }
+                    injectPrevRawBoundary = labelRawAbs;
+                  }
+                  debugLog(
+                    `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${winner.toUpperCase()} mode=${injectedGlyphs > 0 ? "inject" : hits.length > 0 ? "glyph" : "none"} injected=${injectedGlyphs} (anchors=${dedupedAnchors.map(a => a.label).join(",") || "none"}, hits=${hits.length})`,
+                  );
                 } else {
                   // Fallback: legacy positional mapping (3 hits → Yes/No/Unk
                   // in document order). Only triggers when the cell has no
@@ -10128,10 +10166,10 @@ async function generateSingleDocument(
                     if (h.kind === "glyph" && h.cur === want) continue;
                     inserts.push({ at: -end, html: `${buildReplacement(h, want)}|||REPLACE|||${start}` });
                   }
+                  debugLog(
+                    `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${winner.toUpperCase()} mode=glyph injected=0 (anchors=none, hits=${hits.length})`,
+                  );
                 }
-                debugLog(
-                  `[generate-document] RE851D enc post-render P${region.k} ${tagPrefix === "pr_li_ant" ? "ANT" : "REM"} S${bSlot}: balloon=${winner.toUpperCase()} (anchors=${dedupedAnchors.map(a => a.label).join(",") || "none"}, hits=${hits.length})`,
-                );
               }
 
               // ── Defensive scrub: unresolved balloon-token literals ──
