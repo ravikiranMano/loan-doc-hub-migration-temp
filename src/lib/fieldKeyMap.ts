@@ -398,7 +398,7 @@ export const LENDER_TAX_INFO_KEYS = {
 
 export const LOAN_TERMS_BALANCES_KEYS = {
   loanAmount: 'loan_terms.loan_amount',
-  originalAmount: 'loan.original_amount',
+  originalAmount: 'loan_terms.original_amount',
   noteRate: 'loan_terms.note_rate',
   soldRate: 'loan_terms.sold_rate',
   currentRate: 'loan_terms.current_rate',
