@@ -835,13 +835,11 @@ async function generateSingleDocument(
           // the templates may reference. Field dictionary uses `ld_p_vesting`,
           // but some templates (e.g. RE851D) reference the truncated legacy
           // tag `{{ld_p_vestin}}` and the dot-key `lender.vesting`.
-          const lVesting = (
-            lcd.vesting ??
-            orderedLenderParticipants
-              .map((p: any) => p.contact_id ? contactRowsByUuid.get(p.contact_id)?.contact_data?.vesting : "")
-              .find((v: any) => v !== undefined && v !== null && String(v).trim() !== "") ??
-            ""
-          ).toString();
+          const primaryVesting = lcd.vesting !== undefined && lcd.vesting !== null ? String(lcd.vesting).trim() : "";
+          const fallbackVesting = orderedLenderParticipants
+            .map((p: any) => p.contact_id ? contactRowsByUuid.get(p.contact_id)?.contact_data?.vesting : "")
+            .find((v: any) => v !== undefined && v !== null && String(v).trim() !== "");
+          const lVesting = primaryVesting || (fallbackVesting !== undefined && fallbackVesting !== null ? String(fallbackVesting).trim() : "");
           if (lVesting) {
             setIfEmpty("ld_p_vesting", lVesting);
             setIfEmpty("ld_p_vestin", lVesting);
