@@ -5021,6 +5021,34 @@ async function generateSingleDocument(
     // for needles that can never match, contributing to CPU pressure on
     // large templates. Behavior for RE851A is unchanged.
     // isTemplate851A already declared above (line ~131) for the encumbrance pipeline gate.
+    //
+    // Inline-conditional opt-out: if the RE851A template author has used
+    // `{{#if or_p_isBrkBorrower}}` / `{{#unless or_p_isBrkBorrower}}` to drive
+    // the Broker-Capacity (A. Agent / B. Principal as a borrower) glyphs
+    // themselves, the Handlebars stage already produces the correct two-glyph
+    // output for that row. Running the label-anchored safety pass on top would
+    // re-anchor on those same labels and overwrite the conditional's result
+    // (often leaving both checkboxes empty). Detect this once and omit ONLY
+    // the Broker-Capacity entries below; every other RE851A label binding
+    // (Servicing, Amortization, …) is unaffected.
+    let hasInlineBrkBorrowerIf = false;
+    if (isTemplate851A) {
+      try {
+        const probeText = await fileData.slice(0).text();
+        hasInlineBrkBorrowerIf =
+          probeText.includes("or_p_isBrkBorrower") &&
+          (/\{\{\s*#if\s+or_p_isBrkBorrower\b/.test(probeText) ||
+            /\{\{\s*#unless\s+or_p_isBrkBorrower\b/.test(probeText));
+        if (hasInlineBrkBorrowerIf) {
+          debugLog(
+            `[generate-document] RE851A: detected inline {{#if or_p_isBrkBorrower}} — skipping Broker-Capacity (A. Agent / B. Principal) label-anchored safety pass so the Handlebars conditional is the sole glyph source on that row.`,
+          );
+        }
+      } catch (_e) {
+        // Probe failure is non-fatal: fall back to existing safety-pass behavior.
+        hasInlineBrkBorrowerIf = false;
+      }
+    }
     const re851aLabelAdditions: Record<string, { fieldKey: string }> = isTemplate851A
       ? {
           "A. Agent in arranging a loan on behalf of another": {
