@@ -10004,14 +10004,57 @@ async function generateSingleDocument(
                       }
                     }
                   }
-                  // Bug 1 guard: NEVER append a balloon amount value into the
-                  // "IF YES, AMOUNT" label cell. The dedicated checkbox-row
-                  // amount cell is the only correct destination; appending
-                  // here doubles the rendered amount.
+                  // Bug 1 (v174): NEVER append a balloon amount value into the
+                  // "IF YES, AMOUNT" label cell. Redirect the write to the
+                  // dedicated checkbox-row amount cell (the Nth "$"-only cell
+                  // in the enclosing balloon mini-table, indexed by slot).
                   if (suffix === "balloonAmount") {
                     const cellXmlForGuard = xml.slice(tc.open, tc.close);
                     const cellVisibleForGuard = cellXmlForGuard.replace(/<[^>]+>/g, "");
                     if (/\bIF\s+YES,\s*AMOUNT\b/i.test(cellVisibleForGuard)) {
+                      const tblOpenA = xml.lastIndexOf("<w:tbl>", tc.open);
+                      const tblOpenB = xml.lastIndexOf("<w:tbl ", tc.open);
+                      const tblStart = Math.max(tblOpenA, tblOpenB);
+                      const tblCloseStart = xml.indexOf("</w:tbl>", tc.close);
+                      if (tblStart >= 0 && tblCloseStart > tblStart) {
+                        const tblEnd = tblCloseStart + "</w:tbl>".length;
+                        const tblXml = xml.slice(tblStart, tblEnd);
+                        const tcScanRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+                        const dollarCells: { absOpen: number; absClose: number }[] = [];
+                        let tcM: RegExpExecArray | null;
+                        while ((tcM = tcScanRe.exec(tblXml)) !== null) {
+                          const cellXml2 = tcM[0];
+                          const visible2 = cellXml2.replace(/<[^>]+>/g, "").trim();
+                          // Empty "$" cell: a "$" with no digits and very few visible chars.
+                          if (visible2 === "$" || (/\$/.test(visible2) && !/\d/.test(visible2) && visible2.length <= 3)) {
+                            const absOpen = tblStart + tcM.index;
+                            const absClose = absOpen + cellXml2.length - "</w:tc>".length;
+                            dollarCells.push({ absOpen, absClose });
+                          }
+                        }
+                        const target = dollarCells[slot - 1];
+                        if (target) {
+                          const cellXml3 = xml.slice(target.absOpen, target.absClose + "</w:tc>".length);
+                          const wtRe = /<w:t(?:\s[^>]*)?>\s*\$\s*<\/w:t>/;
+                          const wM = wtRe.exec(cellXml3);
+                          if (wM) {
+                            const wAbsStart = target.absOpen + wM.index;
+                            const wAbsEnd = wAbsStart + wM[0].length;
+                            const openM = /^<w:t(?:\s[^>]*)?>/.exec(wM[0]);
+                            const openTag = openM ? openM[0] : "<w:t>";
+                            const openWithSpace = /xml:space="preserve"/.test(openTag)
+                              ? openTag
+                              : openTag.replace(/<w:t/, `<w:t xml:space="preserve"`);
+                            const replacement = `${openWithSpace}${xmlEsc(value)}</w:t>`;
+                            inserts.push({ at: -wAbsEnd, html: `${replacement}|||REPLACE|||${wAbsStart}` });
+                          } else {
+                            const para =
+                              `<w:p><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>` +
+                              `<w:t xml:space="preserve">${xmlEsc(value)}</w:t></w:r></w:p>`;
+                            inserts.push({ at: target.absClose, html: para });
+                          }
+                        }
+                      }
                       continue;
                     }
                   }
