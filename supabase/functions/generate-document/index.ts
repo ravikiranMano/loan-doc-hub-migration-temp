@@ -2658,7 +2658,34 @@ async function generateSingleDocument(
       const monthlyPIStr = monthlyPI.toFixed(2);
       fieldValues.set("ln_monthlyPayment_PI", { rawValue: monthlyPIStr, dataType: "currency" });
       fieldValues.set("loan_terms.monthly_payment_pi", { rawValue: monthlyPIStr, dataType: "currency" });
+      // Also publish under ln_monthlyPayment_P (no "I" suffix) so templates that
+      // reference the abbreviated tag resolve to the same auto-computed value.
+      fieldValues.set("ln_monthlyPayment_P", { rawValue: monthlyPIStr, dataType: "currency" });
       debugLog(`[generate-document] Auto-computed ln_monthlyPayment_PI = ${monthlyPIStr} (P=${principalP}, annualRate=${annualRate}%, n=${termMonths}, monthlyRate=${monthlyRate})`);
+    }
+
+    // ── Auto-compute Regular + Estimated Balloon Payment — ln_p_regularPlusBalloonPaymen ──
+    // field_dictionary defines this as calculated (formula: regularPaymen + estimateBallooPaymen)
+    // but no general calc engine runs in the edge function, so publish the sum here.
+    {
+      const numFromKeysRB = (...keys: string[]): number | null => {
+        for (const k of keys) {
+          const raw = fieldValues.get(k)?.rawValue;
+          if (raw === undefined || raw === null || raw === "") continue;
+          const n = parseFloat(String(raw).replace(/[^0-9.-]/g, ""));
+          if (!isNaN(n)) return n;
+        }
+        return null;
+      };
+      const regularPaymentRB = numFromKeysRB("ln_p_regularPaymen", "loan_terms.regular_payment");
+      const estimatedBalloonRB = numFromKeysRB("ln_p_estimateBallooPaymen", "loan_terms.estimated_balloon_payment");
+      if (regularPaymentRB !== null || estimatedBalloonRB !== null) {
+        const sumRB = (regularPaymentRB ?? 0) + (estimatedBalloonRB ?? 0);
+        const sumRBStr = sumRB.toFixed(2);
+        fieldValues.set("ln_p_regularPlusBalloonPaymen", { rawValue: sumRBStr, dataType: "currency" });
+        fieldValues.set("loan_terms.regular_plus_balloon_payment", { rawValue: sumRBStr, dataType: "currency" });
+        debugLog(`[generate-document] Auto-computed ln_p_regularPlusBalloonPaymen = ${sumRBStr} (regular=${regularPaymentRB}, estBalloon=${estimatedBalloonRB})`);
+      }
     }
 
     // ── Dropdown-to-Checkbox derivation for Re851a ──
