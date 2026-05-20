@@ -8526,6 +8526,11 @@ async function generateSingleDocument(
           3: `<w:spacing w:before="12" w:after="100" w:line="173" w:lineRule="auto"/>`,
         };
 
+        const detectRow = (visible: string): 1 | 2 | 3 | null => {
+          const hit = ROW_LABELS.find(({ label }) => label.test(visible));
+          return hit ? hit.row : null;
+        };
+
         const setRowSpacing = (para: string, row: 1 | 2 | 3): string => {
           const spacingXml = ROW_SPACING[row];
           const open = para.match(/^<w:p\b[^>]*>/);
