@@ -2756,11 +2756,35 @@ async function generateSingleDocument(
       debugLog(`[generate-document] Derived ln_pn_principalPaydownType checkboxes from "${ppdRaw}" (norm="${ppdNorm}")`);
     }
 
-    // Payment Frequency dropdown → boolean checkbox keys
-    const payFreqVal = (fieldValues.get("ln_p_paymentFreque")?.rawValue || fieldValues.get("loan_terms.payment_frequency")?.rawValue || "").toString().trim().toLowerCase();
-    fieldValues.set("ln_p_paymentMonthly", { rawValue: payFreqVal === "monthly" ? "true" : "false", dataType: "boolean" });
-    fieldValues.set("ln_p_paymentWeekly", { rawValue: payFreqVal === "weekly" ? "true" : "false", dataType: "boolean" });
-    debugLog(`[generate-document] Derived payment frequency checkboxes from "${payFreqVal}": monthly=${payFreqVal === "monthly"}, weekly=${payFreqVal === "weekly"}`);
+    // Payment Frequency dropdown → checkbox glyphs.
+    // Templates reference {{ln_p_paymentMonthly}} / {{ln_p_paymentWeekly}}
+    // (no _glyph suffix) directly as the checkbox character, so publish the
+    // ☑/☐ glyph as the rawValue. Also publish _glyph and boolean aliases for
+    // any templates that use those variants.
+    {
+      const payFreqVal = (
+        fieldValues.get("ln_p_paymentFreque")?.rawValue ||
+        fieldValues.get("loan_terms.payment_frequency")?.rawValue ||
+        ""
+      ).toString().trim().toLowerCase().replace(/[\s-]+/g, "_");
+      const variants: Record<string, string[]> = {
+        Monthly: ["monthly"],
+        Weekly: ["weekly"],
+        BiWeekly: ["bi_weekly", "biweekly"],
+        Quarterly: ["quarterly"],
+        Annually: ["annually", "annual", "yearly"],
+        SemiAnnually: ["semi_annually", "semiannually"],
+      };
+      for (const [suffix, matches] of Object.entries(variants)) {
+        const isMatch = matches.includes(payFreqVal);
+        const glyph = isMatch ? "☑" : "☐";
+        const key = `ln_p_payment${suffix}`;
+        fieldValues.set(key, { rawValue: glyph, dataType: "text" });
+        fieldValues.set(`${key}_glyph`, { rawValue: glyph, dataType: "text" });
+        fieldValues.set(`${key}_bool`, { rawValue: isMatch ? "true" : "false", dataType: "boolean" });
+      }
+      debugLog(`[generate-document] Derived payment frequency checkbox glyphs from "${payFreqVal}"`);
+    }
 
     // Balloon Payment (RE851A Part 3) → boolean checkbox key
     // UI persists under loan_terms.balloon_payment (legacy alias ln_p_balloonPaymen, note truncated key).
