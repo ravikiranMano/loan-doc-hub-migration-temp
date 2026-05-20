@@ -9661,6 +9661,14 @@ async function generateSingleDocument(
           // don't duplicate them.
           if (v.dataType === "currency" && r.startsWith("$")) r = r.substring(1).trim();
           if (v.dataType === "percent" && r.endsWith("%")) r = r.slice(0, -1).trim();
+          // RE851D MM/DD/YYYY guarantee: when a date value passes through as
+          // raw ISO yyyy-MM-dd (no upstream formatter applied), convert to
+          // MM/DD/YYYY so per-property maturity-date cells render consistently
+          // with Property 1's path. Local-only — does not affect other fields.
+          if (v.dataType === "date") {
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r);
+            if (m) r = `${m[2]}/${m[3]}/${m[1]}`;
+          }
           return r;
         };
         const truthy = (raw: unknown): boolean => {
@@ -9675,6 +9683,7 @@ async function generateSingleDocument(
         // within each ENCUMBRANCE section).
         const ENC_LABELS: Array<{ rx: RegExp; suffix: string }> = [
           { rx: /\bPRIORITY\s*\(1\s*ST\s*,\s*2\s*ND\s*,\s*ETC\.?\)/i, suffix: "priority" },
+          { rx: /\bINTEREST\s+RATE\b/i, suffix: "interestRate" },
           { rx: /\bBENEFICIARY\b/i, suffix: "beneficiary" },
           { rx: /\bORIGINAL\s+AMOUNT\b/i, suffix: "originalAmount" },
           { rx: /\bAPPROXIMATE\s+PRINCIPAL\s+BALANCE\b/i, suffix: "principalBalance" },
