@@ -746,7 +746,8 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   // ──────────────────────────────────────────────────
   'broker.id': 'bk_p_brokerId',
   'broker.License': 'bk_p_brokerLicens',
-  'broker.company': 'bk_p_company',
+  'broker.company': 'bk_p_licenseeNameIfEntity',
+  'broker.licensee_name_if_entity': 'bk_p_licenseeNameIfEntity',
   'broker.first_name': 'bk_p_firstName',
   'broker.middle_name': 'bk_p_middleName',
   'broker.last_name': 'bk_p_lastName',
