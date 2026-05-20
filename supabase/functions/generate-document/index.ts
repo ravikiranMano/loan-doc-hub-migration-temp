@@ -925,7 +925,12 @@ async function generateSingleDocument(
           const assembledName = [firstName, middleName, lastName].filter(Boolean).join(" ");
           const fullName = assembledName || cd.full_name || cr.full_name || "";
           const email = cd.email || cr.email || "";
-          const company = cd.company || cr.company || "";
+          const company =
+            cd.licensee_name_if_entity ||
+            cd["licensee_name_if_entity"] ||
+            cd.company ||
+            cr.company ||
+            "";
           const phone = cd["phone.cell"] || cd["phone.work"] || cd["phone.home"] || cr.phone || "";
           const fax = cd["phone.fax"] || "";
           const license = cd.license_number || cd.License || cd.license || cr.license_number || "";
