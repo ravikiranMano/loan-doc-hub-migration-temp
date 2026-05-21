@@ -183,7 +183,7 @@ function stripParagraphsByText(cellXml: string, predicate: (txt: string) => bool
 // Pass D — clean up a misplaced loop that v6 injected into the wrong cell
 // (the centered "INVESTOR" header). Returns the cleaned xml + a note.
 function cleanMisplacedInvestorLoop(xml: string, keepCellStart: number): { xml: string; note: string } {
-  const cells = findCells(xml, (_v, tc) => tc.includes(INVESTOR_LOOP_LITERAL));
+  const cells = findCells(xml, (_v, tc) => tc.includes(INVESTOR_LOOP_LITERAL) || tc.includes(LEGACY_INVESTOR_LOOP_LITERAL));
   if (cells.length === 0) return { xml, note: "no misplaced loop found" };
 
   // Process from end → start so substring offsets stay valid.
@@ -196,6 +196,7 @@ function cleanMisplacedInvestorLoop(xml: string, keepCellStart: number): { xml: 
     // Strip our two injected paragraphs (label + loop). Keep anything else.
     let cleanedCell = stripParagraphsByText(c.xml, (t) =>
       t === INVESTOR_LOOP_LITERAL ||
+      t === LEGACY_INVESTOR_LOOP_LITERAL ||
       t === "INVESTOR NAME:" ||
       t === "INVESTOR NAME: " ||
       t === "INVESTOR NAME:".trim(),
@@ -268,7 +269,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
 
   const origPara = parts[firstParaIdx];
   const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = pPrMatch ? pPrMatch[0] : "";
+  const pPr = normalizeInvestorParagraphPr(pPrMatch ? pPrMatch[0] : "");
   const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
   const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
   const investorNameLoop = INVESTOR_LOOP_LITERAL;
@@ -280,7 +281,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
     if (parts[i].startsWith("<w:p")) parts[i] = "";
   }
 
-  const newCellXml = parts.join("");
+  const newCellXml = normalizeInvestorNameCellGeometry(parts.join(""));
   return {
     xml: xml.substring(0, target.start) + newCellXml + xml.substring(target.end),
     note: `INVESTOR NAME cell rebuilt (start=${target.start}, hadLoop=${target.hasLoop})`,
