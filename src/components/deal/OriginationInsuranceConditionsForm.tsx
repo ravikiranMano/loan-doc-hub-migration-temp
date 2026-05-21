@@ -91,6 +91,7 @@ const FK = {
   // Policy - Other & Replacement Cost & Dollar amount
   policy_other: 'origination_ins.policy_other',
   policy_other_text: 'origination_ins.policy_other_text',
+  policy_other_amount: 'origination_ins.policy_other_amount',
   policy_replacement_cost: 'origination_ins.policy_replacement_cost',
   policy_dollar_amount: 'origination_ins.policy_dollar_amount',
 };
