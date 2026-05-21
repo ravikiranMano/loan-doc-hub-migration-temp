@@ -42,6 +42,7 @@ const V3_MARKER = "<!-- re870-rewrite:v3 -->";
 const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 const V6_MARKER = "<!-- re870-rewrite:v6 -->";
+const V7_MARKER = "<!-- re870-rewrite:v7 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
