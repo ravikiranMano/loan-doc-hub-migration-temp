@@ -299,10 +299,11 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
     if (parts[i].startsWith("<w:p")) parts[i] = "";
   }
 
-  const newCellXml = normalizeInvestorNameCellGeometry(parts.join(""));
+  const preferredWidth = firstGridColumnWidthForCell(xml, target.start);
+  const newCellXml = normalizeInvestorNameCellGeometry(parts.join(""), preferredWidth);
   return {
     xml: xml.substring(0, target.start) + newCellXml + xml.substring(target.end),
-    note: `INVESTOR NAME cell rebuilt (start=${target.start}, hadLoop=${target.hasLoop})`,
+    note: `INVESTOR NAME cell rebuilt (start=${target.start}, hadLoop=${target.hasLoop}, width=${preferredWidth || "kept"})`,
     targetStart: target.start,
   };
 }
