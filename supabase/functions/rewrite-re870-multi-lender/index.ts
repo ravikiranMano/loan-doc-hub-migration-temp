@@ -43,6 +43,7 @@ const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 const V6_MARKER = "<!-- re870-rewrite:v6 -->";
 const V7_MARKER = "<!-- re870-rewrite:v7 -->";
+const V8_MARKER = "<!-- re870-rewrite:v8 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -123,7 +124,8 @@ function isNamePersonCompletingCellText(text: string): boolean {
 // the RE870 failure mode was orphaned </w:t> tags caused by nested {{#if}}
 // blocks being evaluated after the loop expanded.
 // ────────────────────────────────────────────────────────────────────────────
-const INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{displayName}}{{/each}}";
+const INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}{{/each}}";
+const LEGACY_INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{displayName}}{{/each}}";
 
 interface CellHit {
   start: number;
@@ -146,11 +148,45 @@ function findCells(xml: string, predicate: (visText: string, tc: string) => bool
         end: m.index + tc.length,
         xml: tc,
         visText: v,
-        hasLoop: tc.includes(INVESTOR_LOOP_LITERAL),
+        hasLoop: tc.includes(INVESTOR_LOOP_LITERAL) || tc.includes(LEGACY_INVESTOR_LOOP_LITERAL),
       });
     }
   }
   return out;
+}
+
+function normalizeInvestorParagraphPr(pPr: string): string {
+  const base = pPr || "<w:pPr></w:pPr>";
+  const withoutCenter = /<w:jc\b[^>]*\/>/.test(base)
+    ? base.replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="left"/>')
+    : base.replace("</w:pPr>", '<w:jc w:val="left"/></w:pPr>');
+  return withoutCenter;
+}
+
+function normalizeInvestorNameCellGeometry(cellXml: string, preferredWidth?: string): string {
+  let out = cellXml
+    // The broken live template has the INVESTOR NAME cell spanning into the
+    // adjacent centered INVESTOR column. Removing the span makes the value
+    // render from the true left cell instead of the visual center area.
+    .replace(/<w:gridSpan\b[^>]*\/>/g, "");
+  if (preferredWidth) {
+    out = out.replace(/<w:tcW\b[^>]*w:w="[^"]*"([^>]*)\/>/, (m) =>
+      /w:type=/.test(m)
+        ? m.replace(/w:w="[^"]*"/, `w:w="${preferredWidth}"`)
+        : `<w:tcW w:w="${preferredWidth}" w:type="dxa"/>`,
+    );
+  }
+  return out;
+}
+
+function firstGridColumnWidthForCell(xml: string, cellStart: number): string | undefined {
+  const tableStart = xml.lastIndexOf("<w:tbl", cellStart);
+  if (tableStart === -1) return undefined;
+  const tableEnd = xml.indexOf("</w:tbl>", cellStart);
+  if (tableEnd === -1) return undefined;
+  const tableHead = xml.substring(tableStart, Math.min(tableEnd, cellStart));
+  const gridMatch = tableHead.match(/<w:tblGrid>[\s\S]*?<w:gridCol\b[^>]*w:w="([0-9]+)"[^>]*\/>/);
+  return gridMatch?.[1];
 }
 
 // Remove paragraphs from a <w:tc> whose only visible text matches `predicate`.
@@ -165,7 +201,7 @@ function stripParagraphsByText(cellXml: string, predicate: (txt: string) => bool
 // Pass D — clean up a misplaced loop that v6 injected into the wrong cell
 // (the centered "INVESTOR" header). Returns the cleaned xml + a note.
 function cleanMisplacedInvestorLoop(xml: string, keepCellStart: number): { xml: string; note: string } {
-  const cells = findCells(xml, (_v, tc) => tc.includes(INVESTOR_LOOP_LITERAL));
+  const cells = findCells(xml, (_v, tc) => tc.includes(INVESTOR_LOOP_LITERAL) || tc.includes(LEGACY_INVESTOR_LOOP_LITERAL));
   if (cells.length === 0) return { xml, note: "no misplaced loop found" };
 
   // Process from end → start so substring offsets stay valid.
@@ -178,6 +214,7 @@ function cleanMisplacedInvestorLoop(xml: string, keepCellStart: number): { xml: 
     // Strip our two injected paragraphs (label + loop). Keep anything else.
     let cleanedCell = stripParagraphsByText(c.xml, (t) =>
       t === INVESTOR_LOOP_LITERAL ||
+      t === LEGACY_INVESTOR_LOOP_LITERAL ||
       t === "INVESTOR NAME:" ||
       t === "INVESTOR NAME: " ||
       t === "INVESTOR NAME:".trim(),
@@ -250,7 +287,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
 
   const origPara = parts[firstParaIdx];
   const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = pPrMatch ? pPrMatch[0] : "";
+  const pPr = normalizeInvestorParagraphPr(pPrMatch ? pPrMatch[0] : "");
   const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
   const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
   const investorNameLoop = INVESTOR_LOOP_LITERAL;
@@ -262,10 +299,11 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
     if (parts[i].startsWith("<w:p")) parts[i] = "";
   }
 
-  const newCellXml = parts.join("");
+  const preferredWidth = firstGridColumnWidthForCell(xml, target.start);
+  const newCellXml = normalizeInvestorNameCellGeometry(parts.join(""), preferredWidth);
   return {
     xml: xml.substring(0, target.start) + newCellXml + xml.substring(target.end),
-    note: `INVESTOR NAME cell rebuilt (start=${target.start}, hadLoop=${target.hasLoop})`,
+    note: `INVESTOR NAME cell rebuilt (start=${target.start}, hadLoop=${target.hasLoop}, width=${preferredWidth || "kept"})`,
     targetStart: target.start,
   };
 }
@@ -356,8 +394,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V7_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v7 (skipped)"] };
+  if (!force && xml.includes(V8_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v8 (skipped)"] };
   }
 
   let out = xml;
@@ -375,6 +413,7 @@ function rewriteDocumentXml(
   out = out.split(V5_MARKER).join("");
   out = out.split(V6_MARKER).join("");
   out = out.split(V7_MARKER).join("");
+  out = out.split(V8_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
@@ -413,11 +452,11 @@ function rewriteDocumentXml(
   out = personFix.xml;
   notes.push(personFix.note);
 
-  // (f) Inject the v7 marker so subsequent runs short-circuit (unless force).
+  // (f) Inject the v8 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V7_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V8_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };

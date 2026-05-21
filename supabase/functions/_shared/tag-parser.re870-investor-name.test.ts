@@ -1,15 +1,27 @@
 import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { validateContentXmlPart } from "./docx-processor.ts";
-import { processEachBlocks } from "./tag-parser.ts";
+import { processConditionalBlocks, processEachBlocks } from "./tag-parser.ts";
 import type { FieldValueData } from "./types.ts";
 
 function fieldsForLenders(): Map<string, FieldValueData> {
   const m = new Map<string, FieldValueData>();
   m.set("lenders1.displayName", { rawValue: "Horizon Capital LLC", dataType: "text" });
+  m.set("lenders1.vesting", { rawValue: "Horizon Capital LLC", dataType: "text" });
+  m.set("lenders1.isIndividual", { rawValue: "false", dataType: "text" });
   m.set("lenders2.displayName", { rawValue: "BlueStone Investments Inc", dataType: "text" });
+  m.set("lenders2.vesting", { rawValue: "BlueStone Investments Inc", dataType: "text" });
+  m.set("lenders2.isIndividual", { rawValue: "false", dataType: "text" });
   m.set("lenders3.displayName", { rawValue: "Sarah Lynn Mitchell, a single woman", dataType: "text" });
+  m.set("lenders3.firstName", { rawValue: "Sarah", dataType: "text" });
+  m.set("lenders3.middle", { rawValue: "Lynn", dataType: "text" });
+  m.set("lenders3.last", { rawValue: "Mitchell, a single woman", dataType: "text" });
+  m.set("lenders3.isIndividual", { rawValue: "true", dataType: "text" });
   m.set("lenders4.displayName", { rawValue: "Michael Andrew Carter", dataType: "text" });
+  m.set("lenders4.firstName", { rawValue: "Michael", dataType: "text" });
+  m.set("lenders4.middle", { rawValue: "Andrew", dataType: "text" });
+  m.set("lenders4.last", { rawValue: "Carter", dataType: "text" });
+  m.set("lenders4.isIndividual", { rawValue: "true", dataType: "text" });
   return m;
 }
 
@@ -18,7 +30,7 @@ function investorNameFixture(): string {
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body><w:tbl><w:tr><w:tc>
 <w:p><w:r><w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>
-<w:p><w:r><w:t xml:space="preserve">{{#each lenders}}{{displayName}}{{/each}}</w:t></w:r></w:p>
+<w:p><w:r><w:t xml:space="preserve">{{#each lenders}}{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}{{/each}}</w:t></w:r></w:p>
 </w:tc></w:tr></w:tbl></w:body></w:document>`;
 }
 
@@ -27,7 +39,8 @@ function count(xml: string, pattern: RegExp): number {
 }
 
 Deno.test("RE870 INVESTOR NAME displayName loop renders one valid Word line per lender", () => {
-  const out = processEachBlocks(investorNameFixture(), fieldsForLenders(), {}, undefined);
+  const expanded = processEachBlocks(investorNameFixture(), fieldsForLenders(), {}, undefined);
+  const out = processConditionalBlocks(expanded, fieldsForLenders(), {}, undefined);
 
   assertStringIncludes(out, "INVESTOR NAME:");
   assertStringIncludes(out, "Horizon Capital LLC");
@@ -41,10 +54,12 @@ Deno.test("RE870 INVESTOR NAME displayName loop renders one valid Word line per 
   validateContentXmlPart("word/document.xml", out);
 });
 
-Deno.test("RE870 INVESTOR NAME loop does not use nested conditionals", () => {
+Deno.test("RE870 INVESTOR NAME loop uses requested conditional expression without leaking helper text", () => {
   const fixture = investorNameFixture();
-  assert(!fixture.includes("{{#if isIndividual}}"));
-  assert(!fixture.includes("{{#if middle}}"));
-  assert(!fixture.includes("{{firstName}}"));
-  assert(!fixture.includes("{{vesting}}"));
+  assert(fixture.includes("{{#if isIndividual}}"));
+  const expanded = processEachBlocks(fixture, fieldsForLenders(), {}, undefined);
+  const out = processConditionalBlocks(expanded, fieldsForLenders(), {}, undefined);
+  assert(!out.includes("{{#if"));
+  assert(!out.includes("{{else}}"));
+  assert(!out.includes("{{/if}}"));
 });

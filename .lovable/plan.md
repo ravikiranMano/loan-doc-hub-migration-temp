@@ -1,48 +1,49 @@
-# Fix RE870 INVESTOR NAME cell targeting + NAME OF PERSON COMPLETING
+## Plan: deep fix for RE870 INVESTOR NAME placement
 
-## Problem
+### What I found
+- The current rewrite does put the lender loop into a cell that contains `INVESTOR NAME:`.
+- But in at least one live template, that cell has `w:gridSpan="2"` and centered paragraph styling, so visually it still lands under/near the centered INVESTOR header area instead of the true left column position.
+- The issue is therefore not only “wrong tag text in wrong cell”; it is also the Word table geometry/paragraph styling around the INVESTOR header/name rows.
+- `NAME OF PERSON COMPLETING` is already targeted, but I’ll make it use the primary lender display-name alias consistently and remove stale conditional/name-part output.
 
-1. **INVESTOR NAME loop in wrong cell.** The RE870 INVESTOR table has 3 columns. The center cell visibly shows the "INVESTOR" header (and `CO-INVESTOR NAME` on the next row). The left cell holds the `INVESTOR NAME:` label. The current rewriter's `isInvestorNameCellText()` matches *any* `<w:tc>` whose visible text contains `INVESTOR` (excluding `CO-INVESTOR NAME`). Because cells are scanned in document order, the center header cell (text: `"INVESTOR"`) is matched first and gets the label + loop rebuilt into it, while the actual left `INVESTOR NAME:` cell is left untouched. Result: lender names render under the centered `INVESTOR` header.
+### Implementation steps
+1. **Rewrite the RE870 INVESTOR table structurally**
+   - Locate the table containing both `INVESTOR NAME` and `CO-INVESTOR NAME`.
+   - Identify the exact row/cells around the investor header/name area.
+   - Rebuild only that row/cell group so the left cell is the actual investor-name cell and contains exactly:
+     - Paragraph 1: `INVESTOR NAME:`
+     - Paragraph 2: the requested lender loop
+   - Preserve the rest of the table and document unchanged.
 
-2. **NAME OF PERSON COMPLETING shows "Lender" prefix.** That cell still uses the legacy `{{#if isIndividual}}{{firstName}}…{{else}}{{vesting}}{{/if}}` tag. For Joint-type lenders our pipeline writes `firstName = "Lender"` (the role label) and `isIndividual` resolves truthy, so the output is `Lender` + newline + entity name. The fix is to swap that conditional for the precomputed `{{ld_p_displayName}}` alias (already published by `generate-document/index.ts:1169`).
+2. **Remove visual causes of the misplaced output**
+   - Remove/avoid `w:gridSpan="2"` on the rebuilt left investor-name cell when it causes the left cell to span into the center column.
+   - Use left-aligned paragraph properties for the investor-name label/value paragraphs instead of inheriting centered header styling.
+   - Ensure any center header cell remains header-only (`INVESTOR`) and never contains lender loop text.
 
-## Plan
+3. **Use the requested loop expression**
+   - Set the investor-name value paragraph to:
+   ```text
+   {{#each lenders}}{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}{{/each}}
+   ```
+   - This matches the requested template structure while still relying on the existing per-lender `isIndividual`, `firstName`, `middle`, `last`, and `vesting` data.
 
-### 1. `supabase/functions/rewrite-re870-multi-lender/index.ts`
+4. **Fix NAME OF PERSON COMPLETING**
+   - Replace conditional/name-part output with primary lender display name only:
+   ```text
+   NAME OF PERSON COMPLETING THIS QUESTIONNAIRE
+   {{ld_p_displayName}}
+   ```
+   - Strip stale `firstName`, `middle`, `last`, `vesting`, and `isIndividual` template fragments from that cell.
 
-- Bump marker to `V7_MARKER = "<!-- re870-rewrite:v7 -->"` and add it to the strip-prior-markers list. Short-circuit only on V7 (unless `force`).
-- **Tighten `isInvestorNameCellText()`** so it only matches the real label cell:
-  - Match when the normalized text contains `INVESTOR NAME:` (with the colon) OR `firstIfEntityUse` / `ld_p_middle` / `ld_p_last` tag fragments.
-  - Explicitly reject cells whose normalized text is exactly `INVESTOR` or starts with `INVESTOR\b` without `NAME:` (the header cell).
-  - Continue to reject `CO-INVESTOR NAME`.
-- Keep the existing two-paragraph rebuild (label + `{{#each lenders}}{{displayName}}{{/each}}`) but also handle the case where the matched cell originally had no tag paragraph (pure-label cell): wrap the existing `INVESTOR NAME:` paragraph as paragraph 1 and append paragraph 2 with the loop.
-- **Add a Pass D — clean up the center header cell.** If a `<w:tc>` whose normalized visible text is just `INVESTOR` (no `NAME:`) contains a `{{#each lenders}}` … `{{/each}}` block left over from a prior v6 misplacement, remove only those tag paragraphs (and the appended displayName paragraph), restoring the centered `INVESTOR` header.
-- **Add a Pass E — rewrite the NAME OF PERSON COMPLETING cell.** Locate the `<w:tc>` whose visible text contains `NAME OF PERSON COMPLETING`. Inside that cell, rebuild the paragraph(s) that follow the label so the value run becomes `{{ld_p_displayName}}` and strip all of:
-  - `{{#if isIndividual}} … {{/if}}` / `{{else}}`
-  - `{{firstName}}`, `{{middle}}`, `{{#if middle}}…{{/if}}`, `{{last}}`, `{{vesting}}`
-  - the legacy `{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}` triple (if reverted by Pass A).
-  
-  Final structure for that cell: label paragraph `NAME OF PERSON COMPLETING THIS QUESTIONNAIRE` + value paragraph `{{ld_p_displayName}}`. Preserve `<w:pPr>` / first-run `<w:rPr>` for styling.
+5. **Add regression coverage**
+   - Extend the RE870 rewrite test fixture to include a row where `INVESTOR NAME` has `gridSpan="2"` and centered styling.
+   - Assert that after rewrite:
+     - the center `INVESTOR` header cell has no lender loop,
+     - the left `INVESTOR NAME:` cell has the loop in paragraph 2,
+     - `NAME OF PERSON COMPLETING` uses display name only.
 
-### 2. Regression test
-
-Add `supabase/functions/_shared/tag-parser.re870-investor-name.test.ts` cases (or a new sibling file) that:
-- Feed a 3-cell row fixture (`[INVESTOR NAME:]`, `[INVESTOR]`, `[ ]`) plus the lenders cell paragraph, and assert the rewriter only modifies the left cell, leaves the center header cell as plain `INVESTOR`, and emits the expected two-paragraph layout.
-- Feed a `NAME OF PERSON COMPLETING THIS QUESTIONNAIRE` cell with the legacy conditional and assert the rewriter replaces the value run with `{{ld_p_displayName}}` and removes every `firstName` / `middle` / `last` / `vesting` / `isIndividual` token.
-
-### 3. Deploy + re-run
-
-- Deploy `rewrite-re870-multi-lender`.
-- Invoke once with `{ "force": true }` against all 3 RE870 template IDs to migrate existing v6 templates.
-- Validate by regenerating the document for deal `DL-2026-0266` and confirming:
-  - Lender names appear under `INVESTOR NAME:` (left column).
-  - Center cell shows plain `INVESTOR` header.
-  - `NAME OF PERSON COMPLETING THIS QUESTIONNAIRE` shows only `Horizon Capital LLC` (no `Lender` prefix).
-  - Document passes integrity check.
-
-### Files touched
-
-- `supabase/functions/rewrite-re870-multi-lender/index.ts` — edit
-- `supabase/functions/_shared/tag-parser.re870-investor-name.test.ts` — extend (or new test file)
-
-No DB schema, UI, or `generate-document` changes — `ld_p_displayName` is already published.
+6. **Deploy and validate against live templates**
+   - Deploy `rewrite-re870-multi-lender`.
+   - Run it with `force: true` for the three RE870 templates.
+   - Re-run debug inspection to confirm the template XML structure, including cell widths/spans and loop placement.
+   - Confirm generated-document logs no longer show the old misplaced-loop behavior.
