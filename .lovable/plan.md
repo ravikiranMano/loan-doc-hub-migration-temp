@@ -1,57 +1,46 @@
-## Problem
+## Plan
 
-The generated Investor Questionnaire (`Investor Questionnaire_v20.docx`) opens with:
-> "We found a problem with its contents. Part: /word/document.xml, Line: 0, Column: 0 — Unspecified error"
+1. **Rewrite the active RE870 Investor Questionnaire template structure**
+   - Update the template DOCX XML so the `{{#each lenders}} ... {{/each}}` block wraps one full lender-specific RE870 form section.
+   - Keep `BROKER ACKNOWLEDGEMENT` outside the loop so it renders once at the end.
+   - Insert the lender-to-lender page break inside the loop using the existing Handlebars-style marker:
+     ```text
+     {{#unless @last}}<w:br w:type="page"/>{{/unless}}
+     ```
+   - Preserve all existing Word XML formatting/runs; only insert loop marker paragraphs/page-break XML at structural boundaries.
 
-LibreOffice opens the same file fine, so the XML parses — but Word enforces stricter OOXML schema rules.
+2. **Fix `tag-parser.ts` repeater expansion for RE870**
+   - Extend `processEachBlocks` so `{{#each lenders}}` can clone a complete block of DOCX XML, not only a small paragraph/row region.
+   - Add support for `@last` within each iteration so the page break appears between lender forms, not after the final lender.
+   - Keep cloning at paragraph/table/body-child boundaries to avoid invalid DOCX XML.
+   - Preserve existing generic repeater behavior for all other templates/collections.
 
-## Root cause
+3. **Fix lender conditional/name resolution**
+   - Ensure each lender clone resolves against its own scoped keys: `lenders1.*`, `lenders2.*`, etc.
+   - Treat `isIndividual` as true only when the lender type is exactly `Individual` after trimming.
+   - For non-Individual lenders, set/display `displayName` and `INVESTOR NAME` from `vesting` only.
+   - Never fall back to concatenating name fields for non-Individual lender display names, preventing outputs like `Lender Horizon Capital LLC` or duplicated name pieces.
 
-When the multi-lender `{{#each lenders}}` block in `tag-parser.ts` clones the investor section once per lender, every drawing inside that section (checkbox glyph images, SDT graphics, etc.) is duplicated verbatim. Each drawing carries a `<wp:docPr id="N" ...>` attribute, and Word requires `wp:docPr/@id` to be **unique across the entire document**.
+4. **Remove/neutralize the old backend “improvised” additional-lender output for RE870**
+   - Ensure the auto-append additional lender signature fallback does not run for RE870 when the template has a real `{{#each lenders}}` block.
+   - Leave the fallback intact for non-RE870 backward compatibility.
 
-Inspection of the generated v20 file with 4 lenders shows:
+5. **Validate with DL-2026-0266**
+   - Generate a fresh RE870 Investor Questionnaire for the 4-lender deal.
+   - Confirm the output has:
+     - 4 complete lender forms
+     - Correct lender-specific investor names
+     - `NAME OF ENTITY` as vesting for non-Individual and `-` for Individual
+     - Page breaks between lender forms
+     - One shared `BROKER ACKNOWLEDGEMENT` at the end
+     - No raw Handlebars tags
+     - Unique `wp:docPr` IDs so Word opens the file cleanly
 
-```
-docPr count: 189   unique: 30
-top dupes: ('17',8) ('3',8) ('22',8) ('12',8) ('5',8) ('10',8) ('1',8) ('23',8) …
-```
+## Technical scope
 
-Each id appears up to 8 times. That is the exact condition that triggers Word's "Unspecified error" at document.xml line 0.
+Files expected to change:
+- `supabase/functions/_shared/tag-parser.ts`
+- `supabase/functions/generate-document/index.ts` only if needed for RE870-specific alias/fallback handling
+- `supabase/functions/rewrite-re870-multi-lender/index.ts` or a one-shot template rewrite function to apply the corrected template XML safely
 
-Note: `pic:cNvPr/@id` and `<w:sectPr>` repetition are tolerated by Word; only the `wp:docPr/@id` collisions are fatal.
-
-## Fix
-
-In `supabase/functions/generate-document/`, immediately **after** the `{{#each lenders}}` expansion (i.e. after `processEachBlocks` / the multi-lender loop emits its final XML, before the file is re-zipped), run a single post-pass over `word/document.xml` that re-numbers every `<wp:docPr ... id="…">` so each id is unique:
-
-1. Scan the rendered document.xml with a regex (`/<wp:docPr\b[^>]*\bid="(\d+)"/g`).
-2. Walk matches in order. Maintain a running counter `next = max(seenIds) + 1`. On the first occurrence of any id, keep it. On every subsequent occurrence of the same id, replace it with `next++`.
-3. Write the patched XML back into the zip.
-
-This is the minimum, well-scoped fix:
-- Only touches `wp:docPr/@id` values (the ones Word actually rejects).
-- Does not change `pic:cNvPr/@id`, `<wp:inline>`, `<w:drawing>` structure, `<w:rPr>`, fonts, spacing, sectPr, headers/footers, relationships, or any text.
-- Backward compatible: documents with no duplicates are unchanged (every id is seen exactly once → no rewrites).
-- Required dependency is just regex/string ops already in use.
-
-## Where it goes
-
-The pass lives in `generate-document/index.ts`, applied to the final `word/document.xml` string returned by the renderer **just before** `fflate.zipSync(...)`. No changes to `tag-parser.ts`, `field-resolver.ts`, the field dictionary, RLS, templates, or UI.
-
-## Verification
-
-1. Re-generate the Investor Questionnaire for deal `DL-2026-0266` (4 lenders).
-2. Re-download and run:
-   ```
-   python3 -c "import re,collections; x=open('document.xml').read(); ids=re.findall(r'<wp:docPr\\s+id=\"([^\"]+)\"',x); print(len(ids),'==',len(set(ids)))"
-   ```
-   Expect both numbers equal (no duplicates).
-3. Open in Microsoft Word → file opens cleanly, all 4 lender sections render, BROKER ACKNOWLEDGEMENT renders once.
-4. Re-verify the 8 Part-6 scenarios from the multi-lender spec still behave correctly.
-
-## Out of scope (explicitly NOT changing)
-
-- `tag-parser.ts`, `field-resolver.ts`, types, field dictionary, RLS, templates, UI.
-- The rewrite-re870-multi-lender function (templates are correct; the bug is purely in post-render id collisions).
-- Section properties, page breaks, formatting, fonts, `<w:rPr>`.
-- Resolution pipeline order.
+No database schema, UI, API contracts, permissions, document-generation order, or dependencies will be changed.
