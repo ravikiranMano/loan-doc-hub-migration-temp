@@ -1029,6 +1029,74 @@ async function generateSingleDocument(
         debugLog(`[generate-document] Published repeatable lender aliases for ${orderedLenderParticipants.length} lender(s): ld_p_*_1..${orderedLenderParticipants.length} + bare ld_p_* (newline-joined)`);
       }
 
+      // ─── Multi-lender indexed aliases + {{#each lenders}} repeater feed ───
+      // Publishes two parallel surfaces on top of the existing ld_p_* aliases:
+      //   1. Flat indexed keys: lender_N_type / vesting / firstName / middle /
+      //      last / displayName / isIndividual / exists — used by templates
+      //      written as {{lender_1_displayName}} wrapped in {{#if lender_1_exists}}.
+      //   2. Dotted entity keys: lendersN.<field> with the same fields under
+      //      unindexed names — consumed by the existing processEachBlocks
+      //      pass so {{#each lenders}}{{firstName}}{{/each}} expands per lender.
+      // Lender ordering matches `orderedLenderParticipants` (sequence_order →
+      // created_at), so Lender 1 always equals the primary lender. Bare
+      // `ld_p_*` keys are left untouched for backward compatibility.
+      {
+        const setAlias = (key: string, value: string) => {
+          fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
+        };
+        let lenderCount = 0;
+        orderedLenderParticipants.forEach((lp: any, idx: number) => {
+          const n = idx + 1;
+          let type = "", vesting = "", firstName = "", middle = "", last = "";
+          if (lp?.contact_id) {
+            const lc = contactRowsByUuid.get(lp.contact_id);
+            const lcd = lc?.contact_data || {};
+            type = (lcd.type || "").toString().trim();
+            vesting = (lcd.vesting !== undefined && lcd.vesting !== null)
+              ? String(lcd.vesting).trim()
+              : "";
+            // Per-lender section values keyed by composite "lenderN::<field_dictionary_id>"
+            // would also be valid sources, but contact_data is the authoritative
+            // store for these fields today — mirrors the primary-lender publisher above.
+            firstName = (lcd.first_name || lc?.first_name || "").toString().trim();
+            middle = (lcd.middle_initial || lcd.middle_name || "").toString().trim();
+            last = (lcd.last_name || lc?.last_name || "").toString().trim();
+          }
+          const isIndividual = type.toLowerCase() === "individual";
+          const displayName = isIndividual
+            ? [firstName, middle, last].filter(Boolean).join(" ")
+            : vesting;
+
+          // Flat indexed aliases (lender_N_*)
+          setAlias(`lender_${n}_type`, type);
+          setAlias(`lender_${n}_vesting`, vesting);
+          setAlias(`lender_${n}_firstName`, firstName);
+          setAlias(`lender_${n}_middle`, middle);
+          setAlias(`lender_${n}_last`, last);
+          setAlias(`lender_${n}_displayName`, displayName);
+          setAlias(`lender_${n}_isIndividual`, isIndividual ? "true" : "false");
+          setAlias(`lender_${n}_exists`, "true");
+
+          // Dotted entity keys for {{#each lenders}} repeater. Inner tags
+          // ({{firstName}}, {{vesting}}, {{displayName}}, {{isIndividual}},
+          // {{index}}, {{type}}, etc.) resolve via processEachBlocks against
+          // these `lendersN.<field>` keys.
+          setAlias(`lenders${n}.index`, String(n));
+          setAlias(`lenders${n}.type`, type);
+          setAlias(`lenders${n}.vesting`, vesting);
+          setAlias(`lenders${n}.firstName`, firstName);
+          setAlias(`lenders${n}.middle`, middle);
+          setAlias(`lenders${n}.last`, last);
+          setAlias(`lenders${n}.displayName`, displayName);
+          setAlias(`lenders${n}.isIndividual`, isIndividual ? "true" : "false");
+          setAlias(`lenders${n}.exists`, "true");
+          lenderCount++;
+        });
+        setAlias("lender_count", String(lenderCount));
+        debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* repeater keys for ${lenderCount} lender(s)`);
+      }
+
+
       // Inject broker (force-override since broker data is authoritative from Contacts)
       const primaryBroker = brokerParticipants[0];
       if (primaryBroker?.contact_id) {
