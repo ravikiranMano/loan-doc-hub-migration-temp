@@ -38,10 +38,72 @@ const TEMPLATE_IDS = [
 
 const EACH_OPEN_PARA =
   `<w:p><w:r><w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>`;
-const EACH_CLOSE_PARA =
+// Page break is emitted between iterations only — wrapped in an
+// {{#unless @last}}…{{/unless}} block evaluated per-iteration by tag-parser.
+const EACH_CLOSE_BLOCK =
+  `<w:p><w:r><w:t xml:space="preserve">{{#unless @last}}</w:t></w:r></w:p>` +
+  `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` +
+  `<w:p><w:r><w:t xml:space="preserve">{{/unless}}</w:t></w:r></w:p>` +
   `<w:p><w:r><w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
-const PAGE_BREAK_PARA =
-  `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+
+/**
+ * Walk top-level children of <w:body> (<w:p>, <w:tbl>, <w:sectPr>) and
+ * return their absolute offsets in the source XML.
+ */
+function walkBodyChildren(
+  xml: string,
+): { kind: "p" | "tbl" | "sect"; start: number; end: number }[] {
+  const bodyOpen = xml.indexOf("<w:body>");
+  if (bodyOpen === -1) return [];
+  const bodyStart = bodyOpen + "<w:body>".length;
+  const bodyEnd = xml.lastIndexOf("</w:body>");
+  if (bodyEnd === -1 || bodyEnd <= bodyStart) return [];
+  const body = xml.substring(bodyStart, bodyEnd);
+  const out: { kind: "p" | "tbl" | "sect"; start: number; end: number }[] = [];
+  let i = 0;
+  while (i < body.length) {
+    if (
+      body.startsWith("<w:p", i) &&
+      (body[i + 4] === ">" || body[i + 4] === " " || body[i + 4] === "/")
+    ) {
+      if (body[i + 4] === "/" || body.startsWith("<w:p/>", i)) {
+        const e = body.indexOf(">", i) + 1;
+        out.push({ kind: "p", start: bodyStart + i, end: bodyStart + e });
+        i = e;
+        continue;
+      }
+      const e = body.indexOf("</w:p>", i);
+      if (e === -1) break;
+      const end = e + "</w:p>".length;
+      out.push({ kind: "p", start: bodyStart + i, end: bodyStart + end });
+      i = end;
+    } else if (
+      body.startsWith("<w:tbl", i) &&
+      (body[i + 6] === ">" || body[i + 6] === " ")
+    ) {
+      const e = body.indexOf("</w:tbl>", i);
+      if (e === -1) break;
+      const end = e + "</w:tbl>".length;
+      out.push({ kind: "tbl", start: bodyStart + i, end: bodyStart + end });
+      i = end;
+    } else if (body.startsWith("<w:sectPr", i)) {
+      const e = body.indexOf("</w:sectPr>", i);
+      if (e === -1) break;
+      const end = e + "</w:sectPr>".length;
+      out.push({ kind: "sect", start: bodyStart + i, end: bodyStart + end });
+      i = end;
+    } else {
+      i++;
+    }
+  }
+  return out;
+}
+
+function extractText(xml: string): string {
+  return (xml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
+    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+    .join(" ");
+}
 
 function rewriteDocumentXml(xml: string): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
@@ -52,7 +114,7 @@ function rewriteDocumentXml(xml: string): { xml: string; changed: boolean; notes
 
   let out = xml;
 
-  // 1. Combined name tags → isIndividual conditional.
+  // 1. Combined name tags → isIndividual conditional (legacy literal form).
   const nameTagLiteral =
     "{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}";
   const nameReplacement =
@@ -65,7 +127,7 @@ function rewriteDocumentXml(xml: string): { xml: string; changed: boolean; notes
   }
   notes.push(`name-tag replacements: ${nameHits}`);
 
-  // 2. NAME OF ENTITY vesting → conditional.
+  // 2. NAME OF ENTITY vesting → conditional (legacy literal form).
   const vestingLiteral = "{{ld_p_vesting}}";
   const vestingReplacement =
     "{{#if isIndividual}}-{{else}}{{vesting}}{{/if}}";
@@ -77,7 +139,7 @@ function rewriteDocumentXml(xml: string): { xml: string; changed: boolean; notes
   }
   notes.push(`vesting-tag replacements: ${vestingHits}`);
 
-  // 3. Lender type → {{type}} (so it resolves per-iteration).
+  // 3. Lender type → {{type}} (resolves per-iteration inside {{#each}}).
   const typeLiteral = "{{ld_p_lenderType}}";
   let typeHits = 0;
   while (out.includes(typeLiteral)) {
@@ -87,55 +149,40 @@ function rewriteDocumentXml(xml: string): { xml: string; changed: boolean; notes
   }
   notes.push(`type-tag replacements: ${typeHits}`);
 
-  // 4. Wrap investor block: insert {{#each lenders}} BEFORE paragraph
-  //    containing "INVESTOR NAME:", and page break + {{/each}} BEFORE
-  //    paragraph containing "BROKER ACKNOWLEDGEMENT".
-  const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
-  const matches: { start: number; end: number; text: string }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = paraRe.exec(out)) !== null) {
-    const inner = m[0];
-    const text = (inner.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
-      .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-      .join("");
-    matches.push({ start: m.index, end: m.index + m[0].length, text });
+  // 4. Wrap the entire per-lender RE870 form in {{#each lenders}} …
+  //    {{/each}}. Insertion is anchored to top-level <w:body> children
+  //    so the markers are always between paragraphs/tables — never
+  //    inside a run, cell, or paragraph. The loop spans every body
+  //    child from index 0 (RE870 header) up to (but not including) the
+  //    body child whose visible text contains BROKER ACKNOWLEDGEMENT;
+  //    that signature table therefore stays outside the loop and is
+  //    rendered exactly once at the bottom of the output.
+  const children = walkBodyChildren(out);
+  if (children.length === 0) {
+    notes.push("WARN: could not parse <w:body> children — wrapper NOT inserted");
+    return { xml: out, changed: true, notes };
   }
-
-  const startIdx = matches.findIndex((p) => p.text.includes("INVESTOR NAME:"));
-  const endIdx = matches.findIndex((p) =>
-    p.text.includes("BROKER ACKNOWLEDGEMENT")
+  const brokerIdx = children.findIndex(
+    (c) =>
+      c.kind === "tbl" &&
+      extractText(out.substring(c.start, c.end))
+        .toUpperCase()
+        .includes("BROKER ACKNOWLEDGEMENT"),
   );
-
-  if (startIdx === -1) {
-    notes.push("WARN: INVESTOR NAME paragraph not found — wrapper NOT inserted");
-    return { xml: out, changed: true, notes };
-  }
-  if (endIdx === -1) {
-    notes.push("WARN: BROKER ACKNOWLEDGEMENT paragraph not found — wrapper NOT inserted");
-    return { xml: out, changed: true, notes };
-  }
-  if (endIdx <= startIdx) {
-    notes.push("WARN: BROKER paragraph before INVESTOR paragraph — wrapper NOT inserted");
+  if (brokerIdx === -1 || brokerIdx === 0) {
+    notes.push("WARN: BROKER ACKNOWLEDGEMENT table not found — wrapper NOT inserted");
     return { xml: out, changed: true, notes };
   }
 
-  // Insert close markers BEFORE broker paragraph, then open marker BEFORE
-  // investor paragraph. Apply end-side insertion first to keep indices valid.
-  const brokerStart = matches[endIdx].start;
-  out =
-    out.slice(0, brokerStart) +
-    PAGE_BREAK_PARA +
-    EACH_CLOSE_PARA +
-    out.slice(brokerStart);
+  // End-side insertion first so the start-side offset stays valid.
+  const closeAt = children[brokerIdx].start;
+  out = out.substring(0, closeAt) + EACH_CLOSE_BLOCK + out.substring(closeAt);
 
-  const investorStart = matches[startIdx].start;
-  out =
-    out.slice(0, investorStart) +
-    EACH_OPEN_PARA +
-    out.slice(investorStart);
+  const openAt = children[0].start;
+  out = out.substring(0, openAt) + EACH_OPEN_PARA + out.substring(openAt);
 
   notes.push(
-    `wrapped paragraphs ${startIdx}..${endIdx - 1} in {{#each lenders}}`,
+    `wrapped body children 0..${brokerIdx - 1} (incl. RE870 header) in {{#each lenders}}; broker section kept outside`,
   );
 
   return { xml: out, changed: true, notes };
