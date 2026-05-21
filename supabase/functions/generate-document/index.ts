@@ -6404,6 +6404,21 @@ async function generateSingleDocument(
               // than failing the whole document).
             }
           }
+          // RE851D safety: guarantee the appraiser {{#if (eq pr_p_perform*By_N
+          // "Broker")}}…{{/if}} conditional is canonicalized into a single
+          // contiguous run, even when normalizeWordXml took one of its
+          // fast-path early returns (which skip the internal
+          // consolidateAppraiserConditional call). Without this, the
+          // fragmented opener leaks through all downstream RE851D rewriters
+          // and the raw `{{#if (eq pr_p_performeBy_N "Broker")}}` literal
+          // ends up visible in the rendered docx.
+          if (isTemplate851D) {
+            try {
+              xml = consolidateAppraiserConditional(xml);
+            } catch (_apprErr) {
+              // Defensive: fall back to current xml on any failure.
+            }
+          }
           // Normalize parenthesized index syntax used by some authored RE851D
           // templates: pr_li_(rem|ant)_<field>_(N)_(S) -> _N_S, _(N) -> _N.
           // Strictly scoped to encumbrance families so other prose with
