@@ -305,7 +305,31 @@ async function processTemplate(
     return { templateId, ok: false, error: "word/document.xml missing" };
   }
   const docXml = new TextDecoder().decode(docBytes);
+
+  if (debug) {
+    // Return raw XML around the INVESTOR NAME cell so we can inspect run/text fragmentation.
+    const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+    let m: RegExpExecArray | null;
+    let cellXml = "";
+    while ((m = tcRe.exec(docXml)) !== null) {
+      const t = (m[0].match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
+        .map((s) => s.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+        .join("");
+      if (t.toUpperCase().includes("INVESTOR NAME")) { cellXml = m[0]; break; }
+    }
+    return {
+      templateId,
+      name: tpl.name,
+      file_path: tpl.file_path,
+      ok: true,
+      debug: true,
+      cellLength: cellXml.length,
+      cellXml: cellXml.substring(0, 8000),
+    };
+  }
+
   const { xml: newXml, changed, notes } = rewriteDocumentXml(docXml, force);
+
 
   if (!changed) {
     return {
