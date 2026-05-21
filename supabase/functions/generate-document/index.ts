@@ -144,6 +144,7 @@ async function generateSingleDocument(
     const isTemplate851D = /851d/i.test(template.name || "");
     const isTemplate870 = /\b870\b|investor\s+questionnaire/i.test(template.name || "");
     const isTemplateFormalRequestInfo = /formal[_\s-]*request[_\s-]*for[_\s-]*information/i.test(template.name || "");
+    const isTemplateCertOfPurpose = /certification[_\s-]*of[_\s-]*purpose|purpose[_\s-]*occupancy[_\s-]*material[_\s-]*facts/i.test(template.name || "");
     // "Lien Mappings" template reuses the RE851D encumbrance pipeline
     // (bucketing + publishSection already runs for ALL templates; here we
     // also enable the indexed-tag rewrite, valid-key extension, addendum
