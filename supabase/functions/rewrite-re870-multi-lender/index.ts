@@ -43,6 +43,7 @@ const TEMPLATE_IDS = [
 const V2_MARKER = "<!-- re870-rewrite:v2 -->";
 const V3_MARKER = "<!-- re870-rewrite:v3 -->";
 const V4_MARKER = "<!-- re870-rewrite:v4 -->";
+const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 
 // Marker paragraphs for the INVESTOR NAME inner loop.
 const EACH_OPEN_PARA =
@@ -171,18 +172,23 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
     const conditional =
       "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    // Two-paragraph layout:
+    //   P1: "INVESTOR NAME:" label
+    //   P2: single text run containing {{#each lenders}}<cond>{{/each}}
+    // The tag-parser's processEachBlocks detects that the each-block lives
+    // inside a <w:t> run (no paragraphs in the expanded block) and inserts
+    // </w:t><w:br/><w:t xml:space="preserve"> between iterations, giving
+    // each lender its own visual line inside the same paragraph.
     parts[firstParaIdx] =
       `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}${conditional}{{/each}}</w:t></w:r></w:p>`;
     for (let i = firstParaIdx + 1; i < parts.length; i++) {
       if (parts[i].startsWith("<w:p")) parts[i] = "";
     }
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt: label paragraph + per-lender paragraph in {{#each lenders}} loop",
+      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}<br>-separated loop",
     };
   }
 
@@ -272,7 +278,7 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V4_MARKER)) {
+  if (!force && xml.includes(V5_MARKER)) {
     return { xml, changed: false, notes: ["already-rewritten v4 (skipped)"] };
   }
 
@@ -288,6 +294,7 @@ function rewriteDocumentXml(
   out = out.split(V2_MARKER).join("");
   out = out.split(V3_MARKER).join("");
   out = out.split(V4_MARKER).join("");
+  out = out.split(V5_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
@@ -329,7 +336,7 @@ function rewriteDocumentXml(
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V4_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V5_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
