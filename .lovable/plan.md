@@ -1,78 +1,60 @@
-# Add missing INVESTOR header row to RE870 Investor Questionnaire
+# Fix RE851D appraiser `_N` conditional leaking raw into output
 
-## Problem
-The generated Investor Questionnaire (RE870) is missing the top header row of the main investor table — a 3-cell row with two gray (`A6A6A6`) spacer cells flanking a centered, bold **INVESTOR** label spanning 2 columns. The row containing `INVESTOR NAME:` appears as the first `<w:tr>` immediately after `</w:tblGrid>` with no header above it.
+## Root cause (confirmed from code)
+The pipeline already has all the pieces to handle the `{{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}` conditional:
 
-Confirmed from `Investor_Questionnaire_v38.docx`:
-- `<w:tbl>` → `<w:tblGrid>` columns: `3313 / 2189 / 2326 / 3173`
-- First `<w:tr>` is the data row containing `INVESTOR NAME:` (no header row precedes it)
+1. `_shared/tag-parser.ts::consolidateAppraiserConditional` (line 724) canonicalizes the fragmented runs into one contiguous `{{#if (eq pr_p_performeBy_N "Broker")}}PAYLOAD{{else}}{{/if}}` run.
+2. `generate-document/index.ts` line 6906 (strict) rewrites that canonical block to `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}` per PROPERTY region.
+3. Line 7028 (`performByTagRe`) replaces any remaining literal `_N` with `_K` based on PROPERTY region.
 
-The header dimensions the user supplied (`3313 / 4515 gridSpan=2 / 3173`) match the existing tblGrid exactly (`2189+2326=4515`), so the header row will align perfectly.
+The bug: `consolidateAppraiserConditional` is invoked **inside `normalizeWordXml`**, but `normalizeWordXml` has **four fast-path early returns** (tag-parser.ts lines 308, 323, 330, 350–376) that bypass it. For RE851D in deal DL-2026-0250 the per-paragraph fragmentation probe at line 350 evidently does not flag the appraiser paragraphs, so the canonicalization never runs. The downstream strict regex at gen-doc 6906 then can't match the still-fragmented opener, and the tolerant pass at 6967 also can't anchor on the payload because the `N/A` / `BPO Performed by Broker` text is itself split across runs. Result: the raw `{{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}` survives all rewrites and leaks into the final docx.
 
-## Fix scope — single narrow pass in the existing rewriter
+## Fix scope — two narrow edits, no behavior changes elsewhere
 
-Edit only `supabase/functions/rewrite-re870-multi-lender/index.ts`. Add one new pass `ensureInvestorHeaderRow(xml)` and invoke it once at the end of the rewrite pipeline (after the existing Pass B / Pass D INVESTOR NAME cell work, before the function returns the rewritten XML).
+### Edit 1 — `supabase/functions/_shared/tag-parser.ts`
+`consolidateAppraiserConditional` is already exported (line 724). No code change needed here — only confirm the export is intact.
 
-### What the pass does
-1. Locate the `<w:tbl>` whose first data row contains a `<w:tc>` with visible text matching `INVESTOR NAME` (reuse existing `findCells` / `isInvestorNameCellText` helpers).
-2. Walk back from that `<w:tr>` to the immediately preceding sibling. If it is already an `INVESTOR` header row (a `<w:tr>` whose visible text trimmed == `"INVESTOR"`), do nothing — idempotent.
-3. Otherwise, insert the canonical header row XML at the position right after `</w:tblGrid>` (i.e. directly before the first `<w:tr>` of that table):
+### Edit 2 — `supabase/functions/generate-document/index.ts`
+Add a single defensive call to `consolidateAppraiserConditional(xml)` for RE851D templates immediately after the existing `normalizeWordXml(...)` invocation at line 6400, so the canonical form is guaranteed regardless of which fast-path `normalizeWordXml` took. Pseudocode:
 
-```xml
-<w:tr>
-  <w:trPr><w:trHeight w:val="230"/></w:trPr>
-  <w:tc>
-    <w:tcPr>
-      <w:tcW w:w="3313" w:type="dxa"/>
-      <w:tcBorders><w:left w:val="nil"/></w:tcBorders>
-      <w:shd w:val="clear" w:color="auto" w:fill="A6A6A6"/>
-    </w:tcPr>
-    <w:p/>
-  </w:tc>
-  <w:tc>
-    <w:tcPr>
-      <w:tcW w:w="4515" w:type="dxa"/>
-      <w:gridSpan w:val="2"/>
-    </w:tcPr>
-    <w:p>
-      <w:pPr>
-        <w:spacing w:line="210" w:lineRule="auto"/>
-        <w:jc w:val="center"/>
-      </w:pPr>
-      <w:r>
-        <w:rPr><w:b/><w:bCs/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>
-        <w:t>INVESTOR</w:t>
-      </w:r>
-    </w:p>
-  </w:tc>
-  <w:tc>
-    <w:tcPr>
-      <w:tcW w:w="3173" w:type="dxa"/>
-      <w:tcBorders><w:right w:val="nil"/></w:tcBorders>
-      <w:shd w:val="clear" w:color="auto" w:fill="A6A6A6"/>
-    </w:tcPr>
-    <w:p/>
-  </w:tc>
-</w:tr>
+```ts
+// existing
+xml = normalizeWordXml(xml, template.name || "");
+
+// new (RE851D only): guarantee appraiser conditional is canonicalized even
+// when normalizeWordXml took a fast-path return that skipped its internal
+// consolidateAppraiserConditional call.
+if (isTemplate851D) {
+  xml = consolidateAppraiserConditional(xml);
+}
 ```
 
-4. Return the modified XML plus a `note` ("INVESTOR header row inserted" / "already present" / "table not found") for the existing debug response.
+Import `consolidateAppraiserConditional` from `../_shared/tag-parser.ts` at the top of the file alongside the existing `normalizeWordXml` import (line 27).
 
-### Scope guards
-- Match only inside a `<w:tbl>` whose tblGrid widths are exactly `3313 / 2189 / 2326 / 3173` (the canonical RE870 investor table), so we never touch unrelated tables.
-- Skip if a preceding `<w:tr>` with visible text `INVESTOR` already exists (idempotent re-runs).
-- No changes to any other field, conditional, loop, or downstream pass.
+That's it. After this call:
+- The opener becomes contiguous: `{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{else}}{{/if}}` and likewise for `N/A`.
+- The existing strict regex at line 6906 matches and rewrites the whole block to `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}` anchored by PROPERTY region (Property 1 → `_1`, etc.).
+- The value publisher at line ~2000 already publishes `pr_p_appraiserName_K` / `pr_p_appraiserAddress_K` based on `appraisal_performed_by`: `"Broker"` → name=`BPO Performed by Broker`, address=`N/A`; anything else → empty.
+
+## Expected behavior after fix (deal DL-2026-0250, Property 1, Performed By = "Third Party")
+- NAME OF APPRAISER → blank
+- ADDRESS OF APPRAISER → blank
+
+If Performed By is later changed to "Broker":
+- NAME OF APPRAISER → `BPO Performed by Broker`
+- ADDRESS OF APPRAISER → `N/A`
 
 ## Files changed
-- `supabase/functions/rewrite-re870-multi-lender/index.ts` — add `ensureInvestorHeaderRow` and call it once at the end of the rewrite pipeline.
+- `supabase/functions/generate-document/index.ts` — add one import + one conditional call (≈3 lines).
 
 ## Files NOT changed
-- The stored template document.
-- `generate-document/index.ts`, `_shared/tag-parser.ts`, field resolvers, or any other field mapping.
-- Other tables, paragraphs, or alignment in the document (the other `<w:jc w:val="center"/>` items the user mentioned at template lines 7966 / 8314 already exist in the generated output — only the header row is missing, which is the single high-impact diff).
+- `_shared/tag-parser.ts` (consolidation function is already correct).
+- `_shared/field-resolver.ts` (value-resolution layer; not a document-XML rewriter — the conceptual "`_N` → property index" replacement the user described actually lives in `generate-document/index.ts` at line 7028 and is already implemented).
+- Any other field mapping, conditional, publisher, or template.
 
 ## Verification
-1. Re-generate the RE870 Investor Questionnaire for the same deal.
-2. Unzip and confirm `word/document.xml` now contains a `<w:tr>` with centered `<w:t>INVESTOR</w:t>` immediately after `</w:tblGrid>` and before the `INVESTOR NAME` row.
-3. Open in Word: header row renders with gray spacers and centered bold "INVESTOR".
-4. Re-run generation a second time and confirm no duplicate header is added (idempotent).
+1. Deploy `generate-document`.
+2. Re-generate RE851D for DL-2026-0250 with Property 1 `appraisal_performed_by = "Third Party"`. Confirm NAME / ADDRESS OF APPRAISER are blank.
+3. Edit Property 1 `appraisal_performed_by` to `"Broker"`, re-generate. Confirm NAME = `BPO Performed by Broker`, ADDRESS = `N/A`.
+4. Confirm Properties 2–5 are anchored to their own values (no cross-property leakage).
+5. Confirm the raw text `{{#if (eq pr_p_performeBy_N "Broker")}}` no longer appears anywhere in the generated docx.

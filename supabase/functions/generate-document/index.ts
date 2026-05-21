@@ -24,7 +24,7 @@ import type {
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
 import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose, repairStraySdtClosingPair } from "../_shared/docx-processor.ts";
-import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
+import { normalizeWordXml, escapeXmlValue, consolidateAppraiserConditional } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
 const DOC_GEN_DEBUG = Deno.env.get("DOC_GEN_DEBUG") === "true";
@@ -6402,6 +6402,21 @@ async function generateSingleDocument(
               // If normalization fails for any reason, fall back to the raw XML
               // (preserves previous behavior — partial rewrites are still better
               // than failing the whole document).
+            }
+          }
+          // RE851D safety: guarantee the appraiser {{#if (eq pr_p_perform*By_N
+          // "Broker")}}…{{/if}} conditional is canonicalized into a single
+          // contiguous run, even when normalizeWordXml took one of its
+          // fast-path early returns (which skip the internal
+          // consolidateAppraiserConditional call). Without this, the
+          // fragmented opener leaks through all downstream RE851D rewriters
+          // and the raw `{{#if (eq pr_p_performeBy_N "Broker")}}` literal
+          // ends up visible in the rendered docx.
+          if (isTemplate851D) {
+            try {
+              xml = consolidateAppraiserConditional(xml);
+            } catch (_apprErr) {
+              // Defensive: fall back to current xml on any failure.
             }
           }
           // Normalize parenthesized index syntax used by some authored RE851D
