@@ -3871,7 +3871,7 @@ export function replaceMergeTags(
 
     if (!originalHasRepeater && originalReferencesLender) {
       // Collect additional lenders (index 2..N) from published aliases.
-      type AddlLender = { index: number; displayName: string; isIndividual: boolean };
+      type AddlLender = { index: number; displayName: string; contactName: string; isIndividual: boolean };
       const addl: AddlLender[] = [];
       for (let n = 2; n <= 50; n++) {
         const existsRow =
@@ -3884,11 +3884,15 @@ export function replaceMergeTags(
           (fieldValues.get(`lender_${n}_displayName`)?.rawValue
             ?? fieldValues.get(`additionalLenders${n - 1}.displayName`)?.rawValue
             ?? "").toString();
+        const contactName =
+          (fieldValues.get(`lender_${n}_contactName`)?.rawValue
+            ?? fieldValues.get(`additionalLenders${n - 1}.contactName`)?.rawValue
+            ?? "").toString();
         const isIndividual =
           (fieldValues.get(`lender_${n}_isIndividual`)?.rawValue
             ?? fieldValues.get(`additionalLenders${n - 1}.isIndividual`)?.rawValue
             ?? "false").toString().toLowerCase() === "true";
-        addl.push({ index: n, displayName, isIndividual });
+        addl.push({ index: n, displayName, contactName, isIndividual });
       }
 
       if (addl.length > 0 && result.indexOf("</w:body>") !== -1) {
