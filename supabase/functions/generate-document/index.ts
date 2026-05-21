@@ -1053,9 +1053,12 @@ async function generateSingleDocument(
           fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
         };
         let lenderCount = 0;
+        let additionalIdx = 0;
+        let primaryHelpersSet = false;
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
+          let email = "", phone = "", contactId = "";
           if (lp?.contact_id) {
             const lc = contactRowsByUuid.get(lp.contact_id);
             const lcd = lc?.contact_data || {};
@@ -1063,17 +1066,19 @@ async function generateSingleDocument(
             vesting = (lcd.vesting !== undefined && lcd.vesting !== null)
               ? String(lcd.vesting).trim()
               : "";
-            // Per-lender section values keyed by composite "lenderN::<field_dictionary_id>"
-            // would also be valid sources, but contact_data is the authoritative
-            // store for these fields today — mirrors the primary-lender publisher above.
             firstName = (lcd.first_name || lc?.first_name || "").toString().trim();
             middle = (lcd.middle_initial || lcd.middle_name || "").toString().trim();
             last = (lcd.last_name || lc?.last_name || "").toString().trim();
+            email = (lcd.email || lc?.email || "").toString().trim();
+            phone = (lcd.phone || lc?.phone || "").toString().trim();
+            contactId = (lc?.contact_id || lp.contact_id || "").toString();
           }
           const isIndividual = type.toLowerCase() === "individual";
           const displayName = isIndividual
             ? [firstName, middle, last].filter(Boolean).join(" ")
             : vesting;
+          const label = `LENDER ${n}`;
+          const isPrimary = n === 1;
 
           // Flat indexed aliases (lender_N_*)
           setAlias(`lender_${n}_type`, type);
@@ -1084,11 +1089,13 @@ async function generateSingleDocument(
           setAlias(`lender_${n}_displayName`, displayName);
           setAlias(`lender_${n}_isIndividual`, isIndividual ? "true" : "false");
           setAlias(`lender_${n}_exists`, "true");
+          setAlias(`lender_${n}_email`, email);
+          setAlias(`lender_${n}_phone`, phone);
+          setAlias(`lender_${n}_contactId`, contactId);
+          setAlias(`lender_${n}_label`, label);
+          setAlias(`lender_${n}_isPrimary`, isPrimary ? "true" : "false");
 
-          // Dotted entity keys for {{#each lenders}} repeater. Inner tags
-          // ({{firstName}}, {{vesting}}, {{displayName}}, {{isIndividual}},
-          // {{index}}, {{type}}, etc.) resolve via processEachBlocks against
-          // these `lendersN.<field>` keys.
+          // Dotted entity keys for {{#each lenders}} repeater.
           setAlias(`lenders${n}.index`, String(n));
           setAlias(`lenders${n}.type`, type);
           setAlias(`lenders${n}.vesting`, vesting);
@@ -1098,11 +1105,50 @@ async function generateSingleDocument(
           setAlias(`lenders${n}.displayName`, displayName);
           setAlias(`lenders${n}.isIndividual`, isIndividual ? "true" : "false");
           setAlias(`lenders${n}.exists`, "true");
+          setAlias(`lenders${n}.email`, email);
+          setAlias(`lenders${n}.phone`, phone);
+          setAlias(`lenders${n}.contactId`, contactId);
+          setAlias(`lenders${n}.label`, label);
+          setAlias(`lenders${n}.isPrimary`, isPrimary ? "true" : "false");
+
+          // {{#each additionalLenders}} feed — excludes primary (lender 1).
+          if (!isPrimary) {
+            additionalIdx++;
+            const a = additionalIdx;
+            setAlias(`additionalLenders${a}.index`, String(a));
+            setAlias(`additionalLenders${a}.type`, type);
+            setAlias(`additionalLenders${a}.vesting`, vesting);
+            setAlias(`additionalLenders${a}.firstName`, firstName);
+            setAlias(`additionalLenders${a}.middle`, middle);
+            setAlias(`additionalLenders${a}.last`, last);
+            setAlias(`additionalLenders${a}.displayName`, displayName);
+            setAlias(`additionalLenders${a}.isIndividual`, isIndividual ? "true" : "false");
+            setAlias(`additionalLenders${a}.exists`, "true");
+            setAlias(`additionalLenders${a}.email`, email);
+            setAlias(`additionalLenders${a}.phone`, phone);
+            setAlias(`additionalLenders${a}.contactId`, contactId);
+            setAlias(`additionalLenders${a}.label`, `ADDITIONAL LENDER ${a}`);
+            setAlias(`additionalLenders${a}.isPrimary`, "false");
+          }
+
+          // Primary-lender convenience aliases for templates that use the
+          // bare ld_p_* surface without writing their own conditionals.
+          if (isPrimary && !primaryHelpersSet) {
+            setAlias("ld_p_isIndividual", isIndividual ? "true" : "false");
+            setAlias("ld_p_displayName", displayName);
+            setAlias("ld_p_investorName", displayName);
+            setAlias("ld_p_entityName", isIndividual ? "" : vesting);
+            primaryHelpersSet = true;
+          }
+
           lenderCount++;
         });
         setAlias("lender_count", String(lenderCount));
-        debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* repeater keys for ${lenderCount} lender(s)`);
+        setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
+        setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
+        debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
       }
+
 
 
       // Inject broker (force-override since broker data is authoritative from Contacts)
