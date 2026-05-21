@@ -13,13 +13,10 @@
 //   3. Ensure NAME OF ENTITY stays bound to the primary lender.
 //   4. Leave all non-INVESTOR NAME fields untouched.
 //   5. In the <w:tc> table cell that contains "INVESTOR NAME", split the
-//      label and the conditional into separate paragraphs (if not already
-//      split) and wrap ONLY the conditional paragraph in marker
-//      paragraphs: {{#each lenders}} … {{/each}}. Each lender then
-//      renders as its own paragraph (stacked lines) inside that single
-//      cell.
+//      label and the lender display-name loop into separate paragraphs. Each
+//      lender renders as its own line inside that single cell.
 //
-// Idempotent: detects the v2 marker comment <!-- re870-rewrite:v2 -->
+// Idempotent: detects the v6 marker comment <!-- re870-rewrite:v6 -->
 // near <w:body> and skips. Pass { force: true } in the request body to
 // bypass the skip (required to migrate v1-wrapped templates).
 
@@ -45,12 +42,6 @@ const V3_MARKER = "<!-- re870-rewrite:v3 -->";
 const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 const V6_MARKER = "<!-- re870-rewrite:v6 -->";
-
-// Marker paragraphs for the INVESTOR NAME inner loop.
-const EACH_OPEN_PARA =
-  `<w:p><w:r><w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>`;
-const EACH_CLOSE_PARA =
-  `<w:p><w:r><w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -107,17 +98,16 @@ function isInvestorNameCellText(text: string): boolean {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Pass B — wrap the INVESTOR NAME cell's conditional paragraph in
-//          {{#each lenders}} … {{/each}}
+// Pass B — replace the INVESTOR NAME cell content with a safe displayName loop.
 //
 // The template stores the three legacy field tags as fragmented runs:
 //   {{ld + _p_firstIfEntityUse + }}{{ + ld_p_middle + }}{{ + ld_p_last + }}
 // so a literal find/replace cannot match. Instead we rewrite the whole
 // paragraph: split it into a label paragraph ("INVESTOR NAME:") and a
-// conditional paragraph that contains a single run holding the
-// isIndividual if/else block. The conditional paragraph is then wrapped
-// in {{#each lenders}} / {{/each}} marker paragraphs so each lender
-// renders as its own line inside the cell.
+// displayName paragraph that contains a single run holding
+// {{#each lenders}}{{displayName}}{{/each}}. Avoid nested conditionals here:
+// the RE870 failure mode was orphaned </w:t> tags caused by nested {{#if}}
+// blocks being evaluated after the loop expanded.
 // ────────────────────────────────────────────────────────────────────────────
 function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text,
