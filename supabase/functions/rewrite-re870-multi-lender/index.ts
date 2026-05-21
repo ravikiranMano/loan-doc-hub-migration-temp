@@ -100,6 +100,15 @@ function visibleText(xml: string): string {
 // ────────────────────────────────────────────────────────────────────────────
 // Pass B — wrap the INVESTOR NAME cell's conditional paragraph in
 //          {{#each lenders}} … {{/each}}
+//
+// The template stores the three legacy field tags as fragmented runs:
+//   {{ld + _p_firstIfEntityUse + }}{{ + ld_p_middle + }}{{ + ld_p_last + }}
+// so a literal find/replace cannot match. Instead we rewrite the whole
+// paragraph: split it into a label paragraph ("INVESTOR NAME:") and a
+// conditional paragraph that contains a single run holding the
+// isIndividual if/else block. The conditional paragraph is then wrapped
+// in {{#each lenders}} / {{/each}} marker paragraphs so each lender
+// renders as its own line inside the cell.
 // ────────────────────────────────────────────────────────────────────────────
 function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text.
@@ -127,85 +136,73 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     return { xml, note: "INVESTOR NAME cell already wraps {{#each lenders}}" };
   }
 
-  // Find the <w:p> paragraph inside the cell that contains the
-  // {{#if isIndividual}} conditional. We split the cell into its
-  // top-level paragraphs and rebuild.
+  // Split the cell into its top-level paragraphs.
   const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
-  const paragraphs: string[] = [];
+  const parts: string[] = [];
   let lastIdx = 0;
   let pm: RegExpExecArray | null;
   while ((pm = paraRe.exec(cellXml)) !== null) {
-    paragraphs.push(cellXml.substring(lastIdx, pm.index)); // gap
-    paragraphs.push(pm[0]); // paragraph
+    parts.push(cellXml.substring(lastIdx, pm.index));
+    parts.push(pm[0]);
     lastIdx = pm.index + pm[0].length;
   }
-  paragraphs.push(cellXml.substring(lastIdx));
+  parts.push(cellXml.substring(lastIdx));
 
-  // Find the FIRST paragraph that contains {{#if isIndividual}} (or, as
-  // a fallback, the legacy {{ld_p_firstIfEntityUse}} tag if substitution
-  // hasn't run yet).
-  let condParaIdx = -1;
-  for (let i = 0; i < paragraphs.length; i++) {
-    const p = paragraphs[i];
-    if (!p.startsWith("<w:p")) continue;
-    if (
-      p.includes("{{#if isIndividual}}") ||
-      p.includes("{{ld_p_firstIfEntityUse}}")
-    ) {
-      condParaIdx = i;
-      break;
-    }
-  }
-  if (condParaIdx === -1) {
+  // Find the paragraph that contains either of the legacy tag fragments
+  // OR an already-substituted `{{#if isIndividual}}` block.
+  const isTagPara = (p: string) =>
+    p.startsWith("<w:p") &&
+    (p.includes("ld_p_firstIfEntityUse") ||
+      p.includes("ld_p_first") ||
+      p.includes("{{#if isIndividual}}"));
+
+  const condIdx = parts.findIndex(isTagPara);
+  if (condIdx === -1) {
     return {
       xml,
-      note: "WARN: INVESTOR NAME cell found but no conditional paragraph located",
+      note: "WARN: INVESTOR NAME cell found but no tag paragraph located",
     };
   }
 
-  let condPara = paragraphs[condParaIdx];
+  const origPara = parts[condIdx];
 
-  // If the conditional paragraph also contains the literal text
-  // "INVESTOR NAME" (label and value share a paragraph), split it.
-  // Strategy: remove the "INVESTOR NAME:" substring from the conditional
-  // paragraph (it stays in the visual text of the cell as a separate
-  // paragraph we synthesize and prepend).
-  let labelPara = "";
-  const paraText = visibleText(condPara).toUpperCase();
-  if (paraText.includes("INVESTOR NAME")) {
-    // Build a clone paragraph that keeps the run formatting but only
-    // shows the label, by copying the first run's <w:rPr> if present.
-    const firstRpr = (condPara.match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0];
-    labelPara = `<w:p><w:r>${firstRpr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>`;
-    // Strip the label text from every <w:t> in the conditional paragraph.
-    condPara = condPara.replace(
-      /<w:t([^>]*)>([\s\S]*?)<\/w:t>/g,
-      (full, attrs, text) => {
-        // Remove "INVESTOR NAME:" (and stray trailing whitespace) — case
-        // insensitive — but keep the rest of the text untouched.
-        const cleaned = text.replace(/INVESTOR\s+NAME\s*:?\s*/i, "");
-        return `<w:t${attrs}>${cleaned}</w:t>`;
-      },
-    );
-  }
+  // Extract the paragraph's <w:pPr> (formatting) so the rebuilt paragraphs
+  // keep indentation/styling.
+  const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+  const pPr = pPrMatch ? pPrMatch[0] : "";
 
-  // Build the replacement sequence:
-  //   [optional label paragraph] + EACH_OPEN_PARA + conditional paragraph + EACH_CLOSE_PARA
-  const newSequence =
-    labelPara + EACH_OPEN_PARA + condPara + EACH_CLOSE_PARA;
-  paragraphs[condParaIdx] = newSequence;
+  // Extract the first run's <w:rPr> so the label/conditional runs keep
+  // the same font/size.
+  const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+  const rPr = rPrMatch
+    ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0]
+    : "";
 
-  const newCellXml = paragraphs.join("");
+  // Build:
+  //   <w:p>{pPr}<w:r>{rPr}<w:t>INVESTOR NAME:</w:t></w:r></w:p>
+  //   EACH_OPEN_PARA
+  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#if isIndividual}}…{{else}}{{vesting}}{{/if}}</w:t></w:r></w:p>
+  //   EACH_CLOSE_PARA
+  const labelPara =
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>`;
+  const conditional =
+    "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+  const condPara =
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>`;
+
+  parts[condIdx] = labelPara + EACH_OPEN_PARA + condPara + EACH_CLOSE_PARA;
+
+  const newCellXml = parts.join("");
   const newXml =
     xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd);
 
   return {
     xml: newXml,
-    note: labelPara
-      ? "INVESTOR NAME label split into its own paragraph; conditional wrapped in {{#each lenders}}"
-      : "INVESTOR NAME conditional paragraph wrapped in {{#each lenders}}",
+    note:
+      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}…{{/each}} around conditional",
   };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Top-level rewrite
