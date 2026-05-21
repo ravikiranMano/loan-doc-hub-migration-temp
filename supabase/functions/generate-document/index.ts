@@ -11620,6 +11620,83 @@ async function generateSingleDocument(
       }
     }
 
+    // 5b. Post-render: de-duplicate <wp:docPr id="..."> values across the
+    // rendered document. Word rejects DOCX files where two drawing
+    // wp:docPr/@id values collide (error: "Unspecified error" at
+    // /word/document.xml line 0 col 0). The {{#each lenders}} expansion
+    // clones drawings verbatim, producing many duplicate ids. We assign a
+    // fresh, document-wide unique id to every duplicate occurrence while
+    // leaving every other byte untouched (no formatting / rPr / structure
+    // changes). Backward compatible: a doc with no duplicates is rewritten
+    // to identical bytes.
+    try {
+      const dedupZip = fflate.unzipSync(processedDocx);
+      const dedupDecoder = new TextDecoder("utf-8");
+      const dedupEncoder = new TextEncoder();
+      const partNames = Object.keys(dedupZip).filter(
+        (n) =>
+          n === "word/document.xml" ||
+          /^word\/(header|footer)\d*\.xml$/.test(n),
+      );
+
+      const docPrReSrc = `<wp:docPr\\b([^>]*)\\bid="(\\d+)"`;
+      const seen = new Set<number>();
+      let nextId = 0;
+
+      // First pass: find max id across all parts to seed the counter.
+      for (const part of partNames) {
+        const xml = dedupDecoder.decode(dedupZip[part] as Uint8Array);
+        const re = new RegExp(docPrReSrc, "g");
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(xml)) !== null) {
+          const v = parseInt(m[2], 10);
+          if (Number.isFinite(v) && v > nextId) nextId = v;
+        }
+      }
+      nextId += 1;
+
+      let totalRewrites = 0;
+      let mutated = false;
+      for (const part of partNames) {
+        const xml = dedupDecoder.decode(dedupZip[part] as Uint8Array);
+        let partRewrites = 0;
+        const re = new RegExp(docPrReSrc, "g");
+        const out = xml.replace(re, (full, attrs: string, idStr: string) => {
+          const v = parseInt(idStr, 10);
+          if (!Number.isFinite(v)) return full;
+          if (!seen.has(v)) {
+            seen.add(v);
+            return full;
+          }
+          const fresh = nextId++;
+          seen.add(fresh);
+          partRewrites++;
+          return `<wp:docPr${attrs}id="${fresh}"`;
+        });
+        if (partRewrites > 0) {
+          dedupZip[part] = dedupEncoder.encode(out);
+          mutated = true;
+          totalRewrites += partRewrites;
+        }
+      }
+
+      if (mutated) {
+        const rezipped: fflate.Zippable = {};
+        for (const [n, v] of Object.entries(dedupZip)) {
+          rezipped[n] = [v as Uint8Array, { level: 0 }];
+        }
+        processedDocx = new Uint8Array(fflate.zipSync(rezipped));
+        console.log(
+          `[generate-document] docPr dedup: rewrote ${totalRewrites} duplicate wp:docPr id(s) across ${partNames.length} part(s)`,
+        );
+      }
+    } catch (dedupErr) {
+      console.warn(
+        "[generate-document] wp:docPr dedup skipped:",
+        dedupErr instanceof Error ? dedupErr.message : String(dedupErr),
+      );
+    }
+
     // 6. Calculate version number
     const { data: existingDocs } = await supabase
       .from("generated_documents")
