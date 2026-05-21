@@ -3960,7 +3960,15 @@ export function replaceMergeTags(
           ].join("");
         }
 
-        result = result.replace("</w:body>", blocksXml + "</w:body>");
+        // In DOCX OOXML, <w:sectPr> must remain the final child inside
+        // <w:body>. Paragraphs inserted after it can be ignored by Word, so
+        // append the lender blocks immediately before the section properties.
+        const sectPrStart = result.lastIndexOf("<w:sectPr");
+        if (sectPrStart !== -1) {
+          result = result.slice(0, sectPrStart) + blocksXml + result.slice(sectPrStart);
+        } else {
+          result = result.replace("</w:body>", blocksXml + "</w:body>");
+        }
         console.log(
           `[MultiLender] Appended ${addl.length} additional lender signature block(s) (font=${fontFamily}, sz=${fontSize})`,
         );
