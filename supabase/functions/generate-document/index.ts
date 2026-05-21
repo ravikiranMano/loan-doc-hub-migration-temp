@@ -959,6 +959,7 @@ async function generateSingleDocument(
           const apFirst = (lcd["authorized_party.first_name"] ?? lcd.authorized_party?.first_name ?? "").toString().trim();
           const apMiddle = (lcd["authorized_party.middle_name"] ?? lcd.authorized_party?.middle_name ?? "").toString().trim();
           const apLast = (lcd["authorized_party.last_name"] ?? lcd.authorized_party?.last_name ?? "").toString().trim();
+          const apCapacity = (lcd["authorized_party.capacity"] ?? lcd.authorized_party?.capacity ?? "").toString().trim();
           const authorizedSignerFullName = [apFirst, apMiddle, apLast].filter(Boolean).join(" ");
           if (authorizedSignerFullName) {
             forceSet("authorized_signer.full_name", authorizedSignerFullName);
@@ -966,6 +967,12 @@ async function generateSingleDocument(
             forceSet("ld_p_authorizedFirst", apFirst);
             forceSet("ld_p_authorizedMiddle", apMiddle);
             forceSet("ld_p_authorizedLast", apLast);
+          }
+          if (apCapacity) {
+            // {{authorized_signer.title}} → Lender → Authorized Party → Capacity
+            forceSet("authorized_signer.title", apCapacity);
+            forceSet("ld_ap_authorizPartyCapaci", apCapacity);
+            forceSet("lender.authorized_party.capacity", apCapacity);
           }
 
           debugLog(`[generate-document] Injected lender contact fields from participant (contact ${lc.contact_id}), lenderName="${lFullName}", authorizedSigner="${authorizedSignerFullName}"`);
