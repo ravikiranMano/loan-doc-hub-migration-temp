@@ -24,40 +24,33 @@ const TARGETS = [
   "1779312915249_re870_-_Investor_Questionnaire_-_Field_Key_mapping__1___1_.docx",
 ];
 
-// Find the <w:t ...>...</w:t> blocks containing each of the three tags (which may span
-// across split <w:t> elements within a single run, but in our inspected template the
-// three tags each live in their own single <w:t>). Replace the inner text accordingly.
+// Anchor on the "NAME OF PERSON COMPLETING" label and replace the FIRST occurrence
+// of the broken triplet that appears AFTER it in document order. We do NOT touch
+// the other occurrence (INVESTOR NAME) per the minimal-change directive.
+//
+// In the inspected template, the triplet lives inside a single
+// <w:t xml:space="preserve">...</w:t> element, so a literal substring replace inside
+// the XML is safe and preserves the surrounding run's <w:rPr> formatting verbatim.
 function patchDocumentXml(xml: string): { xml: string; changed: boolean; note: string } {
-  // Quick presence check.
-  if (!xml.includes("ld_p_firstIfEntityUse") || !xml.includes("ld_p_last")) {
-    return { xml, changed: false, note: "tags not found" };
+  const TRIPLET = "{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}";
+  const REPLACEMENT =
+    "{{ld_p_firstIfEntityUse}} {{#if ld_p_middle}}{{ld_p_middle}} {{/if}}{{ld_p_last}}";
+
+  const anchor = xml.indexOf("NAME OF PERSON COMPLETING");
+  if (anchor < 0) return { xml, changed: false, note: "anchor not found" };
+
+  const tripletAt = xml.indexOf(TRIPLET, anchor);
+  if (tripletAt < 0) {
+    // Idempotency: if the replacement is already present after the anchor, treat as no-op.
+    if (xml.indexOf(REPLACEMENT, anchor) >= 0) {
+      return { xml, changed: false, note: "already patched" };
+    }
+    return { xml, changed: false, note: "triplet not found after anchor" };
   }
 
-  // Replace the <w:t>{{ld_p_firstIfEntityUse}}</w:t> with a version that appends a space.
-  // Use xml:space="preserve" to keep the trailing space.
-  const reFirst =
-    /<w:t(\s[^>]*)?>\{\{\s*ld_p_firstIfEntityUse\s*\}\}<\/w:t>/g;
-  // Replace {{ld_p_middle}} with the conditional wrapped form (still inside a single <w:t>).
-  const reMiddle =
-    /<w:t(\s[^>]*)?>\{\{\s*ld_p_middle\s*\}\}<\/w:t>/g;
-  // Last stays the same — no leading/trailing space needed; the conditional supplies the
-  // separating space when middle is present, and the first-tag run already supplies one.
-  // (Untouched.)
-
-  let changed = false;
-
-  const out1 = xml.replace(reFirst, (_m, attrs) => {
-    changed = true;
-    return `<w:t xml:space="preserve">{{ld_p_firstIfEntityUse}} </w:t>`;
-  });
-
-  const out2 = out1.replace(reMiddle, (_m, _attrs) => {
-    changed = true;
-    // Inject the {{#if}}…{{/if}} block inline so the Handlebars-style parser sees it.
-    return `<w:t xml:space="preserve">{{#if ld_p_middle}}{{ld_p_middle}} {{/if}}</w:t>`;
-  });
-
-  return { xml: out2, changed, note: changed ? "patched" : "no-op" };
+  const patched =
+    xml.slice(0, tripletAt) + REPLACEMENT + xml.slice(tripletAt + TRIPLET.length);
+  return { xml: patched, changed: true, note: "patched NAME OF PERSON COMPLETING triplet" };
 }
 
 Deno.serve(async (req) => {
