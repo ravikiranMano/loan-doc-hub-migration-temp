@@ -24,7 +24,7 @@ import type {
 } from "../_shared/types.ts";
 import { fetchMergeTagMappings, fetchFieldKeyMappings, extractRawValueFromJsonb, getFieldData } from "../_shared/field-resolver.ts";
 import { processDocx, validateContentXmlPart, repairTableCellParagraphs, repairOrphanedSdtOpen, repairUnclosedRunProperties, repairUnclosedParagraphsBeforeStructuralClose, repairStraySdtClosingPair } from "../_shared/docx-processor.ts";
-import { normalizeWordXml, escapeXmlValue } from "../_shared/tag-parser.ts";
+import { normalizeWordXml, escapeXmlValue, consolidateAppraiserConditional } from "../_shared/tag-parser.ts";
 import { formatByDataType, formatCurrency } from "../_shared/formatting.ts";
 
 const DOC_GEN_DEBUG = Deno.env.get("DOC_GEN_DEBUG") === "true";
