@@ -1,80 +1,142 @@
 ## Goal
 
-Replace the flat `ld1..ld5` indexed lender field keys with the same **repeatable lien-style** pattern already used by Property → Liens. No changes to UI, schema, validations, or any other generation flow.
+Make multi-lender document generation work the way the spec describes:
+- All lenders associated with a deal (not just the first) get their own data in the output.
+- Templates can use either a `{{#each lenders}}…{{/each}}` repeater **or** indexed `{{lender_N_*}}` tags wrapped in `{{#if lender_N_exists}}`.
+- Per-lender conditional `{{#if isIndividual}}…{{else}}…{{/if}}` decides between name fields and vesting.
 
-## How Property → Liens works today (reference pattern)
+This supersedes the older `ld_p_*` lien-style plan in `.lovable/plan.md` for the indexed/repeater branch, but **keeps backward compatibility**: existing templates that use the bare `ld_p_firstName`, `ld_p_vesting`, etc. continue to render Lender 1 exactly as today.
 
-- **Source values** are written under dot-notation keys per index: `lien1.holder`, `lien2.holder`, … plus a bare `lien.holder`.
-- **Publisher** in `generate-document/index.ts` (lines ~3391–3583) walks `fieldValues`, matches `^lien(\d*)\.(.+)$`, collects entries per `(field, index)`, then:
-  - publishes a bare short key (`pr_li_lienHolder`) as newline-joined multi-lien value,
-  - publishes per-index `_N` variants used by template tables,
-  - bridges to canonical `property1.lien_*` and to alternate `li_*` keys.
-- **Field dictionary** holds one logical row per field (e.g. `pr_li_lienHolder`) marked `is_repeatable=true`; templates use both `{{pr_li_lienHolder}}` and `{{pr_li_lienHolder_N}}`.
+## Scope (what I will and will not touch)
 
-## Plan for Multiple Lenders
+In scope:
+- `supabase/functions/generate-document/index.ts` — publish new indexed `lender_N_*` keys and assemble a `lenders` array on the data context.
+- `supabase/functions/_shared/tag-parser.ts` — add `{{#each lenders}}`, `{{#if …}}{{else}}{{/if}}`, and cleanup pass for unresolved `lender_N_*` / `{{#each lenders}}` when empty.
+- `supabase/functions/_shared/types.ts` — add `LenderData` interface.
+- `field_dictionary` — insert any of the 5 listed canonical lender rows that are missing (`ld_p_lenderType`, `ld_p_vesting`, `ld_p_firstIfEntityUse`, `ld_p_middle`, `ld_p_last`). Existing rows untouched.
 
-### 1. Lender source keys (dot-notation, repeatable)
+Explicitly NOT in scope:
+- No UI changes to the Lenders form, validations, schema, RLS, auth, or session.
+- No changes to existing `ld_p_*` primary-lender resolution, lien publishers, RE851A/D passes, or any other generation step.
+- No edits to `.docx` templates as part of this task — the spec describes the syntax authors will use; updating individual templates is a separate task once the engine supports it.
+- The older `ld1..ld5` flat field_dictionary rows from a prior turn (if still present) are left in place — removing them is out of scope here.
 
-Adopt the same shape as `lienN.*`:
+## Implementation
+
+### 1. Resolve lender participants and build per-lender data
+
+In `generate-document/index.ts`, where lenders are currently ordered (`orderedLenderParticipants` by `sequence_order`, then `created_at`):
+
+For each lender N (1-based), pull its scoped section values using the existing `lenderN::<field_dictionary_id>` composite-key pattern already used by the storage model. From those, extract:
+- `type` ← `ld_p_lenderType` dropdown value
+- `vesting` ← `ld_p_vesting`
+- `firstName` ← `ld_p_firstIfEntityUse`
+- `middle` ← `ld_p_middle`
+- `last` ← `ld_p_last`
+
+Derive:
+- `isIndividual` = `type.trim().toLowerCase() === "individual"`
+- `displayName`:
+  - if `isIndividual`: `[firstName, middle, last].filter(Boolean).join(" ")` (collapses double spaces when middle is blank)
+  - else: `vesting`
+- `exists` = true for every present lender
+
+### 2. Publish indexed keys onto `fieldValues`
+
+For every lender N, write these keys into the resolved value map (string values, matching how other indexed keys like `pr_li_lienHolder_N` are published):
 
 ```
-lender1.first_name      lender2.first_name      lenderN.first_name
-lender1.middle_name     lender2.middle_name     lenderN.middle_name
-lender1.last_name       lender2.last_name       lenderN.last_name
-lender1.vesting         lender2.vesting         lenderN.vesting
+lender_N_type
+lender_N_vesting
+lender_N_firstName
+lender_N_middle
+lender_N_last
+lender_N_displayName
+lender_N_isIndividual    // "true" | "false"
+lender_N_exists          // "true"
 ```
 
-`full_name` is **derived**, never stored: `First + " " + Middle + " " + Last` with blanks skipped so no double space when Middle is empty.
+Plus a single scalar:
 
-### 2. Publisher rewrite in `supabase/functions/generate-document/index.ts`
+```
+lender_count             // "<N>"
+```
 
-Replace the current `ld1_p_* … ld5_p_*` block (lines ~975–1018) with a lien-style aggregator:
+These flow through the normal tag resolution pipeline, so `{{lender_2_displayName}}` etc. resolve like any other merge tag without further parser changes.
 
-- Order lenders by `orderedLenderParticipants` (sequence_order, created_at) — Lender 1 = primary, matching today's `ld_p_*`.
-- For each lender N, populate `lenderN.first_name`, `lenderN.middle_name`, `lenderN.last_name`, `lenderN.vesting` into `fieldValues` from the contact row.
-- Run an aggregator (mirror of `lienFieldCollector`):
-  - Per-index keys: `ld_p_firstName_N`, `ld_p_middleName_N`, `ld_p_lastName_N`, `ld_p_fullName_N`, `ld_p_vesting_N` (used by repeatable template tables).
-  - Bare keys: `ld_p_firstName`, `ld_p_middleName`, `ld_p_lastName`, `ld_p_fullName`, `ld_p_vesting` — newline-joined across all lenders, matching the lien aggregation rule (so existing templates that use the bare tag continue to render all lenders, like the lien table does).
-- Preserve the existing `ld_p_*` primary-lender values for backward compatibility: bare key resolution still works because Lender 1 is always first in the join order.
+Backward compat: bare `ld_p_*` keys keep their current behavior (Lender 1's values), so old templates render unchanged.
 
-### 3. Field Dictionary entries
+### 3. Expose `lenders` array on the parser data context
 
-In `field_dictionary`, register the canonical lender keys as repeatable rows (one logical row per field, just like `pr_li_lienHolder`):
+Pass a `lenders: LenderData[]` collection through to `tag-parser.ts` alongside the existing `fieldValues` map. Used only by the `{{#each lenders}}` block; ignored by all existing tag resolution.
 
-| field_key            | section | data_type | is_repeatable | is_calculated |
-|----------------------|---------|-----------|---------------|---------------|
-| `ld_p_firstName`     | lender  | text      | true          | false         |
-| `ld_p_middleName`    | lender  | text      | true          | false         |
-| `ld_p_lastName`      | lender  | text      | true          | false         |
-| `ld_p_fullName`      | lender  | text      | true          | true          |
-| `ld_p_vesting`       | lender  | text      | true          | false         |
+### 4. `{{#each lenders}}…{{/each}}` repeater in `tag-parser.ts`
 
-Remove the 25 flat `ld1_p_* … ld5_p_*` rows inserted in the previous turn (they are superseded by the repeatable rows). No other field_dictionary rows change.
+Run **before** normal merge-tag resolution. Operate on the raw `word/document.xml`:
 
-### 4. Template usage
+1. Locate `{{#each lenders}}` and matching `{{/each}}`. These may be split across runs — normalize the surrounding text first (the parser already has helpers for tag-text reassembly used by other passes).
+2. Expand the block to the enclosing `<w:p>` boundaries on each side so the cloned unit is whole-paragraph(s). If the open/close tags share a paragraph with other content, abort the expansion for that block and log a warning (don't corrupt layout).
+3. For each lender in the `lenders` array, clone the paragraph range and within the clone:
+   - Resolve unindexed tags (`{{firstName}}`, `{{middle}}`, `{{last}}`, `{{vesting}}`, `{{type}}`, `{{displayName}}`, `{{isIndividual}}`, `{{index}}`) against that lender's object.
+   - Evaluate `{{#if isIndividual}}…{{else}}…{{/if}}` (and `{{#if exists}}`) using truthy semantics: non-empty string and not literal `"false"`.
+4. Concatenate clones and replace the original block.
+5. If `lenders` is empty, delete the block entirely (no raw `{{#each}}` left behind) and log a warning if any `lender_*` tags were present in the source.
 
-Templates can use either form, identical to how the lien template tags work:
-- `{{ld_p_fullName}}` → newline-joined list of all lenders (bare aggregate).
-- `{{ld_p_fullName_1}}`, `{{ld_p_fullName_2}}`, … → per-lender values inside repeatable rows.
+### 5. `{{#if lender_N_exists}}…{{/if}}` for indexed templates
 
-Same for `firstName`, `middleName`, `lastName`, `vesting`.
+Add a small conditional pass that handles `{{#if <key>}}…{{else}}…{{/if}}` against `fieldValues` (truthy = non-empty, not `"false"`). This is the same evaluator used inside `{{#each}}`, just lifted to the top level so indexed templates work without a repeater. Scope: only recognize `{{#if …}}` / `{{else}}` / `{{/if}}` — no other Handlebars features, to keep blast radius small.
 
-### 5. Out of scope (explicitly unchanged)
+### 6. Cleanup safety pass
 
-- No UI changes (Lenders table, modals, sidebar, validations).
-- No schema migrations beyond the `field_dictionary` rows above.
-- No changes to non-lender publishers, no changes to docx-processor, no changes to tag-parser.
-- No changes to existing `ld_p_*` primary-lender keys or `authorized_signer.*` aliases.
-- No changes to session, auth, or any other generation step (RE851A/D, guaranty, etc.).
+After all resolution:
+- Strip any remaining `{{lender_N_*}}` tags (lender N not present).
+- Strip any orphan `{{#each lenders}}` / `{{/each}}` / `{{#if lender_*_exists}}` / `{{/if}}` markers.
+- Log a console warning when `lender_count === 0` but lender tags were detected in the template.
 
-## Files to change
+### 7. `field_dictionary` rows
 
-- `supabase/functions/generate-document/index.ts` — replace the per-lender `ld{N}_p_*` block with the lien-style aggregator described in §2.
-- `field_dictionary` (DB) — insert 5 repeatable lender rows from §3 and delete the 25 flat `ld1..ld5` rows.
+Insert only the rows that don't already exist (idempotent `ON CONFLICT (field_key) DO NOTHING`):
+
+| field_key                | label                       | section | data_type | form_type |
+|--------------------------|-----------------------------|---------|-----------|-----------|
+| `ld_p_lenderType`        | Lender Type                 | lender  | dropdown  | primary   |
+| `ld_p_vesting`           | Vesting                     | lender  | text      | primary   |
+| `ld_p_firstIfEntityUse`  | First Name (If Entity Use)  | lender  | text      | primary   |
+| `ld_p_middle`            | Middle Name                 | lender  | text      | primary   |
+| `ld_p_last`              | Last Name                   | lender  | text      | primary   |
+
+No deletions, no edits to existing rows.
+
+### 8. Types
+
+Add to `_shared/types.ts`:
+
+```ts
+export interface LenderData {
+  index: number;
+  type: string;
+  isIndividual: boolean;
+  vesting: string;
+  firstName: string;
+  middle: string;
+  last: string;
+  displayName: string;
+  exists: true;
+  [key: string]: any;
+}
+```
+
+## Files changed
+
+- `supabase/functions/generate-document/index.ts` — build `lenders[]`, publish `lender_N_*` + `lender_count`.
+- `supabase/functions/_shared/tag-parser.ts` — `{{#each lenders}}` repeater, `{{#if}}` evaluator, cleanup pass.
+- `supabase/functions/_shared/types.ts` — `LenderData` interface.
+- DB: 5 idempotent inserts into `field_dictionary`.
 
 ## Validation
 
-- Generate a document on deal `22fc75ab-16cc-475e-b318-d93f493b2a44` containing 2+ lenders.
-- Confirm `{{ld_p_fullName_1}}` and `{{ld_p_fullName_2}}` resolve to the right names with no double space when middle is blank.
-- Confirm `{{ld_p_fullName}}` (bare) renders both lenders newline-joined, matching the lien pattern.
-- Confirm existing single-lender templates still render Lender 1 correctly (backward compat).
+Test on a deal with 2 lenders (one Individual, one LLC):
+1. Template using `{{#each lenders}}` repeater renders two signature blocks; Individual shows name parts, LLC shows vesting.
+2. Template using indexed `{{lender_1_displayName}}` / `{{lender_2_displayName}}` with `{{#if lender_N_exists}}` renders both, and `{{#if lender_3_exists}}` block is removed.
+3. Existing template using only bare `ld_p_firstName` / `ld_p_vesting` still renders Lender 1 exactly as before (backward compat).
+4. Deal with 0 lenders: repeater block disappears; no raw `{{…}}` left; warning logged.

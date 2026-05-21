@@ -98,3 +98,22 @@ export interface MergeTagMappings {
   mergeTagMap: Record<string, string>;
   labelMap: Record<string, LabelMapping>;
 }
+
+/**
+ * Per-lender data object surfaced to the document generator for multi-lender
+ * templates. Used to publish indexed `lender_N_*` aliases and `lendersN.*`
+ * keys consumed by `{{#each lenders}}` repeater blocks.
+ */
+export interface LenderData {
+  index: number;
+  type: string;
+  isIndividual: boolean;
+  vesting: string;
+  firstName: string;
+  middle: string;
+  last: string;
+  displayName: string;
+  exists: true;
+  [key: string]: any;
+}
+
