@@ -360,7 +360,7 @@ async function processTemplate(
       investorSnippets.push(visibleDocText.substring(Math.max(0, im.index - 80), im.index + 220));
     }
     const tagSnippets: string[] = [];
-    for (const needle of ["firstIfEntityUse", "ld_p_middle", "ld_p_last", "ld_p_first", "ld_p_vesting"]) {
+    for (const needle of ["isIndividual", "firstIfEntityUse", "ld_p_middle", "ld_p_last", "ld_p_first", "ld_p_vesting"]) {
       const idx = docXml.indexOf(needle);
       if (idx !== -1) tagSnippets.push(docXml.substring(Math.max(0, idx - 1200), idx + 1600));
     }
