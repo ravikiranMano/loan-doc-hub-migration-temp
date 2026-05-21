@@ -221,8 +221,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V2_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v2 (skipped)"] };
+  if (!force && xml.includes(V3_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v3 (skipped)"] };
   }
 
   let out = xml;
@@ -233,40 +233,51 @@ function rewriteDocumentXml(
   out = stripped.xml;
   notes.push(`v1 wrapper paragraphs removed: ${stripped.removed}`);
 
-  // Remove any prior v2 marker before re-injecting (force re-run safety).
+  // Remove any prior v2/v3 markers before re-injecting (force re-run safety).
   out = out.split(V2_MARKER).join("");
+  out = out.split(V3_MARKER).join("");
 
-  // (b) Tag substitutions — legacy combined-name + entity + type.
-  const nameRepl = replaceLiteral(
+  // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
+  //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
+  //     ORGANIZATION / NAME OF PERSON COMPLETING cells (those cells lived
+  //     OUTSIDE the {{#each lenders}} block, so the bare {{vesting}} /
+  //     {{type}} / {{firstName}} tags resolved to nothing). The proper
+  //     scoping (bare → lendersN.*) only happens inside the each block,
+  //     which Pass C wraps explicitly around the INVESTOR NAME cell.
+  //
+  //     These reverts are SAFE because they happen BEFORE Pass C runs:
+  //     Pass C writes its own paragraph containing the bare conditional
+  //     INSIDE the {{#each lenders}} marker, so it doesn't get reverted.
+  const nameRevert = replaceLiteral(
     out,
-    "{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}",
     "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}",
+    "{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}",
   );
-  out = nameRepl.xml;
-  notes.push(`name-tag replacements: ${nameRepl.hits}`);
+  out = nameRevert.xml;
+  notes.push(`name-tag reverts: ${nameRevert.hits}`);
 
-  const vestRepl = replaceLiteral(
+  const vestRevert = replaceLiteral(
     out,
-    "{{ld_p_vesting}}",
     "{{#if isIndividual}}-{{else}}{{vesting}}{{/if}}",
+    "{{ld_p_vesting}}",
   );
-  out = vestRepl.xml;
-  notes.push(`vesting-tag replacements: ${vestRepl.hits}`);
+  out = vestRevert.xml;
+  notes.push(`vesting-tag reverts: ${vestRevert.hits}`);
 
-  const typeRepl = replaceLiteral(out, "{{ld_p_lenderType}}", "{{type}}");
-  out = typeRepl.xml;
-  notes.push(`type-tag replacements: ${typeRepl.hits}`);
+  const typeRevert = replaceLiteral(out, "{{type}}", "{{ld_p_lenderType}}");
+  out = typeRevert.xml;
+  notes.push(`type-tag reverts: ${typeRevert.hits}`);
 
   // (c) Wrap the INVESTOR NAME cell's conditional paragraph.
   const wrapped = wrapInvestorNameCell(out);
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v2 marker so subsequent runs short-circuit (unless force).
+  // (d) Inject the v3 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V2_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V3_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
