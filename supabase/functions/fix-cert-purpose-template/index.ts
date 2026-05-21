@@ -1,3 +1,4 @@
+// v3 inspector
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import JSZip from 'npm:jszip@3.10.1';
