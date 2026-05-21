@@ -46,6 +46,145 @@ const V7_MARKER = "<!-- re870-rewrite:v7 -->";
 const V8_MARKER = "<!-- re870-rewrite:v8 -->";
 const V9_MARKER = "<!-- re870-rewrite:v9 -->";
 const V10_MARKER = "<!-- re870-rewrite:v10 -->";
+const V11_MARKER = "<!-- re870-rewrite:v11 -->";
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pass — canonicalize the Investor Questionnaire Due row.
+// Word fragments the date tag ({{ ld_p_investorQuestiDueDate}} — note the
+// literal space inside the braces) and the checkbox conditional
+// ({{#if ld_p_investorQuestiDue}}☒{{else}}☐{{/if}}) across many <w:r>/<w:t>
+// runs with interleaved <w:proofErr> markers, which prevents downstream
+// run-consolidation from producing clean Handlebars tokens. We rewrite both
+// into a single contiguous run so the engine sees the intended expressions
+// regardless of any later normalization. Idempotent and strictly scoped:
+// only paragraphs that mention investorQuestiDue / investorQuestiDueDate
+// are touched.
+// ────────────────────────────────────────────────────────────────────────────
+function normalizeInvestorQuestiDueRow(
+  xml: string,
+): { xml: string; dateFixed: number; condFixed: number } {
+  let dateFixed = 0;
+  let condFixed = 0;
+
+  const findRunOpenBefore = (s: string, idx: number): number => {
+    const a = s.lastIndexOf("<w:r>", idx);
+    const b = s.lastIndexOf("<w:r ", idx);
+    return Math.max(a, b);
+  };
+
+  const pRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+  const out = xml.replace(pRe, (para) => {
+    if (!para.includes("investorQuesti")) return para;
+    let p = para;
+
+    // ── Checkbox conditional ──
+    // Match: {{#if ... ld_p_investorQuestiDue (not Date) ... {{else}} ... {{/if}}
+    const condRe =
+      /\{\{#if[\s\S]*?ld_p_investorQuestiDue(?!Date)[\s\S]*?\{\{else\}\}[\s\S]*?\{\{\/if\}\}/;
+    const cm = p.match(condRe);
+    if (cm && typeof cm.index === "number") {
+      const startIdx = cm.index;
+      const endIdx = startIdx + cm[0].length;
+      const rOpenIdx = findRunOpenBefore(p, startIdx);
+      const rCloseSearch = p.indexOf("</w:r>", endIdx - 1);
+      const rCloseEnd = rCloseSearch === -1 ? -1 : rCloseSearch + "</w:r>".length;
+      if (rOpenIdx !== -1 && rCloseEnd !== -1) {
+        // Preserve text BEFORE {{#if within the opening run.
+        const tInRunIdx = p.substring(rOpenIdx, startIdx).lastIndexOf("<w:t");
+        let preRun = "";
+        if (tInRunIdx !== -1) {
+          const tAbsStart = rOpenIdx + tInRunIdx;
+          const tContentStart = p.indexOf(">", tAbsStart) + 1;
+          const runHeader = p.substring(rOpenIdx, tAbsStart);
+          const preText = p.substring(tContentStart, startIdx);
+          if (preText.length > 0) {
+            preRun = `${runHeader}<w:t xml:space="preserve">${preText}</w:t></w:r>`;
+          }
+        }
+        const before = p
+          .substring(0, rOpenIdx)
+          .replace(/<w:proofErr\b[^/]*\/>\s*$/g, "");
+        const after = p
+          .substring(rCloseEnd)
+          .replace(/^\s*<w:proofErr\b[^/]*\/>/g, "");
+        const canonical =
+          `<w:r><w:rPr><w:rFonts w:ascii="MS Gothic" w:eastAsia="MS Gothic" w:hAnsi="MS Gothic" w:cs="MS Gothic"/><w:color w:val="000000"/></w:rPr>` +
+          `<w:t xml:space="preserve">{{#if ld_p_investorQuestiDue}}\u2611{{else}}\u2610{{/if}}</w:t></w:r>`;
+        p = before + preRun + canonical + after;
+        condFixed++;
+      }
+    }
+
+    // ── Date tag ──
+    // Any paragraph containing ld_p_investorQuestiDueDate is rewritten so the
+    // tag becomes a single clean {{ld_p_investorQuestiDueDate}} run (no inner
+    // space, no fragmentation). Idempotent — re-rewriting yields the same XML.
+    // Use "investorQuestiDueDate" (without ld_p_ prefix) because Word often
+    // splits "ld" and "_p_investorQuestiDueDate" into separate <w:t> runs.
+    if (p.includes("investorQuestiDueDate")) {
+      const fieldIdx = p.indexOf("investorQuestiDueDate");
+      const openIdx = p.lastIndexOf("{{", fieldIdx);
+      const closeIdx = p.indexOf("}}", fieldIdx);
+      if (openIdx !== -1 && closeIdx !== -1) {
+        const rOpenIdx = findRunOpenBefore(p, openIdx);
+        const closeEnd = closeIdx + 2;
+        const rCloseSearch = p.indexOf("</w:r>", closeEnd - 1);
+        const rCloseEnd =
+          rCloseSearch === -1 ? -1 : rCloseSearch + "</w:r>".length;
+        if (rOpenIdx !== -1 && rCloseEnd !== -1) {
+          // Preserve preText in the opening run.
+          const tInRunIdx = p.substring(rOpenIdx, openIdx).lastIndexOf("<w:t");
+          let preRun = "";
+          if (tInRunIdx !== -1) {
+            const tAbsStart = rOpenIdx + tInRunIdx;
+            const tContentStart = p.indexOf(">", tAbsStart) + 1;
+            const runHeader = p.substring(rOpenIdx, tAbsStart);
+            const preText = p.substring(tContentStart, openIdx);
+            if (preText.length > 0) {
+              preRun = `${runHeader}<w:t xml:space="preserve">${preText}</w:t></w:r>`;
+            }
+          }
+          // Preserve postText AFTER }} in the closing run.
+          const closingRunOpen = findRunOpenBefore(p, closeEnd);
+          let postRun = "";
+          if (closingRunOpen !== -1) {
+            const tInCloseIdx = p
+              .substring(closingRunOpen, closeEnd)
+              .lastIndexOf("<w:t");
+            if (tInCloseIdx !== -1) {
+              const closingTAbsStart = closingRunOpen + tInCloseIdx;
+              const closingRunHeader = p.substring(
+                closingRunOpen,
+                closingTAbsStart,
+              );
+              const closingTEnd = p.indexOf("</w:t>", closeEnd);
+              const postText =
+                closingTEnd > closeEnd ? p.substring(closeEnd, closingTEnd) : "";
+              if (postText.length > 0) {
+                postRun = `${closingRunHeader}<w:t xml:space="preserve">${postText}</w:t></w:r>`;
+              }
+            }
+          }
+          const before = p
+            .substring(0, rOpenIdx)
+            .replace(/<w:proofErr\b[^/]*\/>\s*$/g, "");
+          const after = p
+            .substring(rCloseEnd)
+            .replace(/^\s*<w:proofErr\b[^/]*\/>/g, "");
+          const canonical =
+            `<w:r><w:rPr><w:color w:val="000000"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>` +
+            `<w:t xml:space="preserve">{{ld_p_investorQuestiDueDate}}</w:t></w:r>`;
+          p = before + preRun + canonical + postRun + after;
+          dateFixed++;
+        }
+      }
+    }
+
+    return p;
+  });
+
+  return { xml: out, dateFixed, condFixed };
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -417,8 +556,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V10_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v10 (skipped)"] };
+  if (!force && xml.includes(V11_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v11 (skipped)"] };
   }
 
   let out = xml;
@@ -429,7 +568,7 @@ function rewriteDocumentXml(
   out = stripped.xml;
   notes.push(`v1 wrapper paragraphs removed: ${stripped.removed}`);
 
-  // Remove any prior v2/v3/v4 markers before re-injecting (force re-run safety).
+  // Remove any prior v2..v11 markers before re-injecting (force re-run safety).
   out = out.split(V2_MARKER).join("");
   out = out.split(V3_MARKER).join("");
   out = out.split(V4_MARKER).join("");
@@ -439,6 +578,7 @@ function rewriteDocumentXml(
   out = out.split(V8_MARKER).join("");
   out = out.split(V9_MARKER).join("");
   out = out.split(V10_MARKER).join("");
+  out = out.split(V11_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
@@ -477,11 +617,18 @@ function rewriteDocumentXml(
   out = personFix.xml;
   notes.push(personFix.note);
 
-  // (f) Inject the v8 marker so subsequent runs short-circuit (unless force).
+  // (f) Canonicalize the Investor Questionnaire Due checkbox + date row.
+  const iqdue = normalizeInvestorQuestiDueRow(out);
+  out = iqdue.xml;
+  notes.push(
+    `investorQuestiDue rows rewritten: date=${iqdue.dateFixed}, conditional=${iqdue.condFixed}`,
+  );
+
+  // (g) Inject the v11 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V10_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V11_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
