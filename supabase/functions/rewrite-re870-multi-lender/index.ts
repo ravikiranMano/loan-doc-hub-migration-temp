@@ -275,9 +275,6 @@ function rewriteDocumentXml(
   if (!force && xml.includes(V4_MARKER)) {
     return { xml, changed: false, notes: ["already-rewritten v4 (skipped)"] };
   }
-  if (false && xml.includes(V3_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v3 (skipped)"] };
-  }
 
   let out = xml;
 
