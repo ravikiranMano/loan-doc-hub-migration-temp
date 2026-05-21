@@ -1,4 +1,6 @@
-import { supabase } from '@/integrations/supabase/client';
+import { getUser } from '@/services/supabase/auth';
+import { fetchProfileByUserId } from '@/services/admin/profiles.service';
+import { getContactContactData, updateContactRow } from '@/services/contacts/contacts.service';
 
 export interface ContactFieldChange {
   fieldLabel: string;
@@ -46,26 +48,20 @@ export async function logContactEvent(
     // Get current user name if not provided
     let actorName = userName;
     if (!actorName) {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getUser();
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, email')
-          .eq('user_id', user.id)
-          .single();
-        actorName = profile?.full_name || profile?.email || 'Unknown';
+        try {
+          const profile = await fetchProfileByUserId(user.id);
+          actorName = profile?.full_name || profile?.email || 'Unknown';
+        } catch {
+          actorName = 'Unknown';
+        }
       }
     }
 
     const ipAddress = await getContactClientIp();
 
-    const { data: current } = await supabase
-      .from('contacts')
-      .select('contact_data')
-      .eq('id', contactDbId)
-      .single();
-
-    const existing = (current?.contact_data || {}) as Record<string, any>;
+    const existing = (await getContactContactData(contactDbId)) as Record<string, any>;
     const journal: ContactEventJournalEntry[] = existing._events_journal || [];
 
     const newEntry: ContactEventJournalEntry = {
@@ -80,10 +76,9 @@ export async function logContactEvent(
 
     const updatedJournal = [...journal, newEntry];
 
-    await supabase
-      .from('contacts')
-      .update({ contact_data: { ...existing, _events_journal: updatedJournal } as any })
-      .eq('id', contactDbId);
+    await updateContactRow(contactDbId, {
+      contact_data: { ...existing, _events_journal: updatedJournal },
+    });
   } catch (err) {
     console.error('Failed to log contact event:', err);
   }

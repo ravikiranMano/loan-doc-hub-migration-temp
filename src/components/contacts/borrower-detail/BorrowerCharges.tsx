@@ -11,7 +11,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import { listParticipantsByContactAndRole } from '@/services/deals/participants.service';
+import { listDealsByIds, fetchDealById } from '@/services/deals/deals.service';
+import { fetchSectionValuesForDeals } from '@/services/deals/section-values.service';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { format, parse, isValid } from 'date-fns';
@@ -80,11 +82,7 @@ const BorrowerCharges: React.FC<Props> = ({ contactDbId }) => {
     setLoading(true);
     try {
       // Step 1: Get all deals where this contact participates as a borrower
-      const { data: participants } = await supabase
-        .from('deal_participants')
-        .select('deal_id, name')
-        .eq('contact_id', contactDbId)
-        .eq('role', 'borrower');
+      const participants = await listParticipantsByContactAndRole(contactDbId, 'borrower', 'deal_id, name');
 
       if (!participants || participants.length === 0) {
         setRows([]);
@@ -95,18 +93,20 @@ const BorrowerCharges: React.FC<Props> = ({ contactDbId }) => {
       const dealIds = participants.map(p => p.deal_id);
 
       // Step 2: Fetch deal info and charges section values in parallel
-      const [dealsRes, sectionsRes] = await Promise.all([
-        supabase.from('deals').select('id, deal_number, status, created_by').in('id', dealIds),
-        supabase.from('deal_section_values').select('deal_id, field_values').eq('section', 'charges').in('deal_id', dealIds),
+      const [dealsData, sectionsData] = await Promise.all([
+        listDealsByIds(dealIds, 'id, deal_number, status, created_by'),
+        fetchSectionValuesForDeals(dealIds, { section: 'charges' }),
       ]);
 
       const dealsMap = new Map<string, { deal_number: string; status: string }>();
-      (dealsRes.data || []).forEach(d => dealsMap.set(d.id, { deal_number: d.deal_number, status: d.status }));
+      dealsData.forEach((d: { id: string; deal_number: string; status: string }) =>
+        dealsMap.set(d.id, { deal_number: d.deal_number, status: d.status })
+      );
 
       // Step 3: Extract charges from deal_section_values
       const allCharges: ChargeRecord[] = [];
 
-      (sectionsRes.data || []).forEach(sv => {
+      sectionsData.forEach((sv: { deal_id: string; field_values: Record<string, unknown> }) => {
         const fv = (sv.field_values || {}) as Record<string, any>;
         const deal = dealsMap.get(sv.deal_id);
         if (!deal) return;
@@ -215,7 +215,7 @@ const BorrowerCharges: React.FC<Props> = ({ contactDbId }) => {
 
   const handleRowClick = async (row: ChargeRecord) => {
     // Fetch deal details to open workspace
-    const { data: deal } = await supabase.from('deals').select('deal_number, state, product_type').eq('id', row.dealId).single();
+    const deal = await fetchDealById(row.dealId, 'deal_number, state, product_type');
     if (deal) {
       openFile({
         id: row.dealId,

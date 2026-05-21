@@ -6,7 +6,16 @@
  * transform rules from the field dictionary and template field maps.
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { fetchSectionValuesByDeal } from '@/services/deals/section-values.service';
+import {
+  fetchFieldDictionaryMetaByIds,
+  fetchFieldDictionaryKeysByIds,
+} from '@/services/admin/field-dictionary.service';
+import { fetchPacketTemplateIds } from '@/services/documents/packets.service';
+import {
+  fetchFieldMapsByTemplateIds,
+  listTemplateFieldMaps,
+} from '@/services/documents/template-field-maps.service';
 import {
   formatCurrency,
   formatCurrencyInWords,
@@ -202,13 +211,13 @@ export async function resolveFieldValues(
 
   try {
     // 1. Fetch deal section values from deal_section_values
-    const { data: sectionValues, error: svError } = await supabase
-      .from('deal_section_values')
-      .select('section, field_values')
-      .eq('deal_id', dealId);
-
-    if (svError) {
-      result.errors.push(`Failed to fetch deal section values: ${svError.message}`);
+    let sectionValues;
+    try {
+      sectionValues = await fetchSectionValuesByDeal(dealId);
+    } catch (svError: unknown) {
+      result.errors.push(
+        `Failed to fetch deal section values: ${(svError as Error).message}`
+      );
       return result;
     }
 
@@ -225,13 +234,11 @@ export async function resolveFieldValues(
     }
     
     // Fetch field dictionary entries
-    const { data: fieldDictEntries, error: fdError } = await supabase
-      .from('field_dictionary')
-      .select('id, field_key, data_type, label')
-      .in('id', allFieldDictIds);
-
-    if (fdError) {
-      result.errors.push(`Failed to fetch field dictionary: ${fdError.message}`);
+    let fieldDictEntries;
+    try {
+      fieldDictEntries = await fetchFieldDictionaryMetaByIds(allFieldDictIds);
+    } catch (fdError: unknown) {
+      result.errors.push(`Failed to fetch field dictionary: ${(fdError as Error).message}`);
       return result;
     }
 
@@ -329,17 +336,15 @@ export async function resolveFieldValuesForTemplate(
   templateId: string
 ): Promise<FieldValueResolverResult> {
   // 1. Fetch template field maps
-  const { data: fieldMaps, error: fmError } = await supabase
-    .from('template_field_maps')
-    .select('field_dictionary_id, transform_rule')
-    .eq('template_id', templateId);
-
-  if (fmError) {
+  let fieldMaps;
+  try {
+    fieldMaps = await listTemplateFieldMaps(templateId);
+  } catch (fmError: unknown) {
     return {
       values: {},
       details: {},
       emptyFields: [],
-      errors: [`Failed to fetch template field maps: ${fmError.message}`],
+      errors: [`Failed to fetch template field maps: ${(fmError as Error).message}`],
     };
   }
 
@@ -356,19 +361,19 @@ export async function resolveFieldValuesForTemplate(
   const fieldDictIds = [...new Set(fieldMaps.map(fm => fm.field_dictionary_id).filter(Boolean))] as string[];
 
   // Fetch field dictionary entries
-  const { data: fieldDictEntries, error: fdError } = await supabase
-    .from('field_dictionary')
-    .select('id, field_key')
-    .in('id', fieldDictIds);
-
-  if (fdError || !fieldDictEntries) {
+  let fieldDictEntries;
+  try {
+    fieldDictEntries = await fetchFieldDictionaryKeysByIds(fieldDictIds);
+  } catch (fdError: unknown) {
     return {
       values: {},
       details: {},
       emptyFields: [],
-      errors: [`Failed to fetch field dictionary: ${fdError?.message || 'No data'}`],
+      errors: [`Failed to fetch field dictionary: ${(fdError as Error).message}`],
     };
   }
+
+  if (!fieldDictEntries) {
 
   // Create lookup map for field dictionary
   const fieldDictMap = new Map<string, string>();
@@ -405,21 +410,19 @@ export async function resolveFieldValuesForPacket(
   packetId: string
 ): Promise<FieldValueResolverResult> {
   // 1. Fetch all template IDs in the packet
-  const { data: packetTemplates, error: ptError } = await supabase
-    .from('packet_templates')
-    .select('template_id')
-    .eq('packet_id', packetId);
-
-  if (ptError) {
+  let templateIds: string[];
+  try {
+    templateIds = await fetchPacketTemplateIds(packetId);
+  } catch (ptError: unknown) {
     return {
       values: {},
       details: {},
       emptyFields: [],
-      errors: [`Failed to fetch packet templates: ${ptError.message}`],
+      errors: [`Failed to fetch packet templates: ${(ptError as Error).message}`],
     };
   }
 
-  if (!packetTemplates || packetTemplates.length === 0) {
+  if (!templateIds || templateIds.length === 0) {
     return {
       values: {},
       details: {},
@@ -428,20 +431,15 @@ export async function resolveFieldValuesForPacket(
     };
   }
 
-  const templateIds = packetTemplates.map((pt) => pt.template_id);
-
-  // 2. Fetch all field maps
-  const { data: fieldMaps, error: fmError } = await supabase
-    .from('template_field_maps')
-    .select('field_dictionary_id, transform_rule')
-    .in('template_id', templateIds);
-
-  if (fmError) {
+  let fieldMaps;
+  try {
+    fieldMaps = await fetchFieldMapsByTemplateIds(templateIds);
+  } catch (fmError: unknown) {
     return {
       values: {},
       details: {},
       emptyFields: [],
-      errors: [`Failed to fetch template field maps: ${fmError.message}`],
+      errors: [`Failed to fetch template field maps: ${(fmError as Error).message}`],
     };
   }
 
@@ -458,16 +456,15 @@ export async function resolveFieldValuesForPacket(
   const fieldDictIds = [...new Set(fieldMaps.map(fm => fm.field_dictionary_id).filter(Boolean))] as string[];
 
   // Fetch field dictionary entries
-  const { data: fieldDictEntries, error: fdError } = await supabase
-    .from('field_dictionary')
-    .select('id, field_key')
-    .in('id', fieldDictIds);
-
-  // Create lookup map for field dictionary
-  const fieldDictMap = new Map<string, string>();
-  if (!fdError && fieldDictEntries) {
-    fieldDictEntries.forEach(fd => fieldDictMap.set(fd.id, fd.field_key));
+  let fieldDictEntries: { id: string; field_key: string }[] = [];
+  try {
+    fieldDictEntries = await fetchFieldDictionaryKeysByIds(fieldDictIds);
+  } catch {
+    fieldDictEntries = [];
   }
+
+  const fieldDictMap = new Map<string, string>();
+  fieldDictEntries.forEach((fd) => fieldDictMap.set(fd.id, fd.field_key));
 
   // Extract unique field keys and merge transform rules
   // If multiple templates have different transforms for the same field,

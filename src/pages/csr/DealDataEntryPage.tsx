@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { getSession } from '@/services/supabase/auth';
+import { fetchDealById, updateDeal } from '@/services/deals/deals.service';
 import { useDealFields } from "@/hooks/useDealFields";
 import { useEntryOrchestration } from "@/hooks/useEntryOrchestration";
 import { useFieldPermissions } from "@/hooks/useFieldPermissions";
@@ -49,7 +50,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleDisplayName } from "@/lib/accessControl";
-import type { Database } from "@/integrations/supabase/types";
+import type { Database } from '@/services/supabase/types';
 
 type FieldSection = Database["public"]["Enums"]["field_section"];
 
@@ -200,13 +201,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
 
   const fetchDeal = async () => {
     try {
-      const { data, error } = await supabase
-        .from("deals")
-        .select("id, deal_number, state, product_type, mode, status, packet_id")
-        .eq("id", id)
-        .single();
-
-      if (error) throw error;
+      const data = await fetchDealById(id!, 'id, deal_number, state, product_type, mode, status, packet_id');
       setDeal(data);
 
       // Register with workspace if available (only if not already open)
@@ -222,11 +217,10 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
     } catch (error) {
       console.error("Error fetching deal:", error);
       // Check if this is a transient auth issue before closing workspace tab
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await getSession();
       if (!session) {
-        // Transient auth drop — retry after recovery delay
         await new Promise(r => setTimeout(r, 1500));
-        const { data: { session: retrySession } } = await supabase.auth.getSession();
+        const { data: { session: retrySession } } = await getSession();
         if (retrySession) {
           // Session recovered — retry fetch
           hasFetchedDealRef.current = false;
@@ -439,9 +433,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
     const wasGenerated = deal?.status === "generated";
 
     try {
-      const { error } = await supabase.from("deals").update({ status: "draft" }).eq("id", id);
-
-      if (error) throw error;
+      await updateDeal(id!, { status: 'draft' });
 
       // Log the revert
       if (id) {
@@ -613,9 +605,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
       if (!saveSuccess) return;
 
       // Update deal status to ready
-      const { error } = await supabase.from("deals").update({ status: "ready" }).eq("id", id);
-
-      if (error) throw error;
+      await updateDeal(id!, { status: 'ready' });
 
       // Log the mark ready activity
       if (id) {

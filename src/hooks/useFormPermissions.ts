@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  fetchFormPermissionsByRole,
+  fetchUserFormPermissionsSummary,
+  fetchUserFormPermissionsOrdered,
+  insertUserFormPermissions,
+  updateUserFormPermissionById,
+} from '@/services/admin/form-permissions.service';
+import { listUserRoles } from '@/services/admin/users.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface FormPermission {
@@ -41,11 +49,7 @@ const notifySubscribers = () => {
 
 async function loadPermissions(role: string, userId: string): Promise<FormPermission[]> {
   if (role === 'csr') {
-    const { data, error } = await supabase
-      .from('user_form_permissions')
-      .select('form_key, access_mode')
-      .eq('user_id', userId);
-    if (error) throw error;
+    const data = await fetchUserFormPermissionsSummary(userId);
     return (data || []).map((d: any) => ({
       form_key: d.form_key,
       access_mode: d.access_mode as 'editable' | 'view_only',
@@ -55,11 +59,7 @@ async function loadPermissions(role: string, userId: string): Promise<FormPermis
   if (role === 'admin') {
     return [];
   }
-  const { data, error } = await supabase
-    .from('form_permissions')
-    .select('form_key, access_mode, screen_visible')
-    .eq('role', role as any);
-  if (error) throw error;
+  const data = await fetchFormPermissionsByRole(role);
   return (data || []) as unknown as FormPermission[];
 }
 
@@ -161,26 +161,17 @@ export function useFormPermissionsAdmin() {
     const fetchCsrUsers = async () => {
       try {
         setLoading(true);
-        const { data: roles, error: rolesErr } = await supabase
-          .from('user_roles')
-          .select('user_id')
-          .eq('role', 'csr');
-
-        if (rolesErr) throw rolesErr;
-
-        const userIds = (roles || []).map((r: any) => r.user_id);
+        const roles = await listUserRoles();
+        const userIds = (roles || [])
+          .filter((r: any) => r.role === 'csr')
+          .map((r: any) => r.user_id);
         if (userIds.length === 0) {
           setCsrUsers([]);
           setLoading(false);
           return;
         }
 
-        const { data: profiles, error: profErr } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, email')
-          .in('user_id', userIds);
-
-        if (profErr) throw profErr;
+        const profiles = await fetchProfilesByUserIds(userIds);
 
         setCsrUsers((profiles || []).map((p: any) => ({
           user_id: p.user_id,
@@ -200,39 +191,18 @@ export function useFormPermissionsAdmin() {
   const fetchUserPermissions = async (userId: string) => {
     try {
       setPermLoading(true);
-      const { data, error } = await supabase
-        .from('user_form_permissions')
-        .select('id, form_key, access_mode')
-        .eq('user_id', userId)
-        .order('form_key');
-
-      if (error) throw error;
+      let data = await fetchUserFormPermissionsOrdered(userId);
 
       if (!data || data.length === 0) {
-        // Auto-seed all forms as view_only
         const inserts = FORM_KEYS.map(fk => ({
           user_id: userId,
           form_key: fk,
           access_mode: 'view_only',
         }));
-
-        const { error: insertErr } = await supabase
-          .from('user_form_permissions')
-          .insert(inserts);
-
-        if (insertErr) throw insertErr;
-
-        // Re-fetch after seeding
-        const { data: seeded, error: seedErr } = await supabase
-          .from('user_form_permissions')
-          .select('id, form_key, access_mode')
-          .eq('user_id', userId)
-          .order('form_key');
-
-        if (seedErr) throw seedErr;
-        setUserPermissions((seeded || []) as any);
+        await insertUserFormPermissions(inserts);
+        data = await fetchUserFormPermissionsOrdered(userId);
+        setUserPermissions((data || []) as any);
       } else {
-        // Check for missing form keys and insert them
         const existingKeys = new Set(data.map((d: any) => d.form_key));
         const missingKeys = FORM_KEYS.filter(fk => !existingKeys.has(fk));
 
@@ -242,18 +212,9 @@ export function useFormPermissionsAdmin() {
             form_key: fk,
             access_mode: 'view_only',
           }));
-
-          await supabase.from('user_form_permissions').insert(inserts);
-
-          // Re-fetch after adding missing keys
-          const { data: updated, error: updErr } = await supabase
-            .from('user_form_permissions')
-            .select('id, form_key, access_mode')
-            .eq('user_id', userId)
-            .order('form_key');
-
-          if (updErr) throw updErr;
-          setUserPermissions((updated || []) as any);
+          await insertUserFormPermissions(inserts);
+          data = await fetchUserFormPermissionsOrdered(userId);
+          setUserPermissions((data || []) as any);
         } else {
           setUserPermissions(data as any);
         }
@@ -267,12 +228,10 @@ export function useFormPermissionsAdmin() {
 
   // Update a single permission
   const updatePermission = async (id: string, accessMode: 'editable' | 'view_only') => {
-    const { error } = await supabase
-      .from('user_form_permissions')
-      .update({ access_mode: accessMode, updated_at: new Date().toISOString() })
-      .eq('id', id);
-
-    if (error) throw error;
+    await updateUserFormPermissionById(id, {
+      access_mode: accessMode,
+      updated_at: new Date().toISOString(),
+    });
   };
 
   // Keep legacy exports for backward compat

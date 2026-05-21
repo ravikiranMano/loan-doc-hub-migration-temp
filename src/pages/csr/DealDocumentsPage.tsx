@@ -45,7 +45,22 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { getSession, refreshSession } from '@/services/supabase/auth';
+import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { invokeGenerateDocument } from '@/services/supabase/functions';
+import { fetchDealById } from '@/services/deals/deals.service';
+import {
+  listGeneratedDocuments,
+  listGenerationJobs,
+  downloadGeneratedDoc,
+} from '@/services/documents/generation.service';
+import { listTemplates, updateTemplate, uploadTemplateDocx } from '@/services/documents/templates.service';
+import {
+  listActivePackets,
+  fetchPacketById,
+  listPacketTemplatesWithJoin,
+} from '@/services/documents/packets.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   ArrowLeft, 
@@ -197,36 +212,22 @@ export const DealDocumentsPage: React.FC = () => {
   useEffect(() => {
     if (!id) return;
 
-    const channel = supabase
-      .channel('generated-docs-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'generated_documents',
-          filter: `deal_id=eq.${id}`,
-        },
-        () => {
-          debouncedBackgroundRefresh();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'generation_jobs',
-          filter: `deal_id=eq.${id}`,
-        },
-        () => {
-          debouncedBackgroundRefresh();
-        }
-      )
-      .subscribe();
+    const docsSub = subscribePostgresChanges({
+      channelName: `generated-docs-changes-${id}`,
+      table: 'generated_documents',
+      filter: `deal_id=eq.${id}`,
+      onChange: debouncedBackgroundRefresh,
+    });
+    const jobsSub = subscribePostgresChanges({
+      channelName: `generation-jobs-changes-${id}`,
+      table: 'generation_jobs',
+      filter: `deal_id=eq.${id}`,
+      onChange: debouncedBackgroundRefresh,
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      docsSub.unsubscribe();
+      jobsSub.unsubscribe();
       if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     };
   }, [id]);
@@ -304,85 +305,41 @@ export const DealDocumentsPage: React.FC = () => {
   };
 
   const fetchDeal = async () => {
-    const { data: dealData, error: dealError } = await supabase
-      .from('deals')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (dealError) throw dealError;
+    const dealData = await fetchDealById(id!);
     setDeal(dealData);
 
-    // Always fetch all active templates and all active packets for selection
-    const [templatesRes, packetsRes] = await Promise.all([
-      supabase
-        .from('templates')
-        .select('id, name, file_path, version')
-        .eq('is_active', true)
-        .order('name'),
-      supabase
-        .from('packets')
-        .select('*')
-        .eq('is_active', true)
-        .order('name'),
+    const [templatesData, packetsData] = await Promise.all([
+      listTemplates(true, 'id, name, file_path, version'),
+      listActivePackets(),
     ]);
-    
-    setAllTemplates((templatesRes.data || []) as Template[]);
-    setAvailablePackets((packetsRes.data || []) as Packet[]);
+
+    setAllTemplates(templatesData as Template[]);
+    setAvailablePackets(packetsData as Packet[]);
 
     if (dealData.packet_id) {
-      // Fetch assigned packet info
-      const { data: packetData } = await supabase
-        .from('packets')
-        .select('*')
-        .eq('id', dealData.packet_id)
-        .single();
+      const packetData = await fetchPacketById(dealData.packet_id);
       setPacket(packetData);
 
-      // Fetch assigned packet templates
-      const { data: ptData } = await supabase
-        .from('packet_templates')
-        .select('template_id, display_order, is_required, templates(id, name, file_path, version)')
-        .eq('packet_id', dealData.packet_id)
-        .order('display_order');
-      
-      setPacketTemplates((ptData || []) as any);
+      const ptData = await listPacketTemplatesWithJoin(dealData.packet_id);
+      setPacketTemplates(ptData as any);
     }
   };
 
   const fetchGeneratedDocuments = async () => {
-    const { data } = await supabase
-      .from('generated_documents')
-      .select('*')
-      .eq('deal_id', id)
-      .order('created_at', { ascending: false });
-
+    const data = await listGeneratedDocuments(id!);
     setGeneratedDocuments(data || []);
-    
-    // Fetch profiles for creators
-    if (data && data.length > 0) {
-      const creatorIds = [...new Set(data.map(d => d.created_by))];
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email')
-        .in('user_id', creatorIds);
-      
-      if (profilesData) {
-        const profilesMap = new Map(profilesData.map(p => [p.user_id, p]));
-        setProfiles(profilesMap);
-      }
+
+    if (data.length > 0) {
+      const creatorIds = [...new Set(data.map((d) => d.created_by))];
+      const profilesData = await fetchProfilesByUserIds(creatorIds);
+      const profilesMap = new Map(profilesData.map((p) => [p.user_id, p]));
+      setProfiles(profilesMap);
     }
   };
 
   const fetchRecentJobs = async () => {
-    const { data } = await supabase
-      .from('generation_jobs')
-      .select('*')
-      .eq('deal_id', id)
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    setRecentJobs(data || []);
+    const data = await listGenerationJobs(id!);
+    setRecentJobs((data || []).slice(0, 5));
   };
 
   const handleGenerateClick = (mode: 'single' | 'packet', templateId?: string) => {
@@ -397,12 +354,12 @@ export const DealDocumentsPage: React.FC = () => {
 
     try {
       // Ensure we have a valid, refreshable auth session before invoking backend function
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData } = await getSession();
       if (!sessionData.session?.access_token) {
         throw new Error('Your session has expired. Please sign in again.');
       }
 
-      const { error: refreshError } = await supabase.auth.refreshSession();
+      const { error: refreshError } = await refreshSession();
       if (refreshError) {
         await signOut();
         throw new Error('Your session has expired. Please sign in again.');
@@ -421,9 +378,7 @@ export const DealDocumentsPage: React.FC = () => {
         body.packetId = selectedPacketId;
       }
 
-      const { data, error } = await supabase.functions.invoke('generate-document', {
-        body,
-      });
+      const { data, error } = await invokeGenerateDocument(body);
 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -477,11 +432,7 @@ export const DealDocumentsPage: React.FC = () => {
 
   const handleDownload = async (path: string, filename: string) => {
     try {
-      const { data, error } = await supabase.storage
-        .from('generated-docs')
-        .download(path);
-
-      if (error) throw error;
+      const data = await downloadGeneratedDoc(path);
 
       // Create download link
       const url = URL.createObjectURL(data);
@@ -629,19 +580,9 @@ export const DealDocumentsPage: React.FC = () => {
     setUploadingTemplate(true);
     try {
       const fileName = `${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('templates')
-        .upload(fileName, file, { upsert: true });
+      await uploadTemplateDocx(fileName, file, { upsert: true });
 
-      if (uploadError) throw uploadError;
-
-      // Update the template record with the file path
-      const { error: updateError } = await supabase
-        .from('templates')
-        .update({ file_path: fileName })
-        .eq('id', templateId);
-
-      if (updateError) throw updateError;
+      await updateTemplate(templateId, { file_path: fileName });
 
       toast({
         title: 'Template Uploaded',
@@ -778,12 +719,8 @@ export const DealDocumentsPage: React.FC = () => {
                     value={selectedPacketId || ''}
                     onValueChange={async (v) => {
                       setSelectedPacketId(v);
-                      const { data: ptData } = await supabase
-                        .from('packet_templates')
-                        .select('template_id, display_order, is_required, templates(id, name, file_path, version)')
-                        .eq('packet_id', v)
-                        .order('display_order');
-                      setSelectedPacketTemplates((ptData || []) as any);
+                      const ptData = await listPacketTemplatesWithJoin(v);
+                      setSelectedPacketTemplates(ptData as any);
                     }}
                   >
                     <SelectTrigger className="flex-1">

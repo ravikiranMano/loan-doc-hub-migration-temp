@@ -9,7 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listDealsPage,
+  generateDealNumber,
+  insertDeal,
+  deleteDeal,
+} from '@/services/deals/deals.service';
+import { subscribePostgresChanges } from '@/services/supabase/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspaceOptional } from '@/contexts/WorkspaceContext';
 import { MaxFilesDialog } from '@/components/workspace/MaxFilesDialog';
@@ -122,16 +128,7 @@ export const DealsPage: React.FC = () => {
     const silent = options?.silent === true;
     if (!silent) setLoading(true);
     try {
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
-      const { data, error, count } = await supabase
-        .from('deals')
-        .select('*, packets(name)', { count: 'exact' })
-        .order('updated_at', { ascending: false })
-        .range(from, to);
-
-      if (error) throw error;
+      const { data, count } = await listDealsPage(page, PAGE_SIZE);
 
       const mappedDeals = (data || []).map((d: any) => ({
         ...d,
@@ -166,18 +163,13 @@ export const DealsPage: React.FC = () => {
     fetchDeals(currentPage, { silent: !!cachedState });
 
     // Real-time subscription - refresh current page
-    const channel = supabase
-      .channel('deals-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'deals' },
-        () => fetchDeals(1, { silent: true }) // silent background refresh
-      )
-      .subscribe();
+    const { unsubscribe } = subscribePostgresChanges({
+      channelName: 'deals-changes',
+      table: 'deals',
+      onChange: () => fetchDeals(1, { silent: true }),
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }, [fetchDeals]);
 
   // Refresh deals when "All Loan Documents" tab is clicked (refreshKey changes)
@@ -228,23 +220,16 @@ export const DealsPage: React.FC = () => {
     if (creating) return;
     setCreating(true);
     try {
-      const { data: dealNumber, error: numErr } = await supabase.rpc('generate_deal_number');
-      if (numErr) throw numErr;
+      const dealNumber = await generateDealNumber();
 
-      const { data, error } = await supabase
-        .from('deals')
-        .insert({
-          deal_number: dealNumber,
-          state: 'TBD',
-          product_type: 'TBD',
-          mode: 'doc_prep',
-          status: 'draft',
-          created_by: user?.id,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await insertDeal({
+        deal_number: dealNumber,
+        state: 'TBD',
+        product_type: 'TBD',
+        mode: 'doc_prep',
+        status: 'draft',
+        created_by: user?.id,
+      });
 
       await logDealCreated(data.id, {
         dealNumber,
@@ -270,8 +255,7 @@ export const DealsPage: React.FC = () => {
     if (!confirm(`Delete file ${deal.deal_number}?`)) return;
 
     try {
-      const { error } = await supabase.from('deals').delete().eq('id', deal.id);
-      if (error) throw error;
+      await deleteDeal(deal.id);
       toast({ title: 'File deleted' });
       fetchDeals(currentPage);
     } catch (error: any) {

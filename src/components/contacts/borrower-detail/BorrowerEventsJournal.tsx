@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { getContactContactData } from '@/services/contacts/contacts.service';
+
 import { format, startOfMonth } from 'date-fns';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -92,15 +93,7 @@ const BorrowerEventsJournal: React.FC<{ borrowerId: string; contactDbId: string 
     queryKey: ['borrower-contact-events-journal', contactDbId],
     enabled: !!contactDbId,
     queryFn: async () => {
-      const { data: contact, error } = await supabase
-        .from('contacts')
-        .select('contact_data')
-        .eq('id', contactDbId)
-        .single();
-
-      if (error) throw error;
-
-      const contactData = (contact?.contact_data || {}) as Record<string, any>;
+      const contactData = (await getContactContactData(contactDbId)) as Record<string, any>;
       const journal: ContactEventJournalEntry[] = contactData._events_journal || [];
 
       return journal

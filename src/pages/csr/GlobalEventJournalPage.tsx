@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { searchDealsBrief } from '@/services/deals/deals.service';
 import { EventJournalViewer } from '@/components/deal/EventJournalViewer';
 import { Input } from '@/components/ui/input';
 import { BookOpen, Search } from 'lucide-react';
@@ -19,17 +19,7 @@ const GlobalEventJournalPage: React.FC = () => {
   useEffect(() => {
     const fetchDeals = async () => {
       setLoading(true);
-      let query = supabase
-        .from('deals')
-        .select('id, deal_number, borrower_name')
-        .order('deal_number', { ascending: false })
-        .limit(50);
-
-      if (search.trim()) {
-        query = query.or(`deal_number.ilike.%${search.trim()}%,borrower_name.ilike.%${search.trim()}%`);
-      }
-
-      const { data } = await query;
+      const data = await searchDealsBrief(search, 50);
       setDeals(data || []);
       setLoading(false);
     };

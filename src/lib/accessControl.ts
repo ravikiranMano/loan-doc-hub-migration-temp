@@ -1,22 +1,19 @@
-import { supabase } from '@/integrations/supabase/client';
-import { fetchAllRows } from '@/lib/supabasePagination';
 import { AppRole, EXTERNAL_ROLES, INTERNAL_ROLES } from '@/contexts/AuthContext';
+import {
+  fetchFieldVisibility as fetchFieldVisibilityFromService,
+  fetchFieldPermissions as fetchFieldPermissionsFromService,
+  type FieldPermission,
+  type FieldVisibility,
+} from '@/services/admin/field-permissions.service';
+import {
+  fetchUserDealAssignments,
+  fetchDealAssignments,
+  assignUserToDeal,
+  removeUserFromDeal,
+  type DealAssignment,
+} from '@/services/deals/deal-assignments.service';
 
-export interface FieldPermission {
-  field_key: string;
-  can_view: boolean;
-  can_edit: boolean;
-}
-
-export interface DealAssignment {
-  id: string;
-  deal_id: string;
-  user_id: string;
-  role: AppRole;
-  assigned_by: string;
-  assigned_at: string;
-  notes: string | null;
-}
+export type { FieldPermission, DealAssignment, FieldVisibility };
 
 /**
  * Check if a role is an external role (borrower, broker, lender)
@@ -60,59 +57,13 @@ export const canAccessAdminScreens = (role: AppRole): boolean => {
   return role === 'admin';
 };
 
-/**
- * Field visibility info from field_dictionary
- */
-export interface FieldVisibility {
-  field_key: string;
-  allowed_roles: string[];
-  read_only_roles: string[];
-  is_calculated: boolean;
-}
+export const fetchFieldVisibility = fetchFieldVisibilityFromService;
 
-/**
- * Fetch field visibility settings from field_dictionary
- */
-export const fetchFieldVisibility = async (): Promise<Map<string, FieldVisibility>> => {
-  try {
-    const data = await fetchAllRows((client) =>
-      client
-        .from('field_dictionary')
-        .select('field_key, allowed_roles, read_only_roles, is_calculated')
-    );
-
-    return new Map(data.map(fv => [fv.field_key, {
-    field_key: fv.field_key,
-    allowed_roles: fv.allowed_roles || ['admin', 'csr'],
-    read_only_roles: fv.read_only_roles || [],
-      is_calculated: fv.is_calculated,
-    }]));
-  } catch (error) {
-    console.error('Error fetching field visibility:', error);
-    return new Map();
-  }
-};
-
-/**
- * Fetch field permissions for a given role (legacy - uses field_permissions table)
- */
 export const fetchFieldPermissions = async (role: AppRole): Promise<Map<string, FieldPermission>> => {
   if (!role || isInternalRole(role)) {
-    // Internal users have full access - return empty map (will be treated as full access)
     return new Map();
   }
-
-  const { data, error } = await supabase
-    .from('field_permissions')
-    .select('field_key, can_view, can_edit')
-    .eq('role', role);
-
-  if (error) {
-    console.error('Error fetching field permissions:', error);
-    return new Map();
-  }
-
-  return new Map((data || []).map(fp => [fp.field_key, fp]));
+  return fetchFieldPermissionsFromService(role);
 };
 
 /**
@@ -200,77 +151,11 @@ export const canEditField = (
   return permission?.can_edit ?? false;
 };
 
-/**
- * Fetch deal assignments for a user
- */
-export const fetchUserDealAssignments = async (userId: string): Promise<DealAssignment[]> => {
-  const { data, error } = await supabase
-    .from('deal_assignments')
-    .select('*')
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('Error fetching deal assignments:', error);
-    return [];
-  }
-
-  return (data || []) as DealAssignment[];
-};
-
-/**
- * Fetch assignments for a specific deal
- */
-export const fetchDealAssignments = async (dealId: string): Promise<DealAssignment[]> => {
-  const { data, error } = await supabase
-    .from('deal_assignments')
-    .select('*')
-    .eq('deal_id', dealId);
-
-  if (error) {
-    console.error('Error fetching deal assignments:', error);
-    return [];
-  }
-
-  return (data || []) as DealAssignment[];
-};
-
-/**
- * Assign a user to a deal
- */
-export const assignUserToDeal = async (
-  dealId: string,
-  userId: string,
-  role: AppRole,
-  assignedBy: string,
-  notes?: string
-): Promise<{ error: Error | null }> => {
-  const { error } = await supabase
-    .from('deal_assignments')
-    .insert({
-      deal_id: dealId,
-      user_id: userId,
-      role: role,
-      assigned_by: assignedBy,
-      notes: notes || null,
-    });
-
-  return { error: error as Error | null };
-};
-
-/**
- * Remove a user from a deal
- */
-export const removeUserFromDeal = async (
-  dealId: string,
-  userId: string
-): Promise<{ error: Error | null }> => {
-  const { error } = await supabase
-    .from('deal_assignments')
-    .delete()
-    .eq('deal_id', dealId)
-    .eq('user_id', userId);
-
-  return { error: error as Error | null };
+export {
+  fetchUserDealAssignments,
+  fetchDealAssignments,
+  assignUserToDeal,
+  removeUserFromDeal,
 };
 
 /**

@@ -21,7 +21,16 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listPackets,
+  listActiveTemplates,
+  updatePacket,
+  insertPacket,
+  deletePacket,
+  listPacketTemplatesWithJoin,
+  insertPacketTemplate,
+  deletePacketTemplate,
+} from '@/services/documents/packets.service';
 import { 
   Plus, 
   Search, 
@@ -109,23 +118,19 @@ export const PacketManagementPage: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const [packetsRes, templatesRes] = await Promise.all([
-        supabase.from('packets').select('*').order('name'),
-        supabase.from('templates').select('*').eq('is_active', true).order('name'),
+      const [packetsData, templatesData] = await Promise.all([
+        listPackets(),
+        listActiveTemplates(),
       ]);
 
-      if (packetsRes.error) throw packetsRes.error;
-      if (templatesRes.error) throw templatesRes.error;
-
-      // Map packets with new fields, falling back to old state field
-      const mappedPackets = (packetsRes.data || []).map((p: any) => ({
+      const mappedPackets = packetsData.map((p: Packet & { states?: string[] }) => ({
         ...p,
         all_states: p.all_states || false,
         states: p.states && p.states.length > 0 ? p.states : (p.state && p.state !== 'TBD' ? [p.state] : []),
       }));
 
       setPackets(mappedPackets);
-      setTemplates(templatesRes.data || []);
+      setTemplates(templatesData as Template[]);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -140,16 +145,10 @@ export const PacketManagementPage: React.FC = () => {
 
   const fetchPacketTemplates = async (packetId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('packet_templates')
-        .select('*, templates(*)')
-        .eq('packet_id', packetId)
-        .order('display_order');
-
-      if (error) throw error;
+      const data = await listPacketTemplatesWithJoin(packetId);
 
       setPacketTemplates(
-        (data || []).map((pt: any) => ({
+        data.map((pt: Record<string, unknown>) => ({
           id: pt.id,
           template_id: pt.template_id,
           display_order: pt.display_order,
@@ -185,17 +184,10 @@ export const PacketManagementPage: React.FC = () => {
       };
 
       if (editingPacket) {
-        const { error } = await supabase
-          .from('packets')
-          .update(payload)
-          .eq('id', editingPacket.id);
-
-        if (error) throw error;
+        await updatePacket(editingPacket.id, payload);
         toast({ title: 'Packet updated successfully' });
       } else {
-        const { error } = await supabase.from('packets').insert(payload);
-
-        if (error) throw error;
+        await insertPacket(payload);
         toast({ title: 'Packet created successfully' });
       }
 
@@ -241,14 +233,12 @@ export const PacketManagementPage: React.FC = () => {
         ? Math.max(...packetTemplates.map((pt) => pt.display_order))
         : -1;
 
-      const { error } = await supabase.from('packet_templates').insert({
+      await insertPacketTemplate({
         packet_id: selectedPacket.id,
         template_id: templateId,
         display_order: maxOrder + 1,
         is_required: true,
       });
-
-      if (error) throw error;
       await fetchPacketTemplates(selectedPacket.id);
       toast({ title: 'Template added to packet' });
     } catch (error: any) {
@@ -262,12 +252,7 @@ export const PacketManagementPage: React.FC = () => {
 
   const handleRemoveTemplate = async (packetTemplateId: string) => {
     try {
-      const { error } = await supabase
-        .from('packet_templates')
-        .delete()
-        .eq('id', packetTemplateId);
-
-      if (error) throw error;
+      await deletePacketTemplate(packetTemplateId);
       if (selectedPacket) {
         await fetchPacketTemplates(selectedPacket.id);
       }
@@ -285,8 +270,7 @@ export const PacketManagementPage: React.FC = () => {
     if (!confirm(`Are you sure you want to delete "${packet.name}"?`)) return;
 
     try {
-      const { error } = await supabase.from('packets').delete().eq('id', packet.id);
-      if (error) throw error;
+      await deletePacket(packet.id);
       toast({ title: 'Packet deleted successfully' });
       fetchData();
     } catch (error: any) {

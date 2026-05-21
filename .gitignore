@@ -11,7 +11,20 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+tmp/
+.playwright-mcp
+.lovable
 
+# Playwright E2E
+e2e/.auth/
+e2e/.env.e2e.local
+playwright-report/
+test-results/
+blob-report/
+
+.claude
+e2e
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

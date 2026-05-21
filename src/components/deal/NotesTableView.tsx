@@ -17,7 +17,7 @@ import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { SortableTableHead } from './SortableTableHead';
 import { useGridSortFilter } from '@/hooks/useGridSortFilter';
 import { useGridSelection } from '@/hooks/useGridSelection';
-import { supabase } from '@/integrations/supabase/client';
+import { downloadContactAttachment } from '@/services/contacts/attachments.service';
 import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
@@ -191,8 +191,13 @@ export const NotesTableView: React.FC<NotesTableViewProps> = ({
       toast.info('This attachment has no downloadable file');
       return;
     }
-    const { data, error } = await supabase.storage.from('contact-attachments').download(path);
-    if (error || !data) {
+    let data: Blob;
+    try {
+      data = await downloadContactAttachment(path);
+    } catch {
+      data = null as unknown as Blob;
+    }
+    if (!data) {
       toast.error('Failed to download file');
       return;
     }

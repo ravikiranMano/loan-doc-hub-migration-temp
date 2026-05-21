@@ -4,7 +4,8 @@
  * Provides functions to log deal-related activities for accountability.
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { getUser } from '@/services/supabase/auth';
+import { insertActivityLog } from '@/services/system/activity-log.service';
 
 export type ActionType = 
   | 'DealCreated'
@@ -46,25 +47,18 @@ export interface LogActivityParams {
  */
 export async function logActivity(params: LogActivityParams): Promise<boolean> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await getUser();
     if (!user) {
       console.warn('Cannot log activity: user not authenticated');
       return false;
     }
 
-    const { error } = await supabase
-      .from('activity_log')
-      .insert({
-        deal_id: params.dealId,
-        actor_user_id: user.id,
-        action_type: params.actionType,
-        action_details: params.actionDetails || null,
-      });
-
-    if (error) {
-      console.error('Failed to log activity:', error);
-      return false;
-    }
+    await insertActivityLog({
+      deal_id: params.dealId,
+      actor_user_id: user.id,
+      action_type: params.actionType,
+      action_details: params.actionDetails || null,
+    });
 
     return true;
   } catch (err) {

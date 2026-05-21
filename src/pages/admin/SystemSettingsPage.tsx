@@ -3,7 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listSystemSettings,
+  updateSystemSetting,
+  insertSystemSetting,
+  deleteSystemSetting,
+} from '@/services/system/settings.service';
 import { Settings, Loader2, Save, Plus, Trash2 } from 'lucide-react';
 import {
   Dialog,
@@ -52,13 +57,8 @@ export const SystemSettingsPage: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('system_settings')
-        .select('*')
-        .order('setting_key');
-
-      if (error) throw error;
-      setSettings(data || []);
+      const data = await listSystemSettings();
+      setSettings(data as SystemSetting[]);
 
       // Initialize edited values
       const values: Record<string, string> = {};
@@ -85,12 +85,7 @@ export const SystemSettingsPage: React.FC = () => {
   const handleSave = async (setting: SystemSetting) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('system_settings')
-        .update({ setting_value: editedValues[setting.setting_key] || null })
-        .eq('id', setting.id);
-
-      if (error) throw error;
+      await updateSystemSetting(setting.id, editedValues[setting.setting_key] || null);
       toast({ title: 'Setting saved successfully' });
       fetchSettings();
     } catch (error: any) {
@@ -109,12 +104,7 @@ export const SystemSettingsPage: React.FC = () => {
     try {
       for (const setting of settings) {
         if (setting.setting_value !== editedValues[setting.setting_key]) {
-          const { error } = await supabase
-            .from('system_settings')
-            .update({ setting_value: editedValues[setting.setting_key] || null })
-            .eq('id', setting.id);
-
-          if (error) throw error;
+          await updateSystemSetting(setting.id, editedValues[setting.setting_key] || null);
         }
       }
       toast({ title: 'All settings saved successfully' });
@@ -142,14 +132,12 @@ export const SystemSettingsPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('system_settings').insert({
+      await insertSystemSetting({
         setting_key: newSetting.setting_key,
         setting_value: newSetting.setting_value || null,
         setting_type: newSetting.setting_type,
         description: newSetting.description || null,
       });
-
-      if (error) throw error;
       toast({ title: 'Setting added successfully' });
       setIsDialogOpen(false);
       setNewSetting({ setting_key: '', setting_value: '', setting_type: 'text', description: '' });
@@ -169,12 +157,7 @@ export const SystemSettingsPage: React.FC = () => {
     if (!confirm(`Are you sure you want to delete "${setting.setting_key}"?`)) return;
 
     try {
-      const { error } = await supabase
-        .from('system_settings')
-        .delete()
-        .eq('id', setting.id);
-
-      if (error) throw error;
+      await deleteSystemSetting(setting.id);
       toast({ title: 'Setting deleted successfully' });
       fetchSettings();
     } catch (error: any) {

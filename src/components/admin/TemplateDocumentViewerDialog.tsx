@@ -35,7 +35,13 @@ import {
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { getSession } from '@/services/supabase/auth';
+import { invokeValidateTemplate } from '@/services/supabase/functions';
+import {
+  listMergeTagAliasesByTagNames,
+  updateMergeTagAlias,
+  deleteMergeTagAlias,
+} from '@/services/documents/merge-tag-aliases.service';
 import { useToast } from '@/hooks/use-toast';
 
 interface FieldDictionaryInfo {
@@ -123,7 +129,7 @@ export const TemplateDocumentViewerDialog: React.FC<TemplateDocumentViewerDialog
     setLoading(true);
     try {
       // Fetch validation result with document text and field dictionary info
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await getSession();
       
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-template`,
@@ -156,12 +162,8 @@ export const TemplateDocumentViewerDialog: React.FC<TemplateDocumentViewerDialog
       ];
 
       if (allTagNames.length > 0) {
-        const { data: aliasData } = await supabase
-          .from('merge_tag_aliases')
-          .select('*')
-          .in('tag_name', allTagNames);
-        
-        setAliases(aliasData || []);
+        const aliasData = await listMergeTagAliasesByTagNames(allTagNames);
+        setAliases(aliasData as MergeTagAlias[]);
       }
     } catch (error: any) {
       console.error('Error fetching template data:', error);
@@ -188,16 +190,11 @@ export const TemplateDocumentViewerDialog: React.FC<TemplateDocumentViewerDialog
     setSaving(true);
     try {
       const tagType = editForm.tag_type as 'merge_tag' | 'f_code' | 'label';
-      const { error } = await supabase
-        .from('merge_tag_aliases')
-        .update({
-          field_key: editForm.field_key,
-          tag_type: tagType,
-          is_active: editForm.is_active,
-        })
-        .eq('id', aliasId);
-
-      if (error) throw error;
+      await updateMergeTagAlias(aliasId, {
+        field_key: editForm.field_key,
+        tag_type: tagType,
+        is_active: editForm.is_active,
+      });
 
       toast({ title: 'Mapping updated successfully' });
       setEditingAlias(null);
@@ -218,12 +215,7 @@ export const TemplateDocumentViewerDialog: React.FC<TemplateDocumentViewerDialog
     
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('merge_tag_aliases')
-        .delete()
-        .eq('id', aliasId);
-
-      if (error) throw error;
+      await deleteMergeTagAlias(aliasId);
 
       toast({ title: 'Mapping deleted' });
       await fetchData(); // Refresh data

@@ -5,8 +5,15 @@ import { Search, Download, Filter, ChevronRight, ChevronDown, X } from 'lucide-r
 import { Table, TableBody, TableCell, TableHeader, TableRow, TableHead } from '@/components/ui/table';
 import SortableTableHead from '@/components/deal/SortableTableHead';
 import { type SortDirection } from '@/hooks/useGridSortFilter';
+import { listParticipantsByContactAndRole } from '@/services/deals/participants.service';
+import { fetchSectionValuesBySection } from '@/services/deals/section-values.service';
+import { listDealsByIds } from '@/services/deals/deals.service';
+import {
+  listLoanHistoryByDealIds,
+  listLoanHistoryLenders,
+} from '@/services/deals/loan-history.service';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+
 
 interface LenderSubRow {
   id: string;
@@ -77,19 +84,12 @@ const BorrowerHistory: React.FC<Props> = ({ borrowerId, contactDbId }) => {
       setIsLoading(true);
       try {
         // 1. Find deal_participants for this contact as borrower
-        const { data: participants } = await supabase
-          .from('deal_participants')
-          .select('deal_id, name')
-          .eq('contact_id', contactDbId || '')
-          .eq('role', 'borrower');
-
-        let allParticipants = participants || [];
+        let allParticipants = contactDbId
+          ? await listParticipantsByContactAndRole(contactDbId, 'borrower', 'deal_id, name')
+          : [];
 
         if (allParticipants.length === 0 && borrowerId) {
-          const { data: borrowerSections } = await supabase
-            .from('deal_section_values')
-            .select('deal_id, field_values')
-            .eq('section', 'borrower');
+          const borrowerSections = await fetchSectionValuesBySection('borrower');
 
           const matchedDealIds: string[] = [];
           (borrowerSections || []).forEach(bs => {
@@ -123,10 +123,7 @@ const BorrowerHistory: React.FC<Props> = ({ borrowerId, contactDbId }) => {
         const dealIds = [...new Set(allParticipants.map(p => p.deal_id))];
 
         // 2. Fetch deals for header info
-        const { data: deals } = await supabase
-          .from('deals')
-          .select('id, deal_number, borrower_name')
-          .in('id', dealIds);
+        const deals = await listDealsByIds(dealIds, 'id, deal_number, borrower_name');
 
         if (deals && deals.length > 0) {
           setHeaderAccountNumber(deals[0].deal_number || '');
@@ -134,24 +131,12 @@ const BorrowerHistory: React.FC<Props> = ({ borrowerId, contactDbId }) => {
         }
 
         // 3. Fetch loan_history for these deals
-        const { data: historyData, error: hErr } = await supabase
-          .from('loan_history')
-          .select('*')
-          .in('deal_id', dealIds)
-          .order('date_due', { ascending: false });
+        const historyRecords = await listLoanHistoryByDealIds(dealIds);
+        const historyIds = historyRecords.map((h) => h.id);
 
-        if (hErr) throw hErr;
-
-        const historyRecords = historyData || [];
-        const historyIds = historyRecords.map(h => h.id);
-
-        // 4. Fetch lender sub-rows
         let lenderMap = new Map<string, LenderSubRow[]>();
         if (historyIds.length > 0) {
-          const { data: lenderData } = await supabase
-            .from('loan_history_lenders')
-            .select('*')
-            .in('loan_history_id', historyIds);
+          const lenderData = await listLoanHistoryLenders(historyIds);
 
           (lenderData || []).forEach(lr => {
             const existing = lenderMap.get(lr.loan_history_id) || [];

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { generateDealNumber, insertDeal } from '@/services/deals/deals.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { logDealCreated } from '@/hooks/useActivityLog';
 import { Loader2 } from 'lucide-react';
@@ -12,12 +12,6 @@ export const CreateDealPage: React.FC = () => {
   const { user } = useAuth();
   const startedRef = useRef(false);
 
-  const generateDealNumber = async (): Promise<string> => {
-    const { data, error } = await supabase.rpc('generate_deal_number');
-    if (error) throw error;
-    return data;
-  };
-
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
@@ -26,20 +20,14 @@ export const CreateDealPage: React.FC = () => {
       try {
         const dealNumber = await generateDealNumber();
 
-        const { data, error } = await supabase
-          .from('deals')
-          .insert({
-            deal_number: dealNumber,
-            state: 'TBD',
-            product_type: 'TBD',
-            mode: 'doc_prep',
-            status: 'draft',
-            created_by: user?.id,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
+        const data = await insertDeal({
+          deal_number: dealNumber,
+          state: 'TBD',
+          product_type: 'TBD',
+          mode: 'doc_prep',
+          status: 'draft',
+          created_by: user?.id,
+        });
 
         await logDealCreated(data.id, {
           dealNumber,

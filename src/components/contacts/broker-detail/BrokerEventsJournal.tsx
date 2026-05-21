@@ -11,7 +11,7 @@ import { GridToolbar, FilterOption } from '@/components/deal/GridToolbar';
 import { GridExportDialog, ExportColumn } from '@/components/deal/GridExportDialog';
 import { SortableTableHead } from '@/components/deal/SortableTableHead';
 import { useGridSortFilter } from '@/hooks/useGridSortFilter';
-import { supabase } from '@/integrations/supabase/client';
+import { getContactContactData } from '@/services/contacts/contacts.service';
 import { format } from 'date-fns';
 import type { ContactEventJournalEntry, ContactFieldChange } from '@/hooks/useContactEventJournal';
 
@@ -69,9 +69,9 @@ const BrokerEventsJournal: React.FC<{ brokerId: string; contactDbId: string }> =
   useEffect(() => {
     if (!contactDbId) { setIsLoading(false); return; }
     (async () => {
-      const { data } = await supabase.from('contacts').select('contact_data').eq('id', contactDbId).single();
-      if (data?.contact_data && (data.contact_data as any)._events_journal) {
-        const journal = (data.contact_data as any)._events_journal as ContactEventJournalEntry[];
+      const contactData = await getContactContactData(contactDbId);
+      if (contactData._events_journal) {
+        const journal = contactData._events_journal as ContactEventJournalEntry[];
         setEntries(journal.slice().reverse());
       }
       setIsLoading(false);
@@ -92,9 +92,9 @@ const BrokerEventsJournal: React.FC<{ brokerId: string; contactDbId: string }> =
   }
 
   const handleRefresh = async () => {
-    const { data } = await supabase.from('contacts').select('contact_data').eq('id', contactDbId).single();
-    if (data?.contact_data && (data.contact_data as any)._events_journal) {
-      setEntries(((data.contact_data as any)._events_journal as ContactEventJournalEntry[]).slice().reverse());
+    const contactData = await getContactContactData(contactDbId);
+    if (contactData._events_journal) {
+      setEntries((contactData._events_journal as ContactEventJournalEntry[]).slice().reverse());
     } else {
       setEntries([]);
     }

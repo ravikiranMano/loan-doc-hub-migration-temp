@@ -18,7 +18,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui/phone-input';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  searchContactsForParticipant,
+  getContactContactData,
+  patchContactData,
+  createContact,
+} from '@/services/contacts/contacts.service';
+import {
+  findParticipantByDealContactRole,
+  findParticipantByDealEmailRole,
+  insertParticipant,
+} from '@/services/deals/participants.service';
+import {
+  fetchSectionValueByDealAndSection,
+  updateSectionValueById,
+  insertSectionValues,
+} from '@/services/deals/section-values.service';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -119,23 +134,9 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
       setSearching(true);
       try {
         const q = searchQuery.trim();
-        let query = supabase
-          .from('contacts')
-          .select('id, contact_id, full_name, email, phone, contact_type');
-        
-        // For 'other' or extended types (vendor / additional_guarantor / authorized_party),
-        // search across all contacts; otherwise filter by matching contact_type.
-        if (NATIVE_ROLES.has(participantType) && participantType !== 'other') {
-          query = query.eq('contact_type', participantType);
-        }
-        
-        const { data, error } = await query
-          .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,contact_id.ilike.%${q}%`)
-          .limit(10);
-
-        if (error) throw error;
+        const data = await searchContactsForParticipant(participantType, q, 10);
         setSearchResults(
-          (data || []).map((c: any) => ({
+          (data || []).map((c: Record<string, string>) => ({
             id: c.id,
             contact_id: c.contact_id || '',
             full_name: c.full_name || '',
@@ -188,29 +189,18 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
         phone = selectedContact.phone;
 
         // Update contact_data with capacity/role for existing contact
-        const { data: existingContact } = await supabase
-          .from('contacts')
-          .select('contact_data')
-          .eq('id', selectedContact.id)
-          .maybeSingle();
-
-        const existingData = (existingContact?.contact_data || {}) as Record<string, string>;
-        const mergedData: Record<string, string> = {
-          ...existingData,
-          'full_name': name,
-          'email': email,
-          'capacity': resolvedCapacity,
-        };
-        if (phone) mergedData['phone.home'] = phone;
-        if (name) {
-          mergedData['first_name'] = name.split(' ')[0] || '';
-          mergedData['last_name'] = name.split(' ').slice(1).join(' ') || '';
-        }
-
-        await supabase
-          .from('contacts')
-          .update({ contact_data: mergedData })
-          .eq('id', selectedContact.id);
+        await patchContactData(selectedContact.id, {
+          full_name: name,
+          email,
+          capacity: resolvedCapacity,
+          ...(phone ? { 'phone.home': phone } : {}),
+          ...(name
+            ? {
+                first_name: name.split(' ')[0] || '',
+                last_name: name.split(' ').slice(1).join(' ') || '',
+              }
+            : {}),
+        });
       } else if (mode === 'new') {
         name = newName.trim();
         email = newEmail.trim();
@@ -227,52 +217,30 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
         const contactType = VALID_CONTACT_TYPES.has(participantType)
           ? participantType
           : 'borrower';
-        const { data: genId } = await supabase.rpc('generate_contact_id', {
-          p_type: contactType,
-        });
-
-        const firstName = name.split(' ')[0] || '';
-        const lastName = name.split(' ').slice(1).join(' ') || '';
-
-        // Build contact_data so detail forms see the fields
         const contactDataPayload: Record<string, string> = {
-          'full_name': name,
-          'first_name': firstName,
-          'last_name': lastName,
+          full_name: name,
+          first_name: name.split(' ')[0] || '',
+          last_name: name.split(' ').slice(1).join(' ') || '',
+          capacity: resolvedCapacity,
         };
-        if (email) contactDataPayload['email'] = email;
+        if (email) contactDataPayload.email = email;
         if (phone) contactDataPayload['phone.home'] = phone;
-        contactDataPayload['capacity'] = resolvedCapacity;
 
-        const { data: newContact, error: contactError } = await supabase
-          .from('contacts')
-          .insert({
-            contact_type: contactType,
-            contact_id: genId || `${contactType.charAt(0).toUpperCase()}-${Date.now()}`,
-            full_name: name,
-            first_name: firstName,
-            last_name: lastName,
-            email,
-            phone,
-            created_by: user?.id || '',
-            contact_data: contactDataPayload,
-          })
-          .select('id')
-          .single();
-
-        if (contactError) throw contactError;
+        const newContact = await createContact({
+          contactType: contactType as 'borrower',
+          createdBy: user?.id || '',
+          contactData: contactDataPayload,
+        });
         contactId = newContact.id;
       }
 
       // Check if participant already exists for this deal (by contact_id + type, or email + type)
       if (contactId) {
-        const { data: existing } = await supabase
-          .from('deal_participants')
-          .select('id')
-          .eq('deal_id', dealId)
-          .eq('contact_id', contactId)
-          .eq('role', persistedRole)
-          .maybeSingle();
+        const existing = await findParticipantByDealContactRole(
+          dealId,
+          contactId,
+          persistedRole
+        );
 
         if (existing) {
           toast.error('This participant already exists in this file');
@@ -280,13 +248,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
           return;
         }
       } else if (email) {
-        const { data: existing } = await supabase
-          .from('deal_participants')
-          .select('id')
-          .eq('deal_id', dealId)
-          .eq('email', email)
-          .eq('role', persistedRole)
-          .maybeSingle();
+        const existing = await findParticipantByDealEmailRole(dealId, email, persistedRole);
 
         if (existing) {
           toast.error('This participant already exists in this file');
@@ -296,41 +258,30 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
       }
 
       // Insert deal participant
-      const { error: insertError } = await supabase
-        .from('deal_participants')
-        .insert({
-          deal_id: dealId,
-          role: persistedRole,
-          name,
-          email: email || null,
-          phone: phone || null,
-          contact_id: contactId,
-          status: 'invited',
-          access_method: 'login',
-        });
-
-      if (insertError) throw insertError;
+      await insertParticipant({
+        deal_id: dealId,
+        role: persistedRole,
+        name,
+        email: email || null,
+        phone: phone || null,
+        contact_id: contactId,
+        status: 'invited',
+        access_method: 'login',
+      });
 
       // Persist capacity per-deal in deal_section_values (section='participants')
       if (contactId && resolvedCapacity) {
         const capacityKey = `participant_${contactId}_capacity`;
-        const { data: existingSection } = await supabase
-          .from('deal_section_values')
-          .select('id, field_values')
-          .eq('deal_id', dealId)
-          .eq('section', 'participants')
-          .maybeSingle();
-
-        const existingValues = (existingSection?.field_values as Record<string, any>) || {};
+        const existingSection = await fetchSectionValueByDealAndSection(dealId, 'participants');
+        const existingValues = (existingSection?.field_values as Record<string, unknown>) || {};
         const updatedValues = { ...existingValues, [capacityKey]: resolvedCapacity };
 
-        if (existingSection) {
-          await supabase.from('deal_section_values')
-            .update({ field_values: updatedValues })
-            .eq('id', existingSection.id);
+        if (existingSection?.id) {
+          await updateSectionValueById(existingSection.id, { field_values: updatedValues });
         } else {
-          await supabase.from('deal_section_values')
-            .insert({ deal_id: dealId, section: 'participants' as any, field_values: updatedValues });
+          await insertSectionValues([
+            { deal_id: dealId, section: 'participants', field_values: updatedValues },
+          ]);
         }
       }
 

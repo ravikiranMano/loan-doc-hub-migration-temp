@@ -1,6 +1,11 @@
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import {
+  listEventJournal,
+  listEventJournalPaginated,
+  insertEventJournalWithIp,
+} from '@/services/system/event-journal.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 
 export interface FieldChange {
   fieldLabel: string;
@@ -45,18 +50,16 @@ export function useEventJournalLogger() {
 
     const ipAddress = await getClientIp();
 
-    const { error } = await supabase
-      .from('event_journal' as any)
-      .insert({
+    try {
+      await insertEventJournalWithIp({
         deal_id: dealId,
         section,
         details: changes,
         actor_user_id: actorUserId,
-        event_number: 0, // Will be overridden by trigger
+        event_number: 0,
         ip_address: ipAddress,
-      } as any);
-
-    if (error) {
+      });
+    } catch (error) {
       console.error('Failed to log event journal entry:', error);
     }
   }, []);
@@ -71,24 +74,13 @@ export function useEventJournalEntries(dealId: string | null) {
     queryFn: async () => {
       if (!dealId) return [];
 
-      const { data: entries, error } = await supabase
-        .from('event_journal' as any)
-        .select('*')
-        .eq('deal_id', dealId)
-        .order('event_number', { ascending: false });
+      const entries = await listEventJournal(dealId);
 
-      if (error) throw error;
-
-      // Fetch actor names from profiles
       const actorIds = [...new Set((entries || []).map((e: any) => e.actor_user_id))];
       let profileMap: Record<string, string> = {};
 
       if (actorIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, email')
-          .in('user_id', actorIds);
-
+        const profiles = await fetchProfilesByUserIds(actorIds);
         (profiles || []).forEach((p: any) => {
           profileMap[p.user_id] = p.full_name || p.email || 'Unknown';
         });
@@ -125,29 +117,13 @@ export function usePaginatedEventJournalEntries(
     queryFn: async (): Promise<PaginatedEventJournalResult> => {
       if (!dealId) return { entries: [], totalCount: 0 };
 
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
+      const { entries, count } = await listEventJournalPaginated(dealId, page, pageSize);
 
-      // Fetch paginated entries with count
-      const { data: entries, error, count } = await supabase
-        .from('event_journal' as any)
-        .select('*', { count: 'exact' })
-        .eq('deal_id', dealId)
-        .order('event_number', { ascending: false })
-        .range(from, to);
-
-      if (error) throw error;
-
-      // Fetch actor names from profiles
       const actorIds = [...new Set((entries || []).map((e: any) => e.actor_user_id))];
       let profileMap: Record<string, string> = {};
 
       if (actorIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, email')
-          .in('user_id', actorIds);
-
+        const profiles = await fetchProfilesByUserIds(actorIds);
         (profiles || []).forEach((p: any) => {
           profileMap[p.user_id] = p.full_name || p.email || 'Unknown';
         });

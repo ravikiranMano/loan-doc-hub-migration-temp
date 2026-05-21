@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { listProfiles, updateProfileById } from '@/services/admin/profiles.service';
+import { listRolesForUserIds } from '@/services/admin/users.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -90,36 +91,19 @@ export const UsersPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // Build query
-      let query = supabase
-        .from('profiles')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-
-      // Apply type filter
-      if (typeFilter !== 'all') {
-        query = query.eq('user_type', typeFilter);
-      }
-
-      // Apply pagination
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
+      const { data, count } = await listProfiles({
+        userType: typeFilter !== 'all' ? typeFilter : undefined,
+        page,
+        pageSize: PAGE_SIZE,
+        orderBy: { column: 'created_at', ascending: false },
+      });
 
       setProfiles(data || []);
       setTotalCount(count || 0);
 
-      // Fetch roles for these users
       if (data && data.length > 0) {
         const userIds = data.map(p => p.user_id);
-        const { data: rolesData } = await supabase
-          .from('user_roles')
-          .select('user_id, role')
-          .in('user_id', userIds);
+        const rolesData = await listRolesForUserIds(userIds);
 
         const rolesMap: Record<string, string> = {};
         (rolesData || []).forEach((r: UserRole) => {
@@ -156,18 +140,13 @@ export const UsersPage: React.FC = () => {
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          full_name: editForm.full_name || null,
-          phone: editForm.phone || null,
-          company: editForm.company || null,
-          license_number: editForm.license_number || null,
-          user_type: editForm.user_type,
-        })
-        .eq('id', editingProfile.id);
-
-      if (error) throw error;
+      await updateProfileById(editingProfile.id, {
+        full_name: editForm.full_name || null,
+        phone: editForm.phone || null,
+        company: editForm.company || null,
+        license_number: editForm.license_number || null,
+        user_type: editForm.user_type,
+      });
 
       toast({
         title: 'Saved',

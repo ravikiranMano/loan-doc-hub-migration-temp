@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, Loader2, Plus } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { searchContactsByType, createContact } from '@/services/contacts/contacts.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
@@ -42,20 +42,7 @@ export const BorrowerIdSearch: React.FC<BorrowerIdSearchProps> = ({
   const searchBorrowers = useCallback(async (searchTerm: string) => {
     setIsLoading(true);
     try {
-      let qb = supabase
-        .from('contacts')
-        .select('contact_id, full_name, contact_data')
-        .eq('contact_type', 'borrower');
-
-      if (searchTerm && searchTerm.length >= 1) {
-        qb = qb.or(`contact_id.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error } = await qb
-        .order('contact_id', { ascending: true })
-        .limit(50);
-
-      if (error) throw error;
+      const data = await searchContactsByType('borrower', searchTerm, 50);
       const mapped = (data || []).map((row: any) => ({
         contact_id: row.contact_id,
         full_name: row.full_name || '',
@@ -96,32 +83,17 @@ export const BorrowerIdSearch: React.FC<BorrowerIdSearchProps> = ({
     if (!user) return;
     try {
       const fullName = data.full_name || `${data.first_name || ''} ${data.last_name || ''}`.trim();
-
-      const { data: idData, error: idError } = await supabase.rpc('generate_contact_id', { p_type: 'borrower' });
-      if (idError) throw idError;
-
-      const contactId = idData as string;
-      const insertPayload = {
-        contact_type: 'borrower' as const,
-        contact_id: contactId,
-        created_by: user.id,
-        full_name: fullName,
-        first_name: data.first_name || '',
-        last_name: data.last_name || '',
-        email: data.email || '',
-        phone: data.phone || data['phone.cell'] || data['phone.home'] || data['phone.work'] || '',
-        city: data['primary_address.city'] || data.city || '',
-        state: data['primary_address.state'] || data.state || '',
-        company: data.company || '',
-        contact_data: data,
-      };
-
-      const { error } = await supabase.from('contacts').insert(insertPayload);
-      if (error) throw error;
+      await createContact({
+        contactType: 'borrower',
+        createdBy: user.id,
+        contactData: data,
+      });
 
       toast.success('Borrower created');
       setCreateModalOpen(false);
 
+      const rows = await searchContactsByType('borrower', fullName, 1);
+      const contactId = rows[0]?.contact_id || '';
       setQuery(contactId);
       onChange(contactId, fullName, data);
     } catch (err: any) {

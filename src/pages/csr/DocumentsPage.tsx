@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { listDealsByStatuses } from '@/services/deals/deals.service';
+import {
+  listGeneratedDocumentsByDealIds,
+  downloadGeneratedDoc,
+} from '@/services/documents/generation.service';
+import { fetchTemplatesByIds } from '@/services/documents/templates.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -78,13 +83,10 @@ export const DocumentsPage: React.FC = () => {
       setLoading(true);
 
       // Fetch deals with ready or generated status
-      const { data: dealsData, error: dealsError } = await supabase
-        .from('deals')
-        .select('id, deal_number, borrower_name, status, created_at')
-        .in('status', ['ready', 'generated'])
-        .order('created_at', { ascending: false });
-
-      if (dealsError) throw dealsError;
+      const dealsData = await listDealsByStatuses(
+        ['ready', 'generated'],
+        'id, deal_number, borrower_name, status, created_at'
+      );
 
       if (!dealsData || dealsData.length === 0) {
         setDeals([]);
@@ -93,24 +95,14 @@ export const DocumentsPage: React.FC = () => {
 
       // Fetch documents for these deals
       const dealIds = dealsData.map(d => d.id);
-      const { data: docsData, error: docsError } = await supabase
-        .from('generated_documents')
-        .select('*')
-        .in('deal_id', dealIds)
-        .eq('generation_status', 'success')
-        .order('created_at', { ascending: false });
-
-      if (docsError) throw docsError;
+      const docsData = await listGeneratedDocumentsByDealIds(dealIds);
 
       // Build template lookup for docs without denormalized names
       const templateIds = [...new Set((docsData || []).filter(d => !d.template_name).map(d => d.template_id))];
       if (templateIds.length > 0) {
-        const { data: templatesData } = await supabase
-          .from('templates')
-          .select('id, name')
-          .in('id', templateIds);
-        if (templatesData) {
-          const lookup = new Map(templatesData.map(t => [t.id, t.name]));
+        const templatesData = await fetchTemplatesByIds(templateIds, 'id, name');
+        if (templatesData.length) {
+          const lookup = new Map(templatesData.map((t) => [t.id, t.name]));
           setTemplateLookup(lookup);
         }
       }
@@ -154,11 +146,7 @@ export const DocumentsPage: React.FC = () => {
     try {
       setDownloadingId(document.id);
       
-      const { data, error } = await supabase.storage
-        .from('generated-docs')
-        .download(path);
-
-      if (error) throw error;
+      const data = await downloadGeneratedDoc(path);
 
       // Create download link
       const url = URL.createObjectURL(data);

@@ -5,10 +5,14 @@ import { Search, Download, Settings2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table';
 import SortableTableHead from '@/components/deal/SortableTableHead';
 import { type SortDirection } from '@/hooks/useGridSortFilter';
+import { listParticipantsByContactAndRole } from '@/services/deals/participants.service';
+import { fetchSectionValuesBySection } from '@/services/deals/section-values.service';
+import { listDealsByIds } from '@/services/deals/deals.service';
+import { listLoanHistoryByDealIds } from '@/services/deals/loan-history.service';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabase } from '@/integrations/supabase/client';
+
 
 interface HistoryRow {
   id: string;
@@ -98,20 +102,12 @@ const BrokerHistory: React.FC<Props> = ({ brokerId, contactDbId }) => {
       setIsLoading(true);
       try {
         // 1. Find deal_participants for this broker
-        const { data: participants } = await supabase
-          .from('deal_participants')
-          .select('deal_id')
-          .eq('contact_id', contactDbId || '')
-          .eq('role', 'broker');
+        let allParticipants = contactDbId
+          ? await listParticipantsByContactAndRole(contactDbId, 'broker', 'deal_id')
+          : [];
 
-        let allParticipants = participants || [];
-
-        // Fallback: search deal_section_values broker section for broker_id match
         if (allParticipants.length === 0 && brokerId) {
-          const { data: brokerSections } = await supabase
-            .from('deal_section_values')
-            .select('deal_id, field_values')
-            .eq('section', 'broker');
+          const brokerSections = await fetchSectionValuesBySection('broker');
 
           const matchedDealIds: string[] = [];
           (brokerSections || []).forEach(bs => {
@@ -146,10 +142,10 @@ const BrokerHistory: React.FC<Props> = ({ brokerId, contactDbId }) => {
         const dealIds = [...new Set(allParticipants.map(p => p.deal_id))];
 
         // 2. Fetch deals
-        const { data: deals } = await supabase
-          .from('deals')
-          .select('id, deal_number, borrower_name, property_address, status')
-          .in('id', dealIds);
+        const deals = await listDealsByIds(
+          dealIds,
+          'id, deal_number, borrower_name, property_address, status'
+        );
 
         if (!deals || deals.length === 0) {
           setRows([]);
@@ -160,11 +156,11 @@ const BrokerHistory: React.FC<Props> = ({ brokerId, contactDbId }) => {
         const dealsMap = new Map(deals.map(d => [d.id, d]));
 
         // 3. Fetch loan_history for these deals
-        const { data: historyRecords } = await supabase
-          .from('loan_history')
-          .select('*')
-          .in('deal_id', dealIds)
-          .order('date_received', { ascending: false });
+        const historyRecords = await listLoanHistoryByDealIds(
+          dealIds,
+          'date_received',
+          false
+        );
 
         if (!historyRecords || historyRecords.length === 0) {
           setRows([]);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { searchContactsByTypes } from '@/services/contacts/contacts.service';
 import { cn } from '@/lib/utils';
 
 interface AccountResult {
@@ -39,20 +39,7 @@ export const AccountIdSearch: React.FC<AccountIdSearchProps> = ({
   const searchAccounts = useCallback(async (searchTerm: string) => {
     setIsLoading(true);
     try {
-      let qb = supabase
-        .from('contacts')
-        .select('contact_id, full_name, contact_type')
-        .in('contact_type', contactTypes);
-
-      if (searchTerm && searchTerm.length >= 1) {
-        qb = qb.or(`contact_id.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error } = await qb
-        .order('contact_id', { ascending: true })
-        .limit(50);
-
-      if (error) throw error;
+      const data = await searchContactsByTypes(contactTypes, searchTerm, 50);
       setResults(
         (data || []).map((row: any) => ({
           contact_id: row.contact_id,

@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  type User,
+  type Session,
+  type AuthChangeEvent,
+  getSession,
+  refreshSession,
+  onAuthStateChange,
+  signInWithPassword,
+  signUp,
+  signOut,
+} from '@/services/supabase/auth';
+import { fetchUserRole } from '@/services/admin/users.service';
 
 export type AppRole = 'admin' | 'csr' | 'borrower' | 'broker' | 'lender' | 'other' | null;
 
@@ -40,19 +50,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isExternalUser = role !== null && EXTERNAL_ROLES.includes(role);
   const isInternalUser = role !== null && INTERNAL_ROLES.includes(role);
 
-  const fetchUserRole = useCallback(async (userId: string) => {
+  const loadUserRole = useCallback(async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) {
-        console.error('Error fetching role:', error);
-        return null;
-      }
-      return data?.role as AppRole;
+      const roleValue = await fetchUserRole(userId);
+      return (roleValue as AppRole) ?? null;
     } catch (error) {
       console.error('Error fetching role:', error);
       return null;
@@ -64,24 +65,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(nextSession?.user ?? null);
 
     if (nextSession?.user) {
-      const fetchedRole = await fetchUserRole(nextSession.user.id);
+      const fetchedRole = await loadUserRole(nextSession.user.id);
       setRole(fetchedRole);
     } else {
       setRole(null);
     }
-  }, [fetchUserRole]);
+  }, [loadUserRole]);
 
   const recoverSession = useCallback(async (): Promise<Session | null> => {
     if (recoveringSessionRef.current) return null;
     recoveringSessionRef.current = true;
 
     try {
-      const { data: current, error: currentError } = await supabase.auth.getSession();
+      const { data: current, error: currentError } = await getSession();
       if (!currentError && current.session?.user) {
         return current.session;
       }
 
-      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      const { data: refreshed, error: refreshError } = await refreshSession();
       if (!refreshError && refreshed.session?.user) {
         return refreshed.session;
       }
@@ -104,7 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = onAuthStateChange(
       (event: AuthChangeEvent, authSession) => {
         void (async () => {
           if (!isMounted) return;
@@ -169,26 +170,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [applySessionState, recoverSession]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await signInWithPassword(email, password);
     return { error: error as Error | null };
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
+    const { error } = await signUp(email, password, fullName);
     return { error: error as Error | null };
   };
 
@@ -198,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Clear all browser storage and cached data on logout
     sessionStorage.clear();
     localStorage.clear();
-    await supabase.auth.signOut();
+    await signOut();
     setRole(null);
   };
 
