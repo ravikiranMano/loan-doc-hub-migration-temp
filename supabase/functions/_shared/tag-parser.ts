@@ -3871,7 +3871,7 @@ export function replaceMergeTags(
 
     if (!originalHasRepeater && originalReferencesLender) {
       // Collect additional lenders (index 2..N) from published aliases.
-      type AddlLender = { index: number; displayName: string; contactName: string; isIndividual: boolean };
+      type AddlLender = { index: number; displayName: string; isIndividual: boolean };
       const addl: AddlLender[] = [];
       for (let n = 2; n <= 50; n++) {
         const existsRow =
@@ -3884,15 +3884,11 @@ export function replaceMergeTags(
           (fieldValues.get(`lender_${n}_displayName`)?.rawValue
             ?? fieldValues.get(`additionalLenders${n - 1}.displayName`)?.rawValue
             ?? "").toString();
-        const contactName =
-          (fieldValues.get(`lender_${n}_contactName`)?.rawValue
-            ?? fieldValues.get(`additionalLenders${n - 1}.contactName`)?.rawValue
-            ?? "").toString();
         const isIndividual =
           (fieldValues.get(`lender_${n}_isIndividual`)?.rawValue
             ?? fieldValues.get(`additionalLenders${n - 1}.isIndividual`)?.rawValue
             ?? "false").toString().toLowerCase() === "true";
-        addl.push({ index: n, displayName, contactName, isIndividual });
+        addl.push({ index: n, displayName, isIndividual });
       }
 
       if (addl.length > 0 && result.indexOf("</w:body>") !== -1) {
@@ -3949,32 +3945,22 @@ export function replaceMergeTags(
         let blocksXml = "";
         for (const l of addl) {
           const nameLabel = l.isIndividual ? "Name" : "Entity Name";
-          const resolvedName = (l.displayName && l.displayName.trim())
-            || (l.contactName && l.contactName.trim())
-            || "(Name not provided)";
+          const displayName = l.displayName || "";
           blocksXml += [
             hrPara,
             emptyPara,
             textPara(`ADDITIONAL LENDER ${l.index}:`, pPrSpaced, rPrBold),
             emptyPara,
-            textPara(`${nameLabel}: ${resolvedName}`),
+            textPara(`${nameLabel}: ${displayName}`),
             emptyPara,
             textPara(`Signature: ___________________________     Date: _______________`),
             emptyPara,
-            textPara(`Print Name: ${resolvedName}`),
+            textPara(`Print Name: ${displayName}`),
             emptyPara,
           ].join("");
         }
 
-        // In DOCX OOXML, <w:sectPr> must remain the final child inside
-        // <w:body>. Paragraphs inserted after it can be ignored by Word, so
-        // append the lender blocks immediately before the section properties.
-        const sectPrStart = result.lastIndexOf("<w:sectPr");
-        if (sectPrStart !== -1) {
-          result = result.slice(0, sectPrStart) + blocksXml + result.slice(sectPrStart);
-        } else {
-          result = result.replace("</w:body>", blocksXml + "</w:body>");
-        }
+        result = result.replace("</w:body>", blocksXml + "</w:body>");
         console.log(
           `[MultiLender] Appended ${addl.length} additional lender signature block(s) (font=${fontFamily}, sz=${fontSize})`,
         );
