@@ -364,6 +364,8 @@ async function processTemplate(
       const idx = docXml.indexOf(needle);
       if (idx !== -1) tagSnippets.push(docXml.substring(Math.max(0, idx - 1200), idx + 1600));
     }
+    const curlyTags = [...new Set([...docXml.matchAll(/\{\{[\s\S]{0,120}?\}\}/g)].map((x) => x[0]))].slice(0, 80);
+    const chevronTags = [...new Set([...docXml.matchAll(/«[^»]{0,120}»/g)].map((x) => x[0]))].slice(0, 80);
     return {
       templateId,
       name: tpl.name,
@@ -375,6 +377,8 @@ async function processTemplate(
       candidateCells,
       investorSnippets,
       tagSnippets,
+      curlyTags,
+      chevronTags,
     };
   }
 
