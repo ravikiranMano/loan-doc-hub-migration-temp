@@ -1,0 +1,29 @@
+# Compiled output
+/dist
+
+# Dependencies
+/node_modules
+
+# Generated Prisma client (rebuild with npm run db:generate)
+/src/generated
+
+# Environment files — copy from .env.example
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test coverage
+/coverage
