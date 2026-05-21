@@ -93,8 +93,8 @@ function replaceLiteral(xml: string, find: string, replace: string): { xml: stri
 
 // Strip all visible text from a chunk of XML (used to test cell contents).
 function visibleText(xml: string): string {
-  return (xml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
-    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+  return (xml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
+    .map((t) => t.replace(/<w:t(?:\s[^>]*)?>/, "").replace(/<\/w:t>/, ""))
     .join("");
 }
 
@@ -333,8 +333,8 @@ async function processTemplate(
     let cellXml = "";
     const candidateCells: Array<{ text: string; xml: string }> = [];
     while ((m = tcRe.exec(docXml)) !== null) {
-      const t = (m[0].match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
-        .map((s) => s.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+      const t = (m[0].match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
+        .map((s) => s.replace(/<w:t(?:\s[^>]*)?>/, "").replace(/<\/w:t>/, ""))
         .join("");
       if (t.toUpperCase().includes("INVESTOR")) {
         candidateCells.push({ text: t, xml: m[0].substring(0, 3000) });
