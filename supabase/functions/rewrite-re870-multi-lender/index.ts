@@ -284,9 +284,10 @@ function rewriteDocumentXml(
   out = stripped.xml;
   notes.push(`v1 wrapper paragraphs removed: ${stripped.removed}`);
 
-  // Remove any prior v2/v3 markers before re-injecting (force re-run safety).
+  // Remove any prior v2/v3/v4 markers before re-injecting (force re-run safety).
   out = out.split(V2_MARKER).join("");
   out = out.split(V3_MARKER).join("");
+  out = out.split(V4_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
