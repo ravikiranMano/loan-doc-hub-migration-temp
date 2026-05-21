@@ -1,23 +1,27 @@
 // One-shot admin function: rewrites the RE870 Investor Questionnaire
-// template(s) so the Investor portion is wrapped in a {{#each lenders}}
-// block and each name/type/entity field uses the multi-lender Handlebars
-// helpers published by generate-document.
+// template(s) so ONLY the INVESTOR NAME cell loops over every lender,
+// while the rest of the form remains a single instance bound to the
+// primary lender.
 //
-// Transforms (applied to word/document.xml of every targeted template):
-//   1. {{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}
-//        →  {{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}
-//      (covers INVESTOR NAME + NAME OF PERSON COMPLETING THIS QUESTIONNAIRE)
-//   2. NAME OF ENTITY: {{ld_p_vesting}}
-//        →  NAME OF ENTITY: {{#if isIndividual}}-{{else}}{{vesting}}{{/if}}
-//   3. {{ld_p_lenderType}}  →  {{type}}
-//   4. Insert {{#each lenders}} marker paragraph BEFORE the paragraph
-//      containing "INVESTOR NAME:".
-//   5. Insert a page-break paragraph + {{/each}} marker paragraph BEFORE
-//      the "BROKER ACKNOWLEDGEMENT" paragraph (broker block stays OUTSIDE
-//      the loop and renders once).
+// v2 transforms (applied to word/document.xml of every targeted template):
+//   1. UNDO v1: remove the standalone {{#each lenders}} marker paragraph
+//      and the matching close block ({{#unless @last}}…page break…
+//      {{/unless}}{{/each}}) that v1 injected to wrap the entire form.
+//   2. Ensure the legacy combined-name tag is rewritten to the
+//      isIndividual conditional (covers both INVESTOR NAME and NAME OF
+//      PERSON COMPLETING THIS QUESTIONNAIRE occurrences).
+//   3. Ensure NAME OF ENTITY uses the isIndividual conditional.
+//   4. Ensure {{ld_p_lenderType}} → {{type}} (resolves per-iteration).
+//   5. In the <w:tc> table cell that contains "INVESTOR NAME", split the
+//      label and the conditional into separate paragraphs (if not already
+//      split) and wrap ONLY the conditional paragraph in marker
+//      paragraphs: {{#each lenders}} … {{/each}}. Each lender then
+//      renders as its own paragraph (stacked lines) inside that single
+//      cell.
 //
-// Idempotent: detects already-rewritten templates (presence of
-// "{{#each lenders}}") and skips.
+// Idempotent: detects the v2 marker comment <!-- re870-rewrite:v2 -->
+// near <w:body> and skips. Pass { force: true } in the request body to
+// bypass the skip (required to migrate v1-wrapped templates).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -29,168 +33,249 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// The 3 known RE870 template rows (looked up via DB).
+// The 3 known RE870 template rows.
 const TEMPLATE_IDS = [
   "d25cc037-2657-4ae4-b6d3-65cd858d07f6", // "Investor Questionnaire"
   "c1bbc2ff-e2f4-433a-9e69-c4cf08217c61", // "re870"
   "9edf8c77-4f7f-47c7-945c-79b365462f12", // "test"
 ];
 
+const V2_MARKER = "<!-- re870-rewrite:v2 -->";
+
+// Marker paragraphs for the INVESTOR NAME inner loop.
 const EACH_OPEN_PARA =
   `<w:p><w:r><w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>`;
-// Page break is emitted between iterations only — wrapped in an
-// {{#unless @last}}…{{/unless}} block evaluated per-iteration by tag-parser.
-const EACH_CLOSE_BLOCK =
-  `<w:p><w:r><w:t xml:space="preserve">{{#unless @last}}</w:t></w:r></w:p>` +
-  `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` +
-  `<w:p><w:r><w:t xml:space="preserve">{{/unless}}</w:t></w:r></w:p>` +
+const EACH_CLOSE_PARA =
   `<w:p><w:r><w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
 
-/**
- * Walk top-level children of <w:body> (<w:p>, <w:tbl>, <w:sectPr>) and
- * return their absolute offsets in the source XML.
- */
-function walkBodyChildren(
-  xml: string,
-): { kind: "p" | "tbl" | "sect"; start: number; end: number }[] {
-  const bodyOpen = xml.indexOf("<w:body>");
-  if (bodyOpen === -1) return [];
-  const bodyStart = bodyOpen + "<w:body>".length;
-  const bodyEnd = xml.lastIndexOf("</w:body>");
-  if (bodyEnd === -1 || bodyEnd <= bodyStart) return [];
-  const body = xml.substring(bodyStart, bodyEnd);
-  const out: { kind: "p" | "tbl" | "sect"; start: number; end: number }[] = [];
-  let i = 0;
-  while (i < body.length) {
-    if (
-      body.startsWith("<w:p", i) &&
-      (body[i + 4] === ">" || body[i + 4] === " " || body[i + 4] === "/")
-    ) {
-      if (body[i + 4] === "/" || body.startsWith("<w:p/>", i)) {
-        const e = body.indexOf(">", i) + 1;
-        out.push({ kind: "p", start: bodyStart + i, end: bodyStart + e });
-        i = e;
-        continue;
-      }
-      const e = body.indexOf("</w:p>", i);
-      if (e === -1) break;
-      const end = e + "</w:p>".length;
-      out.push({ kind: "p", start: bodyStart + i, end: bodyStart + end });
-      i = end;
-    } else if (
-      body.startsWith("<w:tbl", i) &&
-      (body[i + 6] === ">" || body[i + 6] === " ")
-    ) {
-      const e = body.indexOf("</w:tbl>", i);
-      if (e === -1) break;
-      const end = e + "</w:tbl>".length;
-      out.push({ kind: "tbl", start: bodyStart + i, end: bodyStart + end });
-      i = end;
-    } else if (body.startsWith("<w:sectPr", i)) {
-      const e = body.indexOf("</w:sectPr>", i);
-      if (e === -1) break;
-      const end = e + "</w:sectPr>".length;
-      out.push({ kind: "sect", start: bodyStart + i, end: bodyStart + end });
-      i = end;
-    } else {
-      i++;
-    }
-  }
-  return out;
+// ────────────────────────────────────────────────────────────────────────────
+// Pass A — undo v1 full-form wrapper paragraphs
+// ────────────────────────────────────────────────────────────────────────────
+function stripV1Wrappers(xml: string): { xml: string; removed: number } {
+  let removed = 0;
+  let out = xml;
+
+  // Match any standalone <w:p> whose only visible text is exactly
+  // "{{#each lenders}}", "{{/each}}", "{{#unless @last}}", or
+  // "{{/unless}}". Also match the page-break paragraph that v1 emitted
+  // between iterations: a <w:p> containing only <w:br w:type="page"/>.
+  const standaloneTagP =
+    /<w:p\b[^>]*>(?:(?!<\/w:p>).)*?<w:t[^>]*>\s*\{\{\s*(?:#each\s+lenders|\/each|#unless\s+@last|\/unless)\s*\}\}\s*<\/w:t>(?:(?!<\/w:p>).)*?<\/w:p>/gs;
+  out = out.replace(standaloneTagP, () => {
+    removed++;
+    return "";
+  });
+
+  const pageBreakP =
+    /<w:p\b[^>]*>\s*<w:r\b[^>]*>\s*<w:br\s+w:type="page"\s*\/>\s*<\/w:r>\s*<\/w:p>/g;
+  out = out.replace(pageBreakP, () => {
+    removed++;
+    return "";
+  });
+
+  return { xml: out, removed };
 }
 
-function extractText(xml: string): string {
+// ────────────────────────────────────────────────────────────────────────────
+// Helpers — search/replace literal patterns
+// ────────────────────────────────────────────────────────────────────────────
+function replaceLiteral(xml: string, find: string, replace: string): { xml: string; hits: number } {
+  let hits = 0;
+  let out = xml;
+  while (out.includes(find)) {
+    out = out.replace(find, replace);
+    hits++;
+    if (hits > 20) break;
+  }
+  return { xml: out, hits };
+}
+
+// Strip all visible text from a chunk of XML (used to test cell contents).
+function visibleText(xml: string): string {
   return (xml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
     .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-    .join(" ");
+    .join("");
 }
 
-function rewriteDocumentXml(xml: string): { xml: string; changed: boolean; notes: string[] } {
+// ────────────────────────────────────────────────────────────────────────────
+// Pass B — wrap the INVESTOR NAME cell's conditional paragraph in
+//          {{#each lenders}} … {{/each}}
+//
+// The template stores the three legacy field tags as fragmented runs:
+//   {{ld + _p_firstIfEntityUse + }}{{ + ld_p_middle + }}{{ + ld_p_last + }}
+// so a literal find/replace cannot match. Instead we rewrite the whole
+// paragraph: split it into a label paragraph ("INVESTOR NAME:") and a
+// conditional paragraph that contains a single run holding the
+// isIndividual if/else block. The conditional paragraph is then wrapped
+// in {{#each lenders}} / {{/each}} marker paragraphs so each lender
+// renders as its own line inside the cell.
+// ────────────────────────────────────────────────────────────────────────────
+function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
+  // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text,
+  // excluding the "CO-INVESTOR NAME" cell which appears earlier in the form.
+  const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+  let m: RegExpExecArray | null;
+  let targetStart = -1;
+  let targetEnd = -1;
+  while ((m = tcRe.exec(xml)) !== null) {
+    const tc = m[0];
+    const text = visibleText(tc).toUpperCase().replace(/\s+/g, " ");
+    if (text.includes("INVESTOR NAME") && !text.includes("CO-INVESTOR NAME")) {
+      targetStart = m.index;
+      targetEnd = m.index + tc.length;
+      break;
+    }
+  }
+
+  if (targetStart === -1) {
+    return { xml, note: "WARN: INVESTOR NAME <w:tc> not found" };
+  }
+
+  const cellXml = xml.substring(targetStart, targetEnd);
+
+  // Already wrapped (idempotency within the cell)
+  if (cellXml.includes("{{#each lenders}}")) {
+    return { xml, note: "INVESTOR NAME cell already wraps {{#each lenders}}" };
+  }
+
+  // Split the cell into its top-level paragraphs.
+  const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
+  const parts: string[] = [];
+  let lastIdx = 0;
+  let pm: RegExpExecArray | null;
+  while ((pm = paraRe.exec(cellXml)) !== null) {
+    parts.push(cellXml.substring(lastIdx, pm.index));
+    parts.push(pm[0]);
+    lastIdx = pm.index + pm[0].length;
+  }
+  parts.push(cellXml.substring(lastIdx));
+
+  // Find the paragraph that contains either of the legacy tag fragments
+  // OR an already-substituted `{{#if isIndividual}}` block. The template
+  // stores tags fragmented across runs (e.g. "{{ld" + "_p_firstIfEntityUse"
+  // + "}}…"), so we look for the unfragmented substring "firstIfEntityUse"
+  // which is guaranteed to be inside a single <w:t> element.
+  const isTagPara = (p: string) =>
+    p.startsWith("<w:p") &&
+    (p.includes("firstIfEntityUse") ||
+      p.includes("ld_p_middle") ||
+      p.includes("ld_p_last") ||
+      p.includes("{{#if isIndividual}}"));
+
+
+  const condIdx = parts.findIndex(isTagPara);
+  if (condIdx === -1) {
+    return {
+      xml,
+      note: "WARN: INVESTOR NAME cell found but no tag paragraph located",
+    };
+  }
+
+  const origPara = parts[condIdx];
+
+  // Extract the paragraph's <w:pPr> (formatting) so the rebuilt paragraphs
+  // keep indentation/styling.
+  const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+  const pPr = pPrMatch ? pPrMatch[0] : "";
+
+  // Extract the first run's <w:rPr> so the label/conditional runs keep
+  // the same font/size.
+  const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+  const rPr = rPrMatch
+    ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0]
+    : "";
+
+  // Build:
+  //   <w:p>{pPr}<w:r>{rPr}<w:t>INVESTOR NAME:</w:t></w:r></w:p>
+  //   EACH_OPEN_PARA
+  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#if isIndividual}}…{{else}}{{vesting}}{{/if}}</w:t></w:r></w:p>
+  //   EACH_CLOSE_PARA
+  const labelPara =
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>`;
+  const conditional =
+    "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+  const condPara =
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>`;
+
+  parts[condIdx] = labelPara + EACH_OPEN_PARA + condPara + EACH_CLOSE_PARA;
+
+  const newCellXml = parts.join("");
+  const newXml =
+    xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd);
+
+  return {
+    xml: newXml,
+    note:
+      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}…{{/each}} around conditional",
+  };
+}
+
+
+// ────────────────────────────────────────────────────────────────────────────
+// Top-level rewrite
+// ────────────────────────────────────────────────────────────────────────────
+function rewriteDocumentXml(
+  xml: string,
+  force: boolean,
+): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (xml.includes("{{#each lenders}}")) {
-    return { xml, changed: false, notes: ["already-rewritten (skipped)"] };
+  if (!force && xml.includes(V2_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v2 (skipped)"] };
   }
 
   let out = xml;
 
-  // 1. Combined name tags → isIndividual conditional (legacy literal form).
-  const nameTagLiteral =
-    "{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}";
-  const nameReplacement =
-    "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
-  let nameHits = 0;
-  while (out.includes(nameTagLiteral)) {
-    out = out.replace(nameTagLiteral, nameReplacement);
-    nameHits++;
-    if (nameHits > 10) break;
-  }
-  notes.push(`name-tag replacements: ${nameHits}`);
+  // (a) Undo v1 full-form wrapper paragraphs (idempotent — removes 0 if
+  //     never wrapped).
+  const stripped = stripV1Wrappers(out);
+  out = stripped.xml;
+  notes.push(`v1 wrapper paragraphs removed: ${stripped.removed}`);
 
-  // 2. NAME OF ENTITY vesting → conditional (legacy literal form).
-  const vestingLiteral = "{{ld_p_vesting}}";
-  const vestingReplacement =
-    "{{#if isIndividual}}-{{else}}{{vesting}}{{/if}}";
-  let vestingHits = 0;
-  while (out.includes(vestingLiteral)) {
-    out = out.replace(vestingLiteral, vestingReplacement);
-    vestingHits++;
-    if (vestingHits > 10) break;
-  }
-  notes.push(`vesting-tag replacements: ${vestingHits}`);
+  // Remove any prior v2 marker before re-injecting (force re-run safety).
+  out = out.split(V2_MARKER).join("");
 
-  // 3. Lender type → {{type}} (resolves per-iteration inside {{#each}}).
-  const typeLiteral = "{{ld_p_lenderType}}";
-  let typeHits = 0;
-  while (out.includes(typeLiteral)) {
-    out = out.replace(typeLiteral, "{{type}}");
-    typeHits++;
-    if (typeHits > 10) break;
-  }
-  notes.push(`type-tag replacements: ${typeHits}`);
-
-  // 4. Wrap the entire per-lender RE870 form in {{#each lenders}} …
-  //    {{/each}}. Insertion is anchored to top-level <w:body> children
-  //    so the markers are always between paragraphs/tables — never
-  //    inside a run, cell, or paragraph. The loop spans every body
-  //    child from index 0 (RE870 header) up to (but not including) the
-  //    body child whose visible text contains BROKER ACKNOWLEDGEMENT;
-  //    that signature table therefore stays outside the loop and is
-  //    rendered exactly once at the bottom of the output.
-  const children = walkBodyChildren(out);
-  if (children.length === 0) {
-    notes.push("WARN: could not parse <w:body> children — wrapper NOT inserted");
-    return { xml: out, changed: true, notes };
-  }
-  const brokerIdx = children.findIndex(
-    (c) =>
-      c.kind === "tbl" &&
-      extractText(out.substring(c.start, c.end))
-        .toUpperCase()
-        .includes("BROKER ACKNOWLEDGEMENT"),
+  // (b) Tag substitutions — legacy combined-name + entity + type.
+  const nameRepl = replaceLiteral(
+    out,
+    "{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}",
+    "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}",
   );
-  if (brokerIdx === -1 || brokerIdx === 0) {
-    notes.push("WARN: BROKER ACKNOWLEDGEMENT table not found — wrapper NOT inserted");
-    return { xml: out, changed: true, notes };
+  out = nameRepl.xml;
+  notes.push(`name-tag replacements: ${nameRepl.hits}`);
+
+  const vestRepl = replaceLiteral(
+    out,
+    "{{ld_p_vesting}}",
+    "{{#if isIndividual}}-{{else}}{{vesting}}{{/if}}",
+  );
+  out = vestRepl.xml;
+  notes.push(`vesting-tag replacements: ${vestRepl.hits}`);
+
+  const typeRepl = replaceLiteral(out, "{{ld_p_lenderType}}", "{{type}}");
+  out = typeRepl.xml;
+  notes.push(`type-tag replacements: ${typeRepl.hits}`);
+
+  // (c) Wrap the INVESTOR NAME cell's conditional paragraph.
+  const wrapped = wrapInvestorNameCell(out);
+  out = wrapped.xml;
+  notes.push(wrapped.note);
+
+  // (d) Inject the v2 marker so subsequent runs short-circuit (unless force).
+  const bodyIdx = out.indexOf("<w:body>");
+  if (bodyIdx !== -1) {
+    const insertAt = bodyIdx + "<w:body>".length;
+    out = out.substring(0, insertAt) + V2_MARKER + out.substring(insertAt);
   }
 
-  // End-side insertion first so the start-side offset stays valid.
-  const closeAt = children[brokerIdx].start;
-  out = out.substring(0, closeAt) + EACH_CLOSE_BLOCK + out.substring(closeAt);
-
-  const openAt = children[0].start;
-  out = out.substring(0, openAt) + EACH_OPEN_PARA + out.substring(openAt);
-
-  notes.push(
-    `wrapped body children 0..${brokerIdx - 1} (incl. RE870 header) in {{#each lenders}}; broker section kept outside`,
-  );
-
-  return { xml: out, changed: true, notes };
+  return { xml: out, changed: out !== xml, notes };
 }
 
 async function processTemplate(
   supabase: ReturnType<typeof createClient>,
   templateId: string,
+  force: boolean,
+  debug: boolean,
 ) {
   const { data: tpl, error: tErr } = await supabase
     .from("templates")
@@ -224,7 +309,31 @@ async function processTemplate(
     return { templateId, ok: false, error: "word/document.xml missing" };
   }
   const docXml = new TextDecoder().decode(docBytes);
-  const { xml: newXml, changed, notes } = rewriteDocumentXml(docXml);
+
+  if (debug) {
+    // Return raw XML around the INVESTOR NAME cell so we can inspect run/text fragmentation.
+    const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+    let m: RegExpExecArray | null;
+    let cellXml = "";
+    while ((m = tcRe.exec(docXml)) !== null) {
+      const t = (m[0].match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
+        .map((s) => s.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+        .join("");
+      if (t.toUpperCase().includes("INVESTOR NAME")) { cellXml = m[0]; break; }
+    }
+    return {
+      templateId,
+      name: tpl.name,
+      file_path: tpl.file_path,
+      ok: true,
+      debug: true,
+      cellLength: cellXml.length,
+      cellXml: cellXml.substring(0, 8000),
+    };
+  }
+
+  const { xml: newXml, changed, notes } = rewriteDocumentXml(docXml, force);
+
 
   if (!changed) {
     return {
@@ -284,18 +393,22 @@ serve(async (req) => {
     );
 
     let targetIds = TEMPLATE_IDS;
+    let force = false;
+    let debug = false;
     try {
       const body = await req.json();
       if (body && Array.isArray(body.templateIds) && body.templateIds.length) {
         targetIds = body.templateIds;
       }
+      if (body && body.force === true) force = true;
+      if (body && body.debug === true) debug = true;
     } catch (_) {
       // no body — use defaults
     }
 
     const results = [];
     for (const id of targetIds) {
-      results.push(await processTemplate(supabase, id));
+      results.push(await processTemplate(supabase, id, force, debug));
     }
 
     return new Response(
