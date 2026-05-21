@@ -554,8 +554,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V10_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v10 (skipped)"] };
+  if (!force && xml.includes(V11_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v11 (skipped)"] };
   }
 
   let out = xml;
@@ -566,7 +566,7 @@ function rewriteDocumentXml(
   out = stripped.xml;
   notes.push(`v1 wrapper paragraphs removed: ${stripped.removed}`);
 
-  // Remove any prior v2/v3/v4 markers before re-injecting (force re-run safety).
+  // Remove any prior v2..v11 markers before re-injecting (force re-run safety).
   out = out.split(V2_MARKER).join("");
   out = out.split(V3_MARKER).join("");
   out = out.split(V4_MARKER).join("");
@@ -576,6 +576,7 @@ function rewriteDocumentXml(
   out = out.split(V8_MARKER).join("");
   out = out.split(V9_MARKER).join("");
   out = out.split(V10_MARKER).join("");
+  out = out.split(V11_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
@@ -614,11 +615,18 @@ function rewriteDocumentXml(
   out = personFix.xml;
   notes.push(personFix.note);
 
-  // (f) Inject the v8 marker so subsequent runs short-circuit (unless force).
+  // (f) Canonicalize the Investor Questionnaire Due checkbox + date row.
+  const iqdue = normalizeInvestorQuestiDueRow(out);
+  out = iqdue.xml;
+  notes.push(
+    `investorQuestiDue rows rewritten: date=${iqdue.dateFixed}, conditional=${iqdue.condFixed}`,
+  );
+
+  // (g) Inject the v11 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V10_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V11_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
