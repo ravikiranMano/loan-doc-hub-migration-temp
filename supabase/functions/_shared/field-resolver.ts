@@ -201,6 +201,18 @@ function getLowerValidKeysIndex(validFieldKeys: Set<string>): Map<string, string
   return m;
 }
 
+/**
+ * Explicit per-tag overrides. Maps a merge-tag name directly to the
+ * field_dictionary field_key whose deal data should populate it, taking
+ * priority over every other resolution step. Used when a template tag must
+ * pull from a different storage slot than its own field_dictionary entry.
+ */
+const TAG_RESOLUTION_OVERRIDES: Record<string, string> = {
+  // {{br_t_city}} must render the Borrower's primary-address City
+  // (stored as field_key `br_p_borrowerCity`), not the 1098 City slot.
+  br_t_city: "br_p_borrowerCity",
+};
+
 export function resolveFieldKeyWithBackwardCompat(
   tagName: string,
   mergeTagMap: Record<string, string>,
@@ -210,7 +222,14 @@ export function resolveFieldKeyWithBackwardCompat(
 ): string {
   const cleanedTag = tagName.replace(/_+$/, "").trim();
   const lowerTag = cleanedTag.toLowerCase();
-  
+
+  // Priority 0: Explicit tag overrides (template-tag → storage-key remap)
+  const override = TAG_RESOLUTION_OVERRIDES[lowerTag];
+  if (override) {
+    debugLog(`[field-resolver] Resolved via override: ${tagName} -> ${override}`);
+    return override;
+  }
+
   // Priority 1: Direct match in current field keys
   if (validFieldKeys) {
     if (validFieldKeys.has(cleanedTag)) return cleanedTag;
