@@ -1138,6 +1138,14 @@ async function generateSingleDocument(
             setAlias("ld_p_displayName", displayName);
             setAlias("ld_p_investorName", displayName);
             setAlias("ld_p_entityName", isIndividual ? "" : vesting);
+            setAlias("ld_p_lenderType", type);
+            // Generic aliases for templates that reference the unscoped
+            // tag names. Resolution pipeline (direct → migrations →
+            // canonical → aliases → case-insensitive) is unchanged; we
+            // only add additional entries to the direct-match surface.
+            setAlias("investorName", displayName);
+            setAlias("lenderName", displayName);
+            setAlias("entityName", isIndividual ? "" : vesting);
             primaryHelpersSet = true;
           }
 
@@ -1147,6 +1155,17 @@ async function generateSingleDocument(
         setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
         setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
         debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+
+        // Issue 1 debug logging — verify all lender participants were loaded
+        // and the per-lender type/displayName/isPrimary computations look right.
+        console.log(`[MultiLender] Deal: Found ${orderedLenderParticipants.length} lender participant(s)`);
+        orderedLenderParticipants.forEach((lp: any, idx: number) => {
+          const n = idx + 1;
+          const t = (fieldValues.get(`lender_${n}_type`)?.rawValue ?? "").toString();
+          const dn = (fieldValues.get(`lender_${n}_displayName`)?.rawValue ?? "").toString();
+          const ii = (fieldValues.get(`lender_${n}_isIndividual`)?.rawValue ?? "").toString();
+          console.log(`[MultiLender] Lender ${n}: type="${t}", isIndividual=${ii}, displayName="${dn}", isPrimary=${n === 1}`);
+        });
       }
 
 
