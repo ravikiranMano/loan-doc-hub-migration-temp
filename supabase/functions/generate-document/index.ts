@@ -1157,6 +1157,12 @@ async function generateSingleDocument(
           // Primary-lender convenience aliases for templates that use the
           // bare ld_p_* surface without writing their own conditionals.
           if (isPrimary && !primaryHelpersSet) {
+            setAlias("type", type);
+            setAlias("vesting", vesting);
+            setAlias("firstName", firstName);
+            setAlias("middle", middle);
+            setAlias("last", last);
+            setAlias("isIndividual", isIndividual ? "true" : "false");
             setAlias("ld_p_isIndividual", isIndividual ? "true" : "false");
             setAlias("ld_p_displayName", displayName);
             setAlias("ld_p_investorName", displayName);
