@@ -3167,6 +3167,27 @@ async function generateSingleDocument(
     fieldValues.set("loan_terms.subordination_provision", { rawValue: subordinationTrue ? "true" : "false", dataType: "boolean" });
     debugLog(`[generate-document] Derived ln_p_subordinationProvision from "${subordinationRaw}" (rawType=${typeof subordinationRaw}): normalized=${subordinationTrue}`);
 
+    // RE851A "Additional Information Attached" Yes/No checkbox.
+    // The UI persists this under `origination_app.doc.additional_info_attached`
+    // as "true" only when checked — when unchecked the row is omitted entirely,
+    // leaving the conditional with no field value. Because of the
+    // entity-existence fallback in tag-parser (which checks prefix presence),
+    // an unchecked state can render ambiguously and leave neither glyph
+    // selected. Normalize to an explicit "true"/"false" so the Handlebars
+    // conditional always picks a deterministic branch:
+    //   true  → ☑ Yes / ☐ No
+    //   false → ☐ Yes / ☑ No
+    const addlInfoRaw = (
+      fieldValues.get("origination_app.doc.additional_info_attached")?.rawValue ??
+      ""
+    ).toString().trim().toLowerCase();
+    const addlInfoTrue = ["true", "yes", "y", "1", "checked", "on"].includes(addlInfoRaw);
+    fieldValues.set("origination_app.doc.additional_info_attached", {
+      rawValue: addlInfoTrue ? "true" : "false",
+      dataType: "boolean",
+    });
+    debugLog(`[generate-document] Normalized origination_app.doc.additional_info_attached from "${addlInfoRaw}" → ${addlInfoTrue}`);
+
     // Broker Capacity in Transaction (RE851A Part 2) → boolean checkbox keys
     // Derived from "Is Broker Also a Borrower?" UI checkbox. The UI persists this
     // under origination_app.doc.is_broker_also_borrower_yes (legacy alias
