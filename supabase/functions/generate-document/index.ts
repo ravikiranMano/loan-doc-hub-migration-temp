@@ -6998,7 +6998,12 @@ async function generateSingleDocument(
             while ((acm = apprCondRe.exec(xml)) !== null) {
               const fullStart = acm.index;
               const fullEnd = fullStart + acm[0].length;
-              if (isConsumed(fullStart, fullEnd)) continue;
+              {
+                const innerOnlyConsumed = consumed.some(
+                  ([s, e]) => s >= fullStart && e <= fullEnd && (e - s) < (fullEnd - fullStart),
+                );
+                if (!innerOnlyConsumed && isConsumed(fullStart, fullEnd)) continue;
+              }
               const payload = String(acm[1] || "").replace(/<[^>]+>/g, "").trim();
               const elsePayload = String(acm[2] || "").replace(/<[^>]+>/g, "").trim();
               // Safe-by-default: only rewrite when else branch is empty/missing,
