@@ -707,12 +707,18 @@ function rewriteDocumentXml(
     `investorQuestiDue rows rewritten: date=${iqdue.dateFixed}, conditional=${iqdue.condFixed}`,
   );
 
-  // (g) Inject the v11 marker so subsequent runs short-circuit (unless force).
+  // (g) Ensure the centered "INVESTOR" header row exists above the data row.
+  const headerRow = ensureInvestorHeaderRow(out);
+  out = headerRow.xml;
+  notes.push(headerRow.note);
+
+  // (h) Inject the v12 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V11_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V12_MARKER + out.substring(insertAt);
   }
+
 
   return { xml: out, changed: out !== xml, notes };
 }
