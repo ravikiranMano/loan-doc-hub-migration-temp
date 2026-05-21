@@ -1,60 +1,72 @@
+# Fix RE851D appraiser fields (NAME / ADDRESS) across all 5 properties
+
 ## Goal
-Fix two RE870 Investor Questionnaire rendering bugs so the checkbox + date row resolves to `☑ Initial: 05/21/2026 (Date Completed)` instead of leaking raw Handlebars text.
+Make all 5 NAME OF APPRAISER and all 5 ADDRESS OF APPRAISER lines render correctly in the generated RE851D, anchored to each property's `appraisal_performed_by` value:
 
-## Root cause
+- Performed By = "Broker" → NAME = `BPO Performed by Broker`, ADDRESS = `N/A`
+- Anything else → both blank
 
-Both bugs live in the same Word template (`word/document.xml` of the 3 RE870 templates). Word fragmented the date tag and the entire checkbox conditional across many `<w:r>` runs with interleaved `<w:proofErr>` markers:
+No other field, conditional, or template behavior changes.
 
-1. **Date tag** is authored as `{{ ld_p_investorQuestiDueDate}}` — with a literal space after `{{`. The space lives in the first run (`<w:t xml:space="preserve">{{ </w:t>`). Even after run consolidation, the produced token is `{{ ld_p_investorQuestiDueDate}}`. The renderer treats the literal space as part of the key and never resolves it, so the user sees the raw braces.
+## Root cause (confirmed against `RE851D-V12.1-16.docx`)
+All 10 conditional blocks DO contain `{{#if (eq pr_p_performeBy_N "Broker")}}…{{else}}{{/if}}` in the template, but they are fragmented across many `<w:r>` runs. The 5 ADDRESS blocks additionally have `N/A` split by a grammar-checker marker:
 
-2. **Checkbox conditional** is authored as:
-   ```text
-   {{#if ld_p_investorQuestiDue}}☒{{else}}☐{{/if}}
+```text
+…}}N</w:t></w:r><w:proofErr w:type="gramStart"/><w:r…><w:t>/A{{else}}{{/if}}…
+```
+
+Downstream of the existing brace-repair / orphan-strip passes, the broken shape can end up rendered as the literal text `#if (eq pr_p_performeBy_1 "Broker")N/A` in the final document — the symptom shown in the user's screenshot. The existing strict and tolerant rewriters in `generate-document/index.ts` (lines 6893 and 6952) don't fire because the payload `N/A` is never contiguous when they run.
+
+## Fix scope — single file, single narrow pass
+
+Edit only `supabase/functions/_shared/tag-parser.ts`. Inside `normalizeWordXml`, add one new paragraph-scoped pass `consolidateAppraiserConditional` that runs AFTER the existing proofErr stripper (line 389) and AFTER the fragment-suite run consolidation, and BEFORE the function returns. The pass is strictly scoped — it only touches paragraphs that contain both `pr_p_perform` (canonical or legacy `performeBy`/`performedBy`) AND `Broker`.
+
+### What the pass does
+
+For each qualifying paragraph:
+
+1. Build a tag-stripped text view of the paragraph with an offset map back to XML (same technique already used in `rewrite-re851d-template/index.ts::buildStrippedIndex`).
+2. In the stripped text, match one of two known shapes (case-insensitive, smart-quote tolerant):
+   - `{{#if (eq pr_p_perform(e|ed)By_(N|[1-5]) "Broker")}}BPO Performed by Broker{{else}}{{/if}}`
+   - `{{#if (eq pr_p_perform(e|ed)By_(N|[1-5]) "Broker")}}N/A{{else}}{{/if}}`
+   The match tolerates missing `{{`/`}}` on the opener/closer (so brace-repair side effects don't defeat it) and an optional `{{else}}` body, but requires the payload to be exactly one of the two literals — nothing else is rewritten.
+3. Map the stripped match span back to the original XML span (first opening run, last closing run).
+4. Replace that XML span with a single canonical run:
+   ```xml
+   <w:r><w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr><w:t xml:space="preserve">{{#if (eq pr_p_performeBy_N "Broker")}}PAYLOAD{{else}}{{/if}}</w:t></w:r>
    ```
-   but Word split `{{#if `, the field name, and `}}` into 3 runs, with `<w:proofErr>` between them; the glyphs and `{{else}}`/`{{/if}}` are in their own runs with a different font (MS Gothic). The existing `checkboxIfElsePattern` in `tag-parser.ts` should match this, but the small-font (`sz=4`) Calibri runs mixed with MS Gothic glyph runs are causing the fragmented `{{#if` / `}}` not to match the patterns reliably across all templates, so the conditional ships through to Handlebars un-consolidated and gets emitted verbatim.
+   `PAYLOAD` is the literal `BPO Performed by Broker` or `N/A` from the stripped match. Run properties are copied from the first matched run when available so font size / styling are preserved. Surrounding XML in the paragraph (label text "NAME OF APPRAISER" / "ADDRESS OF APPRAISER", paragraph properties, neighbouring runs) is untouched.
+5. Idempotent: if the paragraph already contains the canonical contiguous form, the regex matches but produces identical output, so re-runs are no-ops.
 
-The safest fix is to canonicalize this row at template-rewrite time (same approach used for the INVESTOR NAME cell), so generation no longer depends on run-fragmentation heuristics for these specific tags.
+Property-index resolution (`_N` → `_1`..`_5`) is NOT done here. The existing downstream pass in `generate-document/index.ts` (line 7012, `pr_p_performeBy_N` targeted safety rewrite) already handles that based on PROPERTY region detection — leaving `_N` here keeps the fix layered and avoids duplicating region-anchored logic in the shared normalizer.
 
-## Changes
+### Why this satisfies all three patterns the user described
 
-Single file: `supabase/functions/rewrite-re870-multi-lender/index.ts`
+- **PATTERN 1 (missing `{{#if (eq` prefix)**: The replacement run always emits the canonical opener, so any partially-stripped opener in the source is restored.
+- **PATTERN 2 (`N/A` split by `gramStart`)**: The tag-stripped text view collapses `}}N` + `<w:proofErr/>` + `/A` into contiguous `}}N/A`, so the regex matches and the entire span is replaced with one clean run.
+- **PATTERN 3 (`_N` → property number)**: Handled downstream by the existing `performByTagRe` pass anchored to PROPERTY regions; the canonical `pr_p_performeBy_N` literal emitted here is exactly what that pass expects.
 
-1. **Add `V11_MARKER`** (`<!-- re870-rewrite:v11 -->`) and update marker handling so v10 (and lower) is re-rewritten unconditionally on `force: true`, and v11 is the new skip marker.
+## Verification
 
-2. **New pass — `normalizeInvestorQuestiDueRow(xml)`** runs after the existing INVESTOR NAME / cell-geometry passes:
-   - **Date tag fix**: scan for any paragraph that contains both `ld_p_investorQuestiDueDate` and a literal `{{` followed by whitespace before it. Replace the entire fragmented tag (from the opening `{{`, across all runs/proofErr up to and including the matching `}}`) with a single clean run that emits exactly `{{ld_p_investorQuestiDueDate}}` (no internal space), preserving the surrounding run properties (sz=18 Calibri) and the trailing `(Date Completed)` text in its own run.
-   - **Checkbox conditional fix**: scan for any paragraph that contains `ld_p_investorQuestiDue` followed (within the same `<w:p>`) by `{{else}}` and `{{/if}}`. Replace the entire fragmented block (from the opening `{{#if` run through the `{{/if}}` run, including the interleaved Calibri sz=4 wrapper runs and MS Gothic glyph runs and `<w:proofErr>` markers) with three clean runs in a single `<w:p>`:
-     ```text
-     <w:r><w:rPr><w:rFonts ascii="MS Gothic" eastAsia="MS Gothic" hAnsi="MS Gothic" cs="MS Gothic"/><w:color w:val="000000"/></w:rPr>
-       <w:t xml:space="preserve">{{#if ld_p_investorQuestiDue}}☑{{else}}☐{{/if}}</w:t>
-     </w:r>
-     ```
-     i.e. a single contiguous text run holding the whole `{{#if … {{/if}}` expression so Handlebars sees it intact regardless of run-consolidation. Use ☑ (U+2611) for the true branch (per spec) instead of the template's existing ☒.
-   - Both passes are idempotent (no-op if the canonical single-run form is already present) and strictly scoped: they only touch paragraphs that mention `investorQuestiDue` / `investorQuestiDueDate`. No other markup is altered.
+1. Add a Deno unit test `supabase/functions/_shared/tag-parser.re851d-appraiser.test.ts` covering:
+   - Intact NAME block survives unchanged through normalize (idempotent).
+   - ADDRESS block with `<w:proofErr w:type="gramStart"/>` between `}}N` and `/A` becomes a single canonical run with payload `N/A`.
+   - Brace-stripped variant `#if (eq pr_p_performeBy_1 "Broker")N/A` becomes the canonical `{{#if (eq pr_p_performeBy_N "Broker")}}N/A{{else}}{{/if}}` run.
+   - Paragraphs without `pr_p_perform`+`Broker` are returned byte-identical (scope guard).
+2. After deploy, generate RE851D for a deal with 5 properties where property 1 has `appraisal_performed_by = "Broker"` and property 2 has it blank/`"Third Party"`. Expected:
+   - Property 1: NAME shows `BPO Performed by Broker`, ADDRESS shows `N/A`.
+   - Property 2: both fields blank.
+   - Properties 3–5: anchored to their own `appraisal_performed_by` values.
+3. Spot-check via `debug-fetch-doc` that no other paragraphs were modified (diff confined to the 10 appraiser blocks).
 
-3. **Pipeline ordering**: call the new pass inside the same per-template rewrite loop, after `stripV1Wrappers` and the existing INVESTOR NAME cell rewrites, and before re-zipping. Emit a log line with the number of paragraphs rewritten per template.
+## Files changed
 
-4. **Verification of field-resolver mapping** (no code change required — confirmed):
-   - `generate-document/index.ts` already publishes `ld_p_investorQuestiDue` as `"true"`/`"false"` from `lender_contact_data.investor_questionnaire_due` (line 1001) and `ld_p_investorQuestiDueDate` from `investor_questionnaire_due_date` (line 993). The Handlebars `{{#if ld_p_investorQuestiDue}}` correctly evaluates the truthy string `"true"` → ☑ and missing/false → ☐.
+- `supabase/functions/_shared/tag-parser.ts` — add `consolidateAppraiserConditional` paragraph pass inside `normalizeWordXml`, invoked once after the existing proofErr/run-consolidation suite.
+- `supabase/functions/_shared/tag-parser.re851d-appraiser.test.ts` — new test file (4 cases above).
 
-## Validation
+## Files NOT changed
 
-1. Deploy `rewrite-re870-multi-lender`.
-2. POST with `{ force: true }` to re-rewrite all 3 RE870 templates.
-3. `debug-fetch-doc` the rewritten template XML and confirm:
-   - Exactly one run carrying `{{ld_p_investorQuestiDueDate}}` (no internal space, no proofErr inside).
-   - Exactly one run carrying `{{#if ld_p_investorQuestiDue}}☑{{else}}☐{{/if}}`.
-   - The surrounding text `Initial:` / `(Date Completed)` remains intact in adjacent runs.
-4. Generate the document for lender L-00029 (LEN Shwan Micheal) on deal DL-2026-0257 with checkbox=true and date=05/21/2026; confirm output reads:
-   ```text
-   ☑ Initial: 05/21/2026 (Date Completed)
-   ```
-5. Generate for a lender with the checkbox unchecked and confirm:
-   ```text
-   ☐ Initial:  (Date Completed)
-   ```
-
-## Out of scope
-- No changes to `_shared/tag-parser.ts`, `field-resolver.ts`, or `generate-document/index.ts`.
-- No changes to the existing INVESTOR NAME loop or cell-geometry passes.
-- No schema or UI changes.
+- The RE851D template document itself.
+- `generate-document/index.ts` (existing `apprCondRe`, `apprTolRe`, and `performByTagRe` passes already handle the canonical form this pass guarantees).
+- `rewrite-re851d-template/index.ts` (separate one-shot template rewriter — not in the runtime path).
+- Any other field mapping, conditional, or template behavior.
