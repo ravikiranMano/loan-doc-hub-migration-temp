@@ -960,6 +960,11 @@ async function generateSingleDocument(
           const apMiddle = (lcd["authorized_party.middle_name"] ?? lcd.authorized_party?.middle_name ?? "").toString().trim();
           const apLast = (lcd["authorized_party.last_name"] ?? lcd.authorized_party?.last_name ?? "").toString().trim();
           const apCapacity = (lcd["authorized_party.capacity"] ?? lcd.authorized_party?.capacity ?? "").toString().trim();
+          const apStreet = (lcd["authorized_party.address.street"] ?? lcd.authorized_party?.address?.street ?? lcd.authorized_party?.street ?? "").toString().trim();
+          const apCity = (lcd["authorized_party.address.city"] ?? lcd.authorized_party?.address?.city ?? lcd.authorized_party?.city ?? "").toString().trim();
+          const apState = (lcd["authorized_party.address.state"] ?? lcd.authorized_party?.address?.state ?? lcd.authorized_party?.state ?? "").toString().trim();
+          const apZip = (lcd["authorized_party.address.zip"] ?? lcd.authorized_party?.address?.zip ?? lcd.authorized_party?.zip ?? "").toString().trim();
+          const apFullAddress = [apStreet, [apCity, apState, apZip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
           const authorizedSignerFullName = [apFirst, apMiddle, apLast].filter(Boolean).join(" ");
           if (authorizedSignerFullName) {
             forceSet("authorized_signer.full_name", authorizedSignerFullName);
@@ -974,8 +979,18 @@ async function generateSingleDocument(
             forceSet("ld_ap_authorizPartyCapaci", apCapacity);
             forceSet("lender.authorized_party.capacity", apCapacity);
           }
+          if (apFullAddress) {
+            // {{authorized_signer.primary_residence_address}} → Lender → Authorized Party → Address
+            forceSet("authorized_signer.primary_residence_address", apFullAddress);
+            forceSet("ld_ap_primaryResidenceAddress", apFullAddress);
+            forceSet("lender.authorized_party.address.full", apFullAddress);
+            if (apStreet) forceSet("lender.authorized_party.address.street", apStreet);
+            if (apCity) forceSet("lender.authorized_party.address.city", apCity);
+            if (apState) forceSet("lender.authorized_party.address.state", apState);
+            if (apZip) forceSet("lender.authorized_party.address.zip", apZip);
+          }
 
-          debugLog(`[generate-document] Injected lender contact fields from participant (contact ${lc.contact_id}), lenderName="${lFullName}", authorizedSigner="${authorizedSignerFullName}"`);
+          debugLog(`[generate-document] Injected lender contact fields from participant (contact ${lc.contact_id}), lenderName="${lFullName}", authorizedSigner="${authorizedSignerFullName}", authorizedSignerAddress="${apFullAddress}"`);
         }
       }
 
