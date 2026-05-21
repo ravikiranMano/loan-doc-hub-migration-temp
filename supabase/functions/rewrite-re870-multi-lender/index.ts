@@ -8,10 +8,10 @@
 //      and the matching close block ({{#unless @last}}…page break…
 //      {{/unless}}{{/each}}) that v1 injected to wrap the entire form.
 //   2. Ensure the legacy combined-name tag is rewritten to the
-//      isIndividual conditional (covers both INVESTOR NAME and NAME OF
-//      PERSON COMPLETING THIS QUESTIONNAIRE occurrences).
-//   3. Ensure NAME OF ENTITY uses the isIndividual conditional.
-//   4. Ensure {{ld_p_lenderType}} → {{type}} (resolves per-iteration).
+//      precomputed displayName value (covers INVESTOR NAME without nested
+//      conditionals that can corrupt Word XML after loop expansion).
+//   3. Ensure NAME OF ENTITY stays bound to the primary lender.
+//   4. Leave all non-INVESTOR NAME fields untouched.
 //   5. In the <w:tc> table cell that contains "INVESTOR NAME", split the
 //      label and the conditional into separate paragraphs (if not already
 //      split) and wrap ONLY the conditional paragraph in marker
@@ -44,6 +44,7 @@ const V2_MARKER = "<!-- re870-rewrite:v2 -->";
 const V3_MARKER = "<!-- re870-rewrite:v3 -->";
 const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
+const V6_MARKER = "<!-- re870-rewrite:v6 -->";
 
 // Marker paragraphs for the INVESTOR NAME inner loop.
 const EACH_OPEN_PARA =
@@ -170,8 +171,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const pPr = pPrMatch ? pPrMatch[0] : "";
     const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
-    const conditional =
-      "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
     // Two-paragraph layout:
     //   P1: "INVESTOR NAME:" label
     //   P2: single text run containing {{#each lenders}}<cond>{{/each}}
@@ -181,14 +181,14 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     // each lender its own visual line inside the same paragraph.
     parts[firstParaIdx] =
       `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}${conditional}{{/each}}</w:t></w:r></w:p>`;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
     for (let i = firstParaIdx + 1; i < parts.length; i++) {
       if (parts[i].startsWith("<w:p")) parts[i] = "";
     }
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}<br>-separated loop",
+      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}{{displayName}}{{/each}} loop",
     };
   }
 
