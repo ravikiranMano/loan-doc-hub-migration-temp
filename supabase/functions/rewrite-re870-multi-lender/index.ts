@@ -394,8 +394,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V7_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v7 (skipped)"] };
+  if (!force && xml.includes(V8_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v8 (skipped)"] };
   }
 
   let out = xml;
@@ -413,6 +413,7 @@ function rewriteDocumentXml(
   out = out.split(V5_MARKER).join("");
   out = out.split(V6_MARKER).join("");
   out = out.split(V7_MARKER).join("");
+  out = out.split(V8_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
@@ -451,11 +452,11 @@ function rewriteDocumentXml(
   out = personFix.xml;
   notes.push(personFix.note);
 
-  // (f) Inject the v7 marker so subsequent runs short-circuit (unless force).
+  // (f) Inject the v8 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V7_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V8_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
