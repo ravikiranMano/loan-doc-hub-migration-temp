@@ -47,6 +47,7 @@ const V8_MARKER = "<!-- re870-rewrite:v8 -->";
 const V9_MARKER = "<!-- re870-rewrite:v9 -->";
 const V10_MARKER = "<!-- re870-rewrite:v10 -->";
 const V11_MARKER = "<!-- re870-rewrite:v11 -->";
+const V12_MARKER = "<!-- re870-rewrite:v12 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass — canonicalize the Investor Questionnaire Due row.
