@@ -169,16 +169,20 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const pPr = pPrMatch ? pPrMatch[0] : "";
     const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+    const conditional =
+      "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
     parts[firstParaIdx] =
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{ld_p_allInvestorNames}}</w:t></w:r></w:p>`;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
     for (let i = firstParaIdx + 1; i < parts.length; i++) {
       if (parts[i].startsWith("<w:p")) parts[i] = "";
     }
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt with ld_p_allInvestorNames",
+      note: "INVESTOR NAME cell rebuilt: label paragraph + per-lender paragraph in {{#each lenders}} loop",
     };
   }
 
