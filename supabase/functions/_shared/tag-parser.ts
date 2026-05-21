@@ -2289,8 +2289,10 @@ export function processEachBlocks(
 
         for (const tag of innerCurlyTags) {
           const innerFieldName = tag[1].trim();
-          // Skip control tags
+          // Skip control tags AND iteration helpers (resolved separately below).
           if (innerFieldName.startsWith('#') || innerFieldName.startsWith('/') || innerFieldName === 'else') continue;
+          if (innerFieldName.startsWith('@')) continue;
+
 
           const qualifiedKey = `${entityPrefix}.${innerFieldName}`; // e.g., "property1.address"
           const transform = tag[2]?.trim() || null;
