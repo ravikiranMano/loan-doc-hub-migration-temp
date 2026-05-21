@@ -273,8 +273,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V5_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v4 (skipped)"] };
+  if (!force && xml.includes(V6_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v6 (skipped)"] };
   }
 
   let out = xml;
@@ -290,6 +290,7 @@ function rewriteDocumentXml(
   out = out.split(V3_MARKER).join("");
   out = out.split(V4_MARKER).join("");
   out = out.split(V5_MARKER).join("");
+  out = out.split(V6_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
@@ -327,11 +328,11 @@ function rewriteDocumentXml(
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v4 marker so subsequent runs short-circuit (unless force).
+  // (d) Inject the v6 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V5_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V6_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
