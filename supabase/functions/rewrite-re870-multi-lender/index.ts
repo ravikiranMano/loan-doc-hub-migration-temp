@@ -169,21 +169,35 @@ function normalizeInvestorParagraphPr(_pPr: string): string {
   return CANONICAL_INVESTOR_PPR;
 }
 
-function normalizeInvestorNameCellGeometry(cellXml: string, preferredWidth?: string): string {
-  let out = cellXml
-    // The broken live template has the INVESTOR NAME cell spanning into the
-    // adjacent centered INVESTOR column. Removing the span makes the value
-    // render from the true left cell instead of the visual center area.
-    .replace(/<w:gridSpan\b[^>]*\/>/g, "");
-  if (preferredWidth) {
-    out = out.replace(/<w:tcW\b[^>]*w:w="[^"]*"([^>]*)\/>/, (m) =>
-      /w:type=/.test(m)
-        ? m.replace(/w:w="[^"]*"/, `w:w="${preferredWidth}"`)
-        : `<w:tcW w:w="${preferredWidth}" w:type="dxa"/>`,
-    );
-  }
-  return out;
+// Canonical INVESTOR NAME cell geometry from the v1 template:
+//   width 5502 dxa, gridSpan=2, left border=nil, right border=single 12pt black.
+const CANONICAL_INVESTOR_TC_WIDTH = "5502";
+const CANONICAL_INVESTOR_TC_BORDERS =
+  '<w:tcBorders>' +
+  '<w:left w:val="nil"/>' +
+  '<w:right w:val="single" w:sz="12" w:space="0" w:color="000000"/>' +
+  '</w:tcBorders>';
+
+function normalizeInvestorNameCellGeometry(cellXml: string, _preferredWidth?: string): string {
+  // Force the canonical tcPr regardless of what the source cell currently has.
+  // Match the opening <w:tc ...> tag, then replace (or insert) the <w:tcPr> block.
+  const openMatch = cellXml.match(/^<w:tc\b[^>]*>/);
+  if (!openMatch) return cellXml;
+  const open = openMatch[0];
+  const rest = cellXml.substring(open.length);
+
+  const canonicalTcPr =
+    '<w:tcPr>' +
+    `<w:tcW w:w="${CANONICAL_INVESTOR_TC_WIDTH}" w:type="dxa"/>` +
+    '<w:gridSpan w:val="2"/>' +
+    CANONICAL_INVESTOR_TC_BORDERS +
+    '</w:tcPr>';
+
+  // Strip any existing <w:tcPr>…</w:tcPr> immediately following the open tag.
+  const stripped = rest.replace(/^<w:tcPr>[\s\S]*?<\/w:tcPr>/, "");
+  return open + canonicalTcPr + stripped;
 }
+
 
 function firstGridColumnWidthForCell(xml: string, cellStart: number): string | undefined {
   const tableStart = xml.lastIndexOf("<w:tbl", cellStart);
