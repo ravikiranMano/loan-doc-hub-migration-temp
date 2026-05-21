@@ -98,6 +98,11 @@ function visibleText(xml: string): string {
     .join("");
 }
 
+function isInvestorNameCellText(text: string): boolean {
+  const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
+  return /\bINVESTOR NAME\b/.test(normalized) && !/\bCO[-\s]?INVESTOR NAME\b/.test(normalized);
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Pass B — wrap the INVESTOR NAME cell's conditional paragraph in
 //          {{#each lenders}} … {{/each}}
@@ -120,8 +125,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   let targetEnd = -1;
   while ((m = tcRe.exec(xml)) !== null) {
     const tc = m[0];
-    const text = visibleText(tc).toUpperCase().replace(/\s+/g, " ");
-    if (text.includes("INVESTOR NAME") && !text.includes("CO-INVESTOR NAME")) {
+    if (isInvestorNameCellText(visibleText(tc))) {
       targetStart = m.index;
       targetEnd = m.index + tc.length;
       break;
