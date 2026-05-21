@@ -402,6 +402,86 @@ function cleanMisplacedInvestorLoop(xml: string, keepCellStart: number): { xml: 
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Pass — ensure the centered "INVESTOR" header row exists at the top of the
+// main investor table (tblGrid 3313/2189/2326/3173). Idempotent.
+// ────────────────────────────────────────────────────────────────────────────
+const INVESTOR_HEADER_ROW_XML =
+  '<w:tr>' +
+    '<w:trPr><w:trHeight w:val="230"/></w:trPr>' +
+    '<w:tc>' +
+      '<w:tcPr>' +
+        '<w:tcW w:w="3313" w:type="dxa"/>' +
+        '<w:tcBorders><w:left w:val="nil"/></w:tcBorders>' +
+        '<w:shd w:val="clear" w:color="auto" w:fill="A6A6A6"/>' +
+      '</w:tcPr>' +
+      '<w:p/>' +
+    '</w:tc>' +
+    '<w:tc>' +
+      '<w:tcPr>' +
+        '<w:tcW w:w="4515" w:type="dxa"/>' +
+        '<w:gridSpan w:val="2"/>' +
+      '</w:tcPr>' +
+      '<w:p>' +
+        '<w:pPr>' +
+          '<w:spacing w:line="210" w:lineRule="auto"/>' +
+          '<w:jc w:val="center"/>' +
+        '</w:pPr>' +
+        '<w:r>' +
+          '<w:rPr><w:b/><w:bCs/><w:color w:val="000000"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>' +
+          '<w:t>INVESTOR</w:t>' +
+        '</w:r>' +
+      '</w:p>' +
+    '</w:tc>' +
+    '<w:tc>' +
+      '<w:tcPr>' +
+        '<w:tcW w:w="3173" w:type="dxa"/>' +
+        '<w:tcBorders><w:right w:val="nil"/></w:tcBorders>' +
+        '<w:shd w:val="clear" w:color="auto" w:fill="A6A6A6"/>' +
+      '</w:tcPr>' +
+      '<w:p/>' +
+    '</w:tc>' +
+  '</w:tr>';
+
+function ensureInvestorHeaderRow(xml: string): { xml: string; note: string } {
+  // Locate every <w:tbl>…</w:tbl> and find the one whose tblGrid matches the
+  // canonical investor table column widths.
+  const tblRe = /<w:tbl\b[\s\S]*?<\/w:tbl>/g;
+  let m: RegExpExecArray | null;
+  while ((m = tblRe.exec(xml)) !== null) {
+    const tbl = m[0];
+    const gridMatch = tbl.match(/<w:tblGrid>([\s\S]*?)<\/w:tblGrid>/);
+    if (!gridMatch) continue;
+    const widths = Array.from(gridMatch[1].matchAll(/<w:gridCol\b[^>]*w:w="([0-9]+)"/g)).map((g) => g[1]);
+    if (widths.join(",") !== "3313,2189,2326,3173") continue;
+
+    // Position right after </w:tblGrid> inside the table.
+    const tblStart = m.index;
+    const gridEndRel = tbl.indexOf("</w:tblGrid>") + "</w:tblGrid>".length;
+    const insertAbs = tblStart + gridEndRel;
+
+    // Find the first <w:tr> in this table to inspect.
+    const firstTrRel = tbl.indexOf("<w:tr", gridEndRel);
+    if (firstTrRel === -1) return { xml, note: "investor table has no <w:tr>" };
+    const firstTrEndRel = tbl.indexOf("</w:tr>", firstTrRel);
+    if (firstTrEndRel === -1) return { xml, note: "investor table first <w:tr> unterminated" };
+    const firstTrXml = tbl.substring(firstTrRel, firstTrEndRel + "</w:tr>".length);
+    const firstTrText = visibleText(firstTrXml).toUpperCase().replace(/\s+/g, " ").trim();
+
+    // Idempotent: if the first row IS already the header (visible text == "INVESTOR"),
+    // do nothing.
+    if (firstTrText === "INVESTOR") {
+      return { xml, note: "INVESTOR header row already present" };
+    }
+
+    // Insert canonical header row right after </w:tblGrid>, before the first data row.
+    const out = xml.substring(0, insertAbs) + INVESTOR_HEADER_ROW_XML + xml.substring(insertAbs);
+    return { xml: out, note: "INVESTOR header row inserted" };
+  }
+  return { xml, note: "investor table (3313/2189/2326/3173) not found" };
+}
+
+
+// ────────────────────────────────────────────────────────────────────────────
 // Pass B — replace the INVESTOR NAME cell content with a safe displayName loop.
 // ────────────────────────────────────────────────────────────────────────────
 function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetStart: number } {
