@@ -637,9 +637,10 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V11_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v11 (skipped)"] };
+  if (!force && xml.includes(V12_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v12 (skipped)"] };
   }
+
 
   let out = xml;
 
