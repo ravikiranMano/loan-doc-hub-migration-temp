@@ -144,6 +144,7 @@ async function generateSingleDocument(
     const isTemplate851D = /851d/i.test(template.name || "");
     const isTemplate870 = /\b870\b|investor\s+questionnaire/i.test(template.name || "");
     const isTemplateFormalRequestInfo = /formal[_\s-]*request[_\s-]*for[_\s-]*information/i.test(template.name || "");
+    const isTemplateCertOfPurpose = /certification[_\s-]*of[_\s-]*purpose|purpose[_\s-]*occupancy[_\s-]*material[_\s-]*facts/i.test(template.name || "");
     // "Lien Mappings" template reuses the RE851D encumbrance pipeline
     // (bucketing + publishSection already runs for ALL templates; here we
     // also enable the indexed-tag rewrite, valid-key extension, addendum
@@ -1391,6 +1392,26 @@ async function generateSingleDocument(
     }
 
 
+    // Certification_of_Purpose_Occupancy_Material_Facts: route the
+    // "Authorized Signer" line ({{ld_p_authorized*}}) to the Additional
+    // Guarantor instead of the lender's authorized party. Runs after the
+    // global lender authorized-party publisher so AG wins. Safe fallback:
+    // if no AG is published, behavior is unchanged.
+    if (isTemplateCertOfPurpose) {
+      const agFirst  = String(fieldValues.get("ag_p_first")?.rawValue  ?? "").trim();
+      const agMiddle = String(fieldValues.get("ag_p_middle")?.rawValue ?? "").trim();
+      const agLast   = String(fieldValues.get("ag_p_last")?.rawValue   ?? "").trim();
+      const agFull   = String(fieldValues.get("ag_p_fullName")?.rawValue ?? "").trim();
+      if (agFirst || agLast || agFull) {
+        fieldValues.set("ld_p_authorizedFirst",  { rawValue: agFirst,  dataType: "text" });
+        fieldValues.set("ld_p_authorizedMiddle", { rawValue: agMiddle, dataType: "text" });
+        fieldValues.set("ld_p_authorizedLast",   { rawValue: agLast,   dataType: "text" });
+        // Future-proof: publish ag_p_firstName / ag_p_lastName aliases too.
+        fieldValues.set("ag_p_firstName", { rawValue: agFirst, dataType: "text" });
+        fieldValues.set("ag_p_lastName",  { rawValue: agLast,  dataType: "text" });
+        debugLog(`[generate-document] Cert_of_Purpose: ld_p_authorized* overridden with AG "${agFull}"`);
+      }
+    }
 
     debugLog(`[generate-document] Resolved ${fieldValues.size} field values for ${template.name}`);
     // Log a sample of field values for debugging
