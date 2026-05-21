@@ -95,7 +95,20 @@ function visibleText(xml: string): string {
 
 function isInvestorNameCellText(text: string): boolean {
   const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
-  return (normalized === "INVESTOR" || /\bINVESTOR NAME\b/.test(normalized)) && !/\bCO[-\s]?INVESTOR NAME\b/.test(normalized);
+  if (/\bCO[-\s]?INVESTOR\b/.test(normalized)) return false;
+  // Only the real INVESTOR NAME label cell — must contain "INVESTOR NAME"
+  // (with or without colon). Do NOT match the centered "INVESTOR" header cell.
+  return /\bINVESTOR NAME\b/.test(normalized);
+}
+
+function isInvestorHeaderOnlyCellText(text: string): boolean {
+  const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
+  return normalized === "INVESTOR";
+}
+
+function isNamePersonCompletingCellText(text: string): boolean {
+  const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
+  return /NAME OF PERSON COMPLETING/.test(normalized);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
