@@ -417,8 +417,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V9_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v8 (skipped)"] };
+  if (!force && xml.includes(V10_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v10 (skipped)"] };
   }
 
   let out = xml;
