@@ -428,7 +428,10 @@ export function validateContentXmlPart(partName: string, xml: string): void {
       const closeName = body.slice(1).trim().split(/\s+/)[0];
       const openName = stack.pop();
       if (openName !== closeName) {
-        throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (expected </${openName || "none"}> before </${closeName}> at offset ${tagMatch.index})`);
+        const off = tagMatch.index;
+        const ctx = trimmed.slice(Math.max(0, off - 500), Math.min(trimmed.length, off + 300));
+        console.error(`[docx-processor] DOCX_INTEGRITY well-formed failure in ${partName} at offset ${off} (stack top expected </${openName || "none"}>); ctx=…${ctx}…`);
+        throw new Error(`DOCX_INTEGRITY: ${partName} is not well-formed XML (expected </${openName || "none"}> before </${closeName}> at offset ${off})`);
       }
     } else if (!body.endsWith("/")) {
       stack.push(body.split(/\s+/)[0]);
