@@ -8,18 +8,15 @@
 //      and the matching close block ({{#unless @last}}…page break…
 //      {{/unless}}{{/each}}) that v1 injected to wrap the entire form.
 //   2. Ensure the legacy combined-name tag is rewritten to the
-//      isIndividual conditional (covers both INVESTOR NAME and NAME OF
-//      PERSON COMPLETING THIS QUESTIONNAIRE occurrences).
-//   3. Ensure NAME OF ENTITY uses the isIndividual conditional.
-//   4. Ensure {{ld_p_lenderType}} → {{type}} (resolves per-iteration).
+//      precomputed displayName value (covers INVESTOR NAME without nested
+//      conditionals that can corrupt Word XML after loop expansion).
+//   3. Ensure NAME OF ENTITY stays bound to the primary lender.
+//   4. Leave all non-INVESTOR NAME fields untouched.
 //   5. In the <w:tc> table cell that contains "INVESTOR NAME", split the
-//      label and the conditional into separate paragraphs (if not already
-//      split) and wrap ONLY the conditional paragraph in marker
-//      paragraphs: {{#each lenders}} … {{/each}}. Each lender then
-//      renders as its own paragraph (stacked lines) inside that single
-//      cell.
+//      label and the lender display-name loop into separate paragraphs. Each
+//      lender renders as its own line inside that single cell.
 //
-// Idempotent: detects the v2 marker comment <!-- re870-rewrite:v2 -->
+// Idempotent: detects the v6 marker comment <!-- re870-rewrite:v6 -->
 // near <w:body> and skips. Pass { force: true } in the request body to
 // bypass the skip (required to migrate v1-wrapped templates).
 
@@ -44,12 +41,7 @@ const V2_MARKER = "<!-- re870-rewrite:v2 -->";
 const V3_MARKER = "<!-- re870-rewrite:v3 -->";
 const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
-
-// Marker paragraphs for the INVESTOR NAME inner loop.
-const EACH_OPEN_PARA =
-  `<w:p><w:r><w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>`;
-const EACH_CLOSE_PARA =
-  `<w:p><w:r><w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
+const V6_MARKER = "<!-- re870-rewrite:v6 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -106,17 +98,16 @@ function isInvestorNameCellText(text: string): boolean {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Pass B — wrap the INVESTOR NAME cell's conditional paragraph in
-//          {{#each lenders}} … {{/each}}
+// Pass B — replace the INVESTOR NAME cell content with a safe displayName loop.
 //
 // The template stores the three legacy field tags as fragmented runs:
 //   {{ld + _p_firstIfEntityUse + }}{{ + ld_p_middle + }}{{ + ld_p_last + }}
 // so a literal find/replace cannot match. Instead we rewrite the whole
 // paragraph: split it into a label paragraph ("INVESTOR NAME:") and a
-// conditional paragraph that contains a single run holding the
-// isIndividual if/else block. The conditional paragraph is then wrapped
-// in {{#each lenders}} / {{/each}} marker paragraphs so each lender
-// renders as its own line inside the cell.
+// displayName paragraph that contains a single run holding
+// {{#each lenders}}{{displayName}}{{/each}}. Avoid nested conditionals here:
+// the RE870 failure mode was orphaned </w:t> tags caused by nested {{#if}}
+// blocks being evaluated after the loop expanded.
 // ────────────────────────────────────────────────────────────────────────────
 function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text,
@@ -170,8 +161,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const pPr = pPrMatch ? pPrMatch[0] : "";
     const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
-    const conditional =
-      "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
     // Two-paragraph layout:
     //   P1: "INVESTOR NAME:" label
     //   P2: single text run containing {{#each lenders}}<cond>{{/each}}
@@ -181,14 +171,14 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     // each lender its own visual line inside the same paragraph.
     parts[firstParaIdx] =
       `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}${conditional}{{/each}}</w:t></w:r></w:p>`;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
     for (let i = firstParaIdx + 1; i < parts.length; i++) {
       if (parts[i].startsWith("<w:p")) parts[i] = "";
     }
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}<br>-separated loop",
+      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}{{displayName}}{{/each}} loop",
     };
   }
 
@@ -216,12 +206,10 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const pPr = pPrMatch ? pPrMatch[0] : "";
     const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
-    const conditional = "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
     parts[firstParaIdx] =
       `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
-      EACH_OPEN_PARA +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
-      EACH_CLOSE_PARA;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
@@ -245,17 +233,14 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
 
   // Build:
   //   <w:p>{pPr}<w:r>{rPr}<w:t>INVESTOR NAME:</w:t></w:r></w:p>
-  //   EACH_OPEN_PARA
-  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#if isIndividual}}…{{else}}{{vesting}}{{/if}}</w:t></w:r></w:p>
-  //   EACH_CLOSE_PARA
+  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#each lenders}}{{displayName}}{{/each}}</w:t></w:r></w:p>
   const labelPara =
     `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>`;
-  const conditional =
-    "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+  const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
   const condPara =
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>`;
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
 
-  parts[condIdx] = labelPara + EACH_OPEN_PARA + condPara + EACH_CLOSE_PARA;
+  parts[condIdx] = labelPara + condPara;
 
   const newCellXml = parts.join("");
   const newXml =
@@ -264,7 +249,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   return {
     xml: newXml,
     note:
-      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}…{{/each}} around conditional",
+      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}{{displayName}}{{/each}} paragraph",
   };
 }
 
@@ -278,8 +263,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V5_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v4 (skipped)"] };
+  if (!force && xml.includes(V6_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v6 (skipped)"] };
   }
 
   let out = xml;
@@ -295,6 +280,7 @@ function rewriteDocumentXml(
   out = out.split(V3_MARKER).join("");
   out = out.split(V4_MARKER).join("");
   out = out.split(V5_MARKER).join("");
+  out = out.split(V6_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
@@ -332,11 +318,11 @@ function rewriteDocumentXml(
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v4 marker so subsequent runs short-circuit (unless force).
+  // (d) Inject the v6 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V5_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V6_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
