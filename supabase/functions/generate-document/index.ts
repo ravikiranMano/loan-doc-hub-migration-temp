@@ -7067,7 +7067,12 @@ async function generateSingleDocument(
             while ((tm = apprTolRe.exec(xml)) !== null) {
               const fullStart = tm.index;
               const fullEnd = fullStart + tm[0].length;
-              if (isConsumed(fullStart, fullEnd)) continue;
+              {
+                const innerOnlyConsumed = consumed.some(
+                  ([s, e]) => s >= fullStart && e <= fullEnd && (e - s) < (fullEnd - fullStart),
+                );
+                if (!innerOnlyConsumed && isConsumed(fullStart, fullEnd)) continue;
+              }
               const payload = String(tm[1] || "").trim();
               let kind: "name" | "addr" | null = null;
               if (/^BPO Performed by Broker$/i.test(payload)) kind = "name";
