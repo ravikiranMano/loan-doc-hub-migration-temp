@@ -111,7 +111,8 @@ function visibleText(xml: string): string {
 // renders as its own line inside the cell.
 // ────────────────────────────────────────────────────────────────────────────
 function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
-  // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text.
+  // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text,
+  // excluding the "CO-INVESTOR NAME" cell which appears earlier in the form.
   const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
   let m: RegExpExecArray | null;
   let targetStart = -1;
@@ -119,12 +120,13 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   while ((m = tcRe.exec(xml)) !== null) {
     const tc = m[0];
     const text = visibleText(tc).toUpperCase().replace(/\s+/g, " ");
-    if (text.includes("INVESTOR NAME")) {
+    if (text.includes("INVESTOR NAME") && !text.includes("CO-INVESTOR NAME")) {
       targetStart = m.index;
       targetEnd = m.index + tc.length;
       break;
     }
   }
+
   if (targetStart === -1) {
     return { xml, note: "WARN: INVESTOR NAME <w:tc> not found" };
   }
