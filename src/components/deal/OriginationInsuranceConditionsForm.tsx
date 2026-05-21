@@ -91,6 +91,7 @@ const FK = {
   // Policy - Other & Replacement Cost & Dollar amount
   policy_other: 'origination_ins.policy_other',
   policy_other_text: 'origination_ins.policy_other_text',
+  policy_other_amount: 'origination_ins.policy_other_amount',
   policy_replacement_cost: 'origination_ins.policy_replacement_cost',
   policy_dollar_amount: 'origination_ins.policy_dollar_amount',
 };
@@ -182,6 +183,7 @@ export const OriginationInsuranceConditionsForm: React.FC<OriginationInsuranceCo
                 <Label className="text-xs">Other</Label>
                 <Input value={v(FK.policy_other_text)} onChange={(e) => sv(FK.policy_other_text, e.target.value)}
                   disabled={disabled} className="h-6 text-xs flex-1" />
+                {renderCurrencyInline(FK.policy_other_amount, 'w-[100px]')}
               </div>
             </DirtyFieldWrapper>
             {renderCheckbox('Replacement Cost of Improvements, or', FK.coverage_replacement_cost)}
