@@ -163,12 +163,30 @@ function normalizeInvestorParagraphPr(pPr: string): string {
   return withoutCenter;
 }
 
-function normalizeInvestorNameCellGeometry(cellXml: string): string {
-  return cellXml
+function normalizeInvestorNameCellGeometry(cellXml: string, preferredWidth?: string): string {
+  let out = cellXml
     // The broken live template has the INVESTOR NAME cell spanning into the
     // adjacent centered INVESTOR column. Removing the span makes the value
     // render from the true left cell instead of the visual center area.
     .replace(/<w:gridSpan\b[^>]*\/>/g, "");
+  if (preferredWidth) {
+    out = out.replace(/<w:tcW\b[^>]*w:w="[^"]*"([^>]*)\/>/, (m) =>
+      /w:type=/.test(m)
+        ? m.replace(/w:w="[^"]*"/, `w:w="${preferredWidth}"`)
+        : `<w:tcW w:w="${preferredWidth}" w:type="dxa"/>`,
+    );
+  }
+  return out;
+}
+
+function firstGridColumnWidthForCell(xml: string, cellStart: number): string | undefined {
+  const tableStart = xml.lastIndexOf("<w:tbl", cellStart);
+  if (tableStart === -1) return undefined;
+  const tableEnd = xml.indexOf("</w:tbl>", cellStart);
+  if (tableEnd === -1) return undefined;
+  const tableHead = xml.substring(tableStart, Math.min(tableEnd, cellStart));
+  const gridMatch = tableHead.match(/<w:tblGrid>[\s\S]*?<w:gridCol\b[^>]*w:w="([0-9]+)"[^>]*\/>/);
+  return gridMatch?.[1];
 }
 
 // Remove paragraphs from a <w:tc> whose only visible text matches `predicate`.
