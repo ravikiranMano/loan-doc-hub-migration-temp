@@ -1,6 +1,25 @@
 import { supabase } from '@/services/supabase/client';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
-export async function listSystemSettings() {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface SystemSetting {
+  id: string;
+  setting_key: string;
+  setting_value: string | null;
+  setting_type: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── listSystemSettings ───────────────────────────────────────────────────────
+
+export async function listSystemSettings(): Promise<SystemSetting[]> {
+  if (isNodeApiEnabled('system')) {
+    return apiClient.get<SystemSetting[]>('/system/settings');
+  }
+  // — Supabase (keep until Node API is stable) —
   const { data, error } = await supabase
     .from('system_settings')
     .select('*')
@@ -9,7 +28,15 @@ export async function listSystemSettings() {
   return data || [];
 }
 
-export async function fetchSystemSettingsByKeys(keys: string[]) {
+// ─── fetchSystemSettingsByKeys ────────────────────────────────────────────────
+
+export async function fetchSystemSettingsByKeys(
+  keys: string[],
+): Promise<{ setting_key: string; setting_value: string | null }[]> {
+  if (isNodeApiEnabled('system')) {
+    return apiClient.get(`/system/settings?keys=${keys.join(',')}`);
+  }
+  // — Supabase —
   const { data, error } = await supabase
     .from('system_settings')
     .select('setting_key, setting_value')
@@ -18,20 +45,50 @@ export async function fetchSystemSettingsByKeys(keys: string[]) {
   return data || [];
 }
 
-export async function updateSystemSetting(id: string, value: string | null) {
+// ─── updateSystemSetting ──────────────────────────────────────────────────────
+// Accepts setting id (UUID) or setting_key — matches Supabase .eq('id', …).
+
+export async function updateSystemSetting(
+  idOrKey: string,
+  value: string | null,
+): Promise<void> {
+  if (isNodeApiEnabled('system')) {
+    await apiClient.patch(`/system/settings/${idOrKey}`, { setting_value: value });
+    return;
+  }
+  // — Supabase —
   const { error } = await supabase
     .from('system_settings')
     .update({ setting_value: value })
-    .eq('id', id);
+    .eq('id', idOrKey);
   if (error) throw error;
 }
 
-export async function insertSystemSetting(payload: Record<string, unknown>) {
+// ─── insertSystemSetting ──────────────────────────────────────────────────────
+
+export async function insertSystemSetting(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (isNodeApiEnabled('system')) {
+    await apiClient.post('/system/settings', payload);
+    return;
+  }
+  // — Supabase —
   const { error } = await supabase.from('system_settings').insert(payload);
   if (error) throw error;
 }
 
-export async function deleteSystemSetting(id: string) {
-  const { error } = await supabase.from('system_settings').delete().eq('id', id);
+// ─── deleteSystemSetting ──────────────────────────────────────────────────────
+
+export async function deleteSystemSetting(idOrKey: string): Promise<void> {
+  if (isNodeApiEnabled('system')) {
+    await apiClient.delete(`/system/settings/${idOrKey}`);
+    return;
+  }
+  // — Supabase —
+  const { error } = await supabase
+    .from('system_settings')
+    .delete()
+    .eq('id', idOrKey);
   if (error) throw error;
 }

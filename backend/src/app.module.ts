@@ -4,6 +4,11 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './modules/health/health.module';
+import { SystemModule } from './modules/system/system.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { DealsModule } from './modules/deals/deals.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import configuration from './config/configuration';
 import { appConfig } from './config/app.config';
@@ -19,6 +24,11 @@ import { databaseConfig } from './config/database.config';
     }),
     PrismaModule,
     HealthModule,
+    SystemModule,
+    AdminModule,
+    ContactsModule,
+    DocumentsModule,
+    DealsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

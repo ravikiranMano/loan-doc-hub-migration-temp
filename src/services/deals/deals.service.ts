@@ -1,15 +1,29 @@
 import { supabase } from '@/services/supabase/client';
-import { generateDealNumber } from '@/services/supabase/rpc';
+import { generateDealNumber as generateDealNumberSupabase } from '@/services/supabase/rpc';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
-export { generateDealNumber };
+export async function generateDealNumber(): Promise<string> {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<string>('/deals/generate-number');
+  }
+  return generateDealNumberSupabase();
+}
 
 export async function fetchDealById(id: string, columns = '*') {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown>(`/deals/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('deals').select(columns).eq('id', id).single();
   if (error) throw error;
   return data;
 }
 
 export async function fetchDealMaybeSingle(id: string, columns = '*') {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown>(`/deals/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('deals').select(columns).eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
@@ -20,6 +34,14 @@ export async function listDeals(options?: {
   pageSize?: number;
   orderBy?: { column: string; ascending?: boolean };
 }) {
+  if (isNodeApiEnabled('deals')) {
+    const qs = new URLSearchParams();
+    if (options?.page) qs.set('page', String(options.page));
+    if (options?.pageSize) qs.set('limit', String(options.pageSize));
+    const data = await apiClient.get<unknown[]>(`/deals?${qs}`);
+    return { data: data || [], count: (data || []).length };
+  }
+  // — Supabase (keep unchanged) —
   let query = supabase.from('deals').select('*', { count: 'exact' });
   if (options?.orderBy) {
     query = query.order(options.orderBy.column, {
@@ -36,22 +58,38 @@ export async function listDeals(options?: {
 }
 
 export async function insertDeal(payload: Record<string, unknown>) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.post<unknown>('/deals', payload);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('deals').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function updateDeal(id: string, updates: Record<string, unknown>) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.patch(`/deals/${id}`, updates);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('deals').update(updates).eq('id', id);
   if (error) throw error;
 }
 
 export async function deleteDeal(id: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.delete(`/deals/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('deals').delete().eq('id', id);
   if (error) throw error;
 }
 
 export async function countDeals() {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<number>('/deals/count');
+  }
+  // — Supabase (keep unchanged) —
   const { count, error } = await supabase
     .from('deals')
     .select('*', { count: 'exact', head: true });
@@ -60,12 +98,26 @@ export async function countDeals() {
 }
 
 export async function listDealsByIds(ids: string[], columns = '*') {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals?ids=${ids.join(',')}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('deals').select(columns).in('id', ids);
   if (error) throw error;
   return data || [];
 }
 
 export async function listDealsPage(page: number, pageSize: number) {
+  if (isNodeApiEnabled('deals')) {
+    const result = await apiClient.get<{ data: unknown[]; count: number } | unknown[]>(
+      `/deals?page=${page}&limit=${pageSize}`,
+    );
+    if (Array.isArray(result)) {
+      return { data: result, count: result.length };
+    }
+    return { data: result.data ?? [], count: result.count ?? 0 };
+  }
+  // — Supabase (keep unchanged) —
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
   const { data, error, count } = await supabase
@@ -78,6 +130,10 @@ export async function listDealsPage(page: number, pageSize: number) {
 }
 
 export async function listDealsByStatuses(statuses: string[], columns = '*') {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals?status=${statuses.join(',')}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deals')
     .select(columns)
@@ -88,6 +144,10 @@ export async function listDealsByStatuses(statuses: string[], columns = '*') {
 }
 
 export async function listDealsForDashboard() {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>('/deals/dashboard');
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deals')
     .select('id, deal_number, borrower_name, status, updated_at')
@@ -97,6 +157,12 @@ export async function listDealsForDashboard() {
 }
 
 export async function searchDealsBrief(search: string, limit = 50) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(
+      `/deals/search?q=${encodeURIComponent(search)}&limit=${limit}`
+    );
+  }
+  // — Supabase (keep unchanged) —
   let query = supabase
     .from('deals')
     .select('id, deal_number, borrower_name')

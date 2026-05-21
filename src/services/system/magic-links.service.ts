@@ -1,6 +1,7 @@
 import { supabase } from '@/services/supabase/client';
 import { invokeValidateMagicLink } from '@/services/supabase/functions';
 import { fetchSystemSettingsByKeys } from '@/services/system/settings.service';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
 export interface MagicLinkSettings {
   expiryHours: number;
@@ -26,6 +27,10 @@ export interface MagicLinkValidationResult {
   participantId?: string;
   dealNumber?: string;
   sessionToken?: string;
+}
+
+function useNodeMagicLinks(): boolean {
+  return isNodeApiEnabled('deals') || isNodeApiEnabled('system');
 }
 
 export async function getMagicLinkSettings(): Promise<MagicLinkSettings> {
@@ -55,6 +60,15 @@ export async function getMagicLinkSettings(): Promise<MagicLinkSettings> {
 }
 
 export async function createMagicLinkRecord(payload: Record<string, unknown>) {
+  const participantId = payload.deal_participant_id as string;
+  if (useNodeMagicLinks() && participantId) {
+    const { deal_participant_id, ...body } = payload;
+    const data = await apiClient.post<MagicLinkData>(
+      `/deals/participants/${participantId}/magic-links`,
+      body,
+    );
+    return data;
+  }
   const { data, error } = await supabase
     .from('magic_links')
     .insert(payload)
@@ -73,6 +87,14 @@ export async function validateMagicLinkToken(token: string) {
 }
 
 export async function revokeMagicLink(magicLinkId: string) {
+  if (useNodeMagicLinks()) {
+    try {
+      await apiClient.patch(`/deals/magic-links/${magicLinkId}/revoke`, {});
+      return { error: null };
+    } catch (err) {
+      return { error: err as Error };
+    }
+  }
   const { error } = await supabase
     .from('magic_links')
     .update({ max_uses: 0 })
@@ -81,6 +103,16 @@ export async function revokeMagicLink(magicLinkId: string) {
 }
 
 export async function listMagicLinksForParticipant(dealParticipantId: string) {
+  if (useNodeMagicLinks()) {
+    try {
+      const data = await apiClient.get<MagicLinkData[]>(
+        `/deals/participants/${dealParticipantId}/magic-links`,
+      );
+      return { data: data || [], error: null };
+    } catch (err) {
+      return { data: [], error: err as Error };
+    }
+  }
   const { data, error } = await supabase
     .from('magic_links')
     .select('*')

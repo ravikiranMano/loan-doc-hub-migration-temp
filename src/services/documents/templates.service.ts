@@ -5,8 +5,13 @@ import {
   downloadFile,
   removeFiles,
 } from '@/services/supabase/storage';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
 export async function listTemplatesOrdered() {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.get<unknown[]>('/templates');
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('templates')
     .select('*')
@@ -17,6 +22,10 @@ export async function listTemplatesOrdered() {
 }
 
 export async function listTemplates(activeOnly = false, columns = '*') {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.get<unknown[]>(`/templates${activeOnly ? '?active=true' : ''}`);
+  }
+  // — Supabase (keep unchanged) —
   let query = supabase.from('templates').select(columns).order('name');
   if (activeOnly) query = query.eq('is_active', true);
   const { data, error } = await query;
@@ -25,28 +34,49 @@ export async function listTemplates(activeOnly = false, columns = '*') {
 }
 
 export async function fetchTemplatesByIds(ids: string[], columns = 'id, name') {
+  if (isNodeApiEnabled('documents')) {
+    if (!ids.length) return [];
+    return apiClient.get<unknown[]>(`/templates?ids=${ids.join(',')}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('templates').select(columns).in('id', ids);
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchTemplateById(id: string) {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.get<unknown>(`/templates/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('templates').select('*').eq('id', id).single();
   if (error) throw error;
   return data;
 }
 
 export async function insertTemplate(payload: Record<string, unknown>) {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.post('/templates', payload);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('templates').insert(payload);
   if (error) throw error;
 }
 
 export async function updateTemplate(id: string, payload: Record<string, unknown>) {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.patch(`/templates/${id}`, payload);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('templates').update(payload).eq('id', id);
   if (error) throw error;
 }
 
 export async function deleteTemplate(id: string) {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.delete(`/templates/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('templates').delete().eq('id', id);
   if (error) throw error;
 }
@@ -98,6 +128,10 @@ export async function removeTemplateFiles(paths: string[]) {
 }
 
 export async function countActiveTemplates() {
+  if (isNodeApiEnabled('documents')) {
+    return apiClient.get<number>('/templates/count');
+  }
+  // — Supabase (keep unchanged) —
   const { count, error } = await supabase
     .from('templates')
     .select('*', { count: 'exact', head: true })

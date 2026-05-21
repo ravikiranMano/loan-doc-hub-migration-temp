@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchFormPermissionsByRole,
   fetchUserFormPermissionsSummary,
@@ -6,6 +6,7 @@ import {
   insertUserFormPermissions,
   updateUserFormPermissionById,
 } from '@/services/admin/form-permissions.service';
+import { isNodeApiEnabled } from '@/services/node-api/client';
 import { listUserRoles } from '@/services/admin/users.service';
 import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { useAuth } from '@/contexts/AuthContext';
@@ -149,12 +150,15 @@ export function useFormPermissions() {
   };
 }
 
+const adminPermInflight = new Map<string, Promise<void>>();
+
 // Hook for admin to manage per-user form permissions
 export function useFormPermissionsAdmin() {
   const [csrUsers, setCsrUsers] = useState<Array<{ user_id: string; full_name: string | null; email: string | null }>>([]);
   const [userPermissions, setUserPermissions] = useState<Array<{ id: string; form_key: string; access_mode: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [permLoading, setPermLoading] = useState(false);
+  const selectedUserRef = useRef<string>('');
 
   // Fetch all CSR users
   useEffect(() => {
@@ -187,44 +191,54 @@ export function useFormPermissionsAdmin() {
     fetchCsrUsers();
   }, []);
 
-  // Fetch permissions for a specific user, auto-seed if none exist
-  const fetchUserPermissions = async (userId: string) => {
-    try {
-      setPermLoading(true);
-      let data = await fetchUserFormPermissionsOrdered(userId);
+  // Fetch permissions for a specific user; auto-seed missing forms (single round-trip on Node API).
+  const fetchUserPermissions = useCallback(async (userId: string) => {
+    if (!userId) return;
 
-      if (!data || data.length === 0) {
-        const inserts = FORM_KEYS.map(fk => ({
-          user_id: userId,
-          form_key: fk,
-          access_mode: 'view_only',
-        }));
-        await insertUserFormPermissions(inserts);
-        data = await fetchUserFormPermissionsOrdered(userId);
-        setUserPermissions((data || []) as any);
-      } else {
-        const existingKeys = new Set(data.map((d: any) => d.form_key));
-        const missingKeys = FORM_KEYS.filter(fk => !existingKeys.has(fk));
+    const inflight = adminPermInflight.get(userId);
+    if (inflight) return inflight;
 
-        if (missingKeys.length > 0) {
-          const inserts = missingKeys.map(fk => ({
-            user_id: userId,
-            form_key: fk,
-            access_mode: 'view_only',
-          }));
-          await insertUserFormPermissions(inserts);
-          data = await fetchUserFormPermissionsOrdered(userId);
-          setUserPermissions((data || []) as any);
-        } else {
-          setUserPermissions(data as any);
+    const job = (async () => {
+      try {
+        setPermLoading(true);
+        let data = await fetchUserFormPermissionsOrdered(userId);
+
+        // Supabase path: client-side seed (Node API seeds on GET in admin.service).
+        if (!isNodeApiEnabled('admin')) {
+          const existingKeys = new Set((data || []).map((d: { form_key: string }) => d.form_key));
+          const missingKeys = FORM_KEYS.filter((fk) => !existingKeys.has(fk));
+          if (missingKeys.length > 0) {
+            await insertUserFormPermissions(
+              missingKeys.map((fk) => ({
+                user_id: userId,
+                form_key: fk,
+                access_mode: 'view_only',
+              })),
+            );
+            data = await fetchUserFormPermissionsOrdered(userId);
+          }
         }
+
+        if (selectedUserRef.current === userId) {
+          setUserPermissions((data || []) as Array<{ id: string; form_key: string; access_mode: string }>);
+        }
+      } catch (err) {
+        console.error('Error fetching user permissions:', err);
+      } finally {
+        if (selectedUserRef.current === userId) {
+          setPermLoading(false);
+        }
+        adminPermInflight.delete(userId);
       }
-    } catch (err) {
-      console.error('Error fetching user permissions:', err);
-    } finally {
-      setPermLoading(false);
-    }
-  };
+    })();
+
+    adminPermInflight.set(userId, job);
+    return job;
+  }, []);
+
+  const setSelectedUserId = useCallback((userId: string) => {
+    selectedUserRef.current = userId;
+  }, []);
 
   // Update a single permission
   const updatePermission = async (id: string, accessMode: 'editable' | 'view_only') => {
@@ -244,6 +258,7 @@ export function useFormPermissionsAdmin() {
     loading,
     permLoading,
     fetchUserPermissions,
+    setSelectedUserId,
     updatePermission,
     // Legacy compat
     allPermissions,

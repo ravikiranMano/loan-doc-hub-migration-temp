@@ -1,21 +1,61 @@
 import { supabase } from '@/services/supabase/client';
-import { assignUserRoleAndPermission } from '@/services/supabase/rpc';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
-export { assignUserRoleAndPermission };
+export async function assignUserRoleAndPermission(params: {
+  p_user_id: string;
+  p_role: 'admin' | 'csr';
+  p_permission_level: string;
+}): Promise<void> {
+  if (isNodeApiEnabled('admin')) {
+    await apiClient.post(`/admin/users/${params.p_user_id}/role`, {
+      role: params.p_role,
+      permission_level: params.p_permission_level,
+    });
+    return;
+  }
+  const { error } = await supabase.rpc('assign_user_role_and_permission', params);
+  if (error) throw error;
+}
 
 export async function listProfilesForAdmin() {
+  if (isNodeApiEnabled('admin')) {
+    const users = await apiClient.get<
+      Array<{
+        user_id: string;
+        email: string | null;
+        full_name: string | null;
+        created_at: string;
+        role?: string | null;
+      }>
+    >('/admin/users');
+    return users.map(({ user_id, email, full_name, created_at }) => ({
+      user_id,
+      email,
+      full_name,
+      created_at,
+    }));
+  }
   const { data, error } = await supabase.from('profiles').select('*').order('email');
   if (error) throw error;
   return data || [];
 }
 
 export async function listUserRoles() {
+  if (isNodeApiEnabled('admin')) {
+    return apiClient.get<Array<{ user_id: string; role: string }>>('/admin/user-roles');
+  }
   const { data, error } = await supabase.from('user_roles').select('*');
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchUserRole(userId: string) {
+  if (isNodeApiEnabled('admin')) {
+    const result = await apiClient.get<{ role?: string } | null>(
+      `/admin/users/${userId}/role`,
+    );
+    return result?.role ?? null;
+  }
   const { data, error } = await supabase
     .from('user_roles')
     .select('role')
@@ -26,12 +66,22 @@ export async function fetchUserRole(userId: string) {
 }
 
 export async function listUserPermissionLevels() {
+  if (isNodeApiEnabled('admin')) {
+    return apiClient.get<unknown[]>('/admin/user-permission-levels');
+  }
   const { data, error } = await supabase.from('user_permission_levels').select('*');
   if (error) throw error;
   return data || [];
 }
 
 export async function listRolesForUserIds(userIds: string[]) {
+  if (isNodeApiEnabled('admin')) {
+    if (!userIds.length) return [];
+    const query = encodeURIComponent(userIds.join(','));
+    return apiClient.get<Array<{ user_id: string; role: string }>>(
+      `/admin/user-roles?userIds=${query}`,
+    );
+  }
   const { data, error } = await supabase
     .from('user_roles')
     .select('user_id, role')
@@ -41,6 +91,16 @@ export async function listRolesForUserIds(userIds: string[]) {
 }
 
 export async function listCsrUsersForPermissions() {
+  if (isNodeApiEnabled('admin')) {
+    return apiClient.get<
+      Array<{
+        user_id: string;
+        email: string | null;
+        full_name: string | null;
+        permission_level: string;
+      }>
+    >('/admin/csr-users');
+  }
   const { data: roleData, error: roleError } = await supabase
     .from('user_roles')
     .select('user_id')
@@ -63,7 +123,7 @@ export async function listCsrUsersForPermissions() {
   if (permError) throw permError;
 
   const permMap = new Map(
-    (permLevelData || []).map((p) => [p.user_id, p.permission_level])
+    (permLevelData || []).map((p) => [p.user_id, p.permission_level]),
   );
 
   return userIds.map((uid) => {

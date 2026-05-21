@@ -21,8 +21,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { fetchAllRows } from '@/services/supabase/pagination';
 import {
+  fetchAllFieldDictionary,
   insertFieldDictionary,
   updateFieldDictionary,
   deleteFieldDictionary,
@@ -337,12 +337,7 @@ export const FieldDictionaryPage: React.FC = () => {
 
   const fetchFields = async () => {
     try {
-      const data = await fetchAllRows((client) =>
-        client
-          .from('field_dictionary')
-          .select('*')
-          .order('section, label')
-      );
+      const data = await fetchAllFieldDictionary('section,label');
       setFields((data || []).map((d: any) => ({
         ...d,
         form_type: d.form_type || 'primary',

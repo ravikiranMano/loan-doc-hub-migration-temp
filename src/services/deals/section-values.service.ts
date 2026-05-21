@@ -1,10 +1,15 @@
 import { supabase } from '@/services/supabase/client';
 import { fetchAllRows } from '@/services/supabase/pagination';
 import type { Database } from '@/services/supabase/types';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
 type FieldSection = Database['public']['Enums']['field_section'];
 
 export async function fetchSectionValuesByDeal(dealId: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deal_section_values')
     .select('section, field_values')
@@ -14,6 +19,10 @@ export async function fetchSectionValuesByDeal(dealId: string) {
 }
 
 export async function fetchSectionValuesByDealWithUpdatedAt(dealId: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deal_section_values')
     .select('section, field_values, updated_at')
@@ -23,6 +32,10 @@ export async function fetchSectionValuesByDealWithUpdatedAt(dealId: string) {
 }
 
 export async function fetchLoanTermsSectionRows(dealId: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals/${dealId}/sections/loan_terms`).then((r) => r ? [r] : []);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deal_section_values')
     .select('id, field_values, version')
@@ -36,6 +49,10 @@ export async function insertLoanTermsSectionRow(
   dealId: string,
   fieldValues: Record<string, unknown>
 ) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.patch(`/deals/${dealId}/sections/loan_terms`, { field_values: fieldValues });
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('deal_section_values').insert({
     deal_id: dealId,
     section: 'loan_terms',
@@ -46,6 +63,10 @@ export async function insertLoanTermsSectionRow(
 }
 
 export async function fetchSectionValuesWithVersion(dealId: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deal_section_values')
     .select('id, section, field_values, version')
@@ -58,6 +79,10 @@ export async function fetchSectionValueByDealAndSection(
   dealId: string,
   section: string
 ) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown>(`/deals/${dealId}/sections/${section}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deal_section_values')
     .select('id, field_values')
@@ -72,11 +97,29 @@ export async function updateSectionValueById(
   id: string,
   payload: Record<string, unknown>
 ) {
+  if (isNodeApiEnabled('deals')) {
+    const dealId = payload['deal_id'] as string | undefined;
+    const section = payload['section'] as string | undefined;
+    if (dealId && section) {
+      return apiClient.patch(`/deals/${dealId}/sections/${section}`, { field_values: payload['field_values'] });
+    }
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('deal_section_values').update(payload).eq('id', id);
   if (error) throw error;
 }
 
 export async function insertSectionValues(rows: Record<string, unknown>[]) {
+  if (isNodeApiEnabled('deals')) {
+    return Promise.all(
+      rows.map((row) =>
+        apiClient.patch(`/deals/${row['deal_id']}/sections/${row['section']}`, {
+          field_values: row['field_values'],
+        })
+      )
+    );
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('deal_section_values').insert(rows);
   if (error) throw error;
 }
@@ -85,9 +128,13 @@ export async function upsertParticipantsSectionValues(
   dealId: string,
   fieldValues: Record<string, unknown>
 ) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.patch(`/deals/${dealId}/sections/participants`, { field_values: fieldValues });
+  }
+  // — Supabase (keep unchanged) —
   const existing = await fetchSectionValueByDealAndSection(dealId, 'participants');
-  if (existing?.id) {
-    await updateSectionValueById(existing.id, {
+  if ((existing as { id?: string })?.id) {
+    await updateSectionValueById((existing as { id: string }).id, {
       field_values: fieldValues,
       updated_at: new Date().toISOString(),
     });
@@ -97,6 +144,9 @@ export async function upsertParticipantsSectionValues(
 }
 
 export async function fetchFieldDictionaryTmoSections(sections: FieldSection[]) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/admin/fields?sections=${sections.join(',')}`);
+  }
   return fetchAllRows((client) =>
     client
       .from('field_dictionary')
@@ -108,6 +158,10 @@ export async function fetchFieldDictionaryTmoSections(sections: FieldSection[]) 
 }
 
 export async function fetchFieldDictionaryByIds(ids: string[]) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/admin/fields?ids=${ids.join(',')}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('field_dictionary')
     .select('id, field_key, data_type')
@@ -117,6 +171,10 @@ export async function fetchFieldDictionaryByIds(ids: string[]) {
 }
 
 export async function fetchFieldDictionaryByFieldKeys(keys: string[]) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>('/admin/fields');
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('field_dictionary')
     .select('id, field_key, section, data_type')
@@ -126,12 +184,20 @@ export async function fetchFieldDictionaryByFieldKeys(keys: string[]) {
 }
 
 export async function fetchFieldDictionarySelect(columns: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>('/admin/fields');
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('field_dictionary').select(columns);
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchSectionValuesBySection(section: string) {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<unknown[]>(`/deals/sections/by-section/${section}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('deal_section_values')
     .select('deal_id, field_values')
@@ -144,6 +210,13 @@ export async function fetchSectionValuesForDeals(
   dealIds: string[],
   options?: { section?: string; sections?: string[] }
 ) {
+  if (isNodeApiEnabled('deals') && dealIds.length > 0) {
+    const params = new URLSearchParams({ dealIds: dealIds.join(',') });
+    if (options?.section) params.set('section', options.section);
+    if (options?.sections?.length) params.set('sections', options.sections.join(','));
+    return apiClient.get<unknown[]>(`/deals/sections?${params}`);
+  }
+  // — Supabase (keep unchanged) —
   let query = supabase
     .from('deal_section_values')
     .select('deal_id, field_values, section')

@@ -1,5 +1,6 @@
 import { supabase } from '@/services/supabase/client';
 import { generateContactId, type ContactIdType } from '@/services/supabase/rpc';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
 export interface ContactRecord {
   id: string;
@@ -41,6 +42,24 @@ function applyContactSearch<T extends { or: (filter: string) => T }>(
 }
 
 export async function listContacts(params: ListContactsParams): Promise<ListContactsResult> {
+  if (isNodeApiEnabled('contacts')) {
+    const { contactType, page, pageSize, search } = params;
+    const qs = new URLSearchParams({
+      type: contactType,
+      page: String(page),
+      pageSize: String(pageSize),
+      ...(search ? { search } : {}),
+    });
+    const result = await apiClient.get<{ contacts: ContactRecord[]; totalCount: number }>(
+      `/contacts?${qs}`,
+    );
+    const contacts = (result.contacts || []).map((row) => ({
+      ...row,
+      contact_data: (row.contact_data as Record<string, unknown>) || {},
+    }));
+    return { contacts, totalCount: result.totalCount ?? contacts.length };
+  }
+  // — Supabase (keep unchanged) —
   const { contactType, page, pageSize, search } = params;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
@@ -80,6 +99,10 @@ export async function getContactByContactId(
   columns = '*',
   contactType?: string
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord | null>(`/contacts/search?q=${encodeURIComponent(contactId)}${contactType ? `&type=${contactType}` : ''}&limit=1`).then((r) => Array.isArray(r) ? r[0] ?? null : r);
+  }
+  // — Supabase (keep unchanged) —
   let query = supabase.from('contacts').select(columns).eq('contact_id', contactId);
   if (contactType) query = query.eq('contact_type', contactType);
   const { data, error } = await query.maybeSingle();
@@ -88,6 +111,10 @@ export async function getContactByContactId(
 }
 
 export async function getContactByEmail(email: string, columns = '*') {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord | null>(`/contacts/search?q=${encodeURIComponent(email)}&limit=1`).then((r) => Array.isArray(r) ? r[0] ?? null : r);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('contacts')
     .select(columns)
@@ -99,6 +126,10 @@ export async function getContactByEmail(email: string, columns = '*') {
 }
 
 export async function getContactById(id: string) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord>(`/contacts/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('contacts')
     .select('*')
@@ -109,12 +140,21 @@ export async function getContactById(id: string) {
 }
 
 export async function getContactsByIds(ids: string[], columns = '*') {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord[]>(`/contacts?ids=${ids.join(',')}`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('contacts').select(columns).in('id', ids);
   if (error) throw error;
   return data || [];
 }
 
 export async function getContactContactData(id: string) {
+  if (isNodeApiEnabled('contacts')) {
+    const contact = await apiClient.get<ContactRecord>(`/contacts/${id}`);
+    return (contact?.contact_data as Record<string, unknown>) || {};
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('contacts')
     .select('contact_data')
@@ -129,6 +169,12 @@ export async function searchContactsByType(
   searchTerm: string,
   limit = 10
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord[]>(
+      `/contacts/search?type=${encodeURIComponent(contactType)}&q=${encodeURIComponent(searchTerm)}&limit=${limit}`
+    );
+  }
+  // — Supabase (keep unchanged) —
   let qb = supabase.from('contacts').select('*').eq('contact_type', contactType).limit(limit);
   if (searchTerm.trim()) {
     qb = qb.or(
@@ -166,6 +212,12 @@ export async function listContactsByTypes(
   columns: string,
   limit = 2000
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord[]>(
+      `/contacts?types=${contactTypes.join(',')}&limit=${limit}`
+    );
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('contacts')
     .select(columns)
@@ -181,6 +233,12 @@ export async function listContactsByType(
   columns: string,
   limit = 2000
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord[]>(
+      `/contacts?type=${encodeURIComponent(contactType)}&limit=${limit}`
+    );
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('contacts')
     .select(columns)
@@ -197,6 +255,12 @@ export async function searchContactsByTypes(
   limit = 50,
   columns = 'contact_id, full_name, contact_type'
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<ContactRecord[]>(
+      `/contacts/search?types=${contactTypes.join(',')}&q=${encodeURIComponent(searchTerm)}&limit=${limit}`
+    );
+  }
+  // — Supabase (keep unchanged) —
   let qb = supabase.from('contacts').select(columns).in('contact_type', contactTypes).limit(limit);
   if (searchTerm.trim()) {
     qb = qb.or(`contact_id.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
@@ -211,6 +275,26 @@ export async function createContact(params: {
   createdBy: string;
   contactData: Record<string, string>;
 }) {
+  if (isNodeApiEnabled('contacts')) {
+    const { contactType, createdBy, contactData } = params;
+    const fullName =
+      contactData.full_name ||
+      `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
+    return apiClient.post<ContactRecord>('/contacts', {
+      contact_type: contactType,
+      created_by: createdBy,
+      full_name: fullName,
+      first_name: contactData.first_name || '',
+      last_name: contactData.last_name || '',
+      email: contactData.email || '',
+      phone: contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '',
+      city: contactData.city || contactData['address.city'] || contactData['primary_address.city'] || '',
+      state: contactData.state || contactData['address.state'] || contactData['primary_address.state'] || '',
+      company: contactData.company || '',
+      contact_data: contactData,
+    });
+  }
+  // — Supabase (keep unchanged) —
   const { contactType, createdBy, contactData } = params;
   const fullName =
     contactData.full_name ||
@@ -256,12 +340,20 @@ export async function createContact(params: {
 }
 
 export async function insertContact(payload: Record<string, unknown>) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.post<ContactRecord>('/contacts', payload);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase.from('contacts').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function updateContactRow(id: string, updates: Record<string, unknown>) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.patch(`/contacts/${id}`, updates);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('contacts').update(updates).eq('id', id);
   if (error) throw error;
 }
@@ -270,6 +362,10 @@ export async function updateContactWithMerge(
   id: string,
   contactData: Record<string, string>
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.patch(`/contacts/${id}/merge`, { contact_data: contactData });
+  }
+  // — Supabase (keep unchanged) —
   const fullName =
     contactData.full_name ||
     `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
@@ -360,11 +456,20 @@ export async function updateContactWithMerge(
 }
 
 export async function deleteContact(id: string) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.delete(`/contacts/${id}`);
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('contacts').delete().eq('id', id);
   if (error) throw error;
 }
 
 export async function deleteContacts(ids: string[]) {
+  if (isNodeApiEnabled('contacts')) {
+    if (!ids.length) return;
+    return apiClient.delete(`/contacts/bulk?ids=${ids.join(',')}`);
+  }
+  // — Supabase (keep unchanged) —
   const { error: dpError } = await supabase
     .from('deal_participants')
     .delete()
@@ -385,6 +490,10 @@ export async function patchContactData(
   id: string,
   patch: Record<string, unknown>
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.patch(`/contacts/${id}`, { contact_data: patch });
+  }
+  // — Supabase (keep unchanged) —
   const existing = await getContactContactData(id);
   const merged = { ...existing, ...patch };
   const { error } = await supabase

@@ -6,6 +6,7 @@ import {
   removeFiles,
 } from '@/services/supabase/storage';
 import type { BorrowerAttachmentRow } from '@/services/supabase/extended-types';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
 export const CONTACT_ATTACHMENTS_BUCKET = STORAGE_BUCKETS.contactAttachments;
 
@@ -22,6 +23,10 @@ export async function removeContactAttachments(paths: string[]) {
 }
 
 export async function listBorrowerAttachments(contactId: string) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<BorrowerAttachmentRow[]>(`/contacts/${contactId}/attachments`);
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('borrower_attachments')
     .select('*')
@@ -32,6 +37,12 @@ export async function listBorrowerAttachments(contactId: string) {
 }
 
 export async function listActiveBorrowerAttachments(contactId: string) {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<BorrowerAttachmentRow[]>(
+      `/contacts/${contactId}/attachments?active=true`
+    );
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('borrower_attachments')
     .select('*')
@@ -43,6 +54,14 @@ export async function listActiveBorrowerAttachments(contactId: string) {
 }
 
 export async function insertBorrowerAttachment(row: Record<string, unknown>) {
+  if (isNodeApiEnabled('contacts')) {
+    const contactId = row['contact_id'] as string;
+    return apiClient.post<BorrowerAttachmentRow>(
+      `/contacts/${contactId}/attachments`,
+      row
+    );
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('borrower_attachments')
     .insert(row)
@@ -56,11 +75,23 @@ export async function updateBorrowerAttachment(
   id: string,
   updates: Record<string, unknown>
 ) {
+  if (isNodeApiEnabled('contacts')) {
+    const contactId = updates['contact_id'] as string | undefined;
+    return apiClient.patch(
+      `/contacts/${contactId ?? '_'}/attachments/${id}`,
+      updates
+    );
+  }
+  // — Supabase (keep unchanged) —
   const { error } = await supabase.from('borrower_attachments').update(updates).eq('id', id);
   if (error) throw error;
 }
 
 export async function listConversationLogTypes() {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<unknown[]>('/contacts/conversation-log-types');
+  }
+  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('conversation_log_types')
     .select('label')

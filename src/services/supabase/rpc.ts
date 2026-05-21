@@ -1,16 +1,23 @@
 import { supabase } from '@/services/supabase/client';
 import { assertOk } from '@/services/supabase/errors';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 import type { Database } from '@/services/supabase/types';
 
 export type ContactIdType = Database['public']['Enums']['contact_type'] | string;
 export type AppRoleEnum = Database['public']['Enums']['app_role'];
 
 export async function generateContactId(pType: ContactIdType): Promise<string> {
+  if (isNodeApiEnabled('contacts')) {
+    return apiClient.get<string>(`/contacts/generate-id?type=${encodeURIComponent(String(pType))}`);
+  }
   const { data, error } = await supabase.rpc('generate_contact_id', { p_type: pType });
   return assertOk({ data: data as string, error });
 }
 
 export async function generateDealNumber(): Promise<string> {
+  if (isNodeApiEnabled('deals')) {
+    return apiClient.get<string>('/deals/generate-number');
+  }
   const { data, error } = await supabase.rpc('generate_deal_number');
   return assertOk({ data: data as string, error });
 }
