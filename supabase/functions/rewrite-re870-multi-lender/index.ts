@@ -43,6 +43,7 @@ const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 const V6_MARKER = "<!-- re870-rewrite:v6 -->";
 const V7_MARKER = "<!-- re870-rewrite:v7 -->";
+const V8_MARKER = "<!-- re870-rewrite:v8 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -123,7 +124,8 @@ function isNamePersonCompletingCellText(text: string): boolean {
 // the RE870 failure mode was orphaned </w:t> tags caused by nested {{#if}}
 // blocks being evaluated after the loop expanded.
 // ────────────────────────────────────────────────────────────────────────────
-const INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{displayName}}{{/each}}";
+const INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}{{/each}}";
+const LEGACY_INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{displayName}}{{/each}}";
 
 interface CellHit {
   start: number;
