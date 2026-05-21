@@ -271,6 +271,7 @@ async function processTemplate(
   supabase: ReturnType<typeof createClient>,
   templateId: string,
   force: boolean,
+  debug: boolean,
 ) {
   const { data: tpl, error: tErr } = await supabase
     .from("templates")
