@@ -1176,8 +1176,9 @@ async function generateSingleDocument(
           const n = idx + 1;
           const t = (fieldValues.get(`lender_${n}_type`)?.rawValue ?? "").toString();
           const dn = (fieldValues.get(`lender_${n}_displayName`)?.rawValue ?? "").toString();
+          const cn = (fieldValues.get(`lender_${n}_contactName`)?.rawValue ?? "").toString();
           const ii = (fieldValues.get(`lender_${n}_isIndividual`)?.rawValue ?? "").toString();
-          console.log(`[MultiLender] Lender ${n}: type="${t}", isIndividual=${ii}, displayName="${dn}", isPrimary=${n === 1}`);
+          console.log(`[MultiLender] Lender ${n}: type="${t}", isIndividual=${ii}, displayName="${dn}", contactName="${cn}", isPrimary=${n === 1}`);
         });
       }
 
