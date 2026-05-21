@@ -481,7 +481,7 @@ function rewriteDocumentXml(
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V9_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V10_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
