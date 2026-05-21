@@ -45,6 +45,7 @@ const V6_MARKER = "<!-- re870-rewrite:v6 -->";
 const V7_MARKER = "<!-- re870-rewrite:v7 -->";
 const V8_MARKER = "<!-- re870-rewrite:v8 -->";
 const V9_MARKER = "<!-- re870-rewrite:v9 -->";
+const V10_MARKER = "<!-- re870-rewrite:v10 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -168,21 +169,35 @@ function normalizeInvestorParagraphPr(_pPr: string): string {
   return CANONICAL_INVESTOR_PPR;
 }
 
-function normalizeInvestorNameCellGeometry(cellXml: string, preferredWidth?: string): string {
-  let out = cellXml
-    // The broken live template has the INVESTOR NAME cell spanning into the
-    // adjacent centered INVESTOR column. Removing the span makes the value
-    // render from the true left cell instead of the visual center area.
-    .replace(/<w:gridSpan\b[^>]*\/>/g, "");
-  if (preferredWidth) {
-    out = out.replace(/<w:tcW\b[^>]*w:w="[^"]*"([^>]*)\/>/, (m) =>
-      /w:type=/.test(m)
-        ? m.replace(/w:w="[^"]*"/, `w:w="${preferredWidth}"`)
-        : `<w:tcW w:w="${preferredWidth}" w:type="dxa"/>`,
-    );
-  }
-  return out;
+// Canonical INVESTOR NAME cell geometry from the v1 template:
+//   width 5502 dxa, gridSpan=2, left border=nil, right border=single 12pt black.
+const CANONICAL_INVESTOR_TC_WIDTH = "5502";
+const CANONICAL_INVESTOR_TC_BORDERS =
+  '<w:tcBorders>' +
+  '<w:left w:val="nil"/>' +
+  '<w:right w:val="single" w:sz="12" w:space="0" w:color="000000"/>' +
+  '</w:tcBorders>';
+
+function normalizeInvestorNameCellGeometry(cellXml: string, _preferredWidth?: string): string {
+  // Force the canonical tcPr regardless of what the source cell currently has.
+  // Match the opening <w:tc ...> tag, then replace (or insert) the <w:tcPr> block.
+  const openMatch = cellXml.match(/^<w:tc\b[^>]*>/);
+  if (!openMatch) return cellXml;
+  const open = openMatch[0];
+  const rest = cellXml.substring(open.length);
+
+  const canonicalTcPr =
+    '<w:tcPr>' +
+    `<w:tcW w:w="${CANONICAL_INVESTOR_TC_WIDTH}" w:type="dxa"/>` +
+    '<w:gridSpan w:val="2"/>' +
+    CANONICAL_INVESTOR_TC_BORDERS +
+    '</w:tcPr>';
+
+  // Strip any existing <w:tcPr>…</w:tcPr> immediately following the open tag.
+  const stripped = rest.replace(/^<w:tcPr>[\s\S]*?<\/w:tcPr>/, "");
+  return open + canonicalTcPr + stripped;
 }
+
 
 function firstGridColumnWidthForCell(xml: string, cellStart: number): string | undefined {
   const tableStart = xml.lastIndexOf("<w:tbl", cellStart);
@@ -402,8 +417,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V9_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v8 (skipped)"] };
+  if (!force && xml.includes(V10_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v10 (skipped)"] };
   }
 
   let out = xml;
@@ -423,6 +438,7 @@ function rewriteDocumentXml(
   out = out.split(V7_MARKER).join("");
   out = out.split(V8_MARKER).join("");
   out = out.split(V9_MARKER).join("");
+  out = out.split(V10_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
@@ -465,7 +481,7 @@ function rewriteDocumentXml(
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V9_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V10_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
