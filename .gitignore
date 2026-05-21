@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .env
+src/generated/
 tmp/
 .playwright-mcp
 .lovable
@@ -35,3 +36,5 @@ e2e
 *.njsproj
 *.sln
 *.sw?
+
+/src/generated/prisma
