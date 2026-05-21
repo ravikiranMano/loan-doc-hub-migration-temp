@@ -335,7 +335,7 @@ async function processTemplate(
       const t = (m[0].match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
         .map((s) => s.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
         .join("");
-      if (t.toUpperCase().includes("INVESTOR NAME")) { cellXml = m[0]; break; }
+      if (isInvestorNameCellText(t)) { cellXml = m[0]; break; }
     }
     return {
       templateId,
