@@ -869,13 +869,22 @@ function buildSdtCheckboxXml(isChecked: boolean, rPr?: string): string {
     const stripped = rPr.startsWith('<w:rPr>') && rPr.endsWith('</w:rPr>')
       ? rPr.slice('<w:rPr>'.length, rPr.length - '</w:rPr>'.length)
       : rPr;
-    // Remove any existing <w:rFonts .../> so we can replace with MS Gothic.
-    rPrInner = stripped.replace(/<w:rFonts\b[^>]*\/>/g, '');
+    // Remove existing <w:rFonts .../> so we can replace with MS Gothic, and
+    // strip any existing <w:sz>/<w:szCs> so undersized template runs (e.g.
+    // inline {{#if}}☒{{else}}☐{{/if}} placeholders authored at 9-10pt in the
+    // Insurance Disclosure "Coverage Requirements" section) don't produce
+    // tiny, unreadable checkboxes after SDT conversion.
+    rPrInner = stripped
+      .replace(/<w:rFonts\b[^>]*\/>/g, '')
+      .replace(/<w:sz\b[^>]*\/>/g, '')
+      .replace(/<w:szCs\b[^>]*\/>/g, '');
   }
 
   const fontsTag = '<w:rFonts w:ascii="MS Gothic" w:hAnsi="MS Gothic" w:eastAsia="MS Gothic" w:cs="MS Gothic" w:hint="eastAsia"/>';
-  const hasExplicitSize = /<w:sz\b/.test(rPrInner);
-  const sizeTags = hasExplicitSize ? '' : '<w:sz w:val="24"/><w:szCs w:val="24"/>';
+  // Always force a readable checkbox size (12pt = w:sz 24) so generated SDT
+  // checkboxes match the template's native interactive checkboxes regardless
+  // of the surrounding paragraph's font size.
+  const sizeTags = '<w:sz w:val="24"/><w:szCs w:val="24"/>';
 
   const wrappedRPr = `<w:rPr>${fontsTag}${sizeTags}${rPrInner}</w:rPr>`;
 
