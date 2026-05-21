@@ -93,9 +93,14 @@ function replaceLiteral(xml: string, find: string, replace: string): { xml: stri
 
 // Strip all visible text from a chunk of XML (used to test cell contents).
 function visibleText(xml: string): string {
-  return (xml.match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
-    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+  return (xml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
+    .map((t) => t.replace(/<w:t(?:\s[^>]*)?>/, "").replace(/<\/w:t>/, ""))
     .join("");
+}
+
+function isInvestorNameCellText(text: string): boolean {
+  const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
+  return (normalized === "INVESTOR" || /\bINVESTOR NAME\b/.test(normalized)) && !/\bCO[-\s]?INVESTOR NAME\b/.test(normalized);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -118,14 +123,24 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   let m: RegExpExecArray | null;
   let targetStart = -1;
   let targetEnd = -1;
+  let fallbackStart = -1;
+  let fallbackEnd = -1;
   while ((m = tcRe.exec(xml)) !== null) {
     const tc = m[0];
-    const text = visibleText(tc).toUpperCase().replace(/\s+/g, " ");
-    if (text.includes("INVESTOR NAME") && !text.includes("CO-INVESTOR NAME")) {
+    if (isInvestorNameCellText(visibleText(tc))) {
       targetStart = m.index;
       targetEnd = m.index + tc.length;
       break;
     }
+    if (fallbackStart === -1 && (tc.includes("firstIfEntityUse") || tc.includes("ld_p_middle") || tc.includes("ld_p_last"))) {
+      fallbackStart = m.index;
+      fallbackEnd = m.index + tc.length;
+    }
+  }
+
+  if (targetStart === -1 && fallbackStart !== -1) {
+    targetStart = fallbackStart;
+    targetEnd = fallbackEnd;
   }
 
   if (targetStart === -1) {
@@ -133,11 +148,6 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   }
 
   const cellXml = xml.substring(targetStart, targetEnd);
-
-  // Already wrapped (idempotency within the cell)
-  if (cellXml.includes("{{#each lenders}}")) {
-    return { xml, note: "INVESTOR NAME cell already wraps {{#each lenders}}" };
-  }
 
   // Split the cell into its top-level paragraphs.
   const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
@@ -150,6 +160,26 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     lastIdx = pm.index + pm[0].length;
   }
   parts.push(cellXml.substring(lastIdx));
+
+  const firstParaIdx = parts.findIndex((p) => p.startsWith("<w:p"));
+  if (firstParaIdx !== -1) {
+    const origPara = parts[firstParaIdx];
+    const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : "";
+    const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+    parts[firstParaIdx] =
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{ld_p_allInvestorNames}}</w:t></w:r></w:p>`;
+    for (let i = firstParaIdx + 1; i < parts.length; i++) {
+      if (parts[i].startsWith("<w:p")) parts[i] = "";
+    }
+    const newCellXml = parts.join("");
+    return {
+      xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
+      note: "INVESTOR NAME cell rebuilt with ld_p_allInvestorNames",
+    };
+  }
 
   // Find the paragraph that contains either of the legacy tag fragments
   // OR an already-substituted `{{#if isIndividual}}` block. The template
@@ -166,9 +196,25 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
 
   const condIdx = parts.findIndex(isTagPara);
   if (condIdx === -1) {
+    const firstParaIdx = parts.findIndex((p) => p.startsWith("<w:p"));
+    if (firstParaIdx === -1) {
+      return { xml, note: "WARN: INVESTOR NAME cell found but no paragraph located" };
+    }
+    const origPara = parts[firstParaIdx];
+    const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : "";
+    const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+    const conditional = "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    parts[firstParaIdx] =
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
+      EACH_OPEN_PARA +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
+      EACH_CLOSE_PARA;
+    const newCellXml = parts.join("");
     return {
-      xml,
-      note: "WARN: INVESTOR NAME cell found but no tag paragraph located",
+      xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
+      note: "INVESTOR header cell rebuilt as INVESTOR NAME + {{#each lenders}} loop",
     };
   }
 
@@ -323,16 +369,34 @@ async function processTemplate(
   const docXml = new TextDecoder().decode(docBytes);
 
   if (debug) {
-    // Return raw XML around the INVESTOR NAME cell so we can inspect run/text fragmentation.
+    // Return raw XML around INVESTOR-related cells/snippets so we can inspect run/text fragmentation.
     const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
     let m: RegExpExecArray | null;
     let cellXml = "";
+    const candidateCells: Array<{ text: string; xml: string }> = [];
     while ((m = tcRe.exec(docXml)) !== null) {
-      const t = (m[0].match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
-        .map((s) => s.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+      const t = (m[0].match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
+        .map((s) => s.replace(/<w:t(?:\s[^>]*)?>/, "").replace(/<\/w:t>/, ""))
         .join("");
-      if (t.toUpperCase().includes("INVESTOR NAME")) { cellXml = m[0]; break; }
+      if (t.toUpperCase().includes("INVESTOR")) {
+        candidateCells.push({ text: t, xml: m[0].substring(0, 3000) });
+      }
+      if (isInvestorNameCellText(t)) { cellXml = m[0]; break; }
     }
+    const visibleDocText = visibleText(docXml);
+    const investorSnippets: string[] = [];
+    const invRe = /investor/gi;
+    let im: RegExpExecArray | null;
+    while ((im = invRe.exec(visibleDocText)) !== null && investorSnippets.length < 20) {
+      investorSnippets.push(visibleDocText.substring(Math.max(0, im.index - 80), im.index + 220));
+    }
+    const tagSnippets: string[] = [];
+    for (const needle of ["firstName", "middle", "last", "isIndividual", "firstIfEntityUse", "ld_p_middle", "ld_p_last", "ld_p_first", "ld_p_vesting"]) {
+      const idx = docXml.indexOf(needle);
+      if (idx !== -1) tagSnippets.push(docXml.substring(Math.max(0, idx - 1200), idx + 1600));
+    }
+    const curlyTags = [...new Set([...docXml.matchAll(/\{\{[\s\S]{0,120}?\}\}/g)].map((x) => x[0]))].slice(0, 80);
+    const chevronTags = [...new Set([...docXml.matchAll(/«[^»]{0,120}»/g)].map((x) => x[0]))].slice(0, 80);
     return {
       templateId,
       name: tpl.name,
@@ -341,6 +405,11 @@ async function processTemplate(
       debug: true,
       cellLength: cellXml.length,
       cellXml: cellXml.substring(0, 8000),
+      candidateCells,
+      investorSnippets,
+      tagSnippets,
+      curlyTags,
+      chevronTags,
     };
   }
 

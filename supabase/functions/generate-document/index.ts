@@ -142,6 +142,7 @@ async function generateSingleDocument(
     result.templateName = template.name;
     const isTemplate885 = /885/i.test(template.name || "");
     const isTemplate851D = /851d/i.test(template.name || "");
+    const isTemplate870 = /\b870\b|investor\s+questionnaire/i.test(template.name || "");
     // "Lien Mappings" template reuses the RE851D encumbrance pipeline
     // (bucketing + publishSection already runs for ALL templates; here we
     // also enable the indexed-tag rewrite, valid-key extension, addendum
@@ -173,7 +174,7 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "")) {
+      if (isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "")) {
         throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
@@ -1077,6 +1078,7 @@ async function generateSingleDocument(
         let lenderCount = 0;
         let additionalIdx = 0;
         let primaryHelpersSet = false;
+        const investorNames: string[] = [];
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
@@ -1099,6 +1101,7 @@ async function generateSingleDocument(
           const displayName = isIndividual
             ? [firstName, middle, last].filter(Boolean).join(" ")
             : vesting;
+          if (displayName) investorNames.push(displayName);
           const label = `LENDER ${n}`;
           const isPrimary = n === 1;
 
@@ -1156,6 +1159,12 @@ async function generateSingleDocument(
           // Primary-lender convenience aliases for templates that use the
           // bare ld_p_* surface without writing their own conditionals.
           if (isPrimary && !primaryHelpersSet) {
+            setAlias("type", type);
+            setAlias("vesting", vesting);
+            setAlias("firstName", firstName);
+            setAlias("middle", middle);
+            setAlias("last", last);
+            setAlias("isIndividual", isIndividual ? "true" : "false");
             setAlias("ld_p_isIndividual", isIndividual ? "true" : "false");
             setAlias("ld_p_displayName", displayName);
             setAlias("ld_p_investorName", displayName);
@@ -1166,6 +1175,7 @@ async function generateSingleDocument(
           lenderCount++;
         });
         setAlias("lender_count", String(lenderCount));
+        setAlias("ld_p_allInvestorNames", investorNames.join("\n"));
         setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
         setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
         debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
