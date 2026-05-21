@@ -123,6 +123,8 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   let m: RegExpExecArray | null;
   let targetStart = -1;
   let targetEnd = -1;
+  let fallbackStart = -1;
+  let fallbackEnd = -1;
   while ((m = tcRe.exec(xml)) !== null) {
     const tc = m[0];
     if (isInvestorNameCellText(visibleText(tc))) {
@@ -130,6 +132,15 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
       targetEnd = m.index + tc.length;
       break;
     }
+    if (fallbackStart === -1 && (tc.includes("firstIfEntityUse") || tc.includes("ld_p_middle") || tc.includes("ld_p_last"))) {
+      fallbackStart = m.index;
+      fallbackEnd = m.index + tc.length;
+    }
+  }
+
+  if (targetStart === -1 && fallbackStart !== -1) {
+    targetStart = fallbackStart;
+    targetEnd = fallbackEnd;
   }
 
   if (targetStart === -1) {
