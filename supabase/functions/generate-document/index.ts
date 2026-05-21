@@ -1020,13 +1020,21 @@ async function generateSingleDocument(
           perField.fullName.push(full);
           perField.vesting.push(vesting);
         });
-        // Bare aliases — newline-joined across all lenders (mirrors lien aggregation).
-        // Lender 1 is first in join order, preserving backward compat for single-lender templates.
+        // Bare aliases (ld_p_firstName, ld_p_vesting, etc.) resolve to the
+        // PRIMARY lender's value only (Lender 1). Previously these were
+        // newline-joined across all lenders, which the tag-parser then
+        // expanded into stacked `<w:br/>` runs inside every lender-related
+        // merge tag — producing a single field with every lender's name on
+        // separate lines. The repeater (`{{#each lenders}}` /
+        // `{{#each additionalLenders}}`) and indexed `lender_N_*` aliases
+        // are the supported surfaces for multi-lender output; bare keys
+        // stay single-valued for backward compatibility.
         for (const [field, vals] of Object.entries(perField)) {
-          const joined = vals.filter(v => v !== "").join("\n");
-          setForceAlias(`ld_p_${field}`, joined);
+          const primaryValue = vals.length > 0 ? (vals[0] ?? "") : "";
+          setForceAlias(`ld_p_${field}`, primaryValue);
         }
-        debugLog(`[generate-document] Published repeatable lender aliases for ${orderedLenderParticipants.length} lender(s): ld_p_*_1..${orderedLenderParticipants.length} + bare ld_p_* (newline-joined)`);
+        debugLog(`[generate-document] Published repeatable lender aliases for ${orderedLenderParticipants.length} lender(s): ld_p_*_1..${orderedLenderParticipants.length} + bare ld_p_* (primary lender only)`);
+
       }
 
       // ─── Multi-lender indexed aliases + {{#each lenders}} repeater feed ───
