@@ -290,19 +290,22 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
     return { xml, note: "WARN: INVESTOR NAME cell found but no paragraph located", targetStart: target.start };
   }
 
-  const origPara = parts[firstParaIdx];
-  const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = normalizeInvestorParagraphPr(pPrMatch ? pPrMatch[0] : "");
-  const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
-  const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+  const pPr = normalizeInvestorParagraphPr("");
+  const labelRPr = CANONICAL_INVESTOR_LABEL_RPR;
+  const loopRPr = CANONICAL_INVESTOR_LOOP_RPR;
   const investorNameLoop = INVESTOR_LOOP_LITERAL;
 
+  // Single paragraph matching v1 template: label + <w:br/> + loop, no bold, canonical sizes.
   parts[firstParaIdx] =
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
+    `<w:p>${pPr}` +
+    `<w:r>${labelRPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r>` +
+    `<w:r>${labelRPr}<w:br/></w:r>` +
+    `<w:r>${loopRPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r>` +
+    `</w:p>`;
   for (let i = firstParaIdx + 1; i < parts.length; i++) {
     if (parts[i].startsWith("<w:p")) parts[i] = "";
   }
+
 
   const preferredWidth = firstGridColumnWidthForCell(xml, target.start);
   const newCellXml = normalizeInvestorNameCellGeometry(parts.join(""), preferredWidth);
