@@ -7531,6 +7531,41 @@ async function generateSingleDocument(
             xml = xml.slice(0, r.start) + r.replacement + xml.slice(r.end);
           }
 
+          // ── RE851D FINAL appraiser-literal scrubber (safety net) ──
+          // Runs AFTER all rewrites have been spliced into xml. If any
+          // `{{#if (eq pr_p_perform*By_<N|1-5> "Broker")}}<PAYLOAD>{{else?}}{{/if}}`
+          // literal survived (consumed-range conflicts, brace damage,
+          // paragraph-boundary edge cases), replace it with the per-property
+          // merge tag {{pr_p_appraiserName_K}} / {{pr_p_appraiserAddress_K}}.
+          // Strictly scoped: only the two recognized payloads
+          // ("BPO Performed by Broker", "N/A"). K assigned by pair-counter
+          // (occurrence order, capped at 5) since rewrite offsets above have
+          // shifted the original region byte ranges. Idempotent.
+          {
+            const Q = `(?:"|&quot;|\\u201C|\\u201D)`;
+            const finalApprRe = new RegExp(
+              `(?:\\{\\{)?\\s*#\\s*if\\s*\\(\\s*eq\\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\\s*${Q}\\s*Broker\\s*${Q}\\s*\\)\\s*(?:\\}\\})?\\s*(BPO Performed by Broker|N\\/A)\\s*(?:\\{\\{\\s*else\\s*\\}\\}\\s*)?(?:\\{\\{\\s*\\/\\s*if\\s*\\}\\}|\\{\\{\\s*\\/\\s*if\\s*\\}(?!\\}))?`,
+              "gi",
+            );
+            const pairCounter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
+            let scrubbed = 0;
+            xml = xml.replace(finalApprRe, (_full: string, payload: string) => {
+              const isName = /^BPO Performed by Broker$/i.test(String(payload || "").trim());
+              const kind: "name" | "addr" = isName ? "name" : "addr";
+              pairCounter[kind] += 1;
+              const k = Math.min(Math.max(pairCounter[kind], 1), 5);
+              scrubbed++;
+              const tagBase = isName ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
+              return `{{${tagBase}_${k}}}`;
+            });
+            if (scrubbed > 0) {
+              try {
+                debugLog(`[generate-document] RE851D final appraiser scrubber: ${scrubbed} surviving literal(s) routed to pr_p_appraiserName/Address_K`);
+              } catch (_) { /* ignore */ }
+              totalRewrites += scrubbed;
+            }
+          }
+
           out[filename] = encoder.encode(xml);
         }
 
