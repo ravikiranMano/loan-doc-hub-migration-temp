@@ -1154,6 +1154,37 @@ async function generateSingleDocument(
       }
     }
 
+    // ── Loan Number alias publisher ──
+    // Ensure {{ln_p_loanNumber}} always populates by bridging from any of the
+    // known legacy/UI keys that store the loan number value.
+    {
+      const loanNumSources = [
+        "ln_p_loanNumber",
+        "Terms.LoanNumber",
+        "terms.loannumber",
+        "loan_terms.loan_number",
+        "loan_terms.details_loan_number",
+      ];
+      let loanNumVal: FieldValueData | undefined;
+      for (const k of loanNumSources) {
+        const v = fieldValues.get(k);
+        if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+          loanNumVal = { rawValue: String(v.rawValue), dataType: "text" };
+          break;
+        }
+      }
+      if (loanNumVal) {
+        for (const k of loanNumSources) {
+          const existing = fieldValues.get(k);
+          if (!existing || existing.rawValue == null || String(existing.rawValue).trim() === "") {
+            fieldValues.set(k, loanNumVal);
+          }
+        }
+      }
+    }
+
+
+
     debugLog(`[generate-document] Resolved ${fieldValues.size} field values for ${template.name}`);
     // Log a sample of field values for debugging
     const sampleKeys = [...fieldValues.keys()].slice(0, 30);
