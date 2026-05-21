@@ -1059,6 +1059,7 @@ async function generateSingleDocument(
           const n = idx + 1;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
           let email = "", phone = "", contactId = "";
+          let contactName = "";
           if (lp?.contact_id) {
             const lc = contactRowsByUuid.get(lp.contact_id);
             const lcd = lc?.contact_data || {};
@@ -1072,11 +1073,23 @@ async function generateSingleDocument(
             email = (lcd.email || lc?.email || "").toString().trim();
             phone = (lcd.phone || lc?.phone || "").toString().trim();
             contactId = (lc?.contact_id || lp.contact_id || "").toString();
+            // Contact-level display name as ultimate fallback (matches the
+            // "Name" column shown in the Participants UI).
+            const cFull = (lc?.full_name || lcd.full_name || "").toString().trim();
+            const cFirst = (lc?.first_name || "").toString().trim();
+            const cLast = (lc?.last_name || "").toString().trim();
+            const cAssembled = [cFirst, cLast].filter(Boolean).join(" ").trim();
+            contactName = cFull || cAssembled || (lp?.name || "").toString().trim();
+          } else {
+            contactName = (lp?.name || "").toString().trim();
           }
           const isIndividual = type.toLowerCase() === "individual";
-          const displayName = isIndividual
-            ? [firstName, middle, last].filter(Boolean).join(" ")
-            : vesting;
+          let displayName = isIndividual
+            ? [firstName, middle, last].filter(Boolean).join(" ").trim()
+            : vesting.trim();
+          if (!displayName) {
+            displayName = contactName;
+          }
           const label = `LENDER ${n}`;
           const isPrimary = n === 1;
 
@@ -1087,6 +1100,7 @@ async function generateSingleDocument(
           setAlias(`lender_${n}_middle`, middle);
           setAlias(`lender_${n}_last`, last);
           setAlias(`lender_${n}_displayName`, displayName);
+          setAlias(`lender_${n}_contactName`, contactName);
           setAlias(`lender_${n}_isIndividual`, isIndividual ? "true" : "false");
           setAlias(`lender_${n}_exists`, "true");
           setAlias(`lender_${n}_email`, email);
@@ -1103,6 +1117,7 @@ async function generateSingleDocument(
           setAlias(`lenders${n}.middle`, middle);
           setAlias(`lenders${n}.last`, last);
           setAlias(`lenders${n}.displayName`, displayName);
+          setAlias(`lenders${n}.contactName`, contactName);
           setAlias(`lenders${n}.isIndividual`, isIndividual ? "true" : "false");
           setAlias(`lenders${n}.exists`, "true");
           setAlias(`lenders${n}.email`, email);
@@ -1122,6 +1137,7 @@ async function generateSingleDocument(
             setAlias(`additionalLenders${a}.middle`, middle);
             setAlias(`additionalLenders${a}.last`, last);
             setAlias(`additionalLenders${a}.displayName`, displayName);
+            setAlias(`additionalLenders${a}.contactName`, contactName);
             setAlias(`additionalLenders${a}.isIndividual`, isIndividual ? "true" : "false");
             setAlias(`additionalLenders${a}.exists`, "true");
             setAlias(`additionalLenders${a}.email`, email);
@@ -1137,15 +1153,12 @@ async function generateSingleDocument(
             setAlias("ld_p_isIndividual", isIndividual ? "true" : "false");
             setAlias("ld_p_displayName", displayName);
             setAlias("ld_p_investorName", displayName);
-            setAlias("ld_p_entityName", isIndividual ? "" : vesting);
+            setAlias("ld_p_entityName", isIndividual ? "" : vesting.trim());
+            setAlias("ld_p_contactName", contactName);
             setAlias("ld_p_lenderType", type);
-            // Generic aliases for templates that reference the unscoped
-            // tag names. Resolution pipeline (direct → migrations →
-            // canonical → aliases → case-insensitive) is unchanged; we
-            // only add additional entries to the direct-match surface.
             setAlias("investorName", displayName);
             setAlias("lenderName", displayName);
-            setAlias("entityName", isIndividual ? "" : vesting);
+            setAlias("entityName", isIndividual ? "" : vesting.trim());
             primaryHelpersSet = true;
           }
 
