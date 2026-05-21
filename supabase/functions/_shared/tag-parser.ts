@@ -2351,13 +2351,53 @@ export function processEachBlocks(
           }
         }
 
+        // Resolve Handlebars-style iteration helpers (@first, @last, @index)
+        // BEFORE we scope conditional tags below. These are per-iteration
+        // constants computed from the position in `sortedIndices` and are
+        // used by templates like RE870 to emit a page break between (but
+        // not after) lender forms. We support the two common forms:
+        //   {{#unless @last}}…{{/unless}}     — emit when not the final clone
+        //   {{#if @last}}…{{/if}}             — emit only on the final clone
+        //   {{#unless @first}}…{{/unless}}    — emit when not the first clone
+        //   {{#if @first}}…{{/if}}            — emit only on the first clone
+        //   {{@index}}                         — 0-based iteration index
+        // Lazy matching is intentional: nested same-helper blocks are not
+        // a real use case, and limiting to the first matching close keeps
+        // surrounding `{{#unless …}}` blocks untouched.
+        const iterIdxZero = expandedBlocks.length; // 0-based position
+        const isFirst = expandedBlocks.length === 0;
+        const isLast = expandedBlocks.length === sortedIndices.length - 1;
+        const keepOrDrop = (
+          src: string,
+          helper: "@last" | "@first",
+          keep: boolean,
+        ): string => {
+          const ifRe = new RegExp(
+            `\\{\\{#if\\s+${helper.replace("@", "@?")}\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`,
+            "g",
+          );
+          const unlessRe = new RegExp(
+            `\\{\\{#unless\\s+${helper.replace("@", "@?")}\\}\\}([\\s\\S]*?)\\{\\{/unless\\}\\}`,
+            "g",
+          );
+          let out = src.replace(ifRe, (_m, inner) => (keep ? inner : ""));
+          out = out.replace(unlessRe, (_m, inner) => (keep ? "" : inner));
+          return out;
+        };
+        blockContent = keepOrDrop(blockContent, "@last", isLast);
+        blockContent = keepOrDrop(blockContent, "@first", isFirst);
+        // Bare {{@index}} (no helper) → numeric value.
+        blockContent = blockContent.replace(/\{\{\s*@index\s*\}\}/g, String(iterIdxZero));
+
         // Scope inner conditional control tags to this iteration's entity
         // prefix so {{#if isIndividual}} inside {{#each lenders}} becomes
         // {{#if lenders1.isIndividual}} for the first clone, etc. The
         // subsequent processConditionalBlocks pass then evaluates each
         // clone against the correct per-entity field value. Only rewrite
         // bare identifiers — keys that already contain a "." (or already
-        // start with the entity prefix) are left alone.
+        // start with the entity prefix) are left alone. We also skip any
+        // identifier beginning with "@" so iteration helpers handled above
+        // are not accidentally rewritten into `<entity>.@last` etc.
         blockContent = blockContent.replace(
           /\{\{#(if|unless)\s+([A-Za-z_][A-Za-z0-9_]*)\}\}/g,
           (full, kind, name) => `{{#${kind} ${entityPrefix}.${name}}}`
