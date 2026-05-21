@@ -1,49 +1,58 @@
-## Plan: deep fix for RE870 INVESTOR NAME placement
+## Goal
+Make the generated RE870 doc's "INVESTOR NAME:" paragraph match the original v1 template exactly: left indent 475, sz=18 run (sz=16 paragraph mark), yellow highlight, no bold, with a `<w:br/>` between the label and the lender loop.
 
-### What I found
-- The current rewrite does put the lender loop into a cell that contains `INVESTOR NAME:`.
-- But in at least one live template, that cell has `w:gridSpan="2"` and centered paragraph styling, so visually it still lands under/near the centered INVESTOR header area instead of the true left column position.
-- The issue is therefore not only “wrong tag text in wrong cell”; it is also the Word table geometry/paragraph styling around the INVESTOR header/name rows.
-- `NAME OF PERSON COMPLETING` is already targeted, but I’ll make it use the primary lender display-name alias consistently and remove stale conditional/name-part output.
+## Root cause
+`wrapInvestorNameCell` in `supabase/functions/rewrite-re870-multi-lender/index.ts` rebuilds the cell by reusing the source paragraph's `<w:pPr>` and the source run's `<w:rPr>`. On already-touched live templates, that source paragraph is the broken one (`<w:ind w:left="2"/>`, `<w:jc w:val="left"/>`, `<w:b/>`, `<w:sz w:val="20"/>`), so the "fix" persists the wrong formatting and drops the yellow highlight + `<w:br/>`.
 
-### Implementation steps
-1. **Rewrite the RE870 INVESTOR table structurally**
-   - Locate the table containing both `INVESTOR NAME` and `CO-INVESTOR NAME`.
-   - Identify the exact row/cells around the investor header/name area.
-   - Rebuild only that row/cell group so the left cell is the actual investor-name cell and contains exactly:
-     - Paragraph 1: `INVESTOR NAME:`
-     - Paragraph 2: the requested lender loop
-   - Preserve the rest of the table and document unchanged.
+The template's canonical paragraph (from `Investor_Questionnaire_v1__1_.docx`):
 
-2. **Remove visual causes of the misplaced output**
-   - Remove/avoid `w:gridSpan="2"` on the rebuilt left investor-name cell when it causes the left cell to span into the center column.
-   - Use left-aligned paragraph properties for the investor-name label/value paragraphs instead of inheriting centered header styling.
-   - Ensure any center header cell remains header-only (`INVESTOR`) and never contains lender loop text.
+```text
+<w:pPr>
+  <w:ind w:left="475"/>
+  <w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/><w:highlight w:val="yellow"/></w:rPr>
+</w:pPr>
+<w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r>
+<w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:br/></w:r>
+<w:r><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>{{#each lenders}}…{{/each}}</w:t></w:r>
+```
 
-3. **Use the requested loop expression**
-   - Set the investor-name value paragraph to:
+## Changes (single file: `supabase/functions/rewrite-re870-multi-lender/index.ts`)
+
+1. Replace `normalizeInvestorParagraphPr` so it returns a fixed canonical pPr, ignoring any prior pPr from the source cell:
    ```text
-   {{#each lenders}}{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}{{/each}}
+   <w:pPr><w:ind w:left="475"/><w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/><w:highlight w:val="yellow"/></w:rPr></w:pPr>
    ```
-   - This matches the requested template structure while still relying on the existing per-lender `isIndividual`, `firstName`, `middle`, `last`, and `vesting` data.
+   This guarantees `w:left="475"`, removes injected `<w:jc w:val="left"/>`, drops bold, and restores the yellow highlight on the paragraph mark.
 
-4. **Fix NAME OF PERSON COMPLETING**
-   - Replace conditional/name-part output with primary lender display name only:
+2. In `wrapInvestorNameCell`, stop deriving `rPr` from the source run. Use two fixed run-property blocks:
+   - Label run rPr: `<w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>` (no `<w:b/>`).
+   - Loop run rPr: `<w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>` (matches the v1 template's loop run size).
+
+3. Emit ONE paragraph (matching v1 structure) instead of two, with a `<w:br/>` between label and loop:
    ```text
-   NAME OF PERSON COMPLETING THIS QUESTIONNAIRE
-   {{ld_p_displayName}}
+   <w:p>{canonicalPPr}
+     <w:r>{labelRPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r>
+     <w:r>{labelRPr}<w:br/></w:r>
+     <w:r>{loopRPr}<w:t xml:space="preserve">{{#each lenders}}…{{/each}}</w:t></w:r>
+   </w:p>
    ```
-   - Strip stale `firstName`, `middle`, `last`, `vesting`, and `isIndividual` template fragments from that cell.
+   Then continue to blank the remaining `<w:p>` siblings in the cell as today.
 
-5. **Add regression coverage**
-   - Extend the RE870 rewrite test fixture to include a row where `INVESTOR NAME` has `gridSpan="2"` and centered styling.
-   - Assert that after rewrite:
-     - the center `INVESTOR` header cell has no lender loop,
-     - the left `INVESTOR NAME:` cell has the loop in paragraph 2,
-     - `NAME OF PERSON COMPLETING` uses display name only.
+4. Keep `normalizeInvestorNameCellGeometry` (gridSpan removal + preferred width) unchanged.
 
-6. **Deploy and validate against live templates**
-   - Deploy `rewrite-re870-multi-lender`.
-   - Run it with `force: true` for the three RE870 templates.
-   - Re-run debug inspection to confirm the template XML structure, including cell widths/spans and loop placement.
-   - Confirm generated-document logs no longer show the old misplaced-loop behavior.
+5. Bump version marker (e.g., `V9_MARKER`) so the rewrite re-runs unconditionally on already-touched live templates.
+
+## Validation
+1. Deploy `rewrite-re870-multi-lender`.
+2. Re-run with `force: true` for the 3 RE870 templates.
+3. `debug-fetch-doc` the rewritten templates and confirm:
+   - `<w:ind w:left="475"/>` is present on the INVESTOR NAME paragraph.
+   - No `<w:b/>` and no `<w:jc w:val="left"/>` on that paragraph.
+   - `<w:highlight w:val="yellow"/>` present on the pPr's rPr.
+   - Exactly one `<w:br/>` between `INVESTOR NAME:` and the `{{#each lenders}}` loop.
+   - Label run uses `<w:sz w:val="18"/>`; loop run uses `<w:sz w:val="20"/>`.
+4. Generate a doc for deal `DL-2026-0266` and re-extract the same XML in the output to confirm parity with the v1 template.
+
+## Out of scope
+- No changes to `_shared/tag-parser.ts` or other functions.
+- No changes to the lender loop expression itself.
