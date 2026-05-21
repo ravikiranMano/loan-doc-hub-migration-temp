@@ -374,18 +374,9 @@ function rewriteDocumentXml(
   out = out.split(V4_MARKER).join("");
   out = out.split(V5_MARKER).join("");
   out = out.split(V6_MARKER).join("");
+  out = out.split(V7_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
-  //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
-  //     ORGANIZATION / NAME OF PERSON COMPLETING cells (those cells lived
-  //     OUTSIDE the {{#each lenders}} block, so the bare {{vesting}} /
-  //     {{type}} / {{firstName}} tags resolved to nothing). The proper
-  //     scoping (bare → lendersN.*) only happens inside the each block,
-  //     which Pass C wraps explicitly around the INVESTOR NAME cell.
-  //
-  //     These reverts are SAFE because they happen BEFORE Pass C runs:
-  //     Pass C writes its own paragraph containing the bare conditional
-  //     INSIDE the {{#each lenders}} marker, so it doesn't get reverted.
   const nameRevert = replaceLiteral(
     out,
     "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}",
@@ -406,16 +397,27 @@ function rewriteDocumentXml(
   out = typeRevert.xml;
   notes.push(`type-tag reverts: ${typeRevert.hits}`);
 
-  // (c) Wrap the INVESTOR NAME cell's conditional paragraph.
+  // (c) Wrap the real INVESTOR NAME cell with label + displayName loop.
   const wrapped = wrapInvestorNameCell(out);
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v6 marker so subsequent runs short-circuit (unless force).
+  // (d) Clean up any OTHER cell that v6 wrongly stuffed the loop into
+  //     (e.g. the centered "INVESTOR" header cell). Restore it to header text.
+  const cleaned = cleanMisplacedInvestorLoop(out, wrapped.targetStart);
+  out = cleaned.xml;
+  notes.push(cleaned.note);
+
+  // (e) Rewrite NAME OF PERSON COMPLETING THIS QUESTIONNAIRE → {{ld_p_displayName}}
+  const personFix = fixNamePersonCompletingCell(out);
+  out = personFix.xml;
+  notes.push(personFix.note);
+
+  // (f) Inject the v7 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V6_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V7_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
