@@ -4084,6 +4084,57 @@ async function generateSingleDocument(
           }
         }
 
+        // ── Formal_Request_for_Information V7 only: restrict pr_li_lienHolder ──
+        // The Formal Request template expects {{pr_li_lienHolder}} to render
+        // ONLY the holder of the lien whose priority is "1st" (not the
+        // newline-joined list of every lien produced by the generic aggregator).
+        // Falls back to whatever the aggregator already published if no lien
+        // matches priority "1st", so behavior degrades gracefully.
+        if (isTemplateFormalRequestInfo) {
+          type Cand = { idx: number; rawIdx: string; priority: string; holder: string };
+          const candidates: Cand[] = [];
+          for (const [key, val] of fieldValues.entries()) {
+            const m = key.match(/^lien(\d*)\.(.+)$/);
+            if (!m) continue;
+            const field = m[2];
+            if (
+              field !== "lien_priority_now" &&
+              field !== "priority" &&
+              field !== "lien_priority"
+            ) continue;
+            const rawIdx = m[1] || "";
+            const prio = String(val?.rawValue ?? "").trim().toLowerCase();
+            const holderVal =
+              fieldValues.get(`lien${rawIdx}.holder`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lienHolder`)?.rawValue ??
+              "";
+            candidates.push({
+              idx: parseInt(rawIdx || "0", 10),
+              rawIdx,
+              priority: prio,
+              holder: String(holderVal).trim(),
+            });
+          }
+          const isFirst = (p: string) => p === "1st" || p === "1" || p === "first";
+          const winner = candidates
+            .filter((c) => isFirst(c.priority) && c.holder !== "")
+            .sort((a, b) => a.idx - b.idx)[0];
+          if (winner) {
+            fieldValues.set("pr_li_lienHolder", {
+              rawValue: winner.holder,
+              dataType: "text",
+            });
+            debugLog(
+              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder restricted to 1st-priority lien (lien${winner.rawIdx} holder="${winner.holder}")`
+            );
+          } else {
+            debugLog(
+              `[generate-document] Formal_Request_for_Information: no lien with priority "1st" found; leaving aggregated pr_li_lienHolder unchanged (candidates=${candidates.length})`
+            );
+          }
+        }
+
+
       }
 
       // ── Calculated field: pr_netPropertyValue ──
