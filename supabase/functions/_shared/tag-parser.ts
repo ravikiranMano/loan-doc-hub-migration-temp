@@ -726,7 +726,9 @@ export function consolidateAppraiserConditional(xml: string): string {
 
   return processParaByPara(xml, (para) => {
     if (!para.includes('pr_p_perform') || !para.includes('Broker')) return para;
-    if (!/BPO Performed by Broker|N\/A/i.test(para)) return para;
+    // (Cannot guard on contiguous payload text — `N/A` is intentionally split
+    // across runs by the Word grammar-checker marker we just stripped.)
+
 
     // Collect <w:r>...</w:r> runs with their byte ranges and concatenated
     // <w:t> text. Other tags between runs (e.g. <w:proofErr/>) contribute
