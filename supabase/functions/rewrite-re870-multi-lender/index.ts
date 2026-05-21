@@ -171,18 +171,23 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
     const conditional =
       "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    // Two-paragraph layout:
+    //   P1: "INVESTOR NAME:" label
+    //   P2: single text run containing {{#each lenders}}<cond>{{/each}}
+    // The tag-parser's processEachBlocks detects that the each-block lives
+    // inside a <w:t> run (no paragraphs in the expanded block) and inserts
+    // </w:t><w:br/><w:t xml:space="preserve"> between iterations, giving
+    // each lender its own visual line inside the same paragraph.
     parts[firstParaIdx] =
       `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}${conditional}{{/each}}</w:t></w:r></w:p>`;
     for (let i = firstParaIdx + 1; i < parts.length; i++) {
       if (parts[i].startsWith("<w:p")) parts[i] = "";
     }
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt: label paragraph + per-lender paragraph in {{#each lenders}} loop",
+      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}<br>-separated loop",
     };
   }
 
