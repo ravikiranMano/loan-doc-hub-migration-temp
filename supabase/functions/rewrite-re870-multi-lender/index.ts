@@ -149,12 +149,17 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   parts.push(cellXml.substring(lastIdx));
 
   // Find the paragraph that contains either of the legacy tag fragments
-  // OR an already-substituted `{{#if isIndividual}}` block.
+  // OR an already-substituted `{{#if isIndividual}}` block. The template
+  // stores tags fragmented across runs (e.g. "{{ld" + "_p_firstIfEntityUse"
+  // + "}}…"), so we look for the unfragmented substring "firstIfEntityUse"
+  // which is guaranteed to be inside a single <w:t> element.
   const isTagPara = (p: string) =>
     p.startsWith("<w:p") &&
-    (p.includes("ld_p_firstIfEntityUse") ||
-      p.includes("ld_p_first") ||
+    (p.includes("firstIfEntityUse") ||
+      p.includes("ld_p_middle") ||
+      p.includes("ld_p_last") ||
       p.includes("{{#if isIndividual}}"));
+
 
   const condIdx = parts.findIndex(isTagPara);
   if (condIdx === -1) {
