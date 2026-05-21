@@ -42,6 +42,7 @@ const TEMPLATE_IDS = [
 
 const V2_MARKER = "<!-- re870-rewrite:v2 -->";
 const V3_MARKER = "<!-- re870-rewrite:v3 -->";
+const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 
 // Marker paragraphs for the INVESTOR NAME inner loop.
 const EACH_OPEN_PARA =
@@ -168,16 +169,20 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const pPr = pPrMatch ? pPrMatch[0] : "";
     const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+    const conditional =
+      "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
     parts[firstParaIdx] =
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{ld_p_allInvestorNames}}</w:t></w:r></w:p>`;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{#each lenders}}</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{/each}}</w:t></w:r></w:p>`;
     for (let i = firstParaIdx + 1; i < parts.length; i++) {
       if (parts[i].startsWith("<w:p")) parts[i] = "";
     }
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt with ld_p_allInvestorNames",
+      note: "INVESTOR NAME cell rebuilt: label paragraph + per-lender paragraph in {{#each lenders}} loop",
     };
   }
 
@@ -267,8 +272,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V3_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v3 (skipped)"] };
+  if (!force && xml.includes(V4_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v4 (skipped)"] };
   }
 
   let out = xml;
@@ -279,9 +284,10 @@ function rewriteDocumentXml(
   out = stripped.xml;
   notes.push(`v1 wrapper paragraphs removed: ${stripped.removed}`);
 
-  // Remove any prior v2/v3 markers before re-injecting (force re-run safety).
+  // Remove any prior v2/v3/v4 markers before re-injecting (force re-run safety).
   out = out.split(V2_MARKER).join("");
   out = out.split(V3_MARKER).join("");
+  out = out.split(V4_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
@@ -319,11 +325,11 @@ function rewriteDocumentXml(
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v3 marker so subsequent runs short-circuit (unless force).
+  // (d) Inject the v4 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V3_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V4_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
