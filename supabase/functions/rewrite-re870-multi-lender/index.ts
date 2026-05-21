@@ -325,11 +325,11 @@ function rewriteDocumentXml(
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v3 marker so subsequent runs short-circuit (unless force).
+  // (d) Inject the v4 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V3_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V4_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
