@@ -1,60 +1,63 @@
-# Fix RE851D appraiser `_N` conditional leaking raw into output
+# Limit `{{pr_li_lienHolder}}` to the 1st-priority lien for Formal_Request_for_Information V7
 
-## Root cause (confirmed from code)
-The pipeline already has all the pieces to handle the `{{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}` conditional:
+## Problem
+For the **Formal_Request_for_Information V7** template, `{{pr_li_lienHolder}}` currently renders the holders of *all* liens (newline-joined by the generic lien aggregator). The template expects only the holder whose lien priority is `1st`.
 
-1. `_shared/tag-parser.ts::consolidateAppraiserConditional` (line 724) canonicalizes the fragmented runs into one contiguous `{{#if (eq pr_p_performeBy_N "Broker")}}PAYLOAD{{else}}{{/if}}` run.
-2. `generate-document/index.ts` line 6906 (strict) rewrites that canonical block to `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}` per PROPERTY region.
-3. Line 7028 (`performByTagRe`) replaces any remaining literal `_N` with `_K` based on PROPERTY region.
+## Root cause
+`pr_li_lienHolder` is published by the generic lien-aggregation path (which joins every lien's `holder` value). There is already a template-scoped re-publisher for RE885 at `supabase/functions/generate-document/index.ts` line 3968 (`if (isTemplate885) { … fieldValues.set("pr_li_lienHolder", …) }`), but no equivalent for the Formal Request template, so the aggregated multi-lien string passes through.
 
-The bug: `consolidateAppraiserConditional` is invoked **inside `normalizeWordXml`**, but `normalizeWordXml` has **four fast-path early returns** (tag-parser.ts lines 308, 323, 330, 350–376) that bypass it. For RE851D in deal DL-2026-0250 the per-paragraph fragmentation probe at line 350 evidently does not flag the appraiser paragraphs, so the canonicalization never runs. The downstream strict regex at gen-doc 6906 then can't match the still-fragmented opener, and the tolerant pass at 6967 also can't anchor on the payload because the `N/A` / `BPO Performed by Broker` text is itself split across runs. Result: the raw `{{#if (eq pr_p_performeBy_N "Broker")}}…{{/if}}` survives all rewrites and leaks into the final docx.
+## Fix scope — one narrow edit, no behavior changes elsewhere
 
-## Fix scope — two narrow edits, no behavior changes elsewhere
+### `supabase/functions/generate-document/index.ts`
 
-### Edit 1 — `supabase/functions/_shared/tag-parser.ts`
-`consolidateAppraiserConditional` is already exported (line 724). No code change needed here — only confirm the export is intact.
+1. Add a template gate alongside the existing ones at line ~143:
+   ```ts
+   const isTemplateFormalRequestInfo =
+     /formal[_\s-]*request[_\s-]*for[_\s-]*information/i.test(template.name || "");
+   ```
 
-### Edit 2 — `supabase/functions/generate-document/index.ts`
-Add a single defensive call to `consolidateAppraiserConditional(xml)` for RE851D templates immediately after the existing `normalizeWordXml(...)` invocation at line 6400, so the canonical form is guaranteed regardless of which fast-path `normalizeWordXml` took. Pseudocode:
+2. Immediately after the RE885 block (line 4084, just before the closing of the encompassing scope), add a parallel block:
+   ```ts
+   if (isTemplateFormalRequestInfo) {
+     // Find the lien whose priority is "1st" and publish ONLY its holder
+     // into pr_li_lienHolder. Falls back to the existing aggregated value
+     // when no lien matches, so behavior degrades gracefully.
+     const candidates: Array<{ idx: number; priority: string; holder: string }> = [];
+     for (const [key, val] of fieldValues.entries()) {
+       const m = key.match(/^lien(\d*)\.(.+)$/);
+       if (!m) continue;
+       const idx = parseInt(m[1] || "0", 10);
+       const field = m[2];
+       if (field !== "lien_priority_now" && field !== "priority" && field !== "lien_priority") continue;
+       const prio = String(val?.rawValue ?? "").trim().toLowerCase();
+       const holderVal = fieldValues.get(`lien${m[1]}.holder`)?.rawValue
+                      ?? fieldValues.get(`lien${m[1]}.lienHolder`)?.rawValue
+                      ?? "";
+       candidates.push({ idx, priority: prio, holder: String(holderVal).trim() });
+     }
+     // Match "1st" (also tolerate "1", "first")
+     const isFirst = (p: string) => p === "1st" || p === "1" || p === "first";
+     const winner = candidates
+       .filter((c) => isFirst(c.priority) && c.holder !== "")
+       .sort((a, b) => a.idx - b.idx)[0];
+     if (winner) {
+       fieldValues.set("pr_li_lienHolder", {
+         rawValue: winner.holder,
+         dataType: "text",
+       });
+       debugLog(`[generate-document] Formal_Request_for_Information: pr_li_lienHolder restricted to 1st-priority lien (lien${winner.idx} holder="${winner.holder}")`);
+     }
+   }
+   ```
 
-```ts
-// existing
-xml = normalizeWordXml(xml, template.name || "");
-
-// new (RE851D only): guarantee appraiser conditional is canonicalized even
-// when normalizeWordXml took a fast-path return that skipped its internal
-// consolidateAppraiserConditional call.
-if (isTemplate851D) {
-  xml = consolidateAppraiserConditional(xml);
-}
-```
-
-Import `consolidateAppraiserConditional` from `../_shared/tag-parser.ts` at the top of the file alongside the existing `normalizeWordXml` import (line 27).
-
-That's it. After this call:
-- The opener becomes contiguous: `{{#if (eq pr_p_performeBy_N "Broker")}}BPO Performed by Broker{{else}}{{/if}}` and likewise for `N/A`.
-- The existing strict regex at line 6906 matches and rewrites the whole block to `{{pr_p_appraiserName_K}}` / `{{pr_p_appraiserAddress_K}}` anchored by PROPERTY region (Property 1 → `_1`, etc.).
-- The value publisher at line ~2000 already publishes `pr_p_appraiserName_K` / `pr_p_appraiserAddress_K` based on `appraisal_performed_by`: `"Broker"` → name=`BPO Performed by Broker`, address=`N/A`; anything else → empty.
-
-## Expected behavior after fix (deal DL-2026-0250, Property 1, Performed By = "Third Party")
-- NAME OF APPRAISER → blank
-- ADDRESS OF APPRAISER → blank
-
-If Performed By is later changed to "Broker":
-- NAME OF APPRAISER → `BPO Performed by Broker`
-- ADDRESS OF APPRAISER → `N/A`
-
-## Files changed
-- `supabase/functions/generate-document/index.ts` — add one import + one conditional call (≈3 lines).
+This runs AFTER the generic aggregator has already published the joined value, so it cleanly overrides it. If no lien has priority "1st", the aggregated value is left untouched (safe fallback).
 
 ## Files NOT changed
-- `_shared/tag-parser.ts` (consolidation function is already correct).
-- `_shared/field-resolver.ts` (value-resolution layer; not a document-XML rewriter — the conceptual "`_N` → property index" replacement the user described actually lives in `generate-document/index.ts` at line 7028 and is already implemented).
-- Any other field mapping, conditional, publisher, or template.
+- No schema changes, no UI changes, no template-file changes.
+- All other `pr_li_*` aggregations and all other templates are unaffected (gated strictly by `isTemplateFormalRequestInfo`).
 
 ## Verification
 1. Deploy `generate-document`.
-2. Re-generate RE851D for DL-2026-0250 with Property 1 `appraisal_performed_by = "Third Party"`. Confirm NAME / ADDRESS OF APPRAISER are blank.
-3. Edit Property 1 `appraisal_performed_by` to `"Broker"`, re-generate. Confirm NAME = `BPO Performed by Broker`, ADDRESS = `N/A`.
-4. Confirm Properties 2–5 are anchored to their own values (no cross-property leakage).
-5. Confirm the raw text `{{#if (eq pr_p_performeBy_N "Broker")}}` no longer appears anywhere in the generated docx.
+2. Open a deal with multiple liens (e.g. 1st, 2nd) and generate **Formal_Request_for_Information V7**.
+3. Confirm `{{pr_li_lienHolder}}` renders only the holder name of the lien marked priority `1st`.
+4. Confirm other templates (RE885, RE851D, etc.) are unchanged.
