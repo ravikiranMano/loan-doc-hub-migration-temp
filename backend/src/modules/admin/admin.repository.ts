@@ -56,13 +56,13 @@ export class AdminRepository {
     return this.prisma.field_dictionary.delete({ where: { id } });
   }
 
-  // ─── Profiles ────────────────────────────────────────────────────────────────
+  // ─── Users (consolidated: was profiles + user_roles) ─────────────────────────
 
-  findAllProfiles() {
-    return this.prisma.profiles.findMany({ orderBy: { email: 'asc' } });
+  findAllUsers() {
+    return this.prisma.users.findMany({ orderBy: { email: 'asc' } });
   }
 
-  async findProfilesPaginated(options?: {
+  async findUsersPaginated(options?: {
     userType?: string;
     page?: number;
     limit?: number;
@@ -70,9 +70,7 @@ export class AdminRepository {
     orderBy?: { column: string; ascending?: boolean };
   }) {
     const where: Record<string, unknown> = {};
-    if (options?.userType) {
-      where['user_type'] = options.userType;
-    }
+    if (options?.userType) where['user_type'] = options.userType;
     if (options?.search?.trim()) {
       const s = options.search.trim();
       where['OR'] = [
@@ -91,107 +89,86 @@ export class AdminRepository {
     const take = options?.limit ?? undefined;
 
     const [data, count] = await Promise.all([
-      this.prisma.profiles.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { [orderColumn]: orderDir },
-      }),
-      this.prisma.profiles.count({ where }),
+      this.prisma.users.findMany({ where, skip, take, orderBy: { [orderColumn]: orderDir } }),
+      this.prisma.users.count({ where }),
     ]);
 
     return { data, count };
   }
 
-  countProfiles() {
-    return this.prisma.profiles.count();
+  countUsers() {
+    return this.prisma.users.count();
   }
 
-  findProfileById(id: string) {
-    return this.prisma.profiles.findUnique({ where: { id } });
+  findUserById(id: string) {
+    return this.prisma.users.findUnique({ where: { id } });
   }
 
-  findProfileByUserId(userId: string) {
-    return this.prisma.profiles.findUnique({ where: { user_id: userId } });
+  findUsersByIds(ids: string[]) {
+    return this.prisma.users.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true, full_name: true },
+    });
   }
 
-  updateProfileById(id: string, dto: UpdateProfileDto) {
-    return this.prisma.profiles.update({
+  updateUser(id: string, dto: UpdateProfileDto) {
+    return this.prisma.users.update({
       where: { id },
       data: { ...dto, updated_at: new Date() },
     });
   }
 
-  updateProfile(userId: string, dto: UpdateProfileDto) {
-    return this.prisma.profiles.update({
-      where: { user_id: userId },
-      data: { ...dto, updated_at: new Date() },
+  // ─── Role Assignment ──────────────────────────────────────────────────────────
+
+  findUserRole(userId: string) {
+    return this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
     });
   }
 
-  // ─── User Roles ──────────────────────────────────────────────────────────────
-
-  findUserRole(userId: string) {
-    return this.prisma.user_roles.findFirst({ where: { user_id: userId } });
-  }
-
   findRolesForUserIds(ids: string[]) {
-    return this.prisma.user_roles.findMany({ where: { user_id: { in: ids } } });
+    return this.prisma.users.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, role: true },
+    });
   }
 
   findAllUserRoles() {
-    return this.prisma.user_roles.findMany();
+    return this.prisma.users.findMany({ select: { id: true, role: true } });
   }
 
   findPermissionLevels() {
     return this.prisma.user_permission_levels.findMany();
   }
 
-  /**
-   * Mirrors Supabase RPC assign_user_role_and_permission:
-   * delete existing roles, insert one role, upsert/delete permission level for CSR.
-   */
   async assignRole(userId: string, role: string, permissionLevel = 'full') {
     const appRole = role as $Enums.app_role;
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.user_roles.deleteMany({ where: { user_id: userId } });
-
-      const userRole = await tx.user_roles.create({
-        data: { user_id: userId, role: appRole },
+      const user = await tx.users.update({
+        where: { id: userId },
+        data: { role: appRole, updated_at: new Date() },
       });
 
       if (appRole === 'csr') {
         await tx.user_permission_levels.upsert({
           where: { user_id: userId },
-          create: {
-            user_id: userId,
-            permission_level: permissionLevel ?? 'full',
-          },
-          update: {
-            permission_level: permissionLevel ?? 'full',
-            updated_at: new Date(),
-          },
+          create: { user_id: userId, permission_level: permissionLevel },
+          update: { permission_level: permissionLevel, updated_at: new Date() },
         });
       } else {
         await tx.user_permission_levels.deleteMany({ where: { user_id: userId } });
       }
 
-      return userRole;
+      return user;
     });
   }
 
-  findCsrUsersForPermissions() {
-    return this.prisma.user_roles.findMany({
+  findCsrUsers() {
+    return this.prisma.users.findMany({
       where: { role: 'csr' },
-      select: { user_id: true },
-    });
-  }
-
-  findProfilesByUserIds(userIds: string[]) {
-    return this.prisma.profiles.findMany({
-      where: { user_id: { in: userIds } },
-      select: { user_id: true, email: true, full_name: true },
+      select: { id: true, email: true, full_name: true },
     });
   }
 

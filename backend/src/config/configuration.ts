@@ -1,17 +1,17 @@
+// app.* keys live in app.config.ts (registerAs 'app').
+// database.* keys live in database.config.ts (registerAs 'database').
+// Only jwt and supabase are defined here.
 export default () => ({
-  app: {
-    port: parseInt(process.env.PORT || '3000', 10),
-    nodeEnv: process.env.NODE_ENV || 'development',
-    apiPrefix: process.env.API_PREFIX || 'api',
-    corsOrigin: process.env.CORS_ORIGIN || '*',
-  },
-  database: {
-    url: process.env.DATABASE_URL,
-    directUrl: process.env.DIRECT_URL,
+  jwt: {
+    secret: process.env.JWT_SECRET,
+    expiresIn: process.env.JWT_EXPIRES_IN || '15m',
+    refreshExpiresInDays: parseInt(process.env.JWT_REFRESH_EXPIRES_DAYS || '7', 10),
   },
   supabase: {
     url: process.env.SUPABASE_URL,
     publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    /** Legacy JWT secret — Dashboard → API → JWT Settings (for edge function auth). */
     jwtSecret: process.env.SUPABASE_JWT_SECRET,
   },
 });

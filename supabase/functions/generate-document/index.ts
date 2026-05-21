@@ -103,7 +103,7 @@ async function getValidFieldKeys(supabase: any): Promise<Set<string>> {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-id",
 };
 
 // ============================================
@@ -11320,21 +11320,48 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "").trim();
     let userId: string | null = null;
 
-    // Preferred path: validate JWT claims directly (doesn't depend on an active auth session row)
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (!claimsError && claimsData?.claims?.sub) {
-      userId = claimsData.claims.sub;
-    } else {
-      // Fallback path: fetch user from token
-      const { data: userData, error: userError } = await supabase.auth.getUser(token);
-      if (userError || !userData?.user) {
-        console.error("[generate-document] Auth error:", claimsError?.message || userError?.message);
-        return new Response(JSON.stringify({ error: "Invalid token" }), {
+    const parseJwtRole = (jwt: string): string | undefined => {
+      try {
+        const part = jwt.split(".")[1];
+        if (!part) return undefined;
+        const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+        return (JSON.parse(json) as { role?: string }).role;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const tokenRole = parseJwtRole(token);
+    const isServiceInvocation =
+      token === supabaseServiceKey || tokenRole === "service_role";
+
+    // Trusted Nest API proxy (service role + acting user id)
+    if (isServiceInvocation) {
+      const trustedUserId = req.headers.get("X-User-Id")?.trim();
+      if (!trustedUserId) {
+        return new Response(JSON.stringify({ error: "Missing X-User-Id for service invocation" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      userId = userData.user.id;
+      userId = trustedUserId;
+    } else {
+      // Preferred path: validate JWT claims directly (doesn't depend on an active auth session row)
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      if (!claimsError && claimsData?.claims?.sub) {
+        userId = claimsData.claims.sub;
+      } else {
+        // Fallback path: fetch user from token
+        const { data: userData, error: userError } = await supabase.auth.getUser(token);
+        if (userError || !userData?.user) {
+          console.error("[generate-document] Auth error:", claimsError?.message || userError?.message);
+          return new Response(JSON.stringify({ error: "Invalid token" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        userId = userData.user.id;
+      }
     }
 
     debugLog(`[generate-document] User: ${userId}`);

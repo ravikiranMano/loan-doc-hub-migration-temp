@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { getSession } from '@/services/supabase/auth';
 import { fetchDealById, updateDeal } from '@/services/deals/deals.service';
 import { useDealFields } from "@/hooks/useDealFields";
 import { useEntryOrchestration } from "@/hooks/useEntryOrchestration";
@@ -216,19 +215,6 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
       }
     } catch (error) {
       console.error("Error fetching deal:", error);
-      // Check if this is a transient auth issue before closing workspace tab
-      const { data: { session } } = await getSession();
-      if (!session) {
-        await new Promise(r => setTimeout(r, 1500));
-        const { data: { session: retrySession } } = await getSession();
-        if (retrySession) {
-          // Session recovered — retry fetch
-          hasFetchedDealRef.current = false;
-          fetchDeal();
-          return;
-        }
-      }
-      // Only close workspace file if session is valid (real 404/permission error)
       if (workspace && workspace.openFiles.find(f => f.id === id)) {
         workspace.closeFile(id);
       } else {

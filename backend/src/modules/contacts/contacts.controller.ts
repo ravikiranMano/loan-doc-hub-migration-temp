@@ -24,8 +24,9 @@ export class ContactsController {
 
   // GET /api/contacts?type=&types=&search=&ids=&limit=
   @Get('generate-id')
-  generateContactId(@Query('type') type: string) {
-    return this.service.generateContactId(type);
+  async generateContactId(@Query('type') type: string) {
+    const contactId = await this.service.generateContactId(type);
+    return { contactId };
   }
 
   @Get()

@@ -73,8 +73,9 @@ export class DealsController {
   }
 
   @Get('generate-number')
-  generateDealNumber() {
-    return this.service.generateDealNumber();
+  async generateDealNumber() {
+    const dealNumber = await this.service.generateDealNumber();
+    return { dealNumber };
   }
 
   @Get('sections/by-section/:section')

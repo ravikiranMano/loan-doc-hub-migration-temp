@@ -19,17 +19,18 @@ export async function assignUserRoleAndPermission(params: {
 
 export async function listProfilesForAdmin() {
   if (isNodeApiEnabled('admin')) {
-    const users = await apiClient.get<
+    const users = await apiClient<
       Array<{
-        user_id: string;
+        user_id?: string;
+        id?: string;
         email: string | null;
         full_name: string | null;
         created_at: string;
         role?: string | null;
       }>
     >('/admin/users');
-    return users.map(({ user_id, email, full_name, created_at }) => ({
-      user_id,
+    return users.map(({ user_id, id, email, full_name, created_at }) => ({
+      user_id: user_id ?? id ?? '',
       email,
       full_name,
       created_at,

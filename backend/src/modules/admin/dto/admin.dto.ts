@@ -46,6 +46,13 @@ export class UpdateFieldDto {
   @IsArray() @IsOptional() calculation_dependencies?: string[];
 }
 
+/** Batch field_dictionary lookup (avoids huge GET ?ids= query strings). */
+export class LookupFieldIdsDto {
+  @IsArray()
+  @IsString({ each: true })
+  ids: string[];
+}
+
 export class UpdateProfileDto {
   @IsString() @IsOptional() full_name?: string;
   @IsString() @IsOptional() email?: string;

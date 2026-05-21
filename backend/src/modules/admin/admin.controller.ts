@@ -15,6 +15,7 @@ import { AdminService } from './admin.service';
 import {
   CreateFieldDto,
   UpdateFieldDto,
+  LookupFieldIdsDto,
   UpdateProfileDto,
   AssignRoleDto,
   CreateUserFormPermissionDto,
@@ -48,6 +49,13 @@ export class AdminController {
   @Post('fields')
   createField(@Body() dto: CreateFieldDto) {
     return this.service.createField(dto);
+  }
+
+  /** POST /api/admin/fields/by-ids — batch lookup (packet required-field resolution). */
+  @Post('fields/by-ids')
+  @HttpCode(HttpStatus.OK)
+  lookupFieldsByIds(@Body() dto: LookupFieldIdsDto) {
+    return this.service.lookupFieldsByIds(dto.ids ?? []);
   }
 
   @Get('fields/count')
@@ -123,8 +131,8 @@ export class AdminController {
   }
 
   @Get('users/count')
-  countProfiles() {
-    return this.service.countProfiles();
+  countUsers() {
+    return this.service.countUsers();
   }
 
   @Get('users/:userId/role')
@@ -139,12 +147,12 @@ export class AdminController {
 
   @Get('users/:userId/profile')
   getProfile(@Param('userId') userId: string) {
-    return this.service.getProfile(userId);
+    return this.service.getUser(userId);
   }
 
   @Patch('users/:userId/profile')
   updateProfile(@Param('userId') userId: string, @Body() dto: UpdateProfileDto) {
-    return this.service.updateProfile(userId, dto);
+    return this.service.updateUser(userId, dto);
   }
 
   // ─── Permissions ─────────────────────────────────────────────────────────────

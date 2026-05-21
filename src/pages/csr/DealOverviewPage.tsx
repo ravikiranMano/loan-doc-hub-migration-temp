@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { getSession } from '@/services/supabase/auth';
 import { fetchDealById, updateDeal } from '@/services/deals/deals.service';
 import {
   fetchSectionValuesByDealWithUpdatedAt,
@@ -96,7 +95,7 @@ export const DealOverviewPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { role } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const { isFormViewOnly } = useFormPermissions();
   const workspace = useWorkspaceOptional();
   const [showMaxFilesDialog, setShowMaxFilesDialog] = useState(false);
@@ -113,11 +112,14 @@ export const DealOverviewPage: React.FC = () => {
   const [markingReady, setMarkingReady] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      fetchDealData();
-      fetchParticipants();
+    if (!id || authLoading) return;
+    if (!user) {
+      navigate('/auth');
+      return;
     }
-  }, [id]);
+    fetchDealData();
+    fetchParticipants();
+  }, [id, authLoading, user, navigate]);
 
   const fetchParticipants = async () => {
     if (!id) return;
@@ -183,18 +185,11 @@ export const DealOverviewPage: React.FC = () => {
 
   const fetchDealData = async () => {
     try {
-      // Ensure auth session is available before querying (prevents RLS failures during transient session drops)
-      const { data: { session } } = await getSession();
-      if (!session) {
-        await new Promise(r => setTimeout(r, 1000));
-        const { data: { session: retrySession } } = await getSession();
-        if (!retrySession) {
-          // Still no session — don't show "File Not Found", just keep loading
-          return;
-        }
-      }
-
       const dealData = await fetchDealById(id!);
+      if (!dealData) {
+        setDeal(null);
+        return;
+      }
       setDeal(dealData as Deal);
 
       if (dealData.packet_id) {
@@ -291,6 +286,7 @@ export const DealOverviewPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching deal:', error);
+      setDeal(null);
       toast({
         title: 'Error',
         description: 'Failed to load file',
@@ -329,7 +325,7 @@ export const DealOverviewPage: React.FC = () => {
     });
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="page-container space-y-4 animate-pulse">
         <div className="h-8 w-64 rounded-md bg-muted" />
@@ -359,7 +355,7 @@ export const DealOverviewPage: React.FC = () => {
   const isReady = deal.status === 'ready';
   const isGenerated = deal.status === 'generated';
   const canBeReady = totalMissingRequired === 0 && totalRequiredFields > 0;
-  
+
   // Check if user is CSR
   const isCsr = role === 'csr' || role === 'admin';
 
@@ -514,7 +510,6 @@ export const DealOverviewPage: React.FC = () => {
               </>
             )}
           </div>
-          {/* Action Buttons in Status Banner */}
           {isCsr && canBeReady && deal.status === 'draft' && (
             <Button onClick={handleMarkReady} disabled={markingReady} className="gap-2">
               {markingReady ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}

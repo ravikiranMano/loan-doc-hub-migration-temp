@@ -45,15 +45,15 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { getSession, refreshSession } from '@/services/supabase/auth';
 import { subscribePostgresChanges } from '@/services/supabase/realtime';
-import { invokeGenerateDocument } from '@/services/supabase/functions';
 import { fetchDealById } from '@/services/deals/deals.service';
 import {
+  generateDocument,
   listGeneratedDocuments,
   listGenerationJobs,
   downloadGeneratedDoc,
 } from '@/services/documents/generation.service';
+import { SessionExpiredError } from '@/services/node-api/client';
 import { listTemplates, updateTemplate, uploadTemplateDocx } from '@/services/documents/templates.service';
 import {
   listActivePackets,
@@ -167,7 +167,7 @@ export const DealDocumentsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { role, signOut } = useAuth();
+  const { role } = useAuth();
 
   const [deal, setDeal] = useState<Deal | null>(null);
   const [packet, setPacket] = useState<Packet | null>(null);
@@ -330,10 +330,14 @@ export const DealDocumentsPage: React.FC = () => {
     setGeneratedDocuments(data || []);
 
     if (data.length > 0) {
-      const creatorIds = [...new Set(data.map((d) => d.created_by))];
-      const profilesData = await fetchProfilesByUserIds(creatorIds);
-      const profilesMap = new Map(profilesData.map((p) => [p.user_id, p]));
-      setProfiles(profilesMap);
+      const creatorIds = [
+        ...new Set(data.map((d) => d.created_by).filter((id): id is string => Boolean(id))),
+      ];
+      if (creatorIds.length > 0) {
+        const profilesData = await fetchProfilesByUserIds(creatorIds);
+        const profilesMap = new Map(profilesData.map((p) => [p.user_id, p]));
+        setProfiles(profilesMap);
+      }
     }
   };
 
@@ -353,63 +357,37 @@ export const DealDocumentsPage: React.FC = () => {
     setGenerating(true);
 
     try {
-      // Ensure we have a valid, refreshable auth session before invoking backend function
-      const { data: sessionData } = await getSession();
-      if (!sessionData.session?.access_token) {
-        throw new Error('Your session has expired. Please sign in again.');
-      }
-
-      const { error: refreshError } = await refreshSession();
-      if (refreshError) {
-        await signOut();
-        throw new Error('Your session has expired. Please sign in again.');
-      }
-
-      const body: any = {
-        dealId: deal!.id,
+      const body: { outputType: string; templateId?: string; packetId?: string } = {
         outputType,
       };
 
       if (generationMode === 'single' && selectedTemplateId) {
         body.templateId = selectedTemplateId;
       } else {
-        // Use user-selected packet
-        if (!selectedPacketId) throw new Error('No packet selected');
+        if (!selectedPacketId) throw new Error('Please select a packet before generating.');
         body.packetId = selectedPacketId;
       }
 
-      const { data, error } = await invokeGenerateDocument(body);
+      const result = await generateDocument(deal!.id, body);
 
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      const result = data as {
-        status?: string;
-        jobId?: string;
-        successCount: number;
-        failCount: number;
-        results: Array<{ templateName: string; success: boolean; error?: string }>;
-      };
-
-      // Handle async background processing response
       if (result.status === 'running' && result.jobId) {
         toast({
-          title: 'Document Generation Started',
-          description: 'Processing in the background. Documents will appear automatically when ready.',
+          title: 'Generation Started',
+          description: 'Documents are being processed in the background and will appear here automatically when ready.',
         });
       } else if (result.failCount === 0 && result.successCount > 0) {
         toast({
           title: 'Documents Generated',
-          description: `Successfully generated ${result.successCount} document${result.successCount > 1 ? 's' : ''}`,
+          description: `Successfully generated ${result.successCount} document${result.successCount > 1 ? 's' : ''}.`,
         });
       } else if (result.successCount > 0) {
         toast({
-          title: 'Partial Success',
-          description: `${result.successCount} succeeded, ${result.failCount} failed`,
+          title: 'Partially Generated',
+          description: `${result.successCount} document${result.successCount > 1 ? 's' : ''} succeeded, ${result.failCount} failed.`,
           variant: 'destructive',
         });
-      } else if (result.results && result.results.length > 0) {
-        const firstError = result.results.find(r => !r.success)?.error || 'Unknown error';
+      } else {
+        const firstError = result.results?.find(r => !r.success)?.error ?? 'Document generation failed.';
         toast({
           title: 'Generation Failed',
           description: firstError,
@@ -417,12 +395,14 @@ export const DealDocumentsPage: React.FC = () => {
         });
       }
 
-      // Refresh data
       refreshDataInBackground();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // Session expired: redirect is already in flight — do not show a toast.
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.';
       toast({
         title: 'Generation Failed',
-        description: error.message || 'Failed to generate documents',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -433,8 +413,6 @@ export const DealDocumentsPage: React.FC = () => {
   const handleDownload = async (path: string, filename: string) => {
     try {
       const data = await downloadGeneratedDoc(path);
-
-      // Create download link
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
@@ -443,10 +421,12 @@ export const DealDocumentsPage: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Failed to download file.';
       toast({
         title: 'Download Failed',
-        description: error.message || 'Failed to download file',
+        description: message,
         variant: 'destructive',
       });
     }

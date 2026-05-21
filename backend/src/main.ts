@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -12,15 +13,17 @@ async function bootstrap() {
 
   const port = configService.get<number>('app.port', 3000);
   const apiPrefix = configService.get<string>('app.apiPrefix', 'api');
-  const corsOrigin = configService.get<string>('app.corsOrigin', '*');
+  const corsOrigin = configService.get<string>('app.corsOrigin', 'http://localhost:8080');
   const nodeEnv = configService.get<string>('app.nodeEnv', 'development');
 
+  app.use(cookieParser());
   app.setGlobalPrefix(apiPrefix);
 
   app.enableCors({
     origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Accept'],
   });
 
   app.useGlobalPipes(

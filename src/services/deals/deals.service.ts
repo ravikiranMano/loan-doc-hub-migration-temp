@@ -4,7 +4,8 @@ import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
 export async function generateDealNumber(): Promise<string> {
   if (isNodeApiEnabled('deals')) {
-    return apiClient.get<string>('/deals/generate-number');
+    const { dealNumber } = await apiClient.get<{ dealNumber: string }>('/deals/generate-number');
+    return dealNumber;
   }
   return generateDealNumberSupabase();
 }

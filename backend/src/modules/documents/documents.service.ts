@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  assertServiceRoleJwt,
+  isUsableSupabaseJwtSecret,
+  mintSupabaseAccessToken,
+} from '../../common/helpers/supabase-jwt';
 import { DocumentsRepository } from './documents.repository';
 import {
   CreateTemplateDto,
@@ -15,7 +21,12 @@ import {
 
 @Injectable()
 export class DocumentsService {
-  constructor(private readonly repo: DocumentsRepository) {}
+  private readonly logger = new Logger(DocumentsService.name);
+
+  constructor(
+    private readonly repo: DocumentsRepository,
+    private readonly config: ConfigService,
+  ) {}
 
   // ─── Templates ───────────────────────────────────────────────────────────────
 
@@ -166,18 +177,72 @@ export class DocumentsService {
     return this.repo.findGenerationJobs(dealId);
   }
 
-  generateDocument(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
-    // TODO: Implement actual document generation logic (was a Supabase Edge Function).
-    // For now, create the generation job record and return it. The worker will pick it up.
-    const data: Record<string, unknown> = {
-      deal_id: dealId,
-      requested_by: requestedBy,
-      request_type: dto.request_type,
-      packet_id: dto.packet_id,
-      template_id: dto.template_id,
-      output_type: dto.output_type || 'pdf',
-      status: 'pending',
+  /**
+   * Proxies to Supabase edge `generate-document` (DOCX merge logic stays in Deno).
+   * Nest JWT auth → service-role call with X-User-Id for created_by / activity.
+   */
+  async generateDocument(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
+    if (!requestedBy) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
+    const publishableKey = this.config.getOrThrow<string>('supabase.publishableKey');
+    const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');
+    const supabaseJwtSecret = this.config.get<string>('supabase.jwtSecret');
+    const nestJwtSecret = this.config.get<string>('jwt.secret');
+    const useMintedUserJwt = isUsableSupabaseJwtSecret(supabaseJwtSecret, nestJwtSecret);
+
+    const edgeBody = {
+      dealId,
+      templateId: dto.templateId,
+      packetId: dto.packetId,
+      outputType: dto.outputType ?? 'docx_only',
     };
-    return this.repo.createGenerationJob(data);
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      apikey: publishableKey,
+    };
+
+    if (useMintedUserJwt) {
+      headers.Authorization = `Bearer ${mintSupabaseAccessToken(
+        requestedBy,
+        supabaseJwtSecret!,
+        supabaseUrl,
+      )}`;
+    } else {
+      if (supabaseJwtSecret && supabaseJwtSecret === nestJwtSecret) {
+        this.logger.warn(
+          'SUPABASE_JWT_SECRET matches JWT_SECRET — ignored. Use the Supabase Dashboard JWT secret, or deploy generate-document for service-role proxy.',
+        );
+      }
+      try {
+        assertServiceRoleJwt(serviceRoleKey);
+      } catch (err) {
+        throw new BadRequestException((err as Error).message);
+      }
+      headers.Authorization = `Bearer ${serviceRoleKey}`;
+      headers['X-User-Id'] = requestedBy;
+    }
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/generate-document`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(edgeBody),
+    });
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+
+    if (!res.ok) {
+      throw new BadRequestException(
+        payload.error ?? payload.message ?? `Document generation failed (${res.status})`,
+      );
+    }
+
+    return payload;
   }
 }

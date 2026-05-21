@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AdminRepository } from './admin.repository';
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { toProfileCompat, toUserRoleCompat } from './admin-user.mapper';
 import {
   CreateFieldDto,
   UpdateFieldDto,
@@ -12,7 +10,8 @@ import {
   UpdateUserFormPermissionDto,
 } from './dto/admin.dto';
 
-/** Default CSR form keys — kept in sync with frontend FORM_KEYS in useFormPermissions.ts */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const DEFAULT_CSR_FORM_KEYS = [
   'borrower',
   'co_borrower',
@@ -36,9 +35,23 @@ export class AdminService {
   // ─── Field Dictionary ────────────────────────────────────────────────────────
 
   listFields(options?: { sections?: string[]; ids?: string[]; page?: number; limit?: number }) {
-    if (options?.ids?.length) return this.repo.findFieldsByIds(options.ids);
+    if (options?.ids?.length) return this.lookupFieldsByIds(options.ids);
     if (options?.sections?.length) return this.repo.findFieldsBySections(options.sections);
     return this.repo.findAllFields(options?.page, options?.limit);
+  }
+
+  /** Mirrors Supabase `.in('id', ids)` — safe for large id lists (chunked in DB). */
+  async lookupFieldsByIds(ids: string[]) {
+    const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    if (!unique.length) return [];
+
+    const CHUNK = 200;
+    const rows = [];
+    for (let i = 0; i < unique.length; i += CHUNK) {
+      const batch = await this.repo.findFieldsByIds(unique.slice(i, i + CHUNK));
+      rows.push(...batch);
+    }
+    return rows;
   }
 
   async getField(id: string) {
@@ -66,27 +79,18 @@ export class AdminService {
     return this.repo.countFields();
   }
 
-  // ─── Profiles ────────────────────────────────────────────────────────────────
+  // ─── Users ───────────────────────────────────────────────────────────────────
 
   async listUsers() {
-    const [profiles, roles] = await Promise.all([
-      this.repo.findAllProfiles(),
-      this.repo.findAllUserRoles(),
-    ]);
-    const roleMap = new Map(roles.map((r) => [r.user_id, r.role]));
-    return profiles.map((p) => ({ ...p, role: roleMap.get(p.user_id) ?? null }));
+    const users = await this.repo.findAllUsers();
+    return users.map(toProfileCompat);
   }
 
   async listUsersByIds(userIds: string[]) {
-    const profiles = await this.repo.findProfilesByUserIds(userIds);
-    return profiles.map((p) => ({
-      user_id: p.user_id,
-      full_name: p.full_name,
-      email: p.email,
-    }));
+    const users = await this.repo.findUsersByIds(userIds);
+    return users.map(toProfileCompat);
   }
 
-  /** Paginated list — mirrors Supabase profiles.select with count. */
   async listUsersPaginated(options?: {
     userType?: string;
     page?: number;
@@ -94,91 +98,74 @@ export class AdminService {
     search?: string;
     orderBy?: { column: string; ascending?: boolean };
   }) {
-    const { data, count } = await this.repo.findProfilesPaginated(options);
-    return { data, count };
+    const result = await this.repo.findUsersPaginated(options);
+    return {
+      data: result.data.map(toProfileCompat),
+      count: result.count,
+    };
   }
 
-  countProfiles() {
-    return this.repo.countProfiles();
+  countUsers() {
+    return this.repo.countUsers();
   }
 
-  /** Resolve profile by profiles.id (Supabase .eq('id')) or user_id. */
-  private async findProfileByIdOrUserId(identifier: string) {
-    if (UUID_RE.test(identifier)) {
-      const byId = await this.repo.findProfileById(identifier);
-      if (byId) return byId;
-      const byUserId = await this.repo.findProfileByUserId(identifier);
-      if (byUserId) return byUserId;
-    }
-    return this.repo.findProfileByUserId(identifier);
+  async getUser(id: string) {
+    const user = await this.repo.findUserById(id);
+    if (!user) throw new NotFoundException(`User '${id}' not found`);
+    return user;
   }
 
-  async getProfile(identifier: string) {
-    const profile = await this.findProfileByIdOrUserId(identifier);
-    if (!profile) throw new NotFoundException(`Profile '${identifier}' not found`);
-    return profile;
+  async updateUser(identifier: string, dto: UpdateProfileDto) {
+    // Accept either the user UUID directly
+    const user = UUID_RE.test(identifier) ? await this.repo.findUserById(identifier) : null;
+    if (!user) throw new NotFoundException(`User '${identifier}' not found`);
+    return this.repo.updateUser(user.id, dto);
   }
 
-  async updateProfile(identifier: string, dto: UpdateProfileDto) {
-    const profile = await this.findProfileByIdOrUserId(identifier);
-    if (!profile) throw new NotFoundException(`Profile '${identifier}' not found`);
-    return this.repo.updateProfileById(profile.id, dto);
-  }
-
-  // ─── User Roles ──────────────────────────────────────────────────────────────
+  // ─── Roles ───────────────────────────────────────────────────────────────────
 
   async getUserRole(userId: string) {
     return this.repo.findUserRole(userId);
   }
 
   assignRole(userId: string, dto: AssignRoleDto) {
-    return this.repo.assignRole(
-      userId,
-      dto.role,
-      dto.permission_level ?? 'full',
-    );
+    return this.repo.assignRole(userId, dto.role, dto.permission_level ?? 'full');
   }
 
-  listUserRoles() {
-    return this.repo.findAllUserRoles();
+  async listUserRoles() {
+    const rows = await this.repo.findAllUserRoles();
+    return rows.map(toUserRoleCompat);
   }
 
   findPermissionLevels() {
     return this.repo.findPermissionLevels();
   }
 
-  listRolesForUserIds(userIds: string[]) {
-    return this.repo.findRolesForUserIds(userIds);
+  async listRolesForUserIds(userIds: string[]) {
+    const rows = await this.repo.findRolesForUserIds(userIds);
+    return rows.map(toUserRoleCompat);
   }
 
   async listCsrUsersForPermissions() {
-    const roleRows = await this.repo.findCsrUsersForPermissions();
-    if (!roleRows.length) return [];
+    const csrUsers = await this.repo.findCsrUsers();
+    if (!csrUsers.length) return [];
 
-    const userIds = roleRows.map((r) => r.user_id);
-    const [profiles, permLevels] = await Promise.all([
-      this.repo.findProfilesByUserIds(userIds),
-      this.repo.findPermissionLevelsForUserIds(userIds),
-    ]);
-
+    const userIds = csrUsers.map((u) => u.id);
+    const permLevels = await this.repo.findPermissionLevelsForUserIds(userIds);
     const permMap = new Map(permLevels.map((p) => [p.user_id, p.permission_level]));
 
-    return userIds.map((uid) => {
-      const profile = profiles.find((p) => p.user_id === uid);
-      return {
-        user_id: uid,
-        email: profile?.email ?? null,
-        full_name: profile?.full_name ?? null,
-        permission_level: permMap.get(uid) ?? 'full',
-      };
-    });
+    return csrUsers.map((u) => ({
+      user_id: u.id,
+      email: u.email,
+      full_name: u.full_name,
+      permission_level: permMap.get(u.id) ?? 'full',
+    }));
   }
 
   // ─── Field Permissions ───────────────────────────────────────────────────────
 
   getFieldPermissions(role?: string) {
-    if (role) return this.repo.findFieldPermissions(role);
-    return this.repo.findFieldPermissions('');
+    return this.repo.findFieldPermissions(role ?? '');
   }
 
   // ─── Form Permissions ────────────────────────────────────────────────────────
@@ -194,9 +181,8 @@ export class AdminService {
     const existing = await this.repo.findUserFormPermissions(userId);
     const existingKeys = new Set(existing.map((r) => r.form_key));
     const missing = DEFAULT_CSR_FORM_KEYS.filter((fk) => !existingKeys.has(fk));
-    if (missing.length === 0) {
-      return existing.sort((a, b) => a.form_key.localeCompare(b.form_key));
-    }
+    if (missing.length === 0) return existing.sort((a, b) => a.form_key.localeCompare(b.form_key));
+
     await this.repo.createUserFormPermissions(
       userId,
       missing.map((form_key) => ({ form_key, access_mode: 'view_only' })),

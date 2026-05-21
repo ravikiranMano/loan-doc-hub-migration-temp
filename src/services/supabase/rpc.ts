@@ -8,7 +8,10 @@ export type AppRoleEnum = Database['public']['Enums']['app_role'];
 
 export async function generateContactId(pType: ContactIdType): Promise<string> {
   if (isNodeApiEnabled('contacts')) {
-    return apiClient.get<string>(`/contacts/generate-id?type=${encodeURIComponent(String(pType))}`);
+    const { contactId } = await apiClient.get<{ contactId: string }>(
+      `/contacts/generate-id?type=${encodeURIComponent(String(pType))}`,
+    );
+    return contactId;
   }
   const { data, error } = await supabase.rpc('generate_contact_id', { p_type: pType });
   return assertOk({ data: data as string, error });
@@ -16,7 +19,8 @@ export async function generateContactId(pType: ContactIdType): Promise<string> {
 
 export async function generateDealNumber(): Promise<string> {
   if (isNodeApiEnabled('deals')) {
-    return apiClient.get<string>('/deals/generate-number');
+    const { dealNumber } = await apiClient.get<{ dealNumber: string }>('/deals/generate-number');
+    return dealNumber;
   }
   const { data, error } = await supabase.rpc('generate_deal_number');
   return assertOk({ data: data as string, error });

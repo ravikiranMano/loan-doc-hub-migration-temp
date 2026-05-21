@@ -1,9 +1,31 @@
 import { supabase } from '@/services/supabase/client';
-import { invokeGenerateDocument } from '@/services/supabase/functions';
 import { downloadFile, STORAGE_BUCKETS } from '@/services/supabase/storage';
 import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
-export { invokeGenerateDocument };
+export interface GenerateDocumentBody {
+  outputType: 'docx_only' | 'docx_and_pdf';
+  templateId?: string;
+  packetId?: string;
+}
+
+export interface GenerateDocumentResult {
+  status?: string;
+  jobId?: string;
+  successCount: number;
+  failCount: number;
+  results: Array<{ templateName: string; success: boolean; error?: string }>;
+}
+
+/**
+ * Document generation runs on the Supabase `generate-document` edge function.
+ * The Nest route proxies there (cookie auth) — it does not reimplement merge logic.
+ */
+export async function generateDocument(
+  dealId: string,
+  body: GenerateDocumentBody,
+): Promise<GenerateDocumentResult> {
+  return apiClient.post<GenerateDocumentResult>(`/deals/${dealId}/documents/generate`, body);
+}
 
 export async function listGeneratedDocuments(dealId?: string) {
   if (isNodeApiEnabled('documents') && dealId) {

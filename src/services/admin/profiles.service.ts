@@ -1,6 +1,24 @@
 import { supabase } from '@/services/supabase/client';
 import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
+export type ProfileLookupRow = {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+};
+
+/** Normalize users table (`id`) or legacy profiles (`user_id`) to one shape. */
+export function normalizeProfileRow(
+  row: { user_id?: string; id?: string; full_name?: string | null; email?: string | null },
+): ProfileLookupRow {
+  const user_id = row.user_id ?? row.id ?? '';
+  return {
+    user_id,
+    full_name: row.full_name ?? null,
+    email: row.email ?? null,
+  };
+}
+
 export async function fetchProfileByUserId(userId: string) {
   if (isNodeApiEnabled('admin')) {
     return apiClient.get<unknown>(`/admin/users/${userId}/profile`);
@@ -16,19 +34,22 @@ export async function fetchProfileByUserId(userId: string) {
 }
 
 export async function fetchProfilesByUserIds(userIds: string[]) {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!ids.length) return [];
+
   if (isNodeApiEnabled('admin')) {
-    if (!userIds.length) return [];
-    return apiClient.get<
-      Array<{ user_id: string; full_name: string | null; email: string | null }>
-    >(`/admin/users?userIds=${userIds.join(',')}`);
+    const rows = await apiClient<
+      Array<{ user_id?: string; id?: string; full_name: string | null; email: string | null }>
+    >(`/admin/users?userIds=${ids.join(',')}`);
+    return (rows || []).map(normalizeProfileRow);
   }
   // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('profiles')
     .select('user_id, full_name, email')
-    .in('user_id', userIds);
+    .in('user_id', ids);
   if (error) throw error;
-  return data || [];
+  return (data || []).map(normalizeProfileRow);
 }
 
 export async function listProfiles(options?: {

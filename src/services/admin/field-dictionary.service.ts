@@ -12,8 +12,9 @@ export async function fetchFieldDictionaryBySections(sections: string[]) {
 }
 
 export async function fetchFieldDictionaryByIds(ids: string[]) {
+  if (!ids.length) return [];
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown[]>(`/admin/fields?ids=${ids.join(',')}`);
+    return apiClient.post<unknown[]>('/admin/fields/by-ids', { ids });
   }
   return fetchAllRows((client) =>
     client.from('field_dictionary').select('*').in('id', ids)
@@ -22,7 +23,7 @@ export async function fetchFieldDictionaryByIds(ids: string[]) {
 
 export async function fetchFieldDictionaryMetaByIds(ids: string[]) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown[]>(`/admin/fields?ids=${ids.join(',')}`);
+    return apiClient.post<unknown[]>('/admin/fields/by-ids', { ids });
   }
   // — Supabase (keep unchanged) —
   const { data, error } = await supabase
@@ -35,7 +36,11 @@ export async function fetchFieldDictionaryMetaByIds(ids: string[]) {
 
 export async function fetchFieldDictionaryKeysByIds(ids: string[]) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown[]>(`/admin/fields?ids=${ids.join(',')}`);
+    const rows = await apiClient.post<Array<{ id: string; field_key: string }>>(
+      '/admin/fields/by-ids',
+      { ids },
+    );
+    return (rows || []).map(({ id, field_key }) => ({ id, field_key }));
   }
   // — Supabase (keep unchanged) —
   const { data, error } = await supabase

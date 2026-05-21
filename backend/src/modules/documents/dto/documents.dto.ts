@@ -86,9 +86,9 @@ export class UpdateMergeTagDto {
   @IsString() @IsOptional() description?: string;
 }
 
+/** Matches Supabase edge `generate-document` request body (camelCase). */
 export class GenerateDocumentDto {
-  @IsString() @IsOptional() packet_id?: string;
-  @IsString() @IsOptional() template_id?: string;
-  @IsString() @IsOptional() output_type?: string;
-  @IsString() @IsNotEmpty() @IsIn(['single_doc', 'packet']) request_type: string;
+  @IsString() @IsOptional() templateId?: string;
+  @IsString() @IsOptional() packetId?: string;
+  @IsString() @IsOptional() @IsIn(['docx_only', 'docx_and_pdf']) outputType?: string;
 }

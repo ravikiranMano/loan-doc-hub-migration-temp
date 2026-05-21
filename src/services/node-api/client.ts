@@ -1,6 +1,13 @@
-import { supabase } from '@/services/supabase/client';
+export const BASE_URL = import.meta.env.VITE_NODE_API_URL ?? 'http://localhost:3000/api';
 
-const BASE_URL = import.meta.env.VITE_NODE_API_URL ?? 'http://localhost:3000/api';
+// Thrown after a failed token refresh so callers can detect session expiry
+// without showing an error toast (the redirect to /auth is already in flight).
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Session expired');
+    this.name = 'SessionExpiredError';
+  }
+}
 
 // Which domains are routed to the Node API.
 // Set VITE_USE_NODE_API="system,admin" or "all" in .env
@@ -19,36 +26,57 @@ export function isNodeApiEnabled(domain: Domain): boolean {
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
-async function getAuthHeader(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// Cookies (httpOnly) are sent automatically by the browser.
+// On 401 we attempt a single token refresh, then retry the original request.
+// If refresh also fails, redirect to /auth so the user can log in again.
+
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function attemptRefresh(): Promise<boolean> {
+  if (isRefreshing && refreshPromise) return refreshPromise;
+
+  isRefreshing = true;
+  refreshPromise = fetch(`${BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+    .then((r) => r.ok)
+    .catch(() => false)
+    .finally(() => {
+      isRefreshing = false;
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
 }
 
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  isRetry = false,
 ): Promise<T> {
-  const authHeader = await getAuthHeader();
-
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeader,
-    },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? `Request failed: ${res.status}`);
+  if (res.status === 401 && !isRetry) {
+    const refreshed = await attemptRefresh();
+    if (refreshed) return request<T>(method, path, body, true);
+    window.location.replace('/auth');
+    throw new SessionExpiredError();
   }
 
-  // 204 No Content
-  if (res.status === 204) return undefined as T;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
+  }
 
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -59,3 +87,35 @@ export const apiClient = {
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
 };
+
+// ─── Multipart upload (storage) ───────────────────────────────────────────────
+
+export async function uploadFile(
+  bucket: string,
+  path: string,
+  file: File | Blob,
+  options?: { upsert?: boolean },
+): Promise<{ path: string }> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const url = `${BASE_URL}/storage/${bucket}/upload?path=${encodeURIComponent(path)}${
+    options?.upsert ? '&upsert=true' : ''
+  }`;
+
+  const res = await fetch(url, { method: 'POST', credentials: 'include', body: form });
+
+  if (res.status === 401) {
+    const refreshed = await attemptRefresh();
+    if (refreshed) return uploadFile(bucket, path, file, options);
+    window.location.replace('/auth');
+    throw new SessionExpiredError();
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? 'Upload failed');
+  }
+
+  return res.json() as Promise<{ path: string }>;
+}
