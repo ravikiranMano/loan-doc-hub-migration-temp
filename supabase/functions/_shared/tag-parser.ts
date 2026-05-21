@@ -1933,8 +1933,14 @@ export function processConditionalBlocks(
       continue;
     }
 
-    const ifPattern = /\{\{#if\s+([A-Za-z0-9_.]+)\}\}([\s\S]*?)\{\{\/if\}\}/;
-    const unlessPattern = /\{\{#unless\s+([A-Za-z0-9_.]+)\}\}([\s\S]*?)\{\{\/unless\}\}/;
+    // Resolve innermost simple conditionals first. This is required for
+    // snippets such as {{#if isIndividual}}...{{#if middle}}...{{/if}}...{{else}}...
+    // where a first-opener/first-closer regex would pair the outer #if with
+    // the inner /if and leave the else branch in rendered text.
+    const innermostIfPattern = /\{\{#if\s+([A-Za-z0-9_.]+)\}\}((?:(?!\{\{#(?:if|unless)\s+)[\s\S])*?)\{\{\/if\}\}/;
+    const innermostUnlessPattern = /\{\{#unless\s+([A-Za-z0-9_.]+)\}\}((?:(?!\{\{#(?:if|unless)\s+)[\s\S])*?)\{\{\/unless\}\}/;
+    const ifPattern = innermostIfPattern;
+    const unlessPattern = innermostUnlessPattern;
 
     const ifMatch = hasIfOpener ? ifPattern.exec(result) : null;
     const unlessMatch = hasUnlessOpener ? unlessPattern.exec(result) : null;
