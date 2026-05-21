@@ -1078,6 +1078,7 @@ async function generateSingleDocument(
         let lenderCount = 0;
         let additionalIdx = 0;
         let primaryHelpersSet = false;
+        const investorNames: string[] = [];
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
@@ -1100,6 +1101,7 @@ async function generateSingleDocument(
           const displayName = isIndividual
             ? [firstName, middle, last].filter(Boolean).join(" ")
             : vesting;
+          if (displayName) investorNames.push(displayName);
           const label = `LENDER ${n}`;
           const isPrimary = n === 1;
 
@@ -1173,6 +1175,7 @@ async function generateSingleDocument(
           lenderCount++;
         });
         setAlias("lender_count", String(lenderCount));
+        setAlias("ld_p_allInvestorNames", investorNames.join("\n"));
         setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
         setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
         debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
