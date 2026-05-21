@@ -294,6 +294,7 @@ function rewriteDocumentXml(
   out = out.split(V2_MARKER).join("");
   out = out.split(V3_MARKER).join("");
   out = out.split(V4_MARKER).join("");
+  out = out.split(V5_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
