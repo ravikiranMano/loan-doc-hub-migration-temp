@@ -100,7 +100,7 @@ function visibleText(xml: string): string {
 
 function isInvestorNameCellText(text: string): boolean {
   const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
-  return /\bINVESTOR NAME\b/.test(normalized) && !/\bCO[-\s]?INVESTOR NAME\b/.test(normalized);
+  return (normalized === "INVESTOR" || /\bINVESTOR NAME\b/.test(normalized)) && !/\bCO[-\s]?INVESTOR NAME\b/.test(normalized);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -181,9 +181,25 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
 
   const condIdx = parts.findIndex(isTagPara);
   if (condIdx === -1) {
+    const firstParaIdx = parts.findIndex((p) => p.startsWith("<w:p"));
+    if (firstParaIdx === -1) {
+      return { xml, note: "WARN: INVESTOR NAME cell found but no paragraph located" };
+    }
+    const origPara = parts[firstParaIdx];
+    const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : "";
+    const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+    const conditional = "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    parts[firstParaIdx] =
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
+      EACH_OPEN_PARA +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
+      EACH_CLOSE_PARA;
+    const newCellXml = parts.join("");
     return {
-      xml,
-      note: "WARN: INVESTOR NAME cell found but no tag paragraph located",
+      xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
+      note: "INVESTOR header cell rebuilt as INVESTOR NAME + {{#each lenders}} loop",
     };
   }
 
