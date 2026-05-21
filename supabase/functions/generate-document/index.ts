@@ -693,6 +693,25 @@ async function generateSingleDocument(
           if (cd["address.city"] || contact.city) setIfEmpty(`${shortPrefix}_city`, cd["address.city"] || contact.city);
           if (cd["address.state"] || contact.state) setIfEmpty(`${shortPrefix}_state`, cd["address.state"] || contact.state);
           if (cd["address.zip"]) setIfEmpty(`${shortPrefix}_zip`, cd["address.zip"]);
+          // Borrower-specific aliases: publish the dictionary's canonical city
+          // key (br_p_borrowerCity) plus 1098 fallbacks (br_t_city/state/zip/
+          // address/name) from the primary borrower's contact address so
+          // templates that reference any of those tags populate correctly even
+          // when no explicit 1098 record exists.
+          if (shortPrefix === "br_p") {
+            const cityVal = cd["address.city"] || contact.city;
+            const stateVal = cd["address.state"] || contact.state;
+            const zipVal = cd["address.zip"];
+            const streetVal = cd["address.street"];
+            if (cityVal) {
+              setIfEmpty("br_p_borrowerCity", cityVal);
+              setIfEmpty("br_t_city", cityVal);
+            }
+            if (stateVal) setIfEmpty("br_t_state", stateVal);
+            if (zipVal) setIfEmpty("br_t_zip", zipVal);
+            if (streetVal) setIfEmpty("br_t_address", streetVal);
+            if (fullName) setIfEmpty("br_t_name", fullName);
+          }
           if (cd.capacity) setIfEmpty(`${shortPrefix}_capacity`, cd.capacity);
           if (cd.vesting) setIfEmpty(`${shortPrefix}_vesting`, cd.vesting);
         }
