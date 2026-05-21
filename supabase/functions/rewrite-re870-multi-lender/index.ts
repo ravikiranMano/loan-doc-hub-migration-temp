@@ -148,11 +148,27 @@ function findCells(xml: string, predicate: (visText: string, tc: string) => bool
         end: m.index + tc.length,
         xml: tc,
         visText: v,
-        hasLoop: tc.includes(INVESTOR_LOOP_LITERAL),
+        hasLoop: tc.includes(INVESTOR_LOOP_LITERAL) || tc.includes(LEGACY_INVESTOR_LOOP_LITERAL),
       });
     }
   }
   return out;
+}
+
+function normalizeInvestorParagraphPr(pPr: string): string {
+  const base = pPr || "<w:pPr></w:pPr>";
+  const withoutCenter = /<w:jc\b[^>]*\/>/.test(base)
+    ? base.replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="left"/>')
+    : base.replace("</w:pPr>", '<w:jc w:val="left"/></w:pPr>');
+  return withoutCenter;
+}
+
+function normalizeInvestorNameCellGeometry(cellXml: string): string {
+  return cellXml
+    // The broken live template has the INVESTOR NAME cell spanning into the
+    // adjacent centered INVESTOR column. Removing the span makes the value
+    // render from the true left cell instead of the visual center area.
+    .replace(/<w:gridSpan\b[^>]*\/>/g, "");
 }
 
 // Remove paragraphs from a <w:tc> whose only visible text matches `predicate`.
