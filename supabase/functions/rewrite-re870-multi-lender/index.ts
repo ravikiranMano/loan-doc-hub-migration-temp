@@ -661,6 +661,7 @@ function rewriteDocumentXml(
   out = out.split(V9_MARKER).join("");
   out = out.split(V10_MARKER).join("");
   out = out.split(V11_MARKER).join("");
+  out = out.split(V12_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
