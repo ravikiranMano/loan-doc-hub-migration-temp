@@ -1,142 +1,78 @@
 ## Goal
+Make RE870 Investor Questionnaire (and any future template) render one full questionnaire section per lender on a deal, with the correct name source per Lender Type, separated by page breaks, and a single shared Broker Acknowledgement at the end.
 
-Make multi-lender document generation work the way the spec describes:
-- All lenders associated with a deal (not just the first) get their own data in the output.
-- Templates can use either a `{{#each lenders}}…{{/each}}` repeater **or** indexed `{{lender_N_*}}` tags wrapped in `{{#if lender_N_exists}}`.
-- Per-lender conditional `{{#if isIndividual}}…{{else}}…{{/if}}` decides between name fields and vesting.
+## Current state (already implemented — do not change)
+The multi-lender backend pipeline is already in place and deployed:
 
-This supersedes the older `ld_p_*` lien-style plan in `.lovable/plan.md` for the indexed/repeater branch, but **keeps backward compatibility**: existing templates that use the bare `ld_p_firstName`, `ld_p_vesting`, etc. continue to render Lender 1 exactly as today.
+- `supabase/functions/generate-document/index.ts` already publishes, per lender N (sorted by `sequence_order` then `created_at`):
+  - Flat: `lender_N_type`, `lender_N_vesting`, `lender_N_firstName`, `lender_N_middle`, `lender_N_last`, `lender_N_displayName`, `lender_N_isIndividual`, `lender_N_exists`, plus `lender_count`, `has_multiple_lenders`, `additional_lender_count`.
+  - Dotted (repeater feed): `lendersN.type/vesting/firstName/middle/last/displayName/isIndividual/exists/index/label`.
+  - `displayName` already follows the Individual vs. non-Individual rule.
+- `supabase/functions/_shared/tag-parser.ts` already supports `{{#each <collection>}}…{{/each}}` via `processEachBlocks`, rewrites inner `{{firstName}}` etc. to `{{lendersN.firstName}}` per clone, processes `{{#if isIndividual}}…{{else}}…{{/if}}` inside the clone, includes the leftover-`{{lender_N_*}}` safety strip, and consolidates fragmented `{{#each}}` / `{{/each}}` tags split by Word runs.
+- Field dictionary already contains `ld_p_lenderType`, `ld_p_vesting`, `ld_p_firstIfEntityUse`, `ld_p_middle`, `ld_p_last` (verified via DB).
 
-## Scope (what I will and will not touch)
+Therefore Parts 1, 2, and 4 of the prompt require **no code changes**.
 
-In scope:
-- `supabase/functions/generate-document/index.ts` — publish new indexed `lender_N_*` keys and assemble a `lenders` array on the data context.
-- `supabase/functions/_shared/tag-parser.ts` — add `{{#each lenders}}`, `{{#if …}}{{else}}{{/if}}`, and cleanup pass for unresolved `lender_N_*` / `{{#each lenders}}` when empty.
-- `supabase/functions/_shared/types.ts` — add `LenderData` interface.
-- `field_dictionary` — insert any of the 5 listed canonical lender rows that are missing (`ld_p_lenderType`, `ld_p_vesting`, `ld_p_firstIfEntityUse`, `ld_p_middle`, `ld_p_last`). Existing rows untouched.
+## What's actually missing
+Only **Part 3**: the three RE870 `.docx` templates in storage still contain the old single-lender markup. There are three template rows pointing at re870 files in the `templates` bucket:
 
-Explicitly NOT in scope:
-- No UI changes to the Lenders form, validations, schema, RLS, auth, or session.
-- No changes to existing `ld_p_*` primary-lender resolution, lien publishers, RE851A/D passes, or any other generation step.
-- No edits to `.docx` templates as part of this task — the spec describes the syntax authors will use; updating individual templates is a separate task once the engine supports it.
-- The older `ld1..ld5` flat field_dictionary rows from a prior turn (if still present) are left in place — removing them is out of scope here.
+- `d25cc037-…` "Investor Questionnaire" — `1779364726605_re870_…__1___5_.docx` (the active one)
+- `c1bbc2ff-…` "re870" — `1779124702694_…__1___2_.docx`
+- `9edf8c77-…` "test" — `1779120469182_…__1_.docx`
 
-## Implementation
+We must rewrite their `word/document.xml` so:
 
-### 1. Resolve lender participants and build per-lender data
+1. `INVESTOR NAME: {{ld_p_firstIfEntityUse}} {{ld_p_middle}}{{ld_p_last}}` →
+   `INVESTOR NAME: {{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}`
+2. `NAME OF ENTITY: {{ld_p_vesting}}` →
+   `NAME OF ENTITY: {{#if isIndividual}}-{{else}}{{vesting}}{{/if}}`
+3. `{{ld_p_lenderType}}` → `{{type}}` (TYPE OF ORGANIZATION line only).
+4. `NAME OF PERSON COMPLETING THIS QUESTIONNAIRE …` name fields → same `{{#if isIndividual}}…{{else}}{{vesting}}{{/if}}` pattern as INVESTOR NAME.
+5. Wrap the questionnaire body (from the first INVESTOR section through the INVESTOR SIGNATURE line) in a single `{{#each lenders}} … {{/each}}` block, inserting a `<w:p><w:r><w:br w:type="page"/></w:r></w:p>` between iterations using `{{#unless @last}}` semantics — implemented in the template as an explicit page-break paragraph placed at the **end of the iteration body** plus a tiny safety pass that removes a trailing page break after the last lender (since our `processEachBlocks` already drops empty `{{#unless @last}}` constructs we can rely on a dedicated marker instead — see Technical Notes).
+6. Keep `NAME OF BROKER`, `LICENSE ID NUMBER`, `BROKER'S REPRESENTATIVE` (the entire BROKER ACKNOWLEDGEMENT section) **outside** the `{{#each}}` wrapper.
 
-In `generate-document/index.ts`, where lenders are currently ordered (`orderedLenderParticipants` by `sequence_order`, then `created_at`):
+## Approach: one-shot rewrite edge function (matches existing pattern)
 
-For each lender N (1-based), pull its scoped section values using the existing `lenderN::<field_dictionary_id>` composite-key pattern already used by the storage model. From those, extract:
-- `type` ← `ld_p_lenderType` dropdown value
-- `vesting` ← `ld_p_vesting`
-- `firstName` ← `ld_p_firstIfEntityUse`
-- `middle` ← `ld_p_middle`
-- `last` ← `ld_p_last`
+Create a new edge function `rewrite-re870-multi-lender` following the same shape as the existing `rewrite-re851d-*` functions:
 
-Derive:
-- `isIndividual` = `type.trim().toLowerCase() === "individual"`
-- `displayName`:
-  - if `isIndividual`: `[firstName, middle, last].filter(Boolean).join(" ")` (collapses double spaces when middle is blank)
-  - else: `vesting`
-- `exists` = true for every present lender
-
-### 2. Publish indexed keys onto `fieldValues`
-
-For every lender N, write these keys into the resolved value map (string values, matching how other indexed keys like `pr_li_lienHolder_N` are published):
-
-```
-lender_N_type
-lender_N_vesting
-lender_N_firstName
-lender_N_middle
-lender_N_last
-lender_N_displayName
-lender_N_isIndividual    // "true" | "false"
-lender_N_exists          // "true"
+```text
+supabase/functions/rewrite-re870-multi-lender/index.ts
 ```
 
-Plus a single scalar:
+The function will:
 
-```
-lender_count             // "<N>"
-```
+1. List the three template rows above (by id).
+2. For each:
+   - Download `<file_path>` from the `templates` bucket.
+   - Unzip via JSZip, load `word/document.xml`.
+   - Run the 6 transforms (regex over the XML string, preserving the surrounding `<w:r>`/`<w:rPr>`/`<w:t>` formatting of the tag being replaced — same pattern used in `rewrite-re851d-property-type-layout/index.ts` and `replace-broker-company-tag/index.ts`).
+   - Locate the INVESTOR section start paragraph and the INVESTOR SIGNATURE end paragraph by scanning paragraph text; insert one `{{#each lenders}}` marker paragraph before the first and one `{{/each}}` marker paragraph after the second.
+   - Insert a page-break paragraph as the last child inside the iteration block.
+   - Re-zip and re-upload (overwriting), then update `templates.updated_at`.
+3. Return a JSON report `{ templateId, before, after, ok }[]`.
 
-These flow through the normal tag resolution pipeline, so `{{lender_2_displayName}}` etc. resolve like any other merge tag without further parser changes.
+The function runs **once** (invoked manually from the user via `supabase.functions.invoke('rewrite-re870-multi-lender')`). It is idempotent — it detects already-rewritten content (presence of `{{#each lenders}}` or `{{firstName}}`) and skips.
 
-Backward compat: bare `ld_p_*` keys keep their current behavior (Lender 1's values), so old templates render unchanged.
+## Verification plan
+After invoking the rewrite function:
 
-### 3. Expose `lenders` array on the parser data context
+1. Generate the Investor Questionnaire for deal `DL-2026-0266` with the 4 lenders (L-00017 Joint, L-00001 Entity, L-00002 Family Trust, L-00004 Individual).
+2. Download the resulting `.docx` via the existing `debug-fetch-doc` function and run pandoc / unzip to confirm:
+   - Exactly 4 questionnaire sections with page breaks between them.
+   - Investor Name = `Horizon Capital LLC`, `BlueStone Investments Inc`, `Sarah Lynn Mitchell, a single woman`, `Michael Carter` respectively.
+   - Only the 4th uses First/Middle/Last; the other 3 use Vesting.
+   - NAME OF ENTITY is `-` for Michael Carter and the vesting value for the other three.
+   - One BROKER ACKNOWLEDGEMENT block at the end.
+3. Spot-check the 8 scenarios in Part 6 of the prompt via the same generator (single lender Individual, single non-Individual, mixed, middle-empty, zero lenders, existing un-rewritten template still works because the `lender_count` safety strip already handles unresolved `{{lender_N_*}}` tags).
 
-Pass a `lenders: LenderData[]` collection through to `tag-parser.ts` alongside the existing `fieldValues` map. Used only by the `{{#each lenders}}` block; ignored by all existing tag resolution.
+## Technical notes
 
-### 4. `{{#each lenders}}…{{/each}}` repeater in `tag-parser.ts`
+- The rewrite operates strictly at the XML-paragraph (`<w:p>`) level — the `{{#each lenders}}` and `{{/each}}` markers each live in their own paragraph so the tag-parser's paragraph-aware each handling picks them up cleanly.
+- For the conditional name fields, we replace the **entire `<w:r>` run** carrying `{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}` with new `<w:r>` runs that inherit the original `<w:rPr>` block, so the rendered name keeps the source formatting.
+- We do **not** add the `{{#unless @last}}<page-break>{{/unless}}` text described in the prompt because the existing `processEachBlocks` already injects iteration separators between clones at the XML level; we simply append a dedicated page-break paragraph inside the each body and let the existing post-process strip the trailing one. This avoids adding a new Handlebars helper and keeps tag-parser untouched.
+- No changes to `supabase/config.toml` (function uses default settings).
+- No new dependencies — uses JSZip which is already imported by other rewrite functions.
 
-Run **before** normal merge-tag resolution. Operate on the raw `word/document.xml`:
-
-1. Locate `{{#each lenders}}` and matching `{{/each}}`. These may be split across runs — normalize the surrounding text first (the parser already has helpers for tag-text reassembly used by other passes).
-2. Expand the block to the enclosing `<w:p>` boundaries on each side so the cloned unit is whole-paragraph(s). If the open/close tags share a paragraph with other content, abort the expansion for that block and log a warning (don't corrupt layout).
-3. For each lender in the `lenders` array, clone the paragraph range and within the clone:
-   - Resolve unindexed tags (`{{firstName}}`, `{{middle}}`, `{{last}}`, `{{vesting}}`, `{{type}}`, `{{displayName}}`, `{{isIndividual}}`, `{{index}}`) against that lender's object.
-   - Evaluate `{{#if isIndividual}}…{{else}}…{{/if}}` (and `{{#if exists}}`) using truthy semantics: non-empty string and not literal `"false"`.
-4. Concatenate clones and replace the original block.
-5. If `lenders` is empty, delete the block entirely (no raw `{{#each}}` left behind) and log a warning if any `lender_*` tags were present in the source.
-
-### 5. `{{#if lender_N_exists}}…{{/if}}` for indexed templates
-
-Add a small conditional pass that handles `{{#if <key>}}…{{else}}…{{/if}}` against `fieldValues` (truthy = non-empty, not `"false"`). This is the same evaluator used inside `{{#each}}`, just lifted to the top level so indexed templates work without a repeater. Scope: only recognize `{{#if …}}` / `{{else}}` / `{{/if}}` — no other Handlebars features, to keep blast radius small.
-
-### 6. Cleanup safety pass
-
-After all resolution:
-- Strip any remaining `{{lender_N_*}}` tags (lender N not present).
-- Strip any orphan `{{#each lenders}}` / `{{/each}}` / `{{#if lender_*_exists}}` / `{{/if}}` markers.
-- Log a console warning when `lender_count === 0` but lender tags were detected in the template.
-
-### 7. `field_dictionary` rows
-
-Insert only the rows that don't already exist (idempotent `ON CONFLICT (field_key) DO NOTHING`):
-
-| field_key                | label                       | section | data_type | form_type |
-|--------------------------|-----------------------------|---------|-----------|-----------|
-| `ld_p_lenderType`        | Lender Type                 | lender  | dropdown  | primary   |
-| `ld_p_vesting`           | Vesting                     | lender  | text      | primary   |
-| `ld_p_firstIfEntityUse`  | First Name (If Entity Use)  | lender  | text      | primary   |
-| `ld_p_middle`            | Middle Name                 | lender  | text      | primary   |
-| `ld_p_last`              | Last Name                   | lender  | text      | primary   |
-
-No deletions, no edits to existing rows.
-
-### 8. Types
-
-Add to `_shared/types.ts`:
-
-```ts
-export interface LenderData {
-  index: number;
-  type: string;
-  isIndividual: boolean;
-  vesting: string;
-  firstName: string;
-  middle: string;
-  last: string;
-  displayName: string;
-  exists: true;
-  [key: string]: any;
-}
-```
-
-## Files changed
-
-- `supabase/functions/generate-document/index.ts` — build `lenders[]`, publish `lender_N_*` + `lender_count`.
-- `supabase/functions/_shared/tag-parser.ts` — `{{#each lenders}}` repeater, `{{#if}}` evaluator, cleanup pass.
-- `supabase/functions/_shared/types.ts` — `LenderData` interface.
-- DB: 5 idempotent inserts into `field_dictionary`.
-
-## Validation
-
-Test on a deal with 2 lenders (one Individual, one LLC):
-1. Template using `{{#each lenders}}` repeater renders two signature blocks; Individual shows name parts, LLC shows vesting.
-2. Template using indexed `{{lender_1_displayName}}` / `{{lender_2_displayName}}` with `{{#if lender_N_exists}}` renders both, and `{{#if lender_3_exists}}` block is removed.
-3. Existing template using only bare `ld_p_firstName` / `ld_p_vesting` still renders Lender 1 exactly as before (backward compat).
-4. Deal with 0 lenders: repeater block disappears; no raw `{{…}}` left; warning logged.
+## Out of scope
+- No changes to `field-resolver.ts`, `tag-parser.ts`, `types.ts`, `field_dictionary`, RLS, UI, or any other template.
+- No schema migrations.
