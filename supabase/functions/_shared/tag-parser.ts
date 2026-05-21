@@ -3949,17 +3949,19 @@ export function replaceMergeTags(
         let blocksXml = "";
         for (const l of addl) {
           const nameLabel = l.isIndividual ? "Name" : "Entity Name";
-          const displayName = l.displayName || "";
+          const resolvedName = (l.displayName && l.displayName.trim())
+            || (l.contactName && l.contactName.trim())
+            || "(Name not provided)";
           blocksXml += [
             hrPara,
             emptyPara,
             textPara(`ADDITIONAL LENDER ${l.index}:`, pPrSpaced, rPrBold),
             emptyPara,
-            textPara(`${nameLabel}: ${displayName}`),
+            textPara(`${nameLabel}: ${resolvedName}`),
             emptyPara,
             textPara(`Signature: ___________________________     Date: _______________`),
             emptyPara,
-            textPara(`Print Name: ${displayName}`),
+            textPara(`Print Name: ${resolvedName}`),
             emptyPara,
           ].join("");
         }
