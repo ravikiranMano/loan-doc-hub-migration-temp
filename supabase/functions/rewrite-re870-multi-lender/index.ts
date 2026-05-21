@@ -272,7 +272,10 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V3_MARKER)) {
+  if (!force && xml.includes(V4_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v4 (skipped)"] };
+  }
+  if (false && xml.includes(V3_MARKER)) {
     return { xml, changed: false, notes: ["already-rewritten v3 (skipped)"] };
   }
 
