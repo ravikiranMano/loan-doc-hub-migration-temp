@@ -1392,26 +1392,12 @@ async function generateSingleDocument(
     }
 
 
-    // Certification_of_Purpose_Occupancy_Material_Facts: route the
-    // "Authorized Signer" line ({{ld_p_authorized*}}) to the Additional
-    // Guarantor instead of the lender's authorized party. Runs after the
-    // global lender authorized-party publisher so AG wins. Safe fallback:
-    // if no AG is published, behavior is unchanged.
-    if (isTemplateCertOfPurpose) {
-      const agFirst  = String(fieldValues.get("ag_p_first")?.rawValue  ?? "").trim();
-      const agMiddle = String(fieldValues.get("ag_p_middle")?.rawValue ?? "").trim();
-      const agLast   = String(fieldValues.get("ag_p_last")?.rawValue   ?? "").trim();
-      const agFull   = String(fieldValues.get("ag_p_fullName")?.rawValue ?? "").trim();
-      if (agFirst || agLast || agFull) {
-        fieldValues.set("ld_p_authorizedFirst",  { rawValue: agFirst,  dataType: "text" });
-        fieldValues.set("ld_p_authorizedMiddle", { rawValue: agMiddle, dataType: "text" });
-        fieldValues.set("ld_p_authorizedLast",   { rawValue: agLast,   dataType: "text" });
-        // Future-proof: publish ag_p_firstName / ag_p_lastName aliases too.
-        fieldValues.set("ag_p_firstName", { rawValue: agFirst, dataType: "text" });
-        fieldValues.set("ag_p_lastName",  { rawValue: agLast,  dataType: "text" });
-        debugLog(`[generate-document] Cert_of_Purpose: ld_p_authorized* overridden with AG "${agFull}"`);
-      }
-    }
+    // Certification_of_Purpose_Occupancy_Material_Facts: the
+    // "Authorized Signer" line ({{ld_p_authorized*}}) MUST resolve from the
+    // Lender → Authorized Party fields. The lender authorized-party publisher
+    // above (forceSet "ld_p_authorizedFirst/Middle/Last") already handles this.
+    // No Additional Guarantor override here — that previously caused the wrong
+    // person's name to be written into the document and the template.
 
     debugLog(`[generate-document] Resolved ${fieldValues.size} field values for ${template.name}`);
     // Log a sample of field values for debugging
