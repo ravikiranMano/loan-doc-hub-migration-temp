@@ -205,8 +205,34 @@ async function generateSingleDocument(
             .order("updated_at", { ascending: false })
             .limit(1);
           const latestSvAt = latestSv && latestSv[0]?.updated_at;
+          // Also check whether any of this deal's contacts (via participants)
+          // were updated after the cached generation — contact edits like
+          // borrower address/city aren't reflected in deal_section_values
+          // updated_at, so without this check stale cached docs would persist.
+          let latestContactAt: string | null = null;
+          try {
+            const { data: dpRows } = await supabase
+              .from("deal_participants")
+              .select("contact_id")
+              .eq("deal_id", dealId);
+            const contactIds = Array.from(
+              new Set((dpRows || []).map((r: any) => r.contact_id).filter(Boolean))
+            );
+            if (contactIds.length > 0) {
+              const { data: cRows } = await supabase
+                .from("contacts")
+                .select("updated_at")
+                .in("id", contactIds)
+                .order("updated_at", { ascending: false })
+                .limit(1);
+              latestContactAt = cRows && cRows[0]?.updated_at || null;
+            }
+          } catch (_) { /* ignore */ }
           const cachedAt = cached.created_at;
-          const dataIsStableSinceCache = !latestSvAt || new Date(latestSvAt) <= new Date(cachedAt);
+          const cachedAtMs = new Date(cachedAt).getTime();
+          const svStable = !latestSvAt || new Date(latestSvAt).getTime() <= cachedAtMs;
+          const contactStable = !latestContactAt || new Date(latestContactAt).getTime() <= cachedAtMs;
+          const dataIsStableSinceCache = svStable && contactStable;
 
           if (dataIsStableSinceCache) {
             // Reuse the cached storage objects by inserting a NEW
@@ -693,6 +719,25 @@ async function generateSingleDocument(
           if (cd["address.city"] || contact.city) setIfEmpty(`${shortPrefix}_city`, cd["address.city"] || contact.city);
           if (cd["address.state"] || contact.state) setIfEmpty(`${shortPrefix}_state`, cd["address.state"] || contact.state);
           if (cd["address.zip"]) setIfEmpty(`${shortPrefix}_zip`, cd["address.zip"]);
+          // Borrower-specific aliases: publish the dictionary's canonical city
+          // key (br_p_borrowerCity) plus 1098 fallbacks (br_t_city/state/zip/
+          // address/name) from the primary borrower's contact address so
+          // templates that reference any of those tags populate correctly even
+          // when no explicit 1098 record exists.
+          if (shortPrefix === "br_p") {
+            const cityVal = cd["address.city"] || contact.city;
+            const stateVal = cd["address.state"] || contact.state;
+            const zipVal = cd["address.zip"];
+            const streetVal = cd["address.street"];
+            if (cityVal) {
+              setIfEmpty("br_p_borrowerCity", cityVal);
+              setIfEmpty("br_t_city", cityVal);
+            }
+            if (stateVal) setIfEmpty("br_t_state", stateVal);
+            if (zipVal) setIfEmpty("br_t_zip", zipVal);
+            if (streetVal) setIfEmpty("br_t_address", streetVal);
+            if (fullName) setIfEmpty("br_t_name", fullName);
+          }
           if (cd.capacity) setIfEmpty(`${shortPrefix}_capacity`, cd.capacity);
           if (cd.vesting) setIfEmpty(`${shortPrefix}_vesting`, cd.vesting);
         }
@@ -767,20 +812,27 @@ async function generateSingleDocument(
             setIfEmpty("borrower.address.street", String(street));
             setIfEmpty("borrower1.address.street", String(street));
             if (cd["address.city"] || c?.city) {
-              setIfEmpty("br_p_city", cd["address.city"] || c.city);
-              setIfEmpty("borrower.address.city", cd["address.city"] || c.city);
-              setIfEmpty("borrower1.address.city", cd["address.city"] || c.city);
+              const v = cd["address.city"] || c.city;
+              setIfEmpty("br_p_city", v);
+              setIfEmpty("br_p_borrowerCity", v);
+              setIfEmpty("br_t_city", v);
+              setIfEmpty("borrower.address.city", v);
+              setIfEmpty("borrower1.address.city", v);
             }
             if (cd["address.state"] || c?.state) {
-              setIfEmpty("br_p_state", cd["address.state"] || c.state);
-              setIfEmpty("borrower.state", cd["address.state"] || c.state);
-              setIfEmpty("borrower1.state", cd["address.state"] || c.state);
+              const v = cd["address.state"] || c.state;
+              setIfEmpty("br_p_state", v);
+              setIfEmpty("br_t_state", v);
+              setIfEmpty("borrower.state", v);
+              setIfEmpty("borrower1.state", v);
             }
             if (cd["address.zip"]) {
               setIfEmpty("br_p_zip", cd["address.zip"]);
+              setIfEmpty("br_t_zip", cd["address.zip"]);
               setIfEmpty("borrower.address.zip", cd["address.zip"]);
               setIfEmpty("borrower1.address.zip", cd["address.zip"]);
             }
+            setIfEmpty("br_t_address", String(street));
             debugLog(`[generate-document] br_p_address fallback from participant ${bp.name}: "${street}"`);
             break;
           }
