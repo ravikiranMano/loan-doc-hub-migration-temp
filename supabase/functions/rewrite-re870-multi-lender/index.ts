@@ -216,12 +216,10 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     const pPr = pPrMatch ? pPrMatch[0] : "";
     const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
-    const conditional = "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+    const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
     parts[firstParaIdx] =
       `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
-      EACH_OPEN_PARA +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>` +
-      EACH_CLOSE_PARA;
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
     const newCellXml = parts.join("");
     return {
       xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
@@ -245,17 +243,14 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
 
   // Build:
   //   <w:p>{pPr}<w:r>{rPr}<w:t>INVESTOR NAME:</w:t></w:r></w:p>
-  //   EACH_OPEN_PARA
-  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#if isIndividual}}…{{else}}{{vesting}}{{/if}}</w:t></w:r></w:p>
-  //   EACH_CLOSE_PARA
+  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#each lenders}}{{displayName}}{{/each}}</w:t></w:r></w:p>
   const labelPara =
     `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>`;
-  const conditional =
-    "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
+  const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
   const condPara =
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${conditional}</w:t></w:r></w:p>`;
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
 
-  parts[condIdx] = labelPara + EACH_OPEN_PARA + condPara + EACH_CLOSE_PARA;
+  parts[condIdx] = labelPara + condPara;
 
   const newCellXml = parts.join("");
   const newXml =
@@ -264,7 +259,7 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   return {
     xml: newXml,
     note:
-      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}…{{/each}} around conditional",
+      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}{{displayName}}{{/each}} paragraph",
   };
 }
 
