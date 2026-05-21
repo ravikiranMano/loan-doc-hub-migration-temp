@@ -1134,10 +1134,58 @@ async function generateSingleDocument(
           // Primary-lender convenience aliases for templates that use the
           // bare ld_p_* surface without writing their own conditionals.
           if (isPrimary && !primaryHelpersSet) {
-            setAlias("ld_p_isIndividual", isIndividual ? "true" : "false");
-            setAlias("ld_p_displayName", displayName);
-            setAlias("ld_p_investorName", displayName);
-            setAlias("ld_p_entityName", isIndividual ? "" : vesting);
+            // Guard: never let a participant role/type label leak through as a
+            // display name. If vesting/name parts are empty for any reason,
+            // we must NOT fall through to "Lender", "Lender - Lender", etc.
+            const ROLE_LABELS = new Set([
+              "lender", "borrower", "broker", "co-borrower", "coborrower", "guarantor",
+              "lender - lender", "lender - participant lender",
+              "borrower - borrower", "broker - broker",
+            ]);
+            const sanitizeDisplayName = (s: string): string => {
+              const v = (s || "").toString().trim();
+              if (!v) return "";
+              return ROLE_LABELS.has(v.toLowerCase()) ? "" : v;
+            };
+            const lc = primaryLender?.contact_id
+              ? contactRowsByUuid.get(primaryLender.contact_id)
+              : null;
+            const lcd = lc?.contact_data || {};
+            const contactRealName = sanitizeDisplayName(
+              lcd.full_name ||
+              lc?.full_name ||
+              [lcd.first_name || lc?.first_name, lcd.middle_initial, lcd.last_name || lc?.last_name]
+                .filter(Boolean).join(" ").trim() ||
+              lcd.company ||
+              lc?.company ||
+              ""
+            );
+            const safeDisplayName =
+              sanitizeDisplayName(displayName) ||
+              (isIndividual
+                ? sanitizeDisplayName([firstName, middle, last].filter(Boolean).join(" "))
+                : sanitizeDisplayName(vesting)) ||
+              contactRealName;
+
+            // Force-set (override any earlier role-label leakage) every tag
+            // an INVESTOR NAME / NAME OF PERSON COMPLETING cell might use.
+            forceSet("ld_p_isIndividual", isIndividual ? "true" : "false");
+            forceSet("ld_p_displayName", safeDisplayName);
+            forceSet("ld_p_investorName", safeDisplayName);
+            forceSet("ld_p_name", safeDisplayName);
+            forceSet("ld_p_entityName", isIndividual ? "" : sanitizeDisplayName(vesting));
+            // Re-anchor lender-name aliases so templates whose INVESTOR NAME
+            // cell resolves via {{ld_p_lenderName}} / {{lender.name}} /
+            // {{Lender.Name}} / {{ld_p_fullNameIfEntity}} / {{lender1.name}}
+            // pick up the sanitized name instead of the participant role.
+            forceSet("ld_p_lenderName", safeDisplayName);
+            forceSet("lender.name", safeDisplayName);
+            forceSet("Lender.Name", safeDisplayName);
+            forceSet("ld_p_fullNameIfEntity", safeDisplayName);
+            forceSet("lender1.name", safeDisplayName);
+            // Re-anchor indexed/dotted Lender 1 displayName surfaces too.
+            forceSet("lender_1_displayName", safeDisplayName);
+            forceSet("lenders1.displayName", safeDisplayName);
             primaryHelpersSet = true;
           }
 
