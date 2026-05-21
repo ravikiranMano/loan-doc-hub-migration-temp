@@ -6,7 +6,7 @@ import { format, addMonths, subMonths, setMonth, setYear } from "date-fns";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 
 export type EnhancedCalendarProps = React.ComponentProps<typeof DayPicker> & {
   onClear?: () => void;
@@ -84,8 +84,13 @@ function EnhancedCalendar({
             Cancel
           </button>
         </div>
-        <ScrollArea className="h-[260px]">
-          <div ref={yearScrollRef} className="grid grid-cols-4 gap-1 pr-3">
+        <div
+          ref={yearScrollRef}
+          className="h-[260px] overflow-y-auto pointer-events-auto overscroll-contain pr-1"
+          onWheel={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
+          <div className="grid grid-cols-4 gap-1 pr-2">
             {years.map((y) => (
               <button
                 key={y}
@@ -101,7 +106,7 @@ function EnhancedCalendar({
               </button>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </div>
     );
   }
