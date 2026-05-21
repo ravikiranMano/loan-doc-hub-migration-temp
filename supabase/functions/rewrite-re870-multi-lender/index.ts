@@ -44,6 +44,7 @@ const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 const V6_MARKER = "<!-- re870-rewrite:v6 -->";
 const V7_MARKER = "<!-- re870-rewrite:v7 -->";
 const V8_MARKER = "<!-- re870-rewrite:v8 -->";
+const V9_MARKER = "<!-- re870-rewrite:v9 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -155,12 +156,16 @@ function findCells(xml: string, predicate: (visText: string, tc: string) => bool
   return out;
 }
 
-function normalizeInvestorParagraphPr(pPr: string): string {
-  const base = pPr || "<w:pPr></w:pPr>";
-  const withoutCenter = /<w:jc\b[^>]*\/>/.test(base)
-    ? base.replace(/<w:jc\b[^>]*\/>/g, '<w:jc w:val="left"/>')
-    : base.replace("</w:pPr>", '<w:jc w:val="left"/></w:pPr>');
-  return withoutCenter;
+// Canonical pPr matching the original v1 RE870 template's INVESTOR NAME paragraph.
+// Forces left indent 475, sz=16 paragraph mark + yellow highlight, no bold, no jc.
+const CANONICAL_INVESTOR_PPR =
+  '<w:pPr><w:ind w:left="475"/><w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/><w:highlight w:val="yellow"/></w:rPr></w:pPr>';
+const CANONICAL_INVESTOR_LABEL_RPR = '<w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>';
+const CANONICAL_INVESTOR_LOOP_RPR = '<w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>';
+
+function normalizeInvestorParagraphPr(_pPr: string): string {
+  // Always return the canonical pPr — never inherit from the (possibly broken) source paragraph.
+  return CANONICAL_INVESTOR_PPR;
 }
 
 function normalizeInvestorNameCellGeometry(cellXml: string, preferredWidth?: string): string {
@@ -285,19 +290,22 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetS
     return { xml, note: "WARN: INVESTOR NAME cell found but no paragraph located", targetStart: target.start };
   }
 
-  const origPara = parts[firstParaIdx];
-  const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = normalizeInvestorParagraphPr(pPrMatch ? pPrMatch[0] : "");
-  const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
-  const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+  const pPr = normalizeInvestorParagraphPr("");
+  const labelRPr = CANONICAL_INVESTOR_LABEL_RPR;
+  const loopRPr = CANONICAL_INVESTOR_LOOP_RPR;
   const investorNameLoop = INVESTOR_LOOP_LITERAL;
 
+  // Single paragraph matching v1 template: label + <w:br/> + loop, no bold, canonical sizes.
   parts[firstParaIdx] =
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
+    `<w:p>${pPr}` +
+    `<w:r>${labelRPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r>` +
+    `<w:r>${labelRPr}<w:br/></w:r>` +
+    `<w:r>${loopRPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r>` +
+    `</w:p>`;
   for (let i = firstParaIdx + 1; i < parts.length; i++) {
     if (parts[i].startsWith("<w:p")) parts[i] = "";
   }
+
 
   const preferredWidth = firstGridColumnWidthForCell(xml, target.start);
   const newCellXml = normalizeInvestorNameCellGeometry(parts.join(""), preferredWidth);
@@ -394,7 +402,7 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V8_MARKER)) {
+  if (!force && xml.includes(V9_MARKER)) {
     return { xml, changed: false, notes: ["already-rewritten v8 (skipped)"] };
   }
 
@@ -414,6 +422,7 @@ function rewriteDocumentXml(
   out = out.split(V6_MARKER).join("");
   out = out.split(V7_MARKER).join("");
   out = out.split(V8_MARKER).join("");
+  out = out.split(V9_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
   const nameRevert = replaceLiteral(
@@ -456,7 +465,7 @@ function rewriteDocumentXml(
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V8_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V9_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
