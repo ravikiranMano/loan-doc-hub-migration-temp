@@ -42,6 +42,7 @@ const TEMPLATE_IDS = [
 
 const V2_MARKER = "<!-- re870-rewrite:v2 -->";
 const V3_MARKER = "<!-- re870-rewrite:v3 -->";
+const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 
 // Marker paragraphs for the INVESTOR NAME inner loop.
 const EACH_OPEN_PARA =
