@@ -1,46 +1,71 @@
-## Plan
+## Goal
 
-1. **Rewrite the active RE870 Investor Questionnaire template structure**
-   - Update the template DOCX XML so the `{{#each lenders}} ... {{/each}}` block wraps one full lender-specific RE870 form section.
-   - Keep `BROKER ACKNOWLEDGEMENT` outside the loop so it renders once at the end.
-   - Insert the lender-to-lender page break inside the loop using the existing Handlebars-style marker:
-     ```text
-     {{#unless @last}}<w:br w:type="page"/>{{/unless}}
+RE870 should render as ONE form (not 4 copies). The INVESTOR NAME cell alone should list every lender stacked on separate lines, using strict `isIndividual` logic (individual → "First M Last"; everything else → vesting only).
+
+## Root cause
+
+The previous fix wrapped the **entire RE870 body** (header → just before BROKER ACKNOWLEDGEMENT) in `{{#each lenders}}…{{/each}}` inside `rewrite-re870-multi-lender/index.ts`. That repeats the whole form per lender and surfaces wrong values (including "Lender" labels) from non-primary iterations.
+
+The data-side `isIndividual` rule in `generate-document/index.ts` is already correct (`type.toLowerCase() === "individual"`), so the fix is in the template rewriter only — no change to lender data resolution.
+
+## Changes
+
+### 1. `supabase/functions/rewrite-re870-multi-lender/index.ts` — rewrite the rewriter
+
+Replace the current "wrap whole form" logic with a targeted, idempotent transform that:
+
+**a. Undo previous full-form wrapper (migration step)**
+- Detect the previously injected `EACH_OPEN_PARA` paragraph (the standalone `<w:p>` containing only `{{#each lenders}}`) and the matching close block (`{{#unless @last}} … page break … {{/unless}} {{/each}}`) and **remove both paragraphs** so the form renders once again.
+
+**b. Rewrite the INVESTOR NAME cell only**
+Locate the `<w:tc>` (table cell) whose visible text starts with `INVESTOR NAME` and rewrite its inner paragraph(s) so:
+
+```
+INVESTOR NAME:
+{{#each lenders}}
+{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}
+{{/each}}
+```
+
+Implementation: keep the existing "INVESTOR NAME:" label paragraph, then append one paragraph per loop marker. Each rendered lender becomes its own `<w:p>` so they stack visually:
+
+```
+{{#each lenders}}<w:p>{{#if isIndividual}}{{firstName}} {{middle}} {{last}}{{else}}{{vesting}}{{/if}}</w:p>{{/each}}
+```
+
+(The opening `{{#each lenders}}` and closing `{{/each}}` markers are placed in their own bare `<w:p>` tags adjacent to the per-iteration paragraph, matching the pattern already understood by `processEachBlocks` in `_shared/tag-parser.ts`.)
+
+**c. Leave every other tag alone**
+- Keep existing `ld_p_firstIfEntityUse / ld_p_middle / ld_p_last → {{#if isIndividual}}…{{else}}{{vesting}}{{/if}}` substitution for the secondary "NAME OF PERSON COMPLETING THIS QUESTIONNAIRE" occurrence (resolves against primary lender).
+- Keep `NAME OF ENTITY: {{ld_p_vesting}} → NAME OF ENTITY: {{#if isIndividual}}-{{else}}{{vesting}}{{/if}}` (primary lender).
+- Keep `{{ld_p_lenderType}}` substitutions and any other primary-lender tags untouched.
+- All other fields render exactly once from primary-lender data.
+
+**d. Idempotency**
+- Bump the in-template marker comment (e.g. inject an XML comment `<!-- re870-rewrite:v2 -->` near `<w:body>`) and skip when present.
+- Accept `{ force: true }` in the request body to bypass the skip check (needed to migrate already-wrapped templates).
+
+### 2. `supabase/functions/generate-document/index.ts` — no logic change
+
+The existing `isIndividual = type.toLowerCase() === "individual"` (lines 1098 and 5340) already matches the spec (Individual → true; Joint / Family Trust / LLC / C Corp / S Corp / IRA / ERISA / Investment Fund / 401k / Foreign Holder → false). No edit needed.
+
+The auto-appended "ADDITIONAL LENDER N" signature blocks (line 7549+) remain untouched — they sit after BROKER ACKNOWLEDGEMENT and are unrelated to the INVESTOR NAME cell.
+
+### 3. Re-run the rewriter
+
+Invoke `rewrite-re870-multi-lender` with `{ force: true }` against the 3 known template IDs so the live `.docx` templates in storage are updated.
+
+## Verification
+
+1. Regenerate a document for deal `DL-2026-0266` (4 lenders).
+2. Confirm the output:
+   - Exactly **one** RE870 form (no 4× repetition, no page breaks between iterations).
+   - INVESTOR NAME cell contains four stacked lines:
      ```
-   - Preserve all existing Word XML formatting/runs; only insert loop marker paragraphs/page-break XML at structural boundaries.
-
-2. **Fix `tag-parser.ts` repeater expansion for RE870**
-   - Extend `processEachBlocks` so `{{#each lenders}}` can clone a complete block of DOCX XML, not only a small paragraph/row region.
-   - Add support for `@last` within each iteration so the page break appears between lender forms, not after the final lender.
-   - Keep cloning at paragraph/table/body-child boundaries to avoid invalid DOCX XML.
-   - Preserve existing generic repeater behavior for all other templates/collections.
-
-3. **Fix lender conditional/name resolution**
-   - Ensure each lender clone resolves against its own scoped keys: `lenders1.*`, `lenders2.*`, etc.
-   - Treat `isIndividual` as true only when the lender type is exactly `Individual` after trimming.
-   - For non-Individual lenders, set/display `displayName` and `INVESTOR NAME` from `vesting` only.
-   - Never fall back to concatenating name fields for non-Individual lender display names, preventing outputs like `Lender Horizon Capital LLC` or duplicated name pieces.
-
-4. **Remove/neutralize the old backend “improvised” additional-lender output for RE870**
-   - Ensure the auto-append additional lender signature fallback does not run for RE870 when the template has a real `{{#each lenders}}` block.
-   - Leave the fallback intact for non-RE870 backward compatibility.
-
-5. **Validate with DL-2026-0266**
-   - Generate a fresh RE870 Investor Questionnaire for the 4-lender deal.
-   - Confirm the output has:
-     - 4 complete lender forms
-     - Correct lender-specific investor names
-     - `NAME OF ENTITY` as vesting for non-Individual and `-` for Individual
-     - Page breaks between lender forms
-     - One shared `BROKER ACKNOWLEDGEMENT` at the end
-     - No raw Handlebars tags
-     - Unique `wp:docPr` IDs so Word opens the file cleanly
-
-## Technical scope
-
-Files expected to change:
-- `supabase/functions/_shared/tag-parser.ts`
-- `supabase/functions/generate-document/index.ts` only if needed for RE870-specific alias/fallback handling
-- `supabase/functions/rewrite-re870-multi-lender/index.ts` or a one-shot template rewrite function to apply the corrected template XML safely
-
-No database schema, UI, API contracts, permissions, document-generation order, or dependencies will be changed.
+     Horizon Capital LLC
+     BlueStone Investments Inc
+     Sarah Lynn Mitchell, a single woman
+     Michael Andrew Carter
+     ```
+   - No stray "Lender" text in INVESTOR NAME.
+   - All other RE870 fields populated from the primary lender exactly as before.
