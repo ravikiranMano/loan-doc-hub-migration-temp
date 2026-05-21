@@ -2550,6 +2550,24 @@ export function replaceMergeTags(
   }
   __mark('conditionalBlocks');
 
+  // Multi-lender safety pass: strip any leftover {{lender_N_*}} tags whose
+  // lender index does not exist (e.g. template hard-codes lenders 1..4 but
+  // the deal only has 2). Without this they would print verbatim. We only
+  // remove tags for indices > lender_count; resolved tags have already been
+  // replaced by the normal merge-tag pipeline above.
+  if (result.indexOf('{{lender_') !== -1) {
+    const lenderCountRaw = fieldValues.get('lender_count')?.rawValue;
+    const lenderCount = Number.parseInt(String(lenderCountRaw ?? '0'), 10) || 0;
+    if (lenderCount === 0) {
+      console.warn('[tag-parser] Template references {{lender_N_*}} tags but lender_count is 0 — stripping unresolved tags');
+    }
+    result = result.replace(
+      /\{\{\s*lender_(\d+)_[A-Za-z][A-Za-z0-9_]*\s*\}\}/g,
+      (full, idx) => (Number.parseInt(idx, 10) <= lenderCount ? full : '')
+    );
+  }
+
+
   if (result.includes('<w14:checkbox') && result.includes('<w:sdt')) {
     result = processSdtCheckboxes(result, fieldValues, mergeTagMap, validFieldKeys, labelMap);
   }
