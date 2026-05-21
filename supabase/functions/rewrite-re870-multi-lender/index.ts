@@ -42,6 +42,7 @@ const V3_MARKER = "<!-- re870-rewrite:v3 -->";
 const V4_MARKER = "<!-- re870-rewrite:v4 -->";
 const V5_MARKER = "<!-- re870-rewrite:v5 -->";
 const V6_MARKER = "<!-- re870-rewrite:v6 -->";
+const V7_MARKER = "<!-- re870-rewrite:v7 -->";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pass A — undo v1 full-form wrapper paragraphs
@@ -94,7 +95,20 @@ function visibleText(xml: string): string {
 
 function isInvestorNameCellText(text: string): boolean {
   const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
-  return (normalized === "INVESTOR" || /\bINVESTOR NAME\b/.test(normalized)) && !/\bCO[-\s]?INVESTOR NAME\b/.test(normalized);
+  if (/\bCO[-\s]?INVESTOR\b/.test(normalized)) return false;
+  // Only the real INVESTOR NAME label cell — must contain "INVESTOR NAME"
+  // (with or without colon). Do NOT match the centered "INVESTOR" header cell.
+  return /\bINVESTOR NAME\b/.test(normalized);
+}
+
+function isInvestorHeaderOnlyCellText(text: string): boolean {
+  const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
+  return normalized === "INVESTOR";
+}
+
+function isNamePersonCompletingCellText(text: string): boolean {
+  const normalized = text.toUpperCase().replace(/\s+/g, " ").trim();
+  return /NAME OF PERSON COMPLETING/.test(normalized);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -109,40 +123,115 @@ function isInvestorNameCellText(text: string): boolean {
 // the RE870 failure mode was orphaned </w:t> tags caused by nested {{#if}}
 // blocks being evaluated after the loop expanded.
 // ────────────────────────────────────────────────────────────────────────────
-function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
-  // Find the <w:tc> that contains the literal "INVESTOR NAME" in its text,
-  // excluding the "CO-INVESTOR NAME" cell which appears earlier in the form.
+const INVESTOR_LOOP_LITERAL = "{{#each lenders}}{{displayName}}{{/each}}";
+
+interface CellHit {
+  start: number;
+  end: number;
+  xml: string;
+  visText: string;
+  hasLoop: boolean;
+}
+
+function findCells(xml: string, predicate: (visText: string, tc: string) => boolean): CellHit[] {
   const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+  const out: CellHit[] = [];
   let m: RegExpExecArray | null;
-  let targetStart = -1;
-  let targetEnd = -1;
-  let fallbackStart = -1;
-  let fallbackEnd = -1;
   while ((m = tcRe.exec(xml)) !== null) {
     const tc = m[0];
-    if (isInvestorNameCellText(visibleText(tc))) {
-      targetStart = m.index;
-      targetEnd = m.index + tc.length;
-      break;
+    const v = visibleText(tc);
+    if (predicate(v, tc)) {
+      out.push({
+        start: m.index,
+        end: m.index + tc.length,
+        xml: tc,
+        visText: v,
+        hasLoop: tc.includes(INVESTOR_LOOP_LITERAL),
+      });
     }
-    if (fallbackStart === -1 && (tc.includes("firstIfEntityUse") || tc.includes("ld_p_middle") || tc.includes("ld_p_last"))) {
-      fallbackStart = m.index;
-      fallbackEnd = m.index + tc.length;
+  }
+  return out;
+}
+
+// Remove paragraphs from a <w:tc> whose only visible text matches `predicate`.
+function stripParagraphsByText(cellXml: string, predicate: (txt: string) => boolean): string {
+  const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
+  return cellXml.replace(paraRe, (p) => {
+    const v = visibleText(p).trim();
+    return predicate(v) ? "" : p;
+  });
+}
+
+// Pass D — clean up a misplaced loop that v6 injected into the wrong cell
+// (the centered "INVESTOR" header). Returns the cleaned xml + a note.
+function cleanMisplacedInvestorLoop(xml: string, keepCellStart: number): { xml: string; note: string } {
+  const cells = findCells(xml, (_v, tc) => tc.includes(INVESTOR_LOOP_LITERAL));
+  if (cells.length === 0) return { xml, note: "no misplaced loop found" };
+
+  // Process from end → start so substring offsets stay valid.
+  let out = xml;
+  let cleaned = 0;
+  for (let i = cells.length - 1; i >= 0; i--) {
+    const c = cells[i];
+    if (c.start === keepCellStart) continue;
+
+    // Strip our two injected paragraphs (label + loop). Keep anything else.
+    let cleanedCell = stripParagraphsByText(c.xml, (t) =>
+      t === INVESTOR_LOOP_LITERAL ||
+      t === "INVESTOR NAME:" ||
+      t === "INVESTOR NAME: " ||
+      t === "INVESTOR NAME:".trim(),
+    );
+
+    // If the cell is now empty of paragraphs, restore the "INVESTOR" header.
+    if (!/\bINVESTOR\b/.test(visibleText(cleanedCell))) {
+      // Pull the cell open tag.
+      const openMatch = cleanedCell.match(/^<w:tc\b[^>]*>/);
+      const closeIdx = cleanedCell.lastIndexOf("</w:tc>");
+      if (openMatch && closeIdx !== -1) {
+        const open = openMatch[0];
+        const between = cleanedCell.substring(open.length, closeIdx);
+        // Try to reuse a tcPr if present.
+        const tcPrMatch = between.match(/<w:tcPr>[\s\S]*?<\/w:tcPr>/);
+        const tcPr = tcPrMatch ? tcPrMatch[0] : "";
+        cleanedCell = `${open}${tcPr}<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">INVESTOR</w:t></w:r></w:p></w:tc>`;
+      }
     }
+
+    out = out.substring(0, c.start) + cleanedCell + out.substring(c.end);
+    cleaned++;
+  }
+  return { xml: out, note: `misplaced-loop cells cleaned: ${cleaned}` };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pass B — replace the INVESTOR NAME cell content with a safe displayName loop.
+// ────────────────────────────────────────────────────────────────────────────
+function wrapInvestorNameCell(xml: string): { xml: string; note: string; targetStart: number } {
+  // Collect every <w:tc> whose visible text matches the real INVESTOR NAME
+  // label cell (requires "INVESTOR NAME", excludes "CO-INVESTOR").
+  const candidates = findCells(xml, (v) => isInvestorNameCellText(v));
+
+  // Prefer a cell that does NOT already contain our loop literal (the
+  // un-touched real label cell). Fall back to the first one otherwise.
+  let target: CellHit | undefined =
+    candidates.find((c) => !c.hasLoop) || candidates[0];
+
+  // Last-resort fallback: legacy tag fragments live in a non-INVESTOR-NAME cell.
+  if (!target) {
+    const legacy = findCells(xml, (_v, tc) =>
+      tc.includes("firstIfEntityUse") || tc.includes("ld_p_middle") || tc.includes("ld_p_last"),
+    );
+    target = legacy[0];
   }
 
-  if (targetStart === -1 && fallbackStart !== -1) {
-    targetStart = fallbackStart;
-    targetEnd = fallbackEnd;
+  if (!target) {
+    return { xml, note: "WARN: INVESTOR NAME <w:tc> not found", targetStart: -1 };
   }
 
-  if (targetStart === -1) {
-    return { xml, note: "WARN: INVESTOR NAME <w:tc> not found" };
-  }
+  const cellXml = target.xml;
 
-  const cellXml = xml.substring(targetStart, targetEnd);
-
-  // Split the cell into its top-level paragraphs.
+  // Split the cell into top-level paragraphs.
   const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
   const parts: string[] = [];
   let lastIdx = 0;
@@ -155,102 +244,106 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
   parts.push(cellXml.substring(lastIdx));
 
   const firstParaIdx = parts.findIndex((p) => p.startsWith("<w:p"));
-  if (firstParaIdx !== -1) {
-    const origPara = parts[firstParaIdx];
-    const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-    const pPr = pPrMatch ? pPrMatch[0] : "";
-    const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
-    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
-    const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
-    // Two-paragraph layout:
-    //   P1: "INVESTOR NAME:" label
-    //   P2: single text run containing {{#each lenders}}<cond>{{/each}}
-    // The tag-parser's processEachBlocks detects that the each-block lives
-    // inside a <w:t> run (no paragraphs in the expanded block) and inserts
-    // </w:t><w:br/><w:t xml:space="preserve"> between iterations, giving
-    // each lender its own visual line inside the same paragraph.
-    parts[firstParaIdx] =
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
-    for (let i = firstParaIdx + 1; i < parts.length; i++) {
-      if (parts[i].startsWith("<w:p")) parts[i] = "";
-    }
-    const newCellXml = parts.join("");
-    return {
-      xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR NAME cell rebuilt: label paragraph + single-paragraph {{#each lenders}}{{displayName}}{{/each}} loop",
-    };
+  if (firstParaIdx === -1) {
+    return { xml, note: "WARN: INVESTOR NAME cell found but no paragraph located", targetStart: target.start };
   }
 
-  // Find the paragraph that contains either of the legacy tag fragments
-  // OR an already-substituted `{{#if isIndividual}}` block. The template
-  // stores tags fragmented across runs (e.g. "{{ld" + "_p_firstIfEntityUse"
-  // + "}}…"), so we look for the unfragmented substring "firstIfEntityUse"
-  // which is guaranteed to be inside a single <w:t> element.
-  const isTagPara = (p: string) =>
-    p.startsWith("<w:p") &&
-    (p.includes("firstIfEntityUse") ||
-      p.includes("ld_p_middle") ||
-      p.includes("ld_p_last") ||
-      p.includes("{{#if isIndividual}}"));
-
-
-  const condIdx = parts.findIndex(isTagPara);
-  if (condIdx === -1) {
-    const firstParaIdx = parts.findIndex((p) => p.startsWith("<w:p"));
-    if (firstParaIdx === -1) {
-      return { xml, note: "WARN: INVESTOR NAME cell found but no paragraph located" };
-    }
-    const origPara = parts[firstParaIdx];
-    const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-    const pPr = pPrMatch ? pPrMatch[0] : "";
-    const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
-    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
-    const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
-    parts[firstParaIdx] =
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
-      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
-    const newCellXml = parts.join("");
-    return {
-      xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
-      note: "INVESTOR header cell rebuilt as INVESTOR NAME + {{#each lenders}} loop",
-    };
-  }
-
-  const origPara = parts[condIdx];
-
-  // Extract the paragraph's <w:pPr> (formatting) so the rebuilt paragraphs
-  // keep indentation/styling.
+  const origPara = parts[firstParaIdx];
   const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : "";
-
-  // Extract the first run's <w:rPr> so the label/conditional runs keep
-  // the same font/size.
   const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
-  const rPr = rPrMatch
-    ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0]
-    : "";
+  const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+  const investorNameLoop = INVESTOR_LOOP_LITERAL;
 
-  // Build:
-  //   <w:p>{pPr}<w:r>{rPr}<w:t>INVESTOR NAME:</w:t></w:r></w:p>
-  //   <w:p>{pPr}<w:r>{rPr}<w:t>{{#each lenders}}{{displayName}}{{/each}}</w:t></w:r></w:p>
-  const labelPara =
-    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>`;
-  const investorNameLoop = "{{#each lenders}}{{displayName}}{{/each}}";
-  const condPara =
+  parts[firstParaIdx] =
+    `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>` +
     `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${investorNameLoop}</w:t></w:r></w:p>`;
-
-  parts[condIdx] = labelPara + condPara;
+  for (let i = firstParaIdx + 1; i < parts.length; i++) {
+    if (parts[i].startsWith("<w:p")) parts[i] = "";
+  }
 
   const newCellXml = parts.join("");
-  const newXml =
-    xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd);
-
   return {
-    xml: newXml,
-    note:
-      "INVESTOR NAME cell rebuilt: label + {{#each lenders}}{{displayName}}{{/each}} paragraph",
+    xml: xml.substring(0, target.start) + newCellXml + xml.substring(target.end),
+    note: `INVESTOR NAME cell rebuilt (start=${target.start}, hadLoop=${target.hasLoop})`,
+    targetStart: target.start,
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pass E — fix NAME OF PERSON COMPLETING THIS QUESTIONNAIRE cell.
+// Replace the conditional value run with the precomputed {{ld_p_displayName}}
+// alias so we never get a "Lender" prefix on Joint/entity lenders.
+// ────────────────────────────────────────────────────────────────────────────
+function fixNamePersonCompletingCell(xml: string): { xml: string; note: string } {
+  const cells = findCells(xml, (v) => isNamePersonCompletingCellText(v));
+  if (cells.length === 0) return { xml, note: "NAME OF PERSON COMPLETING cell not found" };
+
+  let out = xml;
+  let touched = 0;
+  // Process from end → start so offsets stay valid.
+  for (let i = cells.length - 1; i >= 0; i--) {
+    const c = cells[i];
+    let cellXml = c.xml;
+
+    // Split into paragraphs.
+    const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
+    const parts: string[] = [];
+    let lastIdx = 0;
+    let pm: RegExpExecArray | null;
+    while ((pm = paraRe.exec(cellXml)) !== null) {
+      parts.push(cellXml.substring(lastIdx, pm.index));
+      parts.push(pm[0]);
+      lastIdx = pm.index + pm[0].length;
+    }
+    parts.push(cellXml.substring(lastIdx));
+
+    // Find the label paragraph (contains "NAME OF PERSON COMPLETING") and
+    // capture its pPr/rPr for re-use on the value paragraph.
+    let labelIdx = -1;
+    for (let j = 0; j < parts.length; j++) {
+      const p = parts[j];
+      if (p.startsWith("<w:p") && /NAME OF PERSON COMPLETING/.test(visibleText(p))) {
+        labelIdx = j;
+        break;
+      }
+    }
+    if (labelIdx === -1) continue;
+
+    const labelPara = parts[labelIdx];
+    const pPrMatch = labelPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : "";
+    const rPrMatch = labelPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+
+    // Rewrite the label paragraph: keep label text only, no inline value/tags.
+    parts[labelIdx] = `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">NAME OF PERSON COMPLETING THIS QUESTIONNAIRE</w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{ld_p_displayName}}</w:t></w:r></w:p>`;
+
+    // Strip any subsequent paragraphs that contain stale value tags.
+    for (let j = labelIdx + 1; j < parts.length; j++) {
+      const p = parts[j];
+      if (!p.startsWith("<w:p")) continue;
+      if (
+        /\{\{#if\s+isIndividual/.test(p) ||
+        /\{\{firstName\}\}/.test(p) ||
+        /\{\{middle\}\}/.test(p) ||
+        /\{\{last\}\}/.test(p) ||
+        /\{\{vesting\}\}/.test(p) ||
+        /\{\{ld_p_firstIfEntityUse\}\}/.test(p) ||
+        /\{\{ld_p_middle\}\}/.test(p) ||
+        /\{\{ld_p_last\}\}/.test(p) ||
+        /\{\{ld_p_displayName\}\}/.test(p)
+      ) {
+        parts[j] = "";
+      }
+    }
+
+    cellXml = parts.join("");
+    out = out.substring(0, c.start) + cellXml + out.substring(c.end);
+    touched++;
+  }
+  return { xml: out, note: `NAME OF PERSON COMPLETING cells rebuilt: ${touched}` };
 }
 
 
@@ -263,8 +356,8 @@ function rewriteDocumentXml(
 ): { xml: string; changed: boolean; notes: string[] } {
   const notes: string[] = [];
 
-  if (!force && xml.includes(V6_MARKER)) {
-    return { xml, changed: false, notes: ["already-rewritten v6 (skipped)"] };
+  if (!force && xml.includes(V7_MARKER)) {
+    return { xml, changed: false, notes: ["already-rewritten v7 (skipped)"] };
   }
 
   let out = xml;
@@ -281,18 +374,9 @@ function rewriteDocumentXml(
   out = out.split(V4_MARKER).join("");
   out = out.split(V5_MARKER).join("");
   out = out.split(V6_MARKER).join("");
+  out = out.split(V7_MARKER).join("");
 
   // (b) REVERT prior v2 global substitutions back to {{ld_p_*}} tags.
-  //     v2 used to do this globally, which broke NAME OF ENTITY / TYPE OF
-  //     ORGANIZATION / NAME OF PERSON COMPLETING cells (those cells lived
-  //     OUTSIDE the {{#each lenders}} block, so the bare {{vesting}} /
-  //     {{type}} / {{firstName}} tags resolved to nothing). The proper
-  //     scoping (bare → lendersN.*) only happens inside the each block,
-  //     which Pass C wraps explicitly around the INVESTOR NAME cell.
-  //
-  //     These reverts are SAFE because they happen BEFORE Pass C runs:
-  //     Pass C writes its own paragraph containing the bare conditional
-  //     INSIDE the {{#each lenders}} marker, so it doesn't get reverted.
   const nameRevert = replaceLiteral(
     out,
     "{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}",
@@ -313,16 +397,27 @@ function rewriteDocumentXml(
   out = typeRevert.xml;
   notes.push(`type-tag reverts: ${typeRevert.hits}`);
 
-  // (c) Wrap the INVESTOR NAME cell's conditional paragraph.
+  // (c) Wrap the real INVESTOR NAME cell with label + displayName loop.
   const wrapped = wrapInvestorNameCell(out);
   out = wrapped.xml;
   notes.push(wrapped.note);
 
-  // (d) Inject the v6 marker so subsequent runs short-circuit (unless force).
+  // (d) Clean up any OTHER cell that v6 wrongly stuffed the loop into
+  //     (e.g. the centered "INVESTOR" header cell). Restore it to header text.
+  const cleaned = cleanMisplacedInvestorLoop(out, wrapped.targetStart);
+  out = cleaned.xml;
+  notes.push(cleaned.note);
+
+  // (e) Rewrite NAME OF PERSON COMPLETING THIS QUESTIONNAIRE → {{ld_p_displayName}}
+  const personFix = fixNamePersonCompletingCell(out);
+  out = personFix.xml;
+  notes.push(personFix.note);
+
+  // (f) Inject the v7 marker so subsequent runs short-circuit (unless force).
   const bodyIdx = out.indexOf("<w:body>");
   if (bodyIdx !== -1) {
     const insertAt = bodyIdx + "<w:body>".length;
-    out = out.substring(0, insertAt) + V6_MARKER + out.substring(insertAt);
+    out = out.substring(0, insertAt) + V7_MARKER + out.substring(insertAt);
   }
 
   return { xml: out, changed: out !== xml, notes };
