@@ -205,8 +205,34 @@ async function generateSingleDocument(
             .order("updated_at", { ascending: false })
             .limit(1);
           const latestSvAt = latestSv && latestSv[0]?.updated_at;
+          // Also check whether any of this deal's contacts (via participants)
+          // were updated after the cached generation — contact edits like
+          // borrower address/city aren't reflected in deal_section_values
+          // updated_at, so without this check stale cached docs would persist.
+          let latestContactAt: string | null = null;
+          try {
+            const { data: dpRows } = await supabase
+              .from("deal_participants")
+              .select("contact_id")
+              .eq("deal_id", dealId);
+            const contactIds = Array.from(
+              new Set((dpRows || []).map((r: any) => r.contact_id).filter(Boolean))
+            );
+            if (contactIds.length > 0) {
+              const { data: cRows } = await supabase
+                .from("contacts")
+                .select("updated_at")
+                .in("id", contactIds)
+                .order("updated_at", { ascending: false })
+                .limit(1);
+              latestContactAt = cRows && cRows[0]?.updated_at || null;
+            }
+          } catch (_) { /* ignore */ }
           const cachedAt = cached.created_at;
-          const dataIsStableSinceCache = !latestSvAt || new Date(latestSvAt) <= new Date(cachedAt);
+          const cachedAtMs = new Date(cachedAt).getTime();
+          const svStable = !latestSvAt || new Date(latestSvAt).getTime() <= cachedAtMs;
+          const contactStable = !latestContactAt || new Date(latestContactAt).getTime() <= cachedAtMs;
+          const dataIsStableSinceCache = svStable && contactStable;
 
           if (dataIsStableSinceCache) {
             // Reuse the cached storage objects by inserting a NEW
