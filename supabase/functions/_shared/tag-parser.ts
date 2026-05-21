@@ -693,10 +693,128 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
   }
   __nwxLog('paraConsolidation', tConsolidate);
 
+  // RE851D appraiser conditional safety pass: canonicalize all 10
+  // fragmented `{{#if (eq pr_p_perform(e|ed)By_(N|1..5) "Broker")}}PAYLOAD{{else}}{{/if}}`
+  // blocks into a single contiguous run so downstream RE851D rewriters in
+  // generate-document/index.ts always see the canonical form, regardless of
+  // <w:proofErr> splits or upstream brace-repair side effects.
+  const tApprCond = Date.now();
+  result = consolidateAppraiserConditional(result);
+  __nwxLog('apprCondConsolidation', tApprCond);
+
   if (xmlContent.length > 200_000) {
     console.log(`[tag-parser] normalizeWordXml total=${Date.now() - __nwxStart}ms (size=${xmlContent.length}B)`);
   }
   return result;
+}
+
+/**
+ * Paragraph-scoped consolidation for the RE851D NAME/ADDRESS OF APPRAISER
+ * conditional. Strictly targets paragraphs containing `pr_p_perform`
+ * (canonical or legacy `performeBy`/`performedBy`) AND `Broker`, and only
+ * rewrites when the visible payload is exactly `BPO Performed by Broker`
+ * or `N/A` (the two literals authored in the template). All other
+ * paragraphs are returned unchanged.
+ *
+ * Replaces the run sequence spanning the conditional with a single canonical
+ * run: `{{#if (eq pr_p_performeBy_N "Broker")}}PAYLOAD{{else}}{{/if}}`.
+ * The `_N` -> `_K` per-property index resolution is left to the existing
+ * downstream pass anchored on PROPERTY regions in generate-document.
+ */
+export function consolidateAppraiserConditional(xml: string): string {
+  if (!xml.includes('pr_p_perform') || !xml.includes('Broker')) return xml;
+
+  return processParaByPara(xml, (para) => {
+    if (!para.includes('pr_p_perform') || !para.includes('Broker')) return para;
+    if (!/BPO Performed by Broker|N\/A/i.test(para)) return para;
+
+    // Collect <w:r>...</w:r> runs with their byte ranges and concatenated
+    // <w:t> text. Other tags between runs (e.g. <w:proofErr/>) contribute
+    // no text and are simply discarded when we splice the canonical run in.
+    type RunInfo = { start: number; end: number; text: string; rPr: string | null };
+    const runs: RunInfo[] = [];
+    const runRe = /<w:r\b[^>]*>([\s\S]*?)<\/w:r>/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = runRe.exec(para)) !== null) {
+      const inner = rm[1] || '';
+      const textParts: string[] = [];
+      const tRe = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+      let tm: RegExpExecArray | null;
+      while ((tm = tRe.exec(inner)) !== null) textParts.push(tm[1] || '');
+      const rPrMatch = inner.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+      runs.push({
+        start: rm.index,
+        end: rm.index + rm[0].length,
+        text: textParts.join(''),
+        rPr: rPrMatch ? rPrMatch[0] : null,
+      });
+    }
+    if (runs.length === 0) return para;
+
+    // Build concat text + a position->run map.
+    let concat = '';
+    const posToRun: number[] = [];
+    for (let i = 0; i < runs.length; i++) {
+      const t = runs[i].text;
+      for (let j = 0; j < t.length; j++) posToRun.push(i);
+      concat += t;
+    }
+    // Normalize entity/smart quotes for matching, with a parallel index back
+    // to original concat positions.
+    let norm = '';
+    const normToConcat: number[] = [];
+    {
+      let ci = 0;
+      while (ci < concat.length) {
+        if (concat.startsWith('&quot;', ci)) {
+          norm += '"'; normToConcat.push(ci); ci += 6;
+        } else {
+          const ch = concat[ci];
+          if (ch === '\u201C' || ch === '\u201D') norm += '"';
+          else norm += ch;
+          normToConcat.push(ci); ci += 1;
+        }
+      }
+    }
+
+    const re = /(\{\{)?\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(?:N|[1-5])\s*"\s*Broker\s*"\s*\)\s*(\}\})?\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*else\s*\}\}\s*)?(?:\{\{\s*\/\s*if\s*\}\}|\{\{\s*\/\s*if\s*\})?/gi;
+
+    type Hit = { firstRun: number; lastRun: number; payload: string };
+    const hits: Hit[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(norm)) !== null) {
+      const startNorm = m.index;
+      const endNorm = m.index + m[0].length - 1;
+      if (startNorm >= normToConcat.length || endNorm < 0) continue;
+      const startConcat = normToConcat[startNorm];
+      const endConcat = normToConcat[Math.min(endNorm, normToConcat.length - 1)];
+      if (startConcat == null || endConcat == null) continue;
+      const firstRun = posToRun[startConcat];
+      const lastRun = posToRun[Math.min(endConcat, posToRun.length - 1)];
+      if (firstRun == null || lastRun == null || lastRun < firstRun) continue;
+      const payload = /^BPO Performed by Broker$/i.test(m[3].trim())
+        ? 'BPO Performed by Broker'
+        : 'N/A';
+      hits.push({ firstRun, lastRun, payload });
+    }
+    if (hits.length === 0) return para;
+
+    // Splice in reverse so earlier byte offsets stay valid.
+    let out = para;
+    for (let h = hits.length - 1; h >= 0; h--) {
+      const hit = hits[h];
+      const xmlStart = runs[hit.firstRun].start;
+      const xmlEnd = runs[hit.lastRun].end;
+      let rPr = '<w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr>';
+      for (let i = hit.firstRun; i <= hit.lastRun; i++) {
+        if (runs[i].rPr) { rPr = runs[i].rPr!; break; }
+      }
+      const canonical =
+        `<w:r>${rPr}<w:t xml:space="preserve">{{#if (eq pr_p_performeBy_N "Broker")}}${hit.payload}{{else}}{{/if}}</w:t></w:r>`;
+      out = out.substring(0, xmlStart) + canonical + out.substring(xmlEnd);
+    }
+    return out;
+  });
 }
 
 /**
