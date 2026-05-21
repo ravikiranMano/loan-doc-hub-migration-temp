@@ -149,11 +149,6 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
 
   const cellXml = xml.substring(targetStart, targetEnd);
 
-  // Already wrapped (idempotency within the cell)
-  if (cellXml.includes("{{#each lenders}}")) {
-    return { xml, note: "INVESTOR NAME cell already wraps {{#each lenders}}" };
-  }
-
   // Split the cell into its top-level paragraphs.
   const paraRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
   const parts: string[] = [];
@@ -165,6 +160,26 @@ function wrapInvestorNameCell(xml: string): { xml: string; note: string } {
     lastIdx = pm.index + pm[0].length;
   }
   parts.push(cellXml.substring(lastIdx));
+
+  const firstParaIdx = parts.findIndex((p) => p.startsWith("<w:p"));
+  if (firstParaIdx !== -1) {
+    const origPara = parts[firstParaIdx];
+    const pPrMatch = origPara.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+    const pPr = pPrMatch ? pPrMatch[0] : "";
+    const rPrMatch = origPara.match(/<w:r\b[^>]*>\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
+    const rPr = rPrMatch ? (rPrMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) || [""])[0] : "";
+    parts[firstParaIdx] =
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">INVESTOR NAME: </w:t></w:r></w:p>` +
+      `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">{{ld_p_allInvestorNames}}</w:t></w:r></w:p>`;
+    for (let i = firstParaIdx + 1; i < parts.length; i++) {
+      if (parts[i].startsWith("<w:p")) parts[i] = "";
+    }
+    const newCellXml = parts.join("");
+    return {
+      xml: xml.substring(0, targetStart) + newCellXml + xml.substring(targetEnd),
+      note: "INVESTOR NAME cell rebuilt with ld_p_allInvestorNames",
+    };
+  }
 
   // Find the paragraph that contains either of the legacy tag fragments
   // OR an already-substituted `{{#if isIndividual}}` block. The template
