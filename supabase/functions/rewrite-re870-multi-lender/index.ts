@@ -119,8 +119,10 @@ function normalizeInvestorQuestiDueRow(
     // Any paragraph containing ld_p_investorQuestiDueDate is rewritten so the
     // tag becomes a single clean {{ld_p_investorQuestiDueDate}} run (no inner
     // space, no fragmentation). Idempotent — re-rewriting yields the same XML.
-    if (p.includes("ld_p_investorQuestiDueDate")) {
-      const fieldIdx = p.indexOf("ld_p_investorQuestiDueDate");
+    // Use "investorQuestiDueDate" (without ld_p_ prefix) because Word often
+    // splits "ld" and "_p_investorQuestiDueDate" into separate <w:t> runs.
+    if (p.includes("investorQuestiDueDate")) {
+      const fieldIdx = p.indexOf("investorQuestiDueDate");
       const openIdx = p.lastIndexOf("{{", fieldIdx);
       const closeIdx = p.indexOf("}}", fieldIdx);
       if (openIdx !== -1 && closeIdx !== -1) {
