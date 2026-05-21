@@ -327,15 +327,26 @@ async function processTemplate(
   const docXml = new TextDecoder().decode(docBytes);
 
   if (debug) {
-    // Return raw XML around the INVESTOR NAME cell so we can inspect run/text fragmentation.
+    // Return raw XML around INVESTOR-related cells/snippets so we can inspect run/text fragmentation.
     const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
     let m: RegExpExecArray | null;
     let cellXml = "";
+    const candidateCells: Array<{ text: string; xml: string }> = [];
     while ((m = tcRe.exec(docXml)) !== null) {
       const t = (m[0].match(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g) || [])
         .map((s) => s.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
         .join("");
+      if (t.toUpperCase().includes("INVESTOR")) {
+        candidateCells.push({ text: t, xml: m[0].substring(0, 3000) });
+      }
       if (isInvestorNameCellText(t)) { cellXml = m[0]; break; }
+    }
+    const visibleDocText = visibleText(docXml);
+    const investorSnippets: string[] = [];
+    const invRe = /investor/gi;
+    let im: RegExpExecArray | null;
+    while ((im = invRe.exec(visibleDocText)) !== null && investorSnippets.length < 20) {
+      investorSnippets.push(visibleDocText.substring(Math.max(0, im.index - 80), im.index + 220));
     }
     return {
       templateId,
@@ -345,6 +356,8 @@ async function processTemplate(
       debug: true,
       cellLength: cellXml.length,
       cellXml: cellXml.substring(0, 8000),
+      candidateCells,
+      investorSnippets,
     };
   }
 
