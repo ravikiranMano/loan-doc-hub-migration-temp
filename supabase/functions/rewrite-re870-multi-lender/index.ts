@@ -390,19 +390,21 @@ serve(async (req) => {
 
     let targetIds = TEMPLATE_IDS;
     let force = false;
+    let debug = false;
     try {
       const body = await req.json();
       if (body && Array.isArray(body.templateIds) && body.templateIds.length) {
         targetIds = body.templateIds;
       }
       if (body && body.force === true) force = true;
+      if (body && body.debug === true) debug = true;
     } catch (_) {
       // no body — use defaults
     }
 
     const results = [];
     for (const id of targetIds) {
-      results.push(await processTemplate(supabase, id, force));
+      results.push(await processTemplate(supabase, id, force, debug));
     }
 
     return new Response(
