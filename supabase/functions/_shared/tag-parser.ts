@@ -2351,7 +2351,20 @@ export function processEachBlocks(
           }
         }
 
+        // Scope inner conditional control tags to this iteration's entity
+        // prefix so {{#if isIndividual}} inside {{#each lenders}} becomes
+        // {{#if lenders1.isIndividual}} for the first clone, etc. The
+        // subsequent processConditionalBlocks pass then evaluates each
+        // clone against the correct per-entity field value. Only rewrite
+        // bare identifiers — keys that already contain a "." (or already
+        // start with the entity prefix) are left alone.
+        blockContent = blockContent.replace(
+          /\{\{#(if|unless)\s+([A-Za-z_][A-Za-z0-9_]*)\}\}/g,
+          (full, kind, name) => `{{#${kind} ${entityPrefix}.${name}}}`
+        );
+
         expandedBlocks.push(blockContent);
+
       }
 
       // Separate each iteration safely for Word XML:
