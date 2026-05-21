@@ -113,7 +113,22 @@ export interface LenderData {
   middle: string;
   last: string;
   displayName: string;
+  email: string;
+  phone: string;
+  label: string;
+  isPrimary: boolean;
+  contactId: string;
   exists: true;
   [key: string]: any;
 }
+
+export interface LenderResolutionResult {
+  primaryLender: LenderData | null;
+  allLenders: LenderData[];
+  additionalLenders: LenderData[];
+  lenderCount: number;
+  hasMultipleLenders: boolean;
+  indexedKeys: Record<string, string>;
+}
+
 
