@@ -1153,7 +1153,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                                 ? (prev.lenderRateOverrideOriginal || calculatedSource)
                                 : '',
                               lenderRateOverrideBy: on
-                                ? (prev.lenderRateOverrideBy || (typeof window !== 'undefined' ? (window as any).__currentUserId || '' : ''))
+                                ? (prev.lenderRateOverrideBy || currentUserId)
                                 : '',
                               lenderRateOverrideAt: on
                                 ? (prev.lenderRateOverrideAt || new Date().toISOString())
