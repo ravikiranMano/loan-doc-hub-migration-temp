@@ -391,6 +391,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const [disbursementModalOpen, setDisbursementModalOpen] = useState(false);
   const [editingDisbursementIdx, setEditingDisbursementIdx] = useState<number | null>(null);
   const [fundingHidden, setFundingHidden] = useState(false);
+  const { user } = useAuth();
+  const currentUserId = user?.id || '';
 
   React.useEffect(() => {
     if (open) {
