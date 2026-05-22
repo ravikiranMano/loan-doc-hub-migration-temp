@@ -2414,10 +2414,14 @@ export function processEachBlocks(
         const innerChevronTags = [...blockContent.matchAll(/«([^»]+)»/g)];
 
         for (const tag of innerCurlyTags) {
-          const innerFieldName = tag[1].trim();
+          let innerFieldName = tag[1].trim();
           // Skip control tags AND iteration helpers (resolved separately below).
           if (innerFieldName.startsWith('#') || innerFieldName.startsWith('/') || innerFieldName === 'else') continue;
           if (innerFieldName.startsWith('@')) continue;
+          // Handlebars-style {{this.field}} → resolve as {{field}} on current entity.
+          // Bare {{this}} falls back to the conventional .fullName property.
+          if (/^this\./i.test(innerFieldName)) innerFieldName = innerFieldName.slice(5);
+          else if (innerFieldName.toLowerCase() === 'this') innerFieldName = 'fullName';
 
 
           const qualifiedKey = `${entityPrefix}.${innerFieldName}`; // e.g., "property1.address"
