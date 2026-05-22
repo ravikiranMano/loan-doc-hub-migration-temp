@@ -274,7 +274,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 className="h-6 text-[11px]"
               />
             </div>
-            {errFor('accountId', !!formData.accountId === false && showAllErrors) && (
+            {errors.accountId && showAllErrors && (
               <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.accountId}</p>
             )}
 
