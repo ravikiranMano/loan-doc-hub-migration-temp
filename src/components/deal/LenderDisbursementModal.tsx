@@ -230,9 +230,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
   const minMaxError = !!errors.minMax;
   const isValid = Object.keys(errors).length === 0;
 
-  const showErr = (k: string) => (showAllErrors || (formData as any).__touched?.[k]) && errors[k];
-  // Simpler: show error if non-empty after first save attempt OR field has a value
-  const errFor = (k: string, hasValue: boolean) => (showAllErrors || hasValue) ? errors[k] : undefined;
+  // (error-display helpers removed; each error is rendered inline with its own visibility predicate)
 
   const handleSaveClick = () => {
     if (!isValid) {
