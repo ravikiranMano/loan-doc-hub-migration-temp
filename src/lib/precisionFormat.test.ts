@@ -43,7 +43,7 @@ describe('category helpers (all use min 2 / max 4 smart-trim)', () => {
   it('formatInterestRate', () => {
     expect(formatInterestRate('8.5000')).toBe('8.50%');
     expect(formatInterestRate('8.8750')).toBe('8.875%');
-    expect(formatInterestRate('8.8756')).toBe('8.8756%');
+    expect(formatInterestRate('8.8756')).toBe('8.876%');
     expect(formatInterestRate('7.3500')).toBe('7.35%');
     expect(formatInterestRate('7.2000')).toBe('7.20%');
   });
@@ -52,13 +52,14 @@ describe('category helpers (all use min 2 / max 4 smart-trim)', () => {
     expect(formatProRata('50.5000')).toBe('50.50%');
     expect(formatProRata('33.3333')).toBe('33.3333%');
   });
-  it('formatRatio (LTV/CLTV/Protective Equity)', () => {
-    expect(formatRatio('80.1250')).toBe('80.125%');
+  it('formatRatio (LTV/CLTV/Protective Equity) -> max 2dp', () => {
+    expect(formatRatio('80.1250')).toBe('80.13%');
     expect(formatRatio('65.5000')).toBe('65.50%');
     expect(formatRatio('50.0000')).toBe('50.00%');
-    expect(formatRatio('4.1671')).toBe('4.1671%');
-    expect(formatRatio('0.0167')).toBe('0.0167%');
+    expect(formatRatio('4.1671')).toBe('4.17%');
+    expect(formatRatio('0.0167')).toBe('0.02%');
   });
+
   it('formatLateChargePct', () => {
     expect(formatLateChargePct('5.1250')).toBe('5.125%');
     expect(formatLateChargePct('5.1000')).toBe('5.10%');
@@ -97,9 +98,10 @@ describe('resolvePercentCategory', () => {
 
 describe('formatPercentByFieldKey', () => {
   it('routes through correct category', () => {
-    expect(formatPercentByFieldKey('ln_p_note_rate', '8.8756')).toBe('8.8756%');
+    expect(formatPercentByFieldKey('ln_p_note_rate', '8.8756')).toBe('8.876%');
     expect(formatPercentByFieldKey('lender_pro_rata', '27.2727')).toBe('27.2727%');
-    expect(formatPercentByFieldKey('ltv', '80.1250')).toBe('80.125%');
+    expect(formatPercentByFieldKey('ltv', '80.1250')).toBe('80.13%');
+
     expect(formatPercentByFieldKey('late_charge_pct', '5.125')).toBe('5.125%');
   });
 });
@@ -130,5 +132,45 @@ describe('Decimal math (no float drift)', () => {
   });
   it('computeAmortizedPayment falls back to interest-only when n<=0', () => {
     expect(computeAmortizedPayment(120000, 12, 0)).toBe('1200.00');
+  });
+});
+
+import {
+  formatPercentage,
+  formatRate,
+  formatCurrency,
+  normalizeStoredPrecision,
+} from './precisionFormat';
+
+describe('Spec-named aliases', () => {
+  it('formatPercentage smart-trims with default max 4', () => {
+    expect(formatPercentage('10')).toBe('10.00%');
+    expect(formatPercentage('10.5')).toBe('10.50%');
+    expect(formatPercentage('10.875')).toBe('10.875%');
+    expect(formatPercentage('27.2727')).toBe('27.2727%');
+    expect(formatPercentage('')).toBe('');
+  });
+  it('formatRate -> 3dp max (Note/Default/Sold/Lender/Spread)', () => {
+    expect(formatRate('8.5000')).toBe('8.50%');
+    expect(formatRate('8.8750')).toBe('8.875%');
+    expect(formatRate('8.8756')).toBe('8.876%');
+  });
+  it('formatCurrency -> $ + 2dp + commas', () => {
+    expect(formatCurrency(1234567.891)).toBe('$1,234,567.89');
+    expect(formatCurrency(-50)).toBe('-$50.00');
+    expect(formatCurrency('')).toBe('');
+  });
+  it('normalizeStoredPrecision percent/rate/ratio -> 4dp', () => {
+    expect(normalizeStoredPrecision('8.5', 'percent')).toBe('8.5000');
+    expect(normalizeStoredPrecision('8.87567', 'rate')).toBe('8.8757');
+    expect(normalizeStoredPrecision('80.125', 'ratio')).toBe('80.1250');
+  });
+  it('normalizeStoredPrecision currency/dollar -> 2dp', () => {
+    expect(normalizeStoredPrecision('1234.5678', 'currency')).toBe('1234.57');
+    expect(normalizeStoredPrecision(1000, 'dollar')).toBe('1000.00');
+  });
+  it('normalizeStoredPrecision invalid -> ""', () => {
+    expect(normalizeStoredPrecision('abc', 'percent')).toBe('');
+    expect(normalizeStoredPrecision('', 'currency')).toBe('');
   });
 });

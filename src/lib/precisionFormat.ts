@@ -264,4 +264,53 @@ export function formatPercentByFieldKey(
   }
 }
 
+// ============================================================================
+// Canonical public API aliases (spec-named)
+// ----------------------------------------------------------------------------
+// Spec-named entry points so every module — UI, grids, reports, merge fields,
+// edge functions, PDF/export — imports the same surface.
+// ============================================================================
+
+/** Generic percent formatter. Min 2dp, max `maxDecimals` (default 4), smart-trim. */
+export function formatPercentage(
+  value: string | number | null | undefined,
+  maxDecimals = 4
+): string {
+  const s = formatPercentDisplay(value, maxDecimals);
+  return s === '' ? '' : `${s}%`;
+}
+
+/** Rate fields (Note/Default/Sold/Lender/Spread). Max 3dp. Alias of formatInterestRate. */
+export function formatRate(value: string | number | null | undefined): string {
+  return formatInterestRate(value);
+}
+
+/** Currency. Always 2dp with `$` and commas. Alias of formatDollar. */
+export function formatCurrency(value: string | number | null | undefined): string {
+  return formatDollar(value);
+}
+
+/**
+ * Normalize a value to its canonical stored precision.
+ *  - 'percent' | 'rate' | 'ratio' -> 4dp string
+ *  - 'currency' | 'dollar'        -> 2dp string
+ * Returns '' for invalid input. Use at the storage / API boundary.
+ */
+export function normalizeStoredPrecision(
+  value: string | number | null | undefined,
+  kind: 'percent' | 'rate' | 'ratio' | 'currency' | 'dollar' = 'percent'
+): string {
+  switch (kind) {
+    case 'currency':
+    case 'dollar':
+      return roundDollarForStorage(value);
+    case 'percent':
+    case 'rate':
+    case 'ratio':
+    default:
+      return roundPctForStorage(value);
+  }
+}
+
 export { Decimal };
+
