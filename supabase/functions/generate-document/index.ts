@@ -7733,10 +7733,10 @@ async function generateSingleDocument(
           // every appended lender block to a single, enterprise-style spec:
           //   - Font:      Arial 11pt (w:sz 22)
           //   - Indent:    left=0 (no inherited indent)
-          //   - Alignment: fixed-width borderless table for Signature / Date.
-          //               This avoids collapsing spaces/tabs and keeps the Date
-          //               field isolated from the signature line in Word,
-          //               Google Docs, PDF exports and print previews.
+          //   - Alignment: fixed-width borderless table with Date on its own row.
+          //               This avoids collapsing spaces/tabs and keeps Date from
+          //               touching the signature line in Word, Google Docs, PDF
+          //               exports and print previews.
           const STD_FONT = "Arial";
           const STD_SIZE = "22"; // half-points → 11pt
 
@@ -7757,26 +7757,27 @@ async function generateSingleDocument(
           const paraText = (text: string, afterTwips: number, bold = false) =>
             `<w:p>${pPrPlain(afterTwips)}<w:r>${rPrStd(bold)}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`;
 
-          // Signature/Date row — fixed DXA columns sum to the 6.5" content width
-          // of US-letter legal templates. Separate label/line columns prevent the
-          // Date label from ever touching or sharing the Signature line.
+          // Signature/Date rows — fixed DXA columns, left-aligned. Date is always
+          // on the next row, never inline with Signature, so rendering engines
+          // cannot collapse the fields together.
           const paraCell = (text = "") =>
             `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>` +
               (text ? `<w:r>${rPrStd(false)}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>` : `<w:r>${rPrStd(false)}<w:t></w:t></w:r>`) +
             `</w:p>`;
-          const tc = (width: number, children: string, borders = tcNoBorder) =>
-            `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:tcBorders>${borders}</w:tcBorders>${cellMargins}</w:tcPr>${children}</w:tc>`;
+          const tc = (width: number, children: string, borders = tcNoBorder, gridSpan = 1) =>
+            `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${gridSpan > 1 ? `<w:gridSpan w:val="${gridSpan}"/>` : ""}<w:tcBorders>${borders}</w:tcBorders>${cellMargins}</w:tcPr>${children}</w:tc>`;
           const paraSigRow = () =>
             `<w:tbl>` +
-              `<w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblBorders>${tblNoBorder}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
-              `<w:tblGrid><w:gridCol w:w="960"/><w:gridCol w:w="3540"/><w:gridCol w:w="540"/><w:gridCol w:w="840"/><w:gridCol w:w="2520"/><w:gridCol w:w="960"/></w:tblGrid>` +
+              `<w:tblPr><w:tblW w:w="4500" w:type="dxa"/><w:tblBorders>${tblNoBorder}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
+              `<w:tblGrid><w:gridCol w:w="960"/><w:gridCol w:w="1800"/><w:gridCol w:w="1740"/></w:tblGrid>` +
               `<w:tr><w:trPr><w:trHeight w:val="360" w:hRule="exact"/></w:trPr>` +
                 tc(960, paraCell("Signature:")) +
-                tc(3540, paraCell(), lineBorder) +
-                tc(540, paraCell()) +
-                tc(840, paraCell("Date:")) +
-                tc(2520, paraCell(), lineBorder) +
-                tc(960, paraCell()) +
+                tc(3540, paraCell(), lineBorder, 2) +
+              `</w:tr>` +
+              `<w:tr><w:trPr><w:trHeight w:val="360" w:hRule="exact"/></w:trPr>` +
+                tc(960, paraCell("Date:")) +
+                tc(1800, paraCell(), lineBorder) +
+                tc(1740, paraCell()) +
               `</w:tr>` +
             `</w:tbl>` +
             `<w:p>${pPrPlain(300)}<w:r>${rPrStd(false)}<w:t></w:t></w:r></w:p>`;
