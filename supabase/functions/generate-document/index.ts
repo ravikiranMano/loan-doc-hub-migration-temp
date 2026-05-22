@@ -7733,9 +7733,10 @@ async function generateSingleDocument(
           // every appended lender block to a single, enterprise-style spec:
           //   - Font:      Arial 11pt (w:sz 22)
           //   - Indent:    left=0 (no inherited indent)
-          //   - Alignment: tab-stop leaders for Signature / Date — guarantees
-          //               equal-length lines in Word, Google Docs and PDF
-          //               regardless of run length.
+          //   - Alignment: fixed-width borderless table for Signature / Date.
+          //               This avoids collapsing spaces/tabs and keeps the Date
+          //               field isolated from the signature line in Word,
+          //               Google Docs, PDF exports and print previews.
           const STD_FONT = "Arial";
           const STD_SIZE = "22"; // half-points → 11pt
 
@@ -7745,33 +7746,40 @@ async function generateSingleDocument(
           const rPrStd = (bold: boolean) =>
             `<w:rPr>${bold ? "<w:b/><w:bCs/>" : ""}<w:rFonts w:ascii="${STD_FONT}" w:hAnsi="${STD_FONT}" w:cs="${STD_FONT}"/><w:sz w:val="${STD_SIZE}"/><w:szCs w:val="${STD_SIZE}"/></w:rPr>`;
 
+          const tblNoBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>`;
+          const tcNoBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>`;
+          const lineBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/><w:right w:val="nil"/>`;
+          const cellMargins = `<w:tcMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tcMar>`;
+
           // Plain text paragraph (label / name) — fixed left=0 indent.
           const pPrPlain = (afterTwips: number) =>
             `<w:pPr><w:spacing w:before="0" w:after="${afterTwips}" w:line="240" w:lineRule="auto"/><w:ind w:left="0" w:firstLine="0"/><w:jc w:val="left"/></w:pPr>`;
           const paraText = (text: string, afterTwips: number, bold = false) =>
             `<w:p>${pPrPlain(afterTwips)}<w:r>${rPrStd(bold)}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`;
 
-          // Signature/Date row — uses tab stops with underscore leaders so every
-          // lender's signature line and date line have IDENTICAL width and
-          // horizontal position. Positions in twips:
-          //   Signature: ........(leader to 4680) ....Date: ........(leader to 9000)
-          //   ~3.25" signature line, ~2.25" date line, ~0.75" gap between them.
-          const pPrSigRow =
-            `<w:pPr>` +
-              `<w:tabs>` +
-                `<w:tab w:val="left" w:pos="4680" w:leader="underscore"/>` +
-                `<w:tab w:val="left" w:pos="5760"/>` +
-                `<w:tab w:val="left" w:pos="9000" w:leader="underscore"/>` +
-              `</w:tabs>` +
-              `<w:spacing w:before="0" w:after="240" w:line="240" w:lineRule="auto"/>` +
-              `<w:ind w:left="0" w:firstLine="0"/>` +
-              `<w:jc w:val="left"/>` +
-            `</w:pPr>`;
+          // Signature/Date row — fixed DXA columns sum to the 6.5" content width
+          // of US-letter legal templates. Separate label/line columns prevent the
+          // Date label from ever touching or sharing the Signature line.
+          const paraCell = (text = "") =>
+            `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>` +
+              (text ? `<w:r>${rPrStd(false)}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>` : `<w:r>${rPrStd(false)}<w:t></w:t></w:r>`) +
+            `</w:p>`;
+          const tc = (width: number, children: string, borders = tcNoBorder) =>
+            `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:tcBorders>${borders}</w:tcBorders>${cellMargins}</w:tcPr>${children}</w:tc>`;
           const paraSigRow = () =>
-            `<w:p>${pPrSigRow}<w:r>${rPrStd(false)}` +
-              `<w:t xml:space="preserve">Signature:</w:t><w:tab/>` +
-              `<w:t xml:space="preserve">Date:</w:t><w:tab/>` +
-            `</w:r></w:p>`;
+            `<w:tbl>` +
+              `<w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblBorders>${tblNoBorder}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
+              `<w:tblGrid><w:gridCol w:w="960"/><w:gridCol w:w="3540"/><w:gridCol w:w="540"/><w:gridCol w:w="840"/><w:gridCol w:w="2520"/><w:gridCol w:w="960"/></w:tblGrid>` +
+              `<w:tr><w:trPr><w:trHeight w:val="360" w:hRule="exact"/></w:trPr>` +
+                tc(960, paraCell("Signature:")) +
+                tc(3540, paraCell(), lineBorder) +
+                tc(540, paraCell()) +
+                tc(840, paraCell("Date:")) +
+                tc(2520, paraCell(), lineBorder) +
+                tc(960, paraCell()) +
+              `</w:tr>` +
+            `</w:tbl>` +
+            `<w:p>${pPrPlain(300)}<w:r>${rPrStd(false)}<w:t></w:t></w:r></w:p>`;
 
           const getStr = (k: string) =>
             String(fieldValues.get(k)?.rawValue ?? "").trim();
