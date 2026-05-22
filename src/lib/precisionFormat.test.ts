@@ -132,3 +132,43 @@ describe('Decimal math (no float drift)', () => {
     expect(computeAmortizedPayment(120000, 12, 0)).toBe('1200.00');
   });
 });
+
+import {
+  formatPercentage,
+  formatRate,
+  formatCurrency,
+  normalizeStoredPrecision,
+} from './precisionFormat';
+
+describe('Spec-named aliases', () => {
+  it('formatPercentage smart-trims with default max 4', () => {
+    expect(formatPercentage('10')).toBe('10.00%');
+    expect(formatPercentage('10.5')).toBe('10.50%');
+    expect(formatPercentage('10.875')).toBe('10.875%');
+    expect(formatPercentage('27.2727')).toBe('27.2727%');
+    expect(formatPercentage('')).toBe('');
+  });
+  it('formatRate -> 3dp max (Note/Default/Sold/Lender/Spread)', () => {
+    expect(formatRate('8.5000')).toBe('8.50%');
+    expect(formatRate('8.8750')).toBe('8.875%');
+    expect(formatRate('8.8756')).toBe('8.876%');
+  });
+  it('formatCurrency -> $ + 2dp + commas', () => {
+    expect(formatCurrency(1234567.891)).toBe('$1,234,567.89');
+    expect(formatCurrency(-50)).toBe('-$50.00');
+    expect(formatCurrency('')).toBe('');
+  });
+  it('normalizeStoredPrecision percent/rate/ratio -> 4dp', () => {
+    expect(normalizeStoredPrecision('8.5', 'percent')).toBe('8.5000');
+    expect(normalizeStoredPrecision('8.87567', 'rate')).toBe('8.8757');
+    expect(normalizeStoredPrecision('80.125', 'ratio')).toBe('80.1250');
+  });
+  it('normalizeStoredPrecision currency/dollar -> 2dp', () => {
+    expect(normalizeStoredPrecision('1234.5678', 'currency')).toBe('1234.57');
+    expect(normalizeStoredPrecision(1000, 'dollar')).toBe('1000.00');
+  });
+  it('normalizeStoredPrecision invalid -> ""', () => {
+    expect(normalizeStoredPrecision('abc', 'percent')).toBe('');
+    expect(normalizeStoredPrecision('', 'currency')).toBe('');
+  });
+});
