@@ -930,7 +930,23 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
 
       {fundingRecords.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
+            {fundingStatus === 'full' && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600 text-white">
+                      Fully Funded
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs max-w-[280px]">
+                    Funding Amount and Current Balance are locked because loan is fully funded.
+                    Use Funding Adjustment to modify allocations.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
             {effectiveLoanPrincipal > 0 ? (
               <>
                 <span className="font-medium text-foreground">Funded:</span>{' '}
@@ -1064,6 +1080,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         remainingPayments={remainingPayments}
         existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount, currentBalance: computeCurrentBalance(r), lenderId: r.lenderAccount, lenderName: r.lenderName }))}
         editingRecordId={selectedRecord?.id}
+        isFullyFunded={fundingStatus === 'full'}
+
       />
 
       <FundingHistoryDialog

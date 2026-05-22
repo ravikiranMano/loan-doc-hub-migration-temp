@@ -45,6 +45,14 @@ interface AddFundingModalProps {
   remainingPayments?: number;
   existingRecords?: Array<{ id: string; roundingError: boolean; pctOwned: number; originalAmount?: number; currentBalance?: number; lenderId?: string; lenderName?: string }>;
   editingRecordId?: string;
+  /**
+   * Soft-lock indicator: when true and we're editing an existing record, the
+   * Funding Amount and Current Balance inputs are read-only and any attempt
+   * to change those values is rejected on save. The only path to modify
+   * allocations on a fully-funded loan is the Funding Adjustment workflow.
+   */
+  isFullyFunded?: boolean;
+
 }
 
 export interface DisbursementRow {
@@ -233,7 +241,9 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   remainingPayments = 0,
   existingRecords = [],
   editingRecordId,
+  isFullyFunded = false,
 }) => {
+
   // Draft persistence key — survives tab switches and modal close until explicit Save/Cancel
   const draftKey = React.useMemo(
     () => `addFundingDraft:${editingRecordId || 'new'}:${loanNumber || 'noloan'}`,
@@ -586,6 +596,32 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     .reduce((sum, r) => sum + r.pctOwned, 0);
   const projectedTotal = otherLendersTotal + percentOwnedNum;
 
+  // ---------------------------------------------------------------------------
+  // Fully-funded soft lock
+  // ---------------------------------------------------------------------------
+  // When the loan is fully funded, the parent grid passes isFullyFunded=true.
+  // Funding Amount and Current Balance on the existing row become read-only
+  // and saves that mutate either value are rejected. Only the Funding
+  // Adjustment workflow can change allocations on a fully-allocated loan.
+  const editingRecord = editingRecordId
+    ? existingRecords.find(r => r.id === editingRecordId)
+    : undefined;
+  const isLockedRow = !!(isFullyFunded && editingRecord);
+  const lockedTooltip = 'Funding Amount and Current Balance are locked because loan is fully funded.';
+  const originalLockedFundingAmount = Number(editingRecord?.originalAmount ?? 0);
+  const originalLockedCurrentBalance = Number(editingRecord?.currentBalance ?? 0);
+  const lockedFieldsModified = isLockedRow && (
+    Math.abs(thisLenderShare - originalLockedFundingAmount) > FUNDING_TOLERANCE ||
+    Math.abs(thisLenderCurrentBalance - originalLockedCurrentBalance) > FUNDING_TOLERANCE
+  );
+  // Rule 3: when fully funded, Current Balance must equal Funding Amount.
+  const fullyFundedCBMismatch = isLockedRow
+    && thisLenderShare > 0
+    && thisLenderCurrentBalance > 0
+    && Math.abs(thisLenderShare - thisLenderCurrentBalance) > FUNDING_TOLERANCE;
+
+
+
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -742,11 +778,24 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Fully-funded soft lock (Rules 1, 2, 5): reject any save that mutates
+    // Funding Amount or Current Balance on a locked row. Allocation changes
+    // must go through the Funding Adjustment workflow.
+    if (lockedFieldsModified) {
+      toast.error('Modification not allowed. Loan funding is already fully allocated.');
+      return;
+    }
+    // Rule 3: when fully funded, Current Balance must equal Funding Amount.
+    if (fullyFundedCBMismatch) {
+      toast.error('Current Balance must equal Funding Amount for fully funded records.');
+      return;
+    }
     // Rule: Funding Amount must be > $0 (Test 7).
     if (thisLenderShare <= 0) {
       toast.error('Funding amount must be greater than $0.');
       return;
     }
+
     // Rule: Funding Amount must not exceed remaining capacity (Tests 4, 6, 12).
     if (totalPercentError) {
       const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentTotal);
@@ -1116,18 +1165,19 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Funding Date</Label>
                 {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen)}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1" title={isLockedRow ? lockedTooltip : undefined}>
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Original Funding</Label>
-                {renderCurrencyInput('fundingAmount', '0.00')}
+                {renderCurrencyInput('fundingAmount', '0.00', isLockedRow)}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Base Fee</Label>
                 {renderCurrencyInput('baseFee', 'Enter amount')}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1" title={isLockedRow ? lockedTooltip : undefined}>
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Current Balance</Label>
-                {renderCurrencyInput('currentBalance', '0.00')}
+                {renderCurrencyInput('currentBalance', '0.00', isLockedRow)}
               </div>
+
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Interest From</Label>
                 {renderDateField(interestFromDate, (d) => handleChange('interestFrom', formatDateOnly(d)), interestFromOpen, setInterestFromOpen)}
