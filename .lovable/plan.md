@@ -1,105 +1,100 @@
-# Fix Multi-Lender Signature Blocks (Universal Solution)
+# Add Disbursement Modal — Validation Hardening (Rules 1-15)
 
-## Where the logic lives today
+Target: `src/components/deal/LenderDisbursementModal.tsx` (407 lines, already wired
+through `LoanFundingGrid.tsx` via `data.disbursements`). All persistence stays on
+the existing `disbursements` array path — no schema, no new tables, no API rewiring.
 
-All lender signature rendering currently flows through one place:
-`supabase/functions/generate-document/index.ts` lines **7687–7803** — the
-"AUTO-APPEND ADDITIONAL LENDER SIGNATURE BLOCKS" pass that runs after every
-DOCX render, for every template.
+## Current gaps vs. spec
 
-This will be hardened into the single source of truth for lender signature
-blocks. No per-template branches will be added.
+The modal already handles auto-calc (Rule 5), read-only amount (Rule 13), `debitOf`
+auto-default to NA at 0% (partial Rule 4), and min ≤ max sanity. It is missing
+explicit per-rule error messages, debit % bounds, percentage 4-decimal precision,
+plus negative guard, date-range bounds, duplicate-payee guard, total-disbursement
+guard, and manual-override-with-reason flow.
 
-## Problems found
+## Changes (all inside `LenderDisbursementModal.tsx` unless noted)
 
-1. **Label** — emits `ADDITIONAL LENDER {a}:` (line 7767) where `a` starts at 1
-   for lenders 2..N, so primary lender keeps the template's original label and
-   extras are numbered from 1 with the "ADDITIONAL" prefix.
-2. **Skipped lenders** — skip-detection (line 7708) bails out whenever the
-   rendered XML contains the literal text `ADDITIONAL LENDER 1/2/3` *anywhere*
-   (boilerplate, footers, "Additional Lender Information" headings, prior
-   appends, etc.). When it matches, **zero** extra blocks are appended and the
-   document looks fine for 2 lenders but silently drops 3..N.
-3. **Extra fields** — `Entity Name:` / `Print Name:` lines (7762–7763, 7773)
-   add noise the spec wants removed.
-4. **No validation / no per-lender logging** — only a single aggregate log line
-   exists; missing names fail silently.
+### A. Per-field inline errors with spec-exact copy
+Add a `touched` set and an `errors` object keyed by field. Show `<p
+className="text-[10px] text-destructive ...">` under each affected row using the
+spec's exact text:
 
-## Changes (all inside the existing block in `generate-document/index.ts`)
+| Rule | Field | Message |
+|------|-------|---------|
+| 1 | Payee | `Payee is required.` |
+| 3 | Debit % > 100 | `Debit percentage cannot exceed 100%.` |
+| 3 | Debit % < 0 | `Debit percentage cannot be negative.` |
+| 4 | Debit Through unset when % > 0 | `Please select Debit Through option.` |
+| 6 | Calc < Min (override mode) | `Calculated amount cannot be less than minimum amount.` |
+| 7 | Calc > Max (override mode) | `Calculated amount cannot exceed maximum amount.` |
+| 8 | Plus < 0 | (block via input filter + msg) `Plus amount cannot be negative.` |
+| 9 | Start date invalid / out of [origination, maturity] | `Invalid disbursement start date.` |
+| 10 | Same payee + same Debit Through already present | `Duplicate disbursement configuration already exists.` |
+| 11 | Σ disbursements (incl. this one) > available payment | `Total disbursement exceeds available payment amount.` |
+| 14 | Override reason blank when override on | `Override reason is required.` |
 
-### A. Replace the skip-detection heuristic
-Instead of matching the loose phrase `ADDITIONAL LENDER \d`, count actual
-rendered signature blocks (any of: `Lender\s+\d+\s*:`,
-`ADDITIONAL\s+LENDER\s+\d+\s*:`, or template-emitted
-`{{additionalLenders…}}` artifacts that survived). If the count of detected
-blocks is `>= lenderCount - 1`, skip; otherwise append the **missing** ones
-only. This guarantees:
-- Templates with a full hard-coded repeater → no double append.
-- Templates that hard-code only lender 2 → lenders 3..N get appended.
-- Boilerplate text mentioning "Additional Lender" never blocks the append.
+Save button stays disabled while any error is present (Rule 15 client-side guard);
+on click, `handleSaveClick` re-validates and aborts to the first error if found.
 
-### B. New universal signature block format
-For each missing lender index `i` (mapped to `Lender ${i+1}:` so primary stays
-Lender 1 and appended start at Lender 2):
+### B. Input bounds & precision (Rules 3, 8, 12)
+- `debitPercent`: clamp displayed range to `[0, 100]`, allow up to 4 decimals via
+  regex `^(\d{0,3})(\.\d{0,4})?$`, strip on paste, store raw string. On blur,
+  normalize to up to 4 decimals (suppress trailing zeros past 2 decimals).
+- `plusAmount`, `minimumAmount`, `maximumAmount`: 2-decimal currency (already
+  formatted on blur), reject negatives via filter.
 
-```
-Lender {N}:                            (bold)
-{displayName or full name or vesting}
-Signature: ____________________     Date: ______________
-```
+### C. Date validation (Rule 9)
+Read `loan_terms.origination_date` and `loan_terms.maturity_date` from the parent
+through two new optional props (`loanOriginationDate?: string`,
+`loanMaturityDate?: string`) supplied from `LoanFundingGrid.tsx` (already has
+loan terms in scope via `useDealFields`). Pass them to the `EnhancedCalendar`'s
+disabled-day predicate and validate on save.
 
-Removed: the `hr()` divider, `Entity Name:` line, `Print Name:` line, and the
-extra blank paragraphs. Spacing tightened to one blank paragraph between
-blocks (small gap after label, single blank before next lender) per the spec.
+### D. Duplicate prevention (Rule 10)
+Add prop `existingDisbursements?: Array<{ accountId: string; debitThrough: string }>`.
+Block save (with message) when `(accountId, debitThrough)` matches an existing
+row other than the one being edited.
 
-### C. Validation gate (pre-append)
-Before generating blocks, validate the lender array shape using existing
-`fieldValues` aliases:
-- `lender_count` is an integer ≥ 1.
-- For each `i` in `1..lenderCount-1`, `additionalLenders{i}.displayName` (or
-  computed first/middle/last/vesting fallback) is non-empty.
+### E. Total disbursement guard (Rule 11)
+Add prop `availablePayment?: number` (= per-lender share already computed in
+`LoanFundingGrid.tsx`). Compute `Σ otherDisbursements + calculatedAmount` and
+block if it exceeds `availablePayment`.
 
-On failure: log a structured warning that includes template name
-(`templateName` is already in scope), the offending index, and the reason,
-then **skip only the invalid lender** (do not abort the whole document — keeps
-existing single-lender templates safe). A second warning is logged summarizing
-how many were skipped so QA sees it.
+### F. Manual override (Rules 13, 14)
+- Add `overrideEnabled: boolean` and `overrideReason: string` to
+  `DisbursementFormData` and `emptyForm()`.
+- Add a checkbox "Manual override" below the Amount row. When off → Amount stays
+  read-only and uses the auto-calculated value (current behavior). When on →
+  Amount becomes editable (currency-formatted), the auto-calc is shown as a
+  hint, and a required "Override reason" text input appears. Save blocked
+  until reason is non-empty.
+- Persist `overrideEnabled` / `overrideReason` through the existing
+  `onSubmit(data)` path — `LoanFundingGrid.tsx`'s `disbursements` row type
+  already passes the form object through unchanged (line 1034) and the
+  serializer spreads arbitrary keys (`...d`) at line 501.
 
-### D. Structured logging
-Add `console.log` lines (gated on existing `debugLog` where applicable):
-- `lenders.received = {lenderCount}`
-- `lenders.alreadyRendered = {detectedCount}`
-- `lenders.appended = {appendedCount}`
-- `lenders.skippedInvalid = [{index, reason}, ...]`
-- `template = {templateName}`
+### G. Parent wiring (`LoanFundingGrid.tsx`, minimal touch)
+At the existing `<LenderDisbursementModal ... />` render site, add the four new
+props sourced from already-computed values:
+- `loanOriginationDate={loanTerms.origination_date}` / `maturityDate`
+- `existingDisbursements={record.disbursements ?? []}`
+- `availablePayment={record.lenderPayment}` (already computed)
 
-### E. Templates affected
-The six templates listed (Investor Acknowledgement, Investor Questionnaire,
-Lender Identification Form, Lender Placed Insurance Disclosure, Multiple
-Lender Testing, re870) all flow through this same post-render pass — no
-template files need editing. They automatically pick up the new format.
+No changes to save/update functions, payload shape, or `disbursements` columns.
 
-If any of those templates currently hard-code an `ADDITIONAL LENDER 1:` block
-for lender 2, the new detector will see it and not double-append; the
-hard-coded label text itself is template content and out of scope of this
-backend change. (If the user wants those hard-coded labels rewritten to
-`Lender 2:`, that is a template-file edit and would be a follow-up.)
+### H. Logging
+On every blocked save, `console.warn('[disbursement-validate]', { rule, field,
+value })` so QA can trace failures without changing UX.
 
-## Out of scope (per "do not modify" directive)
-- Database schema, field_dictionary, RLS, save APIs.
-- Template .docx files in storage.
-- Primary lender's existing signature block (rendered by each template).
-- Any other post-render pass (RE851D, RE885, encumbrance pipeline, etc.).
+## Acceptance mapping
 
-## Files touched
-- `supabase/functions/generate-document/index.ts` — only the block at
-  lines 7687–7803 is rewritten in place. No other code paths change.
+Test Cases 1-16 map 1:1 to the rules above. All copy strings are taken verbatim
+from the spec. Rule 2 (name auto-populate) already works via `AccountIdSearch`
+(line 174-180) — keep as-is; mark Name read-only when `accountId` is set.
 
-## Acceptance check (manual, after deploy)
-1. Generate Investor Acknowledgement with 1, 3, and 10 lenders → expect
-   1 / 3 / 10 signature blocks, labeled `Lender 1..N:` (primary keeps
-   template label, extras `Lender 2..N:`).
-2. Verify no `ADDITIONAL LENDER`, `Entity Name`, or `Print Name` text remains
-   in appended blocks.
-3. Check edge function logs show `lenders.received` / `lenders.appended`
-   matching the input count.
+## Out of scope (per "do not modify")
+- Existing calculation formula in `useMemo` (Rule 5) — unchanged.
+- DB schema, RLS, save/update endpoints — unchanged.
+- Layout of unaffected rows; error messages are additive `<p>` elements.
+- Audit-log persistence beyond storing `overrideReason` on the disbursement
+  itself (no new audit table per "no schema changes").
