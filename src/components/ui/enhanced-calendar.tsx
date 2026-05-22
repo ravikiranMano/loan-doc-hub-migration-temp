@@ -240,6 +240,8 @@ function EnhancedCalendar({
           ),
         }}
         {...props}
+        onSelect={handleSelect}
+
       />
       {showClearToday && (
         <div className="flex items-center justify-between px-4 pb-3 -mt-1">
