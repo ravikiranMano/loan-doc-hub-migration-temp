@@ -583,7 +583,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
 
           <DialogFooter className="shrink-0 border-t border-border px-3 py-2">
             <Button variant="outline" size="sm" onClick={handleCancel}>Cancel</Button>
-            <Button size="sm" onClick={handleSaveClick} disabled={!isValid}>
+            <Button size="sm" onClick={handleSaveClick}>
               {isEditing ? 'Update' : 'Save'}
             </Button>
           </DialogFooter>
