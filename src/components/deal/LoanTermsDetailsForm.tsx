@@ -662,6 +662,21 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
         <div className="mt-4 border-t border-border pt-4">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-3">Adjustable / Graduated Loan Details</h3>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
+            {getValue(FIELD_KEYS.rateStructure) === 'arm_adjustable_rate' && (
+              <>
+                {renderAdjPercentField(FIELD_KEYS.armIndexRate, 'Index Rate')}
+                {renderAdjPercentField(FIELD_KEYS.armMargin, 'Margin')}
+                {renderAdjPercentField(FIELD_KEYS.armRateFloor, 'Rate Floor')}
+              </>
+            )}
+            {getValue(FIELD_KEYS.rateStructure) === 'gtm_graduated_terms' && (
+              <>
+                {renderInlineCheckbox(FIELD_KEYS.gtmStepRateProduct, 'Step Rate Product')}
+                {getBoolValue(FIELD_KEYS.gtmStepRateProduct) && (
+                  renderAdjPercentField(FIELD_KEYS.gtmScheduledPeriodRate, 'Scheduled Period Rate')
+                )}
+              </>
+            )}
             {renderAdjIntegerField(FIELD_KEYS.adjInitialRateMonths, 'Initial Adjustable Rate in effect for', 'Months')}
             {renderAdjPercentField(FIELD_KEYS.adjFullyIndexedRate, 'Fully Indexed Interest Rate')}
             {renderAdjPercentField(FIELD_KEYS.adjMaxInterestRate, 'Maximum Interest Rate')}
