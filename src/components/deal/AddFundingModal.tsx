@@ -1531,6 +1531,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       paymentShare={paymentShareNum}
       interestShare={interestShareNum}
       principalShare={principalShareNum}
+      existingDisbursements={formData.disbursements.map(d => ({
+        accountId: d.accountId,
+        debitThrough: d.debitThrough,
+        calculatedAmount: (d as any).calculatedAmount,
+        amount: d.amount,
+      }))}
+      editingIndex={editingDisbursementIdx}
+      availablePayment={paymentShareNum}
       editData={editingDisbursementIdx !== null && formData.disbursements[editingDisbursementIdx] ? {
         accountId: formData.disbursements[editingDisbursementIdx].accountId,
         name: formData.disbursements[editingDisbursementIdx].name,
@@ -1547,6 +1555,9 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         from: formData.disbursements[editingDisbursementIdx].from as any,
         calculatedAmount: '',
         comments: formData.disbursements[editingDisbursementIdx].comments || '',
+        overrideEnabled: (formData.disbursements[editingDisbursementIdx] as any).overrideEnabled,
+        overrideReason: (formData.disbursements[editingDisbursementIdx] as any).overrideReason,
+        overrideAmount: (formData.disbursements[editingDisbursementIdx] as any).overrideAmount,
       } : null}
       isEditing={editingDisbursementIdx !== null}
     />
