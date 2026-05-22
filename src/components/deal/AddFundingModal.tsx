@@ -241,7 +241,9 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   remainingPayments = 0,
   existingRecords = [],
   editingRecordId,
+  isFullyFunded = false,
 }) => {
+
   // Draft persistence key — survives tab switches and modal close until explicit Save/Cancel
   const draftKey = React.useMemo(
     () => `addFundingDraft:${editingRecordId || 'new'}:${loanNumber || 'noloan'}`,
