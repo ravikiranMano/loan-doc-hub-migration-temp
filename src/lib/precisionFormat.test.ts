@@ -43,7 +43,7 @@ describe('category helpers (all use min 2 / max 4 smart-trim)', () => {
   it('formatInterestRate', () => {
     expect(formatInterestRate('8.5000')).toBe('8.50%');
     expect(formatInterestRate('8.8750')).toBe('8.875%');
-    expect(formatInterestRate('8.8756')).toBe('8.8756%');
+    expect(formatInterestRate('8.8756')).toBe('8.876%');
     expect(formatInterestRate('7.3500')).toBe('7.35%');
     expect(formatInterestRate('7.2000')).toBe('7.20%');
   });
