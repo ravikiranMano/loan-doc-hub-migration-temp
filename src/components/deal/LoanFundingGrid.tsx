@@ -81,6 +81,11 @@ export interface FundingRecord {
   rateLenderValue?: string;
   lenderRateOverride?: boolean;
   lenderRateOverrideValue?: string;
+  /** Audit metadata for Lender Rate override (Rule 4). */
+  lenderRateOverrideOriginal?: string;
+  lenderRateOverrideReason?: string;
+  lenderRateOverrideBy?: string;
+  lenderRateOverrideAt?: string;
   brokerParticipates?: boolean;
   interestFrom?: string;
   roundingAdjustment?: boolean;
