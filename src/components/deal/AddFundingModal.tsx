@@ -27,6 +27,7 @@ import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, computeAmortizedPayment, Decimal, formatPercentDisplay } from '@/lib/precisionFormat';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 interface AddFundingModalProps {
