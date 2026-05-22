@@ -1064,6 +1064,8 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         remainingPayments={remainingPayments}
         existingRecords={fundingRecords.map(r => ({ id: r.id, roundingError: r.roundingError, pctOwned: r.pctOwned, originalAmount: r.originalAmount, currentBalance: computeCurrentBalance(r), lenderId: r.lenderAccount, lenderName: r.lenderName }))}
         editingRecordId={selectedRecord?.id}
+        isFullyFunded={fundingStatus === 'full'}
+
       />
 
       <FundingHistoryDialog
