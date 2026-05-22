@@ -7734,9 +7734,9 @@ async function generateSingleDocument(
             console.log(
               `[lender-sig] template=${tName} classification=COMMON_TEMPLATE skipping per-lender append (single copy preserved)`,
             );
-            return;
-          }
+          } else {
           console.log(`[lender-sig] template=${tName} classification=LENDER_SPECIFIC`);
+
 
           // Count signature blocks already in the rendered document for
           // lenders 2..N. Accept either the new "Lender N:" format, the
