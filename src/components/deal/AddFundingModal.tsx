@@ -393,6 +393,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const [editingDisbursementIdx, setEditingDisbursementIdx] = useState<number | null>(null);
   const [fundingHidden, setFundingHidden] = useState(false);
   const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
+  const [lenderRateFocused, setLenderRateFocused] = useState(false);
+  const [overrideRateFocused, setOverrideRateFocused] = useState(false);
+
+  const display2dp = (v?: string): string => {
+    const s = String(v ?? '').replace(/[^0-9.]/g, '');
+    if (!s) return '';
+    const [i, d = ''] = s.split('.');
+    return `${i || '0'}.${(d + '00').slice(0, 2)}`;
+  };
   const [showRoundingInfo, setShowRoundingInfo] = useState(false);
 
   useEffect(() => {
@@ -1120,7 +1129,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   return (
                     <div className="relative flex-1">
                       <Input
-                        value={formData.lenderRate || ''}
+                        value={lenderRateFocused ? (formData.lenderRate || '') : display2dp(formData.lenderRate)}
+                        onFocus={() => setLenderRateFocused(true)}
                         onChange={(e) => {
                           if (hasLenderRate) return;
                           // Allow only digits and a single decimal. Truncate (do NOT round) to 2 decimals.
@@ -1134,6 +1144,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                           setFormData(prev => ({ ...prev, lenderRate: v, rateLenderValue: v }));
                         }}
                         onBlur={(e) => {
+                          setLenderRateFocused(false);
                           if (hasLenderRate) return;
                           // Pad to exactly 2 decimal places without rounding.
                           const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
@@ -1192,21 +1203,23 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   return (
                     <div className="relative flex-1">
                       <Input
-                        value={formData.lenderRateOverrideValue || ''}
+                        value={overrideRateFocused ? (formData.lenderRateOverrideValue || '') : display2dp(formData.lenderRateOverrideValue)}
+                        onFocus={() => setOverrideRateFocused(true)}
                         onChange={(e) => {
                           let v = e.target.value.replace(/[^0-9.]/g, '');
                           const parts = v.split('.');
                           if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                           const [intPart, decPart] = v.split('.');
-                          // Rule 5: store at 4-decimal precision (display uses formatPercentage 3dp).
+                          // Storage: up to 4dp precision allowed while editing.
                           if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                           setFormData(prev => ({ ...prev, lenderRateOverrideValue: v, rateLenderValue: v }));
                         }}
                         onBlur={(e) => {
+                          setOverrideRateFocused(false);
                           const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                           if (!raw) return;
                           const [intPart, decPart = ''] = raw.split('.');
-                          // Pad to 4dp without rounding (Rule 5 precision).
+                          // Pad to 4dp stored precision without rounding; display normalizes to 2dp.
                           const truncated = `${intPart || '0'}.${(decPart + '0000').slice(0, 4)}`;
                           if (truncated !== formData.lenderRateOverrideValue) {
                             setFormData(prev => ({ ...prev, lenderRateOverrideValue: truncated, rateLenderValue: truncated }));
