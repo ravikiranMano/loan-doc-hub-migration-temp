@@ -1603,6 +1603,30 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       isEditing={editingDisbursementIdx !== null}
     />
     <ModalSaveConfirmation open={showConfirm} onConfirm={handleConfirmSave} onCancel={() => setShowConfirm(false)} />
+    <OverrideConfirmationDialog
+      open={overrideConfirmOpen}
+      onCancel={() => setOverrideConfirmOpen(false)}
+      onConfirm={() => {
+        setFormData(prev => {
+          const soldRateVal = (prev.rateSoldValue || '').trim();
+          const calculatedSource = prev.lenderRate || soldRateVal || '';
+          return {
+            ...prev,
+            lenderRateOverride: true,
+            lenderRateOverrideValue:
+              prev.lenderRateOverrideValue || prev.lenderRate || soldRateVal,
+            lenderRateOverrideOriginal:
+              prev.lenderRateOverrideOriginal || calculatedSource,
+            lenderRateOverrideBy:
+              prev.lenderRateOverrideBy || currentUserId,
+            lenderRateOverrideAt:
+              prev.lenderRateOverrideAt || new Date().toISOString(),
+            lenderRateOverrideReason: prev.lenderRateOverrideReason || '',
+          };
+        });
+        setOverrideConfirmOpen(false);
+      }}
+    />
     <AlertDialog open={!!duplicateLender} onOpenChange={(o) => { if (!o) setDuplicateLender(null); }}>
       <AlertDialogContent className="z-[9999]">
         <AlertDialogHeader>
