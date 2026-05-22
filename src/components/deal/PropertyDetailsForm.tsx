@@ -511,7 +511,15 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           </div>
           {renderDateField(FIELD_KEYS.purchaseDate, 'Purchase Date')}
           {renderCurrencyField(FIELD_KEYS.purchasePrice, 'Purchase Price')}
-          {renderCurrencyField(FIELD_KEYS.downPayment, 'Down Payment')}
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.downPayment}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[110px] shrink-0 text-xs text-foreground">Down Payment</Label>
+              <div className="flex-1">
+                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={() => {}} disabled />
+              </div>
+            </div>
+          </DirtyFieldWrapper>
+
 
           {renderInlineSelect(FIELD_KEYS.propertyType, 'Property Type', PROPERTY_TYPE_OPTIONS, 'Select type')}
           {renderInlineSelect(FIELD_KEYS.occupancy, 'Occupancy', OCCUPANCY_OPTIONS, 'Select')}
