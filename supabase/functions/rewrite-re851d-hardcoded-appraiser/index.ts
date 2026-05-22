@@ -19,7 +19,7 @@
 //   - Idempotent. Re-running returns 0 rewrites.
 //
 // POST body: { templatePath?: string }
-//   templatePath defaults to "1778746922135_RE851D-V12.1.docx".
+//   templatePath defaults to the active RE851D template file.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -31,7 +31,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
+const DEFAULT_TEMPLATE_PATH = "1779290469775_RE851D-V12.1.docx";
 
 /** Extract visible text from a slice of XML (strip all tags + decode entities). */
 function visibleText(xml: string): string {
@@ -44,6 +44,10 @@ function visibleText(xml: string): string {
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function countVisibleMatches(xml: string, re: RegExp): number {
+  return visibleText(xml).match(re)?.length ?? 0;
 }
 
 /** Find every `<w:tc>...</w:tc>` block in document order. */
