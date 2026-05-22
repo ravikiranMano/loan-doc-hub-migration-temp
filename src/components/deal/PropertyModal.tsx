@@ -115,6 +115,45 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     }
   }, [open, property]);
 
+  // Auto-calculate OLTV, Current LTV, CLTV, and Protective Equity from
+  // Estimate of Value + loan/lien context. Mirrors PropertyDetailsForm spec:
+  //   Protective Equity = Estimate of Value − Total Current Lien Balance
+  //   Origination LTV   = Loan Amount / Estimate of Value × 100
+  //   Current LTV       = Current Principal / Estimate of Value × 100
+  //   CLTV              = Sum of all liens / Estimate of Value × 100
+  useEffect(() => {
+    if (!open) return;
+    const evRaw = String(formData.appraisedValue || '').replace(/[, $]/g, '');
+    const ev = parseFloat(evRaw);
+    if (!Number.isFinite(ev) || ev <= 0) return;
+
+    const fmtPct = (num: number, denom: number): string => {
+      if (!Number.isFinite(num) || !Number.isFinite(denom) || denom <= 0) return '';
+      return ((num / denom) * 100).toFixed(2);
+    };
+    const fmtDollar = (n: number): string => {
+      if (!Number.isFinite(n)) return '';
+      return formatCurrencyDisplay(n.toFixed(2));
+    };
+
+    const nextProtective = fmtDollar(ev - (liensCurrentBalanceTotal || 0));
+    const nextOLtv = fmtPct(loanAmount || 0, ev);
+    const nextCurLtv = fmtPct(currentPrincipal || 0, ev);
+    const nextCltv = fmtPct(existingLiensTotal || 0, ev);
+
+    setFormData(prev => {
+      const updates: Partial<PropertyData> = {};
+      if (String(prev.protectiveEquity || '') !== nextProtective) updates.protectiveEquity = nextProtective;
+      if (String(prev.originationLtv || '') !== nextOLtv) updates.originationLtv = nextOLtv;
+      if (String(prev.ltv || '') !== nextCurLtv) updates.ltv = nextCurLtv;
+      if (String(prev.cltv || '') !== nextCltv) updates.cltv = nextCltv;
+      return Object.keys(updates).length ? { ...prev, ...updates } : prev;
+    });
+  }, [open, formData.appraisedValue, loanAmount, currentPrincipal, existingLiensTotal, liensCurrentBalanceTotal]);
+
+  const _unused_close_effect = () => {
+
+
   const handleFieldChange = (field: keyof PropertyData, value: string | boolean) => {
     const resolved = value === '__none__' ? '' : value;
     setFormData(prev => {
