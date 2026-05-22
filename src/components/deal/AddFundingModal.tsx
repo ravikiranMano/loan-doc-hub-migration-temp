@@ -1128,13 +1128,36 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         checked={isOn}
                         onCheckedChange={(checked) => {
                           const on = !!checked;
-                          setFormData(prev => ({
-                            ...prev,
-                            lenderRateOverride: on,
-                            lenderRateOverrideValue: on
-                              ? (prev.lenderRateOverrideValue || prev.lenderRate || soldRateVal)
-                              : prev.lenderRateOverrideValue,
-                          }));
+                          if (on) {
+                            // Optional confirmation (Rule UI). Cancel leaves override off.
+                            const ok = typeof window === 'undefined' ? true : window.confirm(
+                              'Applying override will recalculate dependent payment values for this funding record. Continue?'
+                            );
+                            if (!ok) return;
+                          }
+                          setFormData(prev => {
+                            // Snapshot the calculated value at the moment override is enabled
+                            // (Rule 4 audit metadata). Clear all metadata on disable so the
+                            // record reverts cleanly to the calculated source (Test 14).
+                            const calculatedSource = prev.lenderRate || soldRateVal || '';
+                            return {
+                              ...prev,
+                              lenderRateOverride: on,
+                              lenderRateOverrideValue: on
+                                ? (prev.lenderRateOverrideValue || prev.lenderRate || soldRateVal)
+                                : '',
+                              lenderRateOverrideOriginal: on
+                                ? (prev.lenderRateOverrideOriginal || calculatedSource)
+                                : '',
+                              lenderRateOverrideBy: on
+                                ? (prev.lenderRateOverrideBy || (typeof window !== 'undefined' ? (window as any).__currentUserId || '' : ''))
+                                : '',
+                              lenderRateOverrideAt: on
+                                ? (prev.lenderRateOverrideAt || new Date().toISOString())
+                                : '',
+                              lenderRateOverrideReason: on ? prev.lenderRateOverrideReason : '',
+                            };
+                          });
                         }}
                         className="h-3.5 w-3.5"
                       />
@@ -1152,14 +1175,16 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                           const parts = v.split('.');
                           if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                           const [intPart, decPart] = v.split('.');
-                          if (decPart && decPart.length > 2) v = `${intPart}.${decPart.slice(0, 2)}`;
+                          // Rule 5: store at 4-decimal precision (display uses formatPercentage 3dp).
+                          if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                           setFormData(prev => ({ ...prev, lenderRateOverrideValue: v, rateLenderValue: v }));
                         }}
                         onBlur={(e) => {
                           const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                           if (!raw) return;
                           const [intPart, decPart = ''] = raw.split('.');
-                          const truncated = `${intPart || '0'}.${(decPart + '00').slice(0, 2)}`;
+                          // Pad to 4dp without rounding (Rule 5 precision).
+                          const truncated = `${intPart || '0'}.${(decPart + '0000').slice(0, 4)}`;
                           if (truncated !== formData.lenderRateOverrideValue) {
                             setFormData(prev => ({ ...prev, lenderRateOverrideValue: truncated, rateLenderValue: truncated }));
                           }
