@@ -1203,21 +1203,23 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   return (
                     <div className="relative flex-1">
                       <Input
-                        value={formData.lenderRateOverrideValue || ''}
+                        value={overrideRateFocused ? (formData.lenderRateOverrideValue || '') : display2dp(formData.lenderRateOverrideValue)}
+                        onFocus={() => setOverrideRateFocused(true)}
                         onChange={(e) => {
                           let v = e.target.value.replace(/[^0-9.]/g, '');
                           const parts = v.split('.');
                           if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
                           const [intPart, decPart] = v.split('.');
-                          // Rule 5: store at 4-decimal precision (display uses formatPercentage 3dp).
+                          // Storage: up to 4dp precision allowed while editing.
                           if (decPart && decPart.length > 4) v = `${intPart}.${decPart.slice(0, 4)}`;
                           setFormData(prev => ({ ...prev, lenderRateOverrideValue: v, rateLenderValue: v }));
                         }}
                         onBlur={(e) => {
+                          setOverrideRateFocused(false);
                           const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
                           if (!raw) return;
                           const [intPart, decPart = ''] = raw.split('.');
-                          // Pad to 4dp without rounding (Rule 5 precision).
+                          // Pad to 4dp stored precision without rounding; display normalizes to 2dp.
                           const truncated = `${intPart || '0'}.${(decPart + '0000').slice(0, 4)}`;
                           if (truncated !== formData.lenderRateOverrideValue) {
                             setFormData(prev => ({ ...prev, lenderRateOverrideValue: truncated, rateLenderValue: truncated }));
