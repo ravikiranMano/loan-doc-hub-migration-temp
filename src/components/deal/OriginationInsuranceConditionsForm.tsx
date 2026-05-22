@@ -66,6 +66,7 @@ const FK = {
   oc_umbrella_months: 'origination_ins.oc_umbrella_months',
   oc_umbrella_per: 'origination_ins.oc_umbrella_per',
   oc_loss_of_rents: 'origination_ins.oc_loss_of_rents',
+  oc_loss_of_rents_amount: 'origination_ins.oc_loss_of_rents_amount',
   oc_vacancy: 'origination_ins.oc_vacancy',
   oc_other: 'origination_ins.oc_other',
   oc_other_amount: 'origination_ins.oc_other_amount',
