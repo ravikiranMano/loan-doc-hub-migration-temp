@@ -1,49 +1,105 @@
-# Loan → Terms & Balance: Funding Holdback fix
+# Fix Multi-Lender Signature Blocks (Universal Solution)
 
-## Scope (only these two things)
+## Where the logic lives today
 
-1. UI sizing: make the Funding Holdback amount input the same width as the input above (Impounded Payments) and the Held By select below it.
-2. Persistence: registered the 4 Funding Holdback field keys in `field_dictionary` so the existing save flow actually stores their values. No new tables, no schema change, no API change.
+All lender signature rendering currently flows through one place:
+`supabase/functions/generate-document/index.ts` lines **7687–7803** — the
+"AUTO-APPEND ADDITIONAL LENDER SIGNATURE BLOCKS" pass that runs after every
+DOCX render, for every template.
 
-## What is happening today
+This will be hardened into the single source of truth for lender signature
+blocks. No per-template branches will be added.
 
-- `LoanTermsBalancesForm.tsx` renders the Funding Holdback `$` input inside a narrow `w-[110px]` wrapper while the surrounding rows (Prepaid Payments, Impounded Payments, Held By select) use `flex-1` / `w-full`. Visually inconsistent.
-- The form already calls `setValue` / `handleCurrencyChange` for:
-  - `loan_terms.funding_holdback_enabled`
-  - `loan_terms.funding_holdback_amount`
-  - `loan_terms.funding_holdback_held_by`
-- `field_dictionary` currently contains **zero** rows for `loan_terms.funding_holdback*` (verified via SQL). Per the project's persistence rule (only keys registered in `field_dictionary` are written through `deal_section_values`), every Funding Holdback edit is silently dropped on save — which is why the value disappears after reload.
+## Problems found
 
-## Changes
+1. **Label** — emits `ADDITIONAL LENDER {a}:` (line 7767) where `a` starts at 1
+   for lenders 2..N, so primary lender keeps the template's original label and
+   extras are numbered from 1 with the "ADDITIONAL" prefix.
+2. **Skipped lenders** — skip-detection (line 7708) bails out whenever the
+   rendered XML contains the literal text `ADDITIONAL LENDER 1/2/3` *anywhere*
+   (boilerplate, footers, "Additional Lender Information" headings, prior
+   appends, etc.). When it matches, **zero** extra blocks are appended and the
+   document looks fine for 2 lenders but silently drops 3..N.
+3. **Extra fields** — `Entity Name:` / `Print Name:` lines (7762–7763, 7773)
+   add noise the spec wants removed.
+4. **No validation / no per-lender logging** — only a single aggregate log line
+   exists; missing names fail silently.
 
-### 1. UI — `src/components/deal/LoanTermsBalancesForm.tsx` (Funding Holdback block, ~lines 515–527 only)
+## Changes (all inside the existing block in `generate-document/index.ts`)
 
-- Replace the `w-[110px]` wrapper around the amount input with `flex-1` (or `w-full`) so the input stretches to the same width as the Impounded Payments input above and the Held By select below.
-- Keep `$` icon, currency formatting, focus/blur handlers, disabled state, and all other markup untouched.
+### A. Replace the skip-detection heuristic
+Instead of matching the loose phrase `ADDITIONAL LENDER \d`, count actual
+rendered signature blocks (any of: `Lender\s+\d+\s*:`,
+`ADDITIONAL\s+LENDER\s+\d+\s*:`, or template-emitted
+`{{additionalLenders…}}` artifacts that survived). If the count of detected
+blocks is `>= lenderCount - 1`, skip; otherwise append the **missing** ones
+only. This guarantees:
+- Templates with a full hard-coded repeater → no double append.
+- Templates that hard-code only lender 2 → lenders 3..N get appended.
+- Boilerplate text mentioning "Additional Lender" never blocks the append.
 
-No other UI, layout, label, ordering, or component change.
+### B. New universal signature block format
+For each missing lender index `i` (mapped to `Lender ${i+1}:` so primary stays
+Lender 1 and appended start at Lender 2):
 
-### 2. Persistence — register the 4 dictionary entries (data insert, not schema change)
+```
+Lender {N}:                            (bold)
+{displayName or full name or vesting}
+Signature: ____________________     Date: ______________
+```
 
-Insert into existing `field_dictionary` table the following rows (idempotent `ON CONFLICT (field_key) DO NOTHING`):
+Removed: the `hr()` divider, `Entity Name:` line, `Print Name:` line, and the
+extra blank paragraphs. Spacing tightened to one blank paragraph between
+blocks (small gap after label, single blank before next lender) per the spec.
 
-| field_key | label | section | data_type |
-|---|---|---|---|
-| `loan_terms.funding_holdback_enabled` | Funding Holdback Enabled | loan_terms | boolean |
-| `loan_terms.funding_holdback_amount` | Funding Holdback Amount | loan_terms | currency |
-| `loan_terms.funding_holdback_held_by` | Funding Holdback Held By | loan_terms | text |
-| `loan_terms.funding_holdback` | Funding Holdback | loan_terms | text |
+### C. Validation gate (pre-append)
+Before generating blocks, validate the lender array shape using existing
+`fieldValues` aliases:
+- `lender_count` is an integer ≥ 1.
+- For each `i` in `1..lenderCount-1`, `additionalLenders{i}.displayName` (or
+  computed first/middle/last/vesting fallback) is non-empty.
 
-This unblocks the existing `useDealFields` / `deal_section_values` save+load pipeline already used by every other Loan Terms field — no new save logic, no new API.
+On failure: log a structured warning that includes template name
+(`templateName` is already in scope), the offending index, and the reason,
+then **skip only the invalid lender** (do not abort the whole document — keeps
+existing single-lender templates safe). A second warning is logged summarizing
+how many were skipped so QA sees it.
 
-## Out of scope (explicitly not touched)
+### D. Structured logging
+Add `console.log` lines (gated on existing `debugLog` where applicable):
+- `lenders.received = {lenderCount}`
+- `lenders.alreadyRendered = {detectedCount}`
+- `lenders.appended = {appendedCount}`
+- `lenders.skippedInvalid = [{index, reason}, ...]`
+- `template = {templateName}`
 
-- No other field, label, ordering, or section.
-- No change to `fieldKeyMap.ts`, `legacyKeyMap.ts`, save/load hooks, RLS, or APIs.
-- No document-generation or merge-tag changes.
-- No schema migration; only `field_dictionary` row inserts.
+### E. Templates affected
+The six templates listed (Investor Acknowledgement, Investor Questionnaire,
+Lender Identification Form, Lender Placed Insurance Disclosure, Multiple
+Lender Testing, re870) all flow through this same post-render pass — no
+template files need editing. They automatically pick up the new format.
 
-## Verification
+If any of those templates currently hard-code an `ADDITIONAL LENDER 1:` block
+for lender 2, the new detector will see it and not double-append; the
+hard-coded label text itself is template content and out of scope of this
+backend change. (If the user wants those hard-coded labels rewritten to
+`Lender 2:`, that is a template-file edit and would be a follow-up.)
 
-1. Reload the form → Funding Holdback `$` input visually matches Impounded Payments input width and Held By select width.
-2. Enter checkbox + amount + Held By value → Save → reload page → all three values still populated.
+## Out of scope (per "do not modify" directive)
+- Database schema, field_dictionary, RLS, save APIs.
+- Template .docx files in storage.
+- Primary lender's existing signature block (rendered by each template).
+- Any other post-render pass (RE851D, RE885, encumbrance pipeline, etc.).
+
+## Files touched
+- `supabase/functions/generate-document/index.ts` — only the block at
+  lines 7687–7803 is rewritten in place. No other code paths change.
+
+## Acceptance check (manual, after deploy)
+1. Generate Investor Acknowledgement with 1, 3, and 10 lenders → expect
+   1 / 3 / 10 signature blocks, labeled `Lender 1..N:` (primary keeps
+   template label, extras `Lender 2..N:`).
+2. Verify no `ADDITIONAL LENDER`, `Entity Name`, or `Print Name` text remains
+   in appended blocks.
+3. Check edge function logs show `lenders.received` / `lenders.appended`
+   matching the input count.

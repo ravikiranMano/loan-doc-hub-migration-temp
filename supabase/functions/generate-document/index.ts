@@ -7684,16 +7684,24 @@ async function generateSingleDocument(
       debugLog(`[RE885] DOCX Render: ${Math.round(performance.now() - tRenderStart)} ms (output=${processedDocx.length} bytes)`);
     }
 
-    // ── AUTO-APPEND ADDITIONAL LENDER SIGNATURE BLOCKS ───────────────────
-    // Part 2.5 Way 2: If lender_count > 1 AND the rendered document.xml does
-    // NOT already contain ADDITIONAL LENDER signature content (template has
-    // no {{#each lenders}} / {{#each additionalLenders}} repeater and no
-    // hard-coded blocks), automatically append a standard signature block per
-    // additional lender (lenders 2..N) before </w:body>. Fully additive — does
-    // not modify any existing template content, tables, or formatting.
+    // ── UNIVERSAL LENDER SIGNATURE BLOCK PASS ────────────────────────────
+    // Single source of truth: ensures every lender (2..N) ends up with a
+    // standardized signature block appended before </w:body>. Detects how
+    // many additional-lender blocks the template already rendered (whether
+    // via {{#each}} repeater, hard-coded labels, or a prior pass) and only
+    // appends the missing ones. Primary lender (Lender 1) is owned by the
+    // template's existing signature area and is never touched here.
+    //
+    // Block format (compact, professional, identical across templates):
+    //   Lender {N}:                (bold)
+    //   {displayName}
+    //   Signature: ____________________     Date: ______________
     try {
       const lenderCountRaw = fieldValues.get("lender_count")?.rawValue;
       const lenderCount = Number.parseInt(String(lenderCountRaw ?? "0"), 10) || 0;
+      const tName = (template && typeof template.name === "string") ? template.name : "(unknown)";
+      console.log(`[lender-sig] template=${tName} lenders.received=${lenderCount}`);
+
       if (lenderCount > 1) {
         const fflateMod = await import("https://esm.sh/fflate@0.8.2");
         const unz = fflateMod.unzipSync(processedDocx);
@@ -7702,102 +7710,120 @@ async function generateSingleDocument(
           const decoder = new TextDecoder("utf-8");
           const encoder = new TextEncoder();
           let docXml = decoder.decode(docBytes);
+          const visibleText = docXml.replace(/<[^>]+>/g, " ");
 
-          // Skip if the doc already shows additional-lender signature content
-          // (template handled it via its own repeater or hard-coded blocks).
-          const alreadyHasBlocks = /ADDITIONAL\s+LENDER\s+\d/i.test(
-            docXml.replace(/<[^>]+>/g, " "),
+          // Count signature blocks already in the rendered document for
+          // lenders 2..N. Accept either the new "Lender N:" format, the
+          // legacy "ADDITIONAL LENDER N:" format, or any explicit numbered
+          // lender label the template may use.
+          const renderedIndexes = new Set<number>();
+          const labelRe = /(?:ADDITIONAL\s+LENDER|Lender)\s+(\d+)\s*:/gi;
+          let m: RegExpExecArray | null;
+          while ((m = labelRe.exec(visibleText)) !== null) {
+            const n = Number.parseInt(m[1], 10);
+            if (Number.isFinite(n) && n >= 2) renderedIndexes.add(n);
+          }
+          console.log(
+            `[lender-sig] template=${tName} lenders.alreadyRendered=${renderedIndexes.size} indexes=[${[...renderedIndexes].sort((a,b)=>a-b).join(",")}]`,
           );
 
-          if (!alreadyHasBlocks) {
-            // Detect dominant font / size / left indent from existing runs.
-            const fontCounts = new Map<string, number>();
-            const sizeCounts = new Map<string, number>();
-            let indLeft = "";
-            const rPrMatches = docXml.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g) || [];
-            for (const rpr of rPrMatches.slice(0, 40)) {
-              const f = rpr.match(/<w:rFonts\b[^>]*\bw:ascii="([^"]+)"/);
-              if (f) fontCounts.set(f[1], (fontCounts.get(f[1]) || 0) + 1);
-              const s = rpr.match(/<w:sz\b[^>]*\bw:val="([^"]+)"/);
-              if (s) sizeCounts.set(s[1], (sizeCounts.get(s[1]) || 0) + 1);
-            }
-            const indMatch = docXml.match(/<w:ind\b[^>]*\bw:left="(\d+)"/);
-            if (indMatch) indLeft = indMatch[1];
-            const topFont = [...fontCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "Arial";
-            const topSize = [...sizeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "18";
-
-            const xmlEsc = (s: string) =>
-              s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-            const rPrCommon = `<w:rPr><w:rFonts w:ascii="${xmlEsc(topFont)}" w:hAnsi="${xmlEsc(topFont)}" w:cs="${xmlEsc(topFont)}"/><w:sz w:val="${xmlEsc(topSize)}"/><w:szCs w:val="${xmlEsc(topSize)}"/></w:rPr>`;
-            const pPrCommon = indLeft
-              ? `<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="${xmlEsc(indLeft)}"/></w:pPr>`
-              : `<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>`;
-            const pPrHr = indLeft
-              ? `<w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="000000"/></w:pBdr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/><w:ind w:left="${xmlEsc(indLeft)}"/></w:pPr>`
-              : `<w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="000000"/></w:pBdr><w:spacing w:after="120" w:line="240" w:lineRule="auto"/></w:pPr>`;
-            const para = (text: string, bold = false) => {
-              const rPr = bold
-                ? rPrCommon.replace("<w:rPr>", "<w:rPr><w:b/><w:bCs/>")
-                : rPrCommon;
-              return `<w:p>${pPrCommon}<w:r>${rPr}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`;
-            };
-            const blank = () => `<w:p>${pPrCommon}</w:p>`;
-            const hr = () => `<w:p>${pPrHr}</w:p>`;
-
-            const getStr = (k: string) =>
-              String(fieldValues.get(k)?.rawValue ?? "").trim();
-
-            const blocks: string[] = [];
-            for (let a = 1; a <= lenderCount - 1; a++) {
-              const isIndividual = getStr(`additionalLenders${a}.isIndividual`) === "true";
-              const firstName = getStr(`additionalLenders${a}.firstName`);
-              const middle = getStr(`additionalLenders${a}.middle`);
-              const last = getStr(`additionalLenders${a}.last`);
-              const vesting = getStr(`additionalLenders${a}.vesting`);
-              const displayName = getStr(`additionalLenders${a}.displayName`)
-                || [firstName, middle, last].filter(Boolean).join(" ")
-                || vesting;
-              const nameLine = isIndividual
-                ? `Name: ${[firstName, middle, last].filter(Boolean).join(" ")}`
-                : `Entity Name: ${vesting}`;
-              blocks.push(
-                hr(),
-                blank(),
-                para(`ADDITIONAL LENDER ${a}:`, true),
-                blank(),
-                para(nameLine.replace(/\s+/g, " ").trim()),
-                blank(),
-                para("Signature: ______________________________     Date: ______________"),
-                blank(),
-                para(`Print Name: ${displayName}`),
-                blank(),
-              );
-            }
-
-            if (blocks.length > 0) {
-              const appended = blocks.join("");
-              const bodyCloseIdx = docXml.lastIndexOf("</w:body>");
-              if (bodyCloseIdx !== -1) {
-                const beforeClose = docXml.slice(0, bodyCloseIdx);
-                const lastSectPrIdx = beforeClose.lastIndexOf("<w:sectPr");
-                const insertAt = lastSectPrIdx !== -1 && lastSectPrIdx > beforeClose.lastIndexOf("</w:tbl>")
-                  ? lastSectPrIdx
-                  : bodyCloseIdx;
-                docXml = docXml.slice(0, insertAt) + appended + docXml.slice(insertAt);
-                unz["word/document.xml"] = encoder.encode(docXml);
-                processedDocx = fflateMod.zipSync(unz, { level: 0 });
-                console.log(`[generate-document] Auto-appended ${lenderCount - 1} additional lender signature block(s)`);
-              }
-            }
-          } else {
-            debugLog(`[generate-document] Skipped auto-append: template already contains ADDITIONAL LENDER content`);
+          // Detect dominant font / size / left indent from existing runs.
+          const fontCounts = new Map<string, number>();
+          const sizeCounts = new Map<string, number>();
+          let indLeft = "";
+          const rPrMatches = docXml.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g) || [];
+          for (const rpr of rPrMatches.slice(0, 40)) {
+            const f = rpr.match(/<w:rFonts\b[^>]*\bw:ascii="([^"]+)"/);
+            if (f) fontCounts.set(f[1], (fontCounts.get(f[1]) || 0) + 1);
+            const s = rpr.match(/<w:sz\b[^>]*\bw:val="([^"]+)"/);
+            if (s) sizeCounts.set(s[1], (sizeCounts.get(s[1]) || 0) + 1);
           }
+          const indMatch = docXml.match(/<w:ind\b[^>]*\bw:left="(\d+)"/);
+          if (indMatch) indLeft = indMatch[1];
+          const topFont = [...fontCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "Arial";
+          const topSize = [...sizeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "22";
+
+          const xmlEsc = (s: string) =>
+            s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+          const rPrCommon = `<w:rPr><w:rFonts w:ascii="${xmlEsc(topFont)}" w:hAnsi="${xmlEsc(topFont)}" w:cs="${xmlEsc(topFont)}"/><w:sz w:val="${xmlEsc(topSize)}"/><w:szCs w:val="${xmlEsc(topSize)}"/></w:rPr>`;
+          // Tight spacing: label (after=60), name (after=180 — slightly larger
+          // before signature line), signature (after=60), gap (after=120).
+          const pPr = (afterTwips: number) =>
+            indLeft
+              ? `<w:pPr><w:spacing w:before="0" w:after="${afterTwips}" w:line="240" w:lineRule="auto"/><w:ind w:left="${xmlEsc(indLeft)}"/></w:pPr>`
+              : `<w:pPr><w:spacing w:before="0" w:after="${afterTwips}" w:line="240" w:lineRule="auto"/></w:pPr>`;
+          const para = (text: string, afterTwips: number, bold = false) => {
+            const rPr = bold
+              ? rPrCommon.replace("<w:rPr>", "<w:rPr><w:b/><w:bCs/>")
+              : rPrCommon;
+            return `<w:p>${pPr(afterTwips)}<w:r>${rPr}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`;
+          };
+
+          const getStr = (k: string) =>
+            String(fieldValues.get(k)?.rawValue ?? "").trim();
+
+          const skippedInvalid: Array<{ index: number; reason: string }> = [];
+          const blocks: string[] = [];
+          let appendedCount = 0;
+
+          // Iterate lenders 2..N. a = 1..lenderCount-1 maps to label N = a+1.
+          for (let a = 1; a <= lenderCount - 1; a++) {
+            const labelN = a + 1;
+            if (renderedIndexes.has(labelN)) continue;
+
+            const firstName = getStr(`additionalLenders${a}.firstName`);
+            const middle = getStr(`additionalLenders${a}.middle`);
+            const last = getStr(`additionalLenders${a}.last`);
+            const vesting = getStr(`additionalLenders${a}.vesting`);
+            const displayName = (
+              getStr(`additionalLenders${a}.displayName`)
+              || [firstName, middle, last].filter(Boolean).join(" ")
+              || vesting
+            ).replace(/\s+/g, " ").trim();
+
+            if (!displayName) {
+              skippedInvalid.push({ index: labelN, reason: "empty name" });
+              continue;
+            }
+
+            blocks.push(
+              para(`Lender ${labelN}:`, 60, true),
+              para(displayName, 180),
+              para("Signature: ____________________     Date: ______________", 120),
+            );
+            appendedCount++;
+          }
+
+          if (skippedInvalid.length > 0) {
+            console.warn(
+              `[lender-sig] template=${tName} lenders.skippedInvalid=${JSON.stringify(skippedInvalid)}`,
+            );
+          }
+
+          if (blocks.length > 0) {
+            const appended = blocks.join("");
+            const bodyCloseIdx = docXml.lastIndexOf("</w:body>");
+            if (bodyCloseIdx !== -1) {
+              const beforeClose = docXml.slice(0, bodyCloseIdx);
+              const lastSectPrIdx = beforeClose.lastIndexOf("<w:sectPr");
+              const insertAt = lastSectPrIdx !== -1 && lastSectPrIdx > beforeClose.lastIndexOf("</w:tbl>")
+                ? lastSectPrIdx
+                : bodyCloseIdx;
+              docXml = docXml.slice(0, insertAt) + appended + docXml.slice(insertAt);
+              unz["word/document.xml"] = encoder.encode(docXml);
+              processedDocx = fflateMod.zipSync(unz, { level: 0 });
+            }
+          }
+
+          console.log(
+            `[lender-sig] template=${tName} lenders.appended=${appendedCount} lenders.totalExpected=${lenderCount - 1} status=${appendedCount + renderedIndexes.size >= lenderCount - 1 ? "complete" : "incomplete"}`,
+          );
         }
       }
     } catch (appendErr) {
       console.warn(
-        "[generate-document] Additional-lender auto-append skipped:",
+        "[lender-sig] universal lender signature pass failed:",
         appendErr instanceof Error ? appendErr.message : String(appendErr),
       );
     }
