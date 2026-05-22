@@ -66,6 +66,7 @@ const FK = {
   oc_umbrella_months: 'origination_ins.oc_umbrella_months',
   oc_umbrella_per: 'origination_ins.oc_umbrella_per',
   oc_loss_of_rents: 'origination_ins.oc_loss_of_rents',
+  oc_loss_of_rents_amount: 'origination_ins.oc_loss_of_rents_amount',
   oc_vacancy: 'origination_ins.oc_vacancy',
   oc_other: 'origination_ins.oc_other',
   oc_other_amount: 'origination_ins.oc_other_amount',
@@ -255,7 +256,8 @@ export const OriginationInsuranceConditionsForm: React.FC<OriginationInsuranceCo
             <DirtyFieldWrapper fieldKey={FK.oc_loss_of_rents}>
               <div className="flex items-center gap-2">
                 <Checkbox checked={bv(FK.oc_loss_of_rents)} onCheckedChange={(c) => sbv(FK.oc_loss_of_rents, !!c)} disabled={disabled} />
-                <Label className="text-xs shrink-0">Loss of Rents</Label>
+                <Label className="text-xs shrink-0 min-w-[140px]">Loss of Rents</Label>
+                {renderCurrencyInline(FK.oc_loss_of_rents_amount)}
               </div>
             </DirtyFieldWrapper>
             {/* Vacancy Endorsement Required */}
