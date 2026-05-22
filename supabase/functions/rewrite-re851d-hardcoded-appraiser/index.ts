@@ -50,6 +50,58 @@ function countVisibleMatches(xml: string, re: RegExp): number {
   return visibleText(xml).match(re)?.length ?? 0;
 }
 
+function buildStrippedIndex(xml: string): { text: string; map: number[] } {
+  const text: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < xml.length;) {
+    if (xml[i] === "<") {
+      const close = xml.indexOf(">", i);
+      if (close === -1) break;
+      i = close + 1;
+      continue;
+    }
+    text.push(xml[i]);
+    map.push(i);
+    i++;
+  }
+  return { text: text.join(""), map };
+}
+
+function computeConditionalRewrites(xml: string): { ranges: Array<{ start: number; end: number; replacement: string }>; rewritten: number; remainingIfBlocks: number } {
+  const { text, map } = buildStrippedIndex(xml);
+  const blockRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(N|[1-5])\s*(?:"|&quot;|\u201C|\u201D)\s*Broker\s*(?:"|&quot;|\u201C|\u201D)\s*\)\s*\}\}\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*else\s*\}\}\s*)?\{\{\s*\/\s*if\s*\}\}/g;
+  const ranges: Array<{ start: number; end: number; replacement: string }> = [];
+  const counter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(text)) !== null) {
+    const kind: "name" | "addr" = /^BPO Performed by Broker$/i.test(m[2]) ? "name" : "addr";
+    const rawIndex = m[1];
+    const pIdx = rawIndex === "N" ? Math.min(++counter[kind], 5) : parseInt(rawIndex, 10);
+    const start = map[m.index];
+    const end = map[m.index + m[0].length - 1] + 1;
+    const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
+    ranges.push({ start, end, replacement: `{{${tagBase}_${pIdx}}}` });
+  }
+
+  const openerCount = (text.match(/\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_/g) || []).length;
+  return { ranges, rewritten: ranges.length, remainingIfBlocks: Math.max(0, openerCount - ranges.length) };
+}
+
+function applyRanges(xml: string, ranges: Array<{ start: number; end: number; replacement: string }>): string {
+  if (ranges.length === 0) return xml;
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const out: string[] = [];
+  let cursor = 0;
+  for (const r of sorted) {
+    if (r.start < cursor) continue;
+    out.push(xml.slice(cursor, r.start));
+    out.push(r.replacement);
+    cursor = r.end;
+  }
+  out.push(xml.slice(cursor));
+  return out.join("");
+}
+
 /** Find every `<w:tc>...</w:tc>` block in document order. */
 function findCells(xml: string): Array<{ start: number; end: number }> {
   const cells: Array<{ start: number; end: number }> = [];
