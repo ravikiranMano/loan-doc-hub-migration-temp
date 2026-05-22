@@ -44,10 +44,11 @@ function EnhancedCalendar({
   }, []);
 
   const handleSelect = React.useCallback((...args: any[]) => {
-    (onSelect as any)?.(...args);
+    (onSelectProp as any)?.(...args);
     const picked = args[0];
     if (picked) closeParentPopover();
-  }, [onSelect, closeParentPopover]);
+  }, [onSelectProp, closeParentPopover]);
+
 
   const handleClear = React.useCallback(() => {
     onClear?.();
