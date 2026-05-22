@@ -432,8 +432,17 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     if (!open) return;
 
     setFormData((prev) => {
-      const nextSoldRate = (soldRate || '').trim();
-      const nextNoteRate = (noteRate || '').trim();
+      const nextSoldRate = (soldRate || prev.rateSoldValue || '').trim();
+      // Note Rate source priority: parent prop → in-modal noteRateDisplay →
+      // saved rateNoteValue. This ensures Lender Rate auto-fills from Note
+      // Rate even when the user types Note Rate inside the modal (no parent
+      // prop change).
+      const nextNoteRate = (
+        noteRate ||
+        prev.noteRateDisplay ||
+        prev.rateNoteValue ||
+        ''
+      ).trim();
       // Guard: a corrupt soldRate (e.g. 44 from a mis-mapped field) must not
       // poison the lender rate. Fall through to noteRate when soldRate fails
       // the mortgage-rate sanity check.
@@ -465,7 +474,16 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
           : {}),
       };
     });
-  }, [open, soldRate, noteRate, formData.lenderRateOverride, formData.lenderRateOverrideValue]);
+  }, [
+    open,
+    soldRate,
+    noteRate,
+    formData.noteRateDisplay,
+    formData.rateNoteValue,
+    formData.rateSoldValue,
+    formData.lenderRateOverride,
+    formData.lenderRateOverrideValue,
+  ]);
 
   // Auto-save in-progress form to sessionStorage on every change (so tab-switch/close keeps the draft).
   // Cleared explicitly on successful save (handleConfirmSave) — Cancel keeps the draft so user can resume.
