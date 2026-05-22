@@ -1407,14 +1407,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 </div>
               </RadioGroup>
             </div>
-            {formData.roundingAdjustment && currentRoundingLenderName && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+            {showRoundingInfo && formData.roundingAdjustment && currentRoundingLenderName && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 transition-opacity duration-300">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 <span>Enabling this will remove the rounding adjustment from {currentRoundingLenderName}.</span>
               </div>
             )}
-            {formData.roundingAdjustment && !currentRoundingLenderName && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+            {showRoundingInfo && formData.roundingAdjustment && !currentRoundingLenderName && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 transition-opacity duration-300">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 <span>Only one lender per deal can hold the rounding adjustment. Enabling this will clear it from any other lender.</span>
               </div>
