@@ -2714,6 +2714,22 @@ export function replaceMergeTags(
   }
   __mark('controlConsolidation');
 
+  // Rewrite Handlebars length comparisons we don't natively evaluate into
+  // pre-published boolean flags, so templates can author:
+  //   {{#if borrowers.length > 1}}Co-Borrowers:{{/if}}
+  //   {{#if borrowers.length}}…{{/if}}
+  // and have them resolve from borrowers_hasMultiple / borrowers_count
+  // (published by generate-document for the borrowers collection). Same for
+  // any other collection that publishes a `<name>_hasMultiple` / `<name>_count` pair.
+  result = result.replace(
+    /\{\{#if\s+([A-Za-z_][A-Za-z0-9_]*)\.length\s*(?:>\s*1|>=\s*2|!=\s*1|!==\s*1)\s*\}\}/g,
+    (_m, name) => `{{#if ${name}_hasMultiple}}`,
+  );
+  result = result.replace(
+    /\{\{#if\s+([A-Za-z_][A-Za-z0-9_]*)\.length\s*\}\}/g,
+    (_m, name) => `{{#if ${name}_count}}`,
+  );
+
   if (result.includes('{{#each')) {
     result = processEachBlocks(result, fieldValues, mergeTagMap, validFieldKeys);
   }
