@@ -173,27 +173,27 @@ export function allocateDollarsByPercent(
 // Note Rate, Lender Rate, Override Rate, Pro Rata, Original/Current LTV,
 // CLTV, Protective Equity, Late Charge %, etc. render identically.
 
-/** Interest-style rates (Note, Default, Interest Guarantee, Deferred). */
+/** Interest-style rates (Note, Default, Interest Guarantee, Deferred). Max 3dp display. */
 export function formatInterestRate(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 4);
+  const s = formatPercentDisplay(value, 3);
   return s === '' ? '' : `${s}%`;
 }
 
-/** Pro-rata / funding / lender allocation %. */
+/** Pro-rata / funding / lender allocation %. Max 4dp display. */
 export function formatProRata(value: string | number | null | undefined): string {
   const s = formatPercentDisplay(value, 4);
   return s === '' ? '' : `${s}%`;
 }
 
-/** LTV / CLTV / Protective Equity / generic ratio %. */
+/** LTV / CLTV / Protective Equity / generic ratio %. Max 2dp display. */
 export function formatRatio(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 4);
+  const s = formatPercentDisplay(value, 2);
   return s === '' ? '' : `${s}%`;
 }
 
-/** Late Charge %. */
+/** Late Charge %. Max 3dp display. */
 export function formatLateChargePct(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 4);
+  const s = formatPercentDisplay(value, 3);
   return s === '' ? '' : `${s}%`;
 }
 
