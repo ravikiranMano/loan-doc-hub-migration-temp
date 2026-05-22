@@ -28,9 +28,10 @@ function EnhancedCalendar({
   onToday,
   month: controlledMonth,
   onMonthChange,
-  onSelect,
+  onSelect: onSelectProp,
   ...props
-}: EnhancedCalendarProps) {
+}: EnhancedCalendarProps & { onSelect?: any }) {
+
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   const closeParentPopover = React.useCallback(() => {
