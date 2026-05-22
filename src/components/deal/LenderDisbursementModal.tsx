@@ -98,25 +98,30 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
   paymentShare = 0,
   interestShare = 0,
   principalShare = 0,
+  existingDisbursements = [],
+  editingIndex = null,
+  availablePayment,
+  loanOriginationDate,
+  loanMaturityDate,
 }) => {
   const [formData, setFormData] = useState<DisbursementFormData>(emptyForm());
   const [showConfirm, setShowConfirm] = useState(false);
   const [startDateOpen, setStartDateOpen] = useState(false);
   const [debitDateOpen, setDebitDateOpen] = useState(false);
+  const [showAllErrors, setShowAllErrors] = useState(false);
 
   // Only re-initialize the form when the modal transitions from closed -> open.
-  // Using `open` alone (not editData) prevents the parent's inline-recreated editData object
-  // from wiping user input on every parent re-render while editing.
   const wasOpenRef = React.useRef(false);
   useEffect(() => {
     if (open && !wasOpenRef.current) {
       setFormData(editData ? { ...emptyForm(), ...editData } : emptyForm());
+      setShowAllErrors(false);
     }
     wasOpenRef.current = open;
   }, [open, editData]);
 
-  const handleChange = (field: keyof DisbursementFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field: keyof DisbursementFormData, value: string | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value as any }));
   };
 
   // Auto-default Type to "NA" when % <= 0; clear "NA" when % becomes > 0
@@ -132,8 +137,8 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
     }
   }, [isPercentZeroOrLess, formData.debitOf]);
 
-  // Live calculation
-  const calculatedAmount = useMemo(() => {
+  // Live auto-calculation (preserves existing formula; Rule 5)
+  const autoCalculatedAmount = useMemo(() => {
     let base = 0;
     if (formData.debitOf === 'Payment') base = paymentShare;
     else if (formData.debitOf === 'Interest') base = interestShare;
@@ -148,26 +153,96 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
     return calc;
   }, [formData.debitOf, formData.debitPercent, formData.plusAmount, formData.minimumAmount, formData.maximumAmount, paymentShare, interestShare, principalShare]);
 
-  // Sync calculatedAmount into form
+  // Effective amount: override value if enabled, else auto-calc (Rule 13/14)
+  const effectiveAmount = formData.overrideEnabled
+    ? parseNum(formData.overrideAmount || '')
+    : autoCalculatedAmount;
+
+  // Sync calculatedAmount into form for persistence
   useEffect(() => {
-    setFormData(prev => ({ ...prev, calculatedAmount: calculatedAmount.toFixed(2) }));
-  }, [calculatedAmount]);
+    setFormData(prev => ({ ...prev, calculatedAmount: effectiveAmount.toFixed(2) }));
+  }, [effectiveAmount]);
 
-  // Validation
-  const minMaxError =
-    formData.minimumAmount && formData.maximumAmount &&
-    parseNum(formData.minimumAmount) > parseNum(formData.maximumAmount);
-  const isValid =
-    !!formData.accountId &&
-    parseNum(formData.debitPercent) >= 0 &&
-    !!formData.startDate &&
-    !!formData.debitThrough &&
-    !minMaxError &&
-    (formData.debitThrough !== 'date' || !!formData.debitThroughDate) &&
-    (formData.debitThrough !== 'amount' || !!formData.debitThroughAmount) &&
-    (formData.debitThrough !== 'payments' || !!formData.debitThroughPayments);
+  // ---- Per-rule validation ----
+  const startDateValue = parseDateOnly(formData.startDate);
+  const debitDateValue = parseDateOnly(formData.debitThroughDate);
+  const origDate = loanOriginationDate ? parseDateOnly(loanOriginationDate) : null;
+  const matDate = loanMaturityDate ? parseDateOnly(loanMaturityDate) : null;
 
-  const handleSaveClick = () => setShowConfirm(true);
+  const minNum = formData.minimumAmount ? parseNum(formData.minimumAmount) : null;
+  const maxNum = formData.maximumAmount ? parseNum(formData.maximumAmount) : null;
+  const plusNum = parseNum(formData.plusAmount);
+
+  const errors = useMemo(() => {
+    const e: Record<string, string> = {};
+    // Rule 1
+    if (!formData.accountId) e.accountId = 'Payee is required.';
+    // Rule 3
+    if (formData.debitPercent !== '' && debitPercentNum < 0) e.debitPercent = 'Debit percentage cannot be negative.';
+    else if (debitPercentNum > 100) e.debitPercent = 'Debit percentage cannot exceed 100%.';
+    // Rule 4
+    if (debitPercentNum > 0 && !formData.debitOf) e.debitOf = 'Please select Debit Through option.';
+    if (!formData.debitThrough) e.debitThrough = 'Please select Debit Through option.';
+    // Rule 8
+    if (formData.plusAmount !== '' && plusNum < 0) e.plusAmount = 'Plus amount cannot be negative.';
+    // Min/Max sanity
+    if (minNum !== null && maxNum !== null && minNum > maxNum) e.minMax = 'Minimum must be ≤ Maximum.';
+    // Rule 6 / 7 — only meaningful when override is on (auto-calc clamps already)
+    if (formData.overrideEnabled) {
+      if (minNum !== null && effectiveAmount < minNum) e.amount = 'Calculated amount cannot be less than minimum amount.';
+      else if (maxNum !== null && effectiveAmount > maxNum) e.amount = 'Calculated amount cannot exceed maximum amount.';
+    }
+    // Rule 9
+    if (!formData.startDate) e.startDate = 'Invalid disbursement start date.';
+    else if (!startDateValue || isNaN(startDateValue.getTime())) e.startDate = 'Invalid disbursement start date.';
+    else if (origDate && startDateValue < origDate) e.startDate = 'Invalid disbursement start date.';
+    else if (matDate && startDateValue > matDate) e.startDate = 'Invalid disbursement start date.';
+    // Rule 10 — duplicate (same payee + same debitThrough)
+    if (formData.accountId && formData.debitThrough) {
+      const dupe = existingDisbursements.some((d, idx) =>
+        idx !== editingIndex &&
+        d.accountId === formData.accountId &&
+        (d.debitThrough || '') === formData.debitThrough
+      );
+      if (dupe) e.duplicate = 'Duplicate disbursement configuration already exists.';
+    }
+    // Rule 11 — total disbursements vs available payment
+    if (typeof availablePayment === 'number' && availablePayment > 0) {
+      const others = existingDisbursements.reduce((sum, d, idx) => {
+        if (idx === editingIndex) return sum;
+        return sum + parseNum(d.calculatedAmount || d.amount || '');
+      }, 0);
+      if (others + effectiveAmount > availablePayment + 0.005) {
+        e.total = 'Total disbursement exceeds available payment amount.';
+      }
+    }
+    // Rule 14 — override reason required
+    if (formData.overrideEnabled && !(formData.overrideReason || '').trim()) {
+      e.overrideReason = 'Override reason is required.';
+    }
+    // debitThrough sub-field requirements
+    if (formData.debitThrough === 'date' && !formData.debitThroughDate) e.debitThroughDate = 'Date is required.';
+    if (formData.debitThrough === 'amount' && !formData.debitThroughAmount) e.debitThroughAmount = 'Amount is required.';
+    if (formData.debitThrough === 'payments' && !formData.debitThroughPayments) e.debitThroughPayments = '# Payments is required.';
+    return e;
+  }, [formData, debitPercentNum, plusNum, minNum, maxNum, effectiveAmount, startDateValue, origDate, matDate, existingDisbursements, editingIndex, availablePayment]);
+
+  const minMaxError = !!errors.minMax;
+  const isValid = Object.keys(errors).length === 0;
+
+  const showErr = (k: string) => (showAllErrors || (formData as any).__touched?.[k]) && errors[k];
+  // Simpler: show error if non-empty after first save attempt OR field has a value
+  const errFor = (k: string, hasValue: boolean) => (showAllErrors || hasValue) ? errors[k] : undefined;
+
+  const handleSaveClick = () => {
+    if (!isValid) {
+      setShowAllErrors(true);
+      const firstErr = Object.entries(errors)[0];
+      if (firstErr) console.warn('[disbursement-validate]', { field: firstErr[0], message: firstErr[1] });
+      return;
+    }
+    setShowConfirm(true);
+  };
   const handleConfirmSave = () => {
     setShowConfirm(false);
     onSubmit({ ...formData, from: formData.debitOf });
@@ -175,9 +250,6 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
   };
 
   const handleCancel = () => onOpenChange(false);
-
-  const startDateValue = parseDateOnly(formData.startDate);
-  const debitDateValue = parseDateOnly(formData.debitThroughDate);
 
   return (
     <>
