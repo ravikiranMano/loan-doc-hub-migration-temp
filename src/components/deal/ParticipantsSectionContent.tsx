@@ -14,8 +14,7 @@ import {
 } from '@/services/contacts/contacts.service';
 import {
   fetchSectionValueByDealAndSection,
-  updateSectionValueById,
-  insertSectionValues,
+  upsertParticipantsSectionValues,
 } from '@/services/deals/section-values.service';
 import { toast } from 'sonner';
 import { Plus, Loader2, Users } from 'lucide-react';
@@ -511,13 +510,7 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
         const currentValues = (existing?.field_values as Record<string, any>) || {};
         const newValues = { ...currentValues, originating_vendor_contact_id: contactId };
 
-        if (existing?.id) {
-          await updateSectionValueById(existing.id, { field_values: newValues });
-        } else {
-          await insertSectionValues([
-            { deal_id: dealId, section: 'participants', field_values: newValues },
-          ]);
-        }
+        await upsertParticipantsSectionValues(dealId, newValues);
       } catch (err) {
         console.error('Error saving originating vendor:', err);
         toast.error('Failed to save originating vendor');

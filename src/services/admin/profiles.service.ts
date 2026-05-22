@@ -23,11 +23,10 @@ export async function fetchProfileByUserId(userId: string) {
   if (isNodeApiEnabled('admin')) {
     return apiClient.get<unknown>(`/admin/users/${userId}/profile`);
   }
-  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
-    .from('profiles')
+    .from('users')
     .select('full_name, email')
-    .eq('user_id', userId)
+    .eq('id', userId)
     .single();
   if (error) throw error;
   return data;
@@ -40,16 +39,15 @@ export async function fetchProfilesByUserIds(userIds: string[]) {
   if (isNodeApiEnabled('admin')) {
     const rows = await apiClient<
       Array<{ user_id?: string; id?: string; full_name: string | null; email: string | null }>
-    >(`/admin/users?userIds=${ids.join(',')}`);
+    >(`/admin/users?userIds=${encodeURIComponent(ids.join(','))}`);
     return (rows || []).map(normalizeProfileRow);
   }
-  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id, full_name, email')
-    .in('user_id', ids);
+    .from('users')
+    .select('id, full_name, email')
+    .in('id', ids);
   if (error) throw error;
-  return (data || []).map(normalizeProfileRow);
+  return (data || []).map((row) => normalizeProfileRow({ ...row, user_id: row.id }));
 }
 
 export async function listProfiles(options?: {
@@ -78,8 +76,7 @@ export async function listProfiles(options?: {
     }
     return { data: result.data ?? [], count: result.count ?? 0 };
   }
-  // — Supabase (keep unchanged) —
-  let query = supabase.from('profiles').select('*', { count: 'exact' });
+  let query = supabase.from('users').select('*', { count: 'exact' });
   if (options?.userType) {
     query = query.eq('user_type', options.userType);
   }
@@ -99,15 +96,18 @@ export async function listProfiles(options?: {
   }
   const { data, error, count } = await query;
   if (error) throw error;
-  return { data: data || [], count: count || 0 };
+  const rows = (data || []).map((row: { id: string; user_id?: string }) => ({
+    ...row,
+    user_id: row.user_id ?? row.id,
+  }));
+  return { data: rows, count: count || 0 };
 }
 
 export async function updateProfile(userId: string, updates: Record<string, unknown>) {
   if (isNodeApiEnabled('admin')) {
     return apiClient.patch(`/admin/users/${userId}/profile`, updates);
   }
-  // — Supabase (keep unchanged) —
-  const { error } = await supabase.from('profiles').update(updates).eq('user_id', userId);
+  const { error } = await supabase.from('users').update(updates).eq('id', userId);
   if (error) throw error;
 }
 
@@ -115,8 +115,7 @@ export async function updateProfileById(id: string, updates: Record<string, unkn
   if (isNodeApiEnabled('admin')) {
     return apiClient.patch(`/admin/users/${id}/profile`, updates);
   }
-  // — Supabase (keep unchanged) —
-  const { error } = await supabase.from('profiles').update(updates).eq('id', id);
+  const { error } = await supabase.from('users').update(updates).eq('id', id);
   if (error) throw error;
 }
 
@@ -124,9 +123,8 @@ export async function countProfiles() {
   if (isNodeApiEnabled('admin')) {
     return apiClient.get<number>('/admin/users/count');
   }
-  // — Supabase (keep unchanged) —
   const { count, error } = await supabase
-    .from('profiles')
+    .from('users')
     .select('*', { count: 'exact', head: true });
   if (error) throw error;
   return count || 0;

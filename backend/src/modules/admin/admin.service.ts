@@ -54,6 +54,20 @@ export class AdminService {
     return rows;
   }
 
+  /** Mirrors Supabase `.in('field_key', keys)` — safe for large key lists (chunked in DB). */
+  async lookupFieldsByKeys(fieldKeys: string[]) {
+    const unique = [...new Set(fieldKeys.map((k) => k.trim()).filter(Boolean))];
+    if (!unique.length) return [];
+
+    const CHUNK = 200;
+    const rows = [];
+    for (let i = 0; i < unique.length; i += CHUNK) {
+      const batch = await this.repo.findFieldsByFieldKeys(unique.slice(i, i + CHUNK));
+      rows.push(...batch);
+    }
+    return rows;
+  }
+
   async getField(id: string) {
     const fields = await this.repo.findFieldsByIds([id]);
     const field = fields[0];
@@ -84,6 +98,25 @@ export class AdminService {
   async listUsers() {
     const users = await this.repo.findAllUsers();
     return users.map(toProfileCompat);
+  }
+
+  /** Admin User Management page — internal users with role + permission level. */
+  async listUsersForManagement() {
+    const users = await this.repo.findInternalUsers();
+    if (!users.length) return [];
+
+    const permLevels = await this.repo.findPermissionLevelsForUserIds(users.map((u) => u.id));
+    const permMap = new Map(permLevels.map((p) => [p.user_id, p.permission_level]));
+
+    return users.map((u) => ({
+      id: u.id,
+      user_id: u.id,
+      email: u.email,
+      full_name: u.full_name,
+      created_at: u.created_at,
+      role: u.role === 'admin' || u.role === 'csr' ? u.role : null,
+      permission_level: permMap.get(u.id) ?? null,
+    }));
   }
 
   async listUsersByIds(userIds: string[]) {

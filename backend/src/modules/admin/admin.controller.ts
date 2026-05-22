@@ -16,6 +16,7 @@ import {
   CreateFieldDto,
   UpdateFieldDto,
   LookupFieldIdsDto,
+  LookupFieldKeysDto,
   UpdateProfileDto,
   AssignRoleDto,
   CreateUserFormPermissionDto,
@@ -58,6 +59,13 @@ export class AdminController {
     return this.service.lookupFieldsByIds(dto.ids ?? []);
   }
 
+  /** POST /api/admin/fields/by-keys — batch lookup by field_key (deal data save). */
+  @Post('fields/by-keys')
+  @HttpCode(HttpStatus.OK)
+  lookupFieldsByKeys(@Body() dto: LookupFieldKeysDto) {
+    return this.service.lookupFieldsByKeys(dto.field_keys ?? []);
+  }
+
   @Get('fields/count')
   countFields() {
     return this.service.countFields();
@@ -80,6 +88,12 @@ export class AdminController {
   }
 
   // ─── Users ───────────────────────────────────────────────────────────────────
+
+  /** GET /api/admin/users/management-list — User Management page (internal staff). */
+  @Get('users/management-list')
+  listUsersForManagement() {
+    return this.service.listUsersForManagement();
+  }
 
   // GET /api/admin/users?userType=&page=&limit=&search=
   @Get('users')

@@ -95,14 +95,19 @@ export async function fetchSectionValueByDealAndSection(
 
 export async function updateSectionValueById(
   id: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  ctx?: { dealId?: string; section?: string },
 ) {
   if (isNodeApiEnabled('deals')) {
-    const dealId = payload['deal_id'] as string | undefined;
-    const section = payload['section'] as string | undefined;
+    const dealId = (payload['deal_id'] as string | undefined) ?? ctx?.dealId;
+    const section = (payload['section'] as string | undefined) ?? ctx?.section;
     if (dealId && section) {
-      return apiClient.patch(`/deals/${dealId}/sections/${section}`, { field_values: payload['field_values'] });
+      return apiClient.patch(
+        `/deals/${dealId}/sections/${encodeURIComponent(section)}`,
+        { field_values: payload['field_values'] },
+      );
     }
+    throw new Error('Section update requires deal_id and section when using Node API');
   }
   // — Supabase (keep unchanged) —
   const { error } = await supabase.from('deal_section_values').update(payload).eq('id', id);
@@ -135,6 +140,8 @@ export async function upsertParticipantsSectionValues(
   const existing = await fetchSectionValueByDealAndSection(dealId, 'participants');
   if ((existing as { id?: string })?.id) {
     await updateSectionValueById((existing as { id: string }).id, {
+      deal_id: dealId,
+      section: 'participants',
       field_values: fieldValues,
       updated_at: new Date().toISOString(),
     });
@@ -159,7 +166,8 @@ export async function fetchFieldDictionaryTmoSections(sections: FieldSection[]) 
 
 export async function fetchFieldDictionaryByIds(ids: string[]) {
   if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/admin/fields?ids=${ids.join(',')}`);
+    if (!ids.length) return [];
+    return apiClient.post<unknown[]>('/admin/fields/by-ids', { ids });
   }
   // — Supabase (keep unchanged) —
   const { data, error } = await supabase
@@ -172,7 +180,8 @@ export async function fetchFieldDictionaryByIds(ids: string[]) {
 
 export async function fetchFieldDictionaryByFieldKeys(keys: string[]) {
   if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>('/admin/fields');
+    if (!keys.length) return [];
+    return apiClient.post<unknown[]>('/admin/fields/by-keys', { field_keys: keys });
   }
   // — Supabase (keep unchanged) —
   const { data, error } = await supabase

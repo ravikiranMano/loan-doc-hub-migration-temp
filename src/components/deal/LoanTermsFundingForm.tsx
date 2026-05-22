@@ -141,6 +141,8 @@ async function directPersistFundingField(
       };
 
       await updateSectionValueById(targetRow.id, {
+        deal_id: dealId,
+        section: 'loan_terms',
         field_values: JSON.parse(JSON.stringify(fieldValues)),
         updated_at: new Date().toISOString(),
         version: (targetRow.version || 0) + 1,
@@ -763,6 +765,8 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
           };
 
           await updateSectionValueById(sv.id, {
+            deal_id: dealId,
+            section: 'loan_terms',
             field_values: JSON.parse(JSON.stringify(fieldValues)),
             updated_at: new Date().toISOString(),
             version: (sv.version || 0) + 1,

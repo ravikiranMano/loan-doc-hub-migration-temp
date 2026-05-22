@@ -56,45 +56,77 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at ON public.refresh_token
 -- Takes the highest-priority role per user (admin > csr > borrower > broker > lender > other).
 -- Passwords are preserved as-is (bcrypt hashes from Supabase GoTrue).
 
-INSERT INTO public.users (
-  id, email, password_hash, full_name, phone, company,
-  license_number, user_type, role, is_active, last_sign_in_at, created_at, updated_at
-)
-SELECT
-  au.id,
-  au.email,
-  COALESCE(au.encrypted_password, '') AS password_hash,
-  COALESCE(p.full_name, (au.raw_user_meta_data->>'full_name')::TEXT) AS full_name,
-  p.phone,
-  p.company,
-  p.license_number,
-  COALESCE(p.user_type, 'internal')   AS user_type,
-  COALESCE(primary_role.role, 'other'::app_role) AS role,
-  CASE
-    WHEN au.banned_until IS NOT NULL AND au.banned_until > NOW() THEN FALSE
-    WHEN au.deleted_at IS NOT NULL THEN FALSE
-    ELSE TRUE
-  END AS is_active,
-  au.last_sign_in_at,
-  COALESCE(au.created_at, NOW())      AS created_at,
-  COALESCE(au.updated_at, NOW())      AS updated_at
-FROM auth.users au
-LEFT JOIN public.profiles p ON p.user_id = au.id
-LEFT JOIN LATERAL (
-  SELECT role FROM public.user_roles
-  WHERE user_id = au.id
-  ORDER BY
-    CASE role
-      WHEN 'admin'    THEN 1
-      WHEN 'csr'      THEN 2
-      WHEN 'borrower' THEN 3
-      WHEN 'broker'   THEN 4
-      WHEN 'lender'   THEN 5
-      ELSE                 6
-    END
-  LIMIT 1
-) primary_role ON TRUE
-ON CONFLICT (id) DO NOTHING;
+-- Idempotent: skip legacy profile/role joins when tables were already dropped.
+DO $$
+BEGIN
+  IF to_regclass('public.profiles') IS NOT NULL
+     AND to_regclass('public.user_roles') IS NOT NULL THEN
+    INSERT INTO public.users (
+      id, email, password_hash, full_name, phone, company,
+      license_number, user_type, role, is_active, last_sign_in_at, created_at, updated_at
+    )
+    SELECT
+      au.id,
+      au.email,
+      COALESCE(au.encrypted_password, '') AS password_hash,
+      COALESCE(p.full_name, (au.raw_user_meta_data->>'full_name')::TEXT) AS full_name,
+      p.phone,
+      p.company,
+      p.license_number,
+      COALESCE(p.user_type, 'internal')   AS user_type,
+      COALESCE(primary_role.role, 'other'::app_role) AS role,
+      CASE
+        WHEN au.banned_until IS NOT NULL AND au.banned_until > NOW() THEN FALSE
+        WHEN au.deleted_at IS NOT NULL THEN FALSE
+        ELSE TRUE
+      END AS is_active,
+      au.last_sign_in_at,
+      COALESCE(au.created_at, NOW())      AS created_at,
+      COALESCE(au.updated_at, NOW())      AS updated_at
+    FROM auth.users au
+    LEFT JOIN public.profiles p ON p.user_id = au.id
+    LEFT JOIN LATERAL (
+      SELECT role FROM public.user_roles
+      WHERE user_id = au.id
+      ORDER BY
+        CASE role
+          WHEN 'admin'    THEN 1
+          WHEN 'csr'      THEN 2
+          WHEN 'borrower' THEN 3
+          WHEN 'broker'   THEN 4
+          WHEN 'lender'   THEN 5
+          ELSE                 6
+        END
+      LIMIT 1
+    ) primary_role ON TRUE
+    ON CONFLICT (id) DO NOTHING;
+  ELSE
+    INSERT INTO public.users (
+      id, email, password_hash, full_name, phone, company,
+      license_number, user_type, role, is_active, last_sign_in_at, created_at, updated_at
+    )
+    SELECT
+      au.id,
+      au.email,
+      COALESCE(au.encrypted_password, '') AS password_hash,
+      (au.raw_user_meta_data->>'full_name')::TEXT AS full_name,
+      NULL::TEXT,
+      NULL::TEXT,
+      NULL::TEXT,
+      'internal' AS user_type,
+      'other'::app_role AS role,
+      CASE
+        WHEN au.banned_until IS NOT NULL AND au.banned_until > NOW() THEN FALSE
+        WHEN au.deleted_at IS NOT NULL THEN FALSE
+        ELSE TRUE
+      END AS is_active,
+      au.last_sign_in_at,
+      COALESCE(au.created_at, NOW())      AS created_at,
+      COALESCE(au.updated_at, NOW())      AS updated_at
+    FROM auth.users au
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
 
 -- ─── 4a. contacts.created_by ─────────────────────────────────────────────────
 
@@ -152,12 +184,17 @@ ALTER TABLE public.templates
 
 -- ─── 5. Drop obsolete tables ──────────────────────────────────────────────────
 
--- Remove profile FK first so drop cascades cleanly
-ALTER TABLE public.profiles    DROP CONSTRAINT IF EXISTS profiles_user_id_fkey;
-ALTER TABLE public.user_roles  DROP CONSTRAINT IF EXISTS user_roles_user_id_fkey;
-
-DROP TABLE IF EXISTS public.profiles;
-DROP TABLE IF EXISTS public.user_roles;
+DO $$
+BEGIN
+  IF to_regclass('public.profiles') IS NOT NULL THEN
+    ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_user_id_fkey;
+    DROP TABLE public.profiles;
+  END IF;
+  IF to_regclass('public.user_roles') IS NOT NULL THEN
+    ALTER TABLE public.user_roles DROP CONSTRAINT IF EXISTS user_roles_user_id_fkey;
+    DROP TABLE public.user_roles;
+  END IF;
+END $$;
 
 -- ─── 6. Drop RLS policies ─────────────────────────────────────────────────────
 -- All authorization is now handled at the NestJS API layer.
@@ -210,14 +247,15 @@ DROP POLICY IF EXISTS "Users can view their own level"          ON public.user_p
 DROP POLICY IF EXISTS "Admins can manage permission levels"     ON public.user_permission_levels;
 
 -- ─── 7. Drop auth helper functions ───────────────────────────────────────────
+-- CASCADE removes dependent storage.objects policies (NestJS handles access now).
 
-DROP FUNCTION IF EXISTS public.has_role(UUID, TEXT);
-DROP FUNCTION IF EXISTS public.has_role(UUID, app_role);
-DROP FUNCTION IF EXISTS public.get_user_role(UUID);
-DROP FUNCTION IF EXISTS public.has_deal_access(UUID, UUID);
-DROP FUNCTION IF EXISTS public.can_view_field(UUID, UUID);
-DROP FUNCTION IF EXISTS public.can_edit_field(UUID, UUID);
-DROP FUNCTION IF EXISTS public.is_external_role(UUID);
+DROP FUNCTION IF EXISTS public.has_role(UUID, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.has_role(UUID, app_role) CASCADE;
+DROP FUNCTION IF EXISTS public.get_user_role(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.has_deal_access(UUID, UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.can_view_field(UUID, UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.can_edit_field(UUID, UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.is_external_role(UUID) CASCADE;
 
 -- ─── 8. Drop Supabase auth triggers ──────────────────────────────────────────
 

@@ -30,6 +30,10 @@ export class AdminRepository {
     return this.prisma.field_dictionary.findMany({ where: { id: { in: ids } } });
   }
 
+  findFieldsByFieldKeys(keys: string[]) {
+    return this.prisma.field_dictionary.findMany({ where: { field_key: { in: keys } } });
+  }
+
   findFieldsBySections(sections: string[]) {
     return this.prisma.field_dictionary.findMany({
       where: { section: { in: sections as $Enums.field_section[] } },
@@ -59,7 +63,36 @@ export class AdminRepository {
   // ─── Users (consolidated: was profiles + user_roles) ─────────────────────────
 
   findAllUsers() {
-    return this.prisma.users.findMany({ orderBy: { email: 'asc' } });
+    return this.prisma.users.findMany({
+      orderBy: { email: 'asc' },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        phone: true,
+        company: true,
+        license_number: true,
+        user_type: true,
+        role: true,
+        is_active: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+  }
+
+  findInternalUsers() {
+    return this.prisma.users.findMany({
+      where: { user_type: 'internal' },
+      orderBy: { email: 'asc' },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        created_at: true,
+      },
+    });
   }
 
   async findUsersPaginated(options?: {

@@ -53,6 +53,13 @@ export class LookupFieldIdsDto {
   ids: string[];
 }
 
+/** Batch field_dictionary lookup by field_key (deal data save fallback). */
+export class LookupFieldKeysDto {
+  @IsArray()
+  @IsString({ each: true })
+  field_keys: string[];
+}
+
 export class UpdateProfileDto {
   @IsString() @IsOptional() full_name?: string;
   @IsString() @IsOptional() email?: string;

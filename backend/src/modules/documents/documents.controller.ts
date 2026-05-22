@@ -63,35 +63,7 @@ export class DocumentsController {
     return this.service.listFieldMapsByTemplateIds(ids);
   }
 
-  @Get('packets/templates/batch')
-  listPacketTemplatesBatch(@Query('packetIds') packetIds: string) {
-    const ids = packetIds.split(',').map((s) => s.trim()).filter(Boolean);
-    return this.service.listPacketTemplatesByPacketIds(ids);
-  }
-
-  @Delete('packet-templates/:rowId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  deletePacketTemplateRow(@Param('rowId') rowId: string) {
-    return this.service.deletePacketTemplateByRowId(rowId);
-  }
-
-  @Get('templates/:id')
-  getTemplate(@Param('id') id: string) {
-    return this.service.getTemplate(id);
-  }
-
-  @Patch('templates/:id')
-  updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
-    return this.service.updateTemplate(id, dto);
-  }
-
-  @Delete('templates/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  deleteTemplate(@Param('id') id: string) {
-    return this.service.deleteTemplate(id);
-  }
-
-  // ─── Template Field Maps ─────────────────────────────────────────────────────
+  // ─── Template Field Maps (register before templates/:id) ─────────────────────
 
   @Get('templates/:id/field-maps')
   listFieldMaps(@Param('id') id: string) {
@@ -118,6 +90,34 @@ export class DocumentsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteAllFieldMaps(@Param('id') id: string) {
     return this.service.deleteAllFieldMaps(id);
+  }
+
+  @Get('packets/templates/batch')
+  listPacketTemplatesBatch(@Query('packetIds') packetIds: string) {
+    const ids = packetIds.split(',').map((s) => s.trim()).filter(Boolean);
+    return this.service.listPacketTemplatesByPacketIds(ids);
+  }
+
+  @Delete('packet-templates/:rowId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deletePacketTemplateRow(@Param('rowId') rowId: string) {
+    return this.service.deletePacketTemplateByRowId(rowId);
+  }
+
+  @Get('templates/:id')
+  getTemplate(@Param('id') id: string) {
+    return this.service.getTemplate(id);
+  }
+
+  @Patch('templates/:id')
+  updateTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
+    return this.service.updateTemplate(id, dto);
+  }
+
+  @Delete('templates/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteTemplate(@Param('id') id: string) {
+    return this.service.deleteTemplate(id);
   }
 
   @Delete('templates/:id/packet-templates')

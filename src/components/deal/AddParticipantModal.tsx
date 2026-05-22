@@ -31,8 +31,7 @@ import {
 } from '@/services/deals/participants.service';
 import {
   fetchSectionValueByDealAndSection,
-  updateSectionValueById,
-  insertSectionValues,
+  upsertParticipantsSectionValues,
 } from '@/services/deals/section-values.service';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -274,15 +273,10 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
         const capacityKey = `participant_${contactId}_capacity`;
         const existingSection = await fetchSectionValueByDealAndSection(dealId, 'participants');
         const existingValues = (existingSection?.field_values as Record<string, unknown>) || {};
-        const updatedValues = { ...existingValues, [capacityKey]: resolvedCapacity };
-
-        if (existingSection?.id) {
-          await updateSectionValueById(existingSection.id, { field_values: updatedValues });
-        } else {
-          await insertSectionValues([
-            { deal_id: dealId, section: 'participants', field_values: updatedValues },
-          ]);
-        }
+        await upsertParticipantsSectionValues(dealId, {
+          ...existingValues,
+          [capacityKey]: resolvedCapacity,
+        });
       }
 
 

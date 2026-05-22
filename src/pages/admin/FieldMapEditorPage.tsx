@@ -18,6 +18,7 @@ import {
   insertTemplateFieldMap,
   updateTemplateFieldMap,
   deleteTemplateFieldMap,
+  clearTemplateFieldMapsInflight,
 } from '@/services/documents/template-field-maps.service';
 import { 
   Search, 
@@ -91,9 +92,6 @@ export const FieldMapEditorPage: React.FC = () => {
   const fetchFieldMaps = useCallback(async (templateId: string) => {
     if (!templateId) return;
 
-    const inflight = fieldMapsLoadInflight.get(templateId);
-    if (inflight) return inflight;
-
     const job = (async () => {
       try {
         setMapsLoading(true);
@@ -101,13 +99,30 @@ export const FieldMapEditorPage: React.FC = () => {
         if (selectedTemplateRef.current !== templateId) return;
 
         setFieldMaps(
-          (data || []).map((fm: Record<string, unknown>) => ({
-            ...fm,
-            field: fm.field_dictionary,
-          })) as TemplateFieldMap[],
+          (data || []).map((fm: Record<string, unknown>) => {
+            const dict = fm.field_dictionary as FieldDictionary | null | undefined;
+            return {
+              id: fm.id as string,
+              template_id: fm.template_id as string,
+              field_dictionary_id: fm.field_dictionary_id as string,
+              required_flag: Boolean(fm.required_flag),
+              transform_rule: (fm.transform_rule as string | null) ?? null,
+              display_order: Number(fm.display_order ?? 0),
+              field: dict ?? undefined,
+            };
+          }),
         );
       } catch (error) {
         console.error('Error fetching field maps:', error);
+        if (selectedTemplateRef.current === templateId) {
+          setFieldMaps([]);
+          toast({
+            title: 'Error',
+            description:
+              error instanceof Error ? error.message : 'Failed to load field maps',
+            variant: 'destructive',
+          });
+        }
       } finally {
         if (selectedTemplateRef.current === templateId) {
           setMapsLoading(false);
@@ -118,12 +133,15 @@ export const FieldMapEditorPage: React.FC = () => {
 
     fieldMapsLoadInflight.set(templateId, job);
     return job;
-  }, []);
+  }, [toast]);
 
   const handleTemplateChange = useCallback((templateId: string) => {
+    fieldMapsLoadInflight.clear();
+    clearTemplateFieldMapsInflight();
     selectedTemplateRef.current = templateId;
     setSelectedTemplateId(templateId);
     setViewMode('mapped');
+    setFieldMaps([]);
   }, []);
 
   useEffect(() => {
@@ -309,7 +327,7 @@ export const FieldMapEditorPage: React.FC = () => {
             </div>
           )}
 
-          {fieldMaps.length === 0 ? (
+          {mapsLoading ? null : fieldMaps.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No fields mapped yet</p>

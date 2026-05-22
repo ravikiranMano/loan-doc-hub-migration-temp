@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getUser } from '@/services/supabase/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { updateDeal } from '@/services/deals/deals.service';
 import {
   fetchSectionValuesByDeal,
@@ -305,6 +305,7 @@ function clearSessionCache(dealId: string): void {
 }
 
 export function useDealFields(dealId: string, packetId: string | null, active: boolean = true): UseDealFieldsReturn {
+  const { user } = useAuth();
   const { toast } = useToast();
   const cache = useFieldDictionaryCacheOptional();
   const [resolvedFields, setResolvedFields] = useState<ResolvedFieldSet | null>(null);
@@ -689,8 +690,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
     // Log deletion to event journal
     if (deletedFields.length > 0) {
       try {
-        const { data: { user: currentUser } } = await getUser();
-        if (currentUser) {
+        if (user?.id) {
           // Determine section from prefix (e.g., "borrower1" -> "borrower", "lender2" -> "lender")
           const sectionMatch = prefix.match(/^([a-z_]+)\d*$/);
           const section = sectionMatch ? sectionMatch[1] : 'unknown';
@@ -698,7 +698,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
             fieldLabel: `${prefix} (Bulk Delete)`,
             oldValue: `${deletedFields.length} field(s)`,
             newValue: '(deleted)',
-          }], currentUser.id);
+          }], user.id);
         }
       } catch (err) {
         console.error('Error logging deletion to event journal:', err);
@@ -750,6 +750,8 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
 
         if (modified) {
           await updateSectionValueById(sv.id, {
+            deal_id: dealId,
+            section: sv.section,
             field_values: JSON.parse(JSON.stringify(existingFieldValues)),
             updated_at: new Date().toISOString(),
             version: (sv.version || 0) + 1,
@@ -811,9 +813,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
     try {
       setSaving(true);
 
-      // Get current user
-      const { data: { user } } = await getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user?.id) throw new Error('Not authenticated');
 
       // Compute calculated fields before saving using the latest in-memory values
       const latestValues = valuesRef.current;
@@ -933,7 +933,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
             value_date: null,
             value_json: null,
             updated_at: new Date().toISOString(),
-            updated_by: user.id,
+            updated_by: user!.id,
           };
 
           switch (dataType) {
@@ -1003,6 +1003,8 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
 
             if (modified) {
               await updateSectionValueById(existing.id, {
+                deal_id: dealId,
+                section: sectionKey,
                 field_values: JSON.parse(JSON.stringify(existingFieldValues)),
                 updated_at: new Date().toISOString(),
                 version: (existing.version || 0) + 1,
@@ -1117,11 +1119,10 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
           });
         }
 
-        const { data: { user: currentUser } } = await getUser();
-        if (currentUser) {
+        if (user?.id) {
           for (const [section, changes] of Object.entries(changedBySection)) {
             if (changes.length > 0) {
-              await logFieldChanges(dealId, section, changes, currentUser.id);
+              await logFieldChanges(dealId, section, changes, user.id);
             }
           }
         }
@@ -1153,7 +1154,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
     } finally {
       setSaving(false);
     }
-  }, [dealId, values, fieldDataTypes, fieldIdMap, resolvedFields, computeCalculatedFields, deletedPrefixes, toast]);
+  }, [dealId, user, values, fieldDataTypes, fieldIdMap, resolvedFields, calculatedFieldsList, deletedPrefixes, toast]);
 
   const getMissingRequiredFields = useCallback((section?: FieldSection): ResolvedField[] => {
     if (!resolvedFields) return [];

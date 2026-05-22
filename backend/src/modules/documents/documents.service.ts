@@ -8,6 +8,7 @@ import {
 import { DocumentsRepository } from './documents.repository';
 import { DocumentDataService } from './document-data.service';
 import { DocxtemplaterService } from './docxtemplater.service';
+import { toTemplateFieldMapCompat } from './template-field-map.mapper';
 import {
   CreateTemplateDto,
   UpdateTemplateDto,
@@ -105,16 +106,22 @@ export class DocumentsService {
 
   // ─── Template Field Maps ─────────────────────────────────────────────────────
 
-  listFieldMaps(templateId: string) {
-    return this.repo.findFieldMaps(templateId);
+  async listFieldMaps(templateId: string) {
+    const rows = await this.repo.findFieldMaps(templateId);
+    return rows.map(toTemplateFieldMapCompat);
   }
 
-  createFieldMap(templateId: string, dto: CreateTemplateFieldMapDto) {
-    return this.repo.createFieldMap(templateId, dto);
+  async createFieldMap(templateId: string, dto: CreateTemplateFieldMapDto) {
+    const row = await this.repo.createFieldMap(templateId, dto);
+    const withDict = await this.repo.findFieldMapById(row.id);
+    return withDict ? toTemplateFieldMapCompat(withDict) : toTemplateFieldMapCompat(row);
   }
 
   async updateFieldMap(id: string, dto: UpdateTemplateFieldMapDto) {
-    return this.repo.updateFieldMap(id, dto);
+    await this.repo.updateFieldMap(id, dto);
+    const row = await this.repo.findFieldMapById(id);
+    if (!row) throw new NotFoundException(`Field map '${id}' not found`);
+    return toTemplateFieldMapCompat(row);
   }
 
   deleteFieldMap(id: string) {

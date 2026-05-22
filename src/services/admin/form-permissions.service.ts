@@ -11,9 +11,13 @@ export async function listFormPermissions() {
   return data || [];
 }
 
+function adminUserPath(userId: string) {
+  return `/admin/users/${encodeURIComponent(userId)}`;
+}
+
 export async function listUserFormPermissions(userId: string) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown[]>(`/admin/users/${userId}/form-permissions`);
+    return apiClient.get<unknown[]>(`${adminUserPath(userId)}/form-permissions`);
   }
   // — Supabase (keep unchanged) —
   const { data, error } = await supabase
@@ -26,13 +30,12 @@ export async function listUserFormPermissions(userId: string) {
 
 export async function fetchUserRoleForPermissions(userId: string) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<{ role?: string } | null>(`/admin/users/${userId}/role`);
+    return apiClient.get<{ role?: string } | null>(`${adminUserPath(userId)}/role`);
   }
-  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
-    .from('user_roles')
+    .from('users')
     .select('role')
-    .eq('user_id', userId)
+    .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -40,30 +43,28 @@ export async function fetchUserRoleForPermissions(userId: string) {
 
 export async function fetchProfileForPermissions(userId: string) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown>(`/admin/users/${userId}/profile`);
+    return apiClient.get<unknown>(`${adminUserPath(userId)}/profile`);
   }
-  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
-    .from('profiles')
-    .select('user_id, full_name, email')
-    .eq('user_id', userId)
+    .from('users')
+    .select('id, full_name, email')
+    .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
-  return data;
+  return data ? { ...data, user_id: data.id } : data;
 }
 
 export async function deleteUserFormPermissions(userId: string, formIds: string[]) {
   if (isNodeApiEnabled('admin')) {
     return apiClient.delete(
-      `/admin/users/${userId}/form-permissions?formIds=${formIds.join(',')}`
+      `${adminUserPath(userId)}/form-permissions?formIds=${encodeURIComponent(formIds.join(','))}`,
     );
   }
-  // — Supabase (keep unchanged) —
   const { error } = await supabase
     .from('user_form_permissions')
     .delete()
     .eq('user_id', userId)
-    .in('form_id', formIds);
+    .in('form_key', formIds);
   if (error) throw error;
 }
 
@@ -71,7 +72,7 @@ export async function insertUserFormPermissions(rows: Record<string, unknown>[])
   if (isNodeApiEnabled('admin') && rows.length > 0) {
     const userId = rows[0]['user_id'] as string;
     const body = rows.map(({ form_key, access_mode }) => ({ form_key, access_mode }));
-    return apiClient.post(`/admin/users/${userId}/form-permissions`, body);
+    return apiClient.post(`${adminUserPath(userId)}/form-permissions`, body);
   }
   // — Supabase (keep unchanged) —
   const { error } = await supabase.from('user_form_permissions').insert(rows);
@@ -84,7 +85,10 @@ export async function updateUserFormPermission(
   updates: Record<string, unknown>
 ) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.patch(`/admin/users/${userId}/form-permissions/${formId}`, updates);
+    return apiClient.patch(
+      `${adminUserPath(userId)}/form-permissions/${encodeURIComponent(formId)}`,
+      updates,
+    );
   }
   // — Supabase (keep unchanged) —
   const { error } = await supabase
@@ -120,9 +124,8 @@ export async function fetchFormPermissionsByRole(role: string) {
 
 export async function fetchUserFormPermissionsSummary(userId: string) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown[]>(`/admin/users/${userId}/form-permissions`);
+    return apiClient.get<unknown[]>(`${adminUserPath(userId)}/form-permissions`);
   }
-  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('user_form_permissions')
     .select('form_key, access_mode')
@@ -133,9 +136,8 @@ export async function fetchUserFormPermissionsSummary(userId: string) {
 
 export async function fetchUserFormPermissionsOrdered(userId: string) {
   if (isNodeApiEnabled('admin')) {
-    return apiClient.get<unknown[]>(`/admin/users/${userId}/form-permissions`);
+    return apiClient.get<unknown[]>(`${adminUserPath(userId)}/form-permissions`);
   }
-  // — Supabase (keep unchanged) —
   const { data, error } = await supabase
     .from('user_form_permissions')
     .select('id, form_key, access_mode')

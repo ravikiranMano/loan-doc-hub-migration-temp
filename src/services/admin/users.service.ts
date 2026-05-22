@@ -1,6 +1,67 @@
 import { supabase } from '@/services/supabase/client';
 import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 
+export type AdminManagementUser = {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  role: 'admin' | 'csr' | null;
+  created_at: string;
+  permission_level: string | null;
+};
+
+/** Map public.users row to legacy profile shape. */
+function mapUserRow(row: {
+  id: string;
+  email?: string | null;
+  full_name?: string | null;
+  created_at?: string | null;
+  user_id?: string;
+}) {
+  return {
+    user_id: row.user_id ?? row.id,
+    email: row.email ?? null,
+    full_name: row.full_name ?? null,
+    created_at: row.created_at ?? '',
+  };
+}
+
+export async function listUsersForManagement(): Promise<AdminManagementUser[]> {
+  if (isNodeApiEnabled('admin')) {
+    return apiClient.get<AdminManagementUser[]>('/admin/users/management-list');
+  }
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, email, full_name, role, created_at')
+    .eq('user_type', 'internal')
+    .order('email');
+  if (usersError) throw usersError;
+  if (!users?.length) return [];
+
+  const userIds = users.map((u) => u.id);
+  const { data: permLevels, error: permError } = await supabase
+    .from('user_permission_levels')
+    .select('user_id, permission_level')
+    .in('user_id', userIds);
+  if (permError) throw permError;
+
+  const permMap = new Map(
+    (permLevels || []).map((p) => [p.user_id, p.permission_level]),
+  );
+
+  return users.map((u) => ({
+    id: u.id,
+    user_id: u.id,
+    email: u.email ?? '',
+    full_name: u.full_name,
+    created_at: u.created_at,
+    role:
+      u.role === 'admin' || u.role === 'csr' ? (u.role as 'admin' | 'csr') : null,
+    permission_level: permMap.get(u.id) ?? null,
+  }));
+}
+
 export async function assignUserRoleAndPermission(params: {
   p_user_id: string;
   p_role: 'admin' | 'csr';
@@ -13,41 +74,73 @@ export async function assignUserRoleAndPermission(params: {
     });
     return;
   }
-  const { error } = await supabase.rpc('assign_user_role_and_permission', params);
-  if (error) throw error;
+  const { error: roleError } = await supabase
+    .from('users')
+    .update({ role: params.p_role })
+    .eq('id', params.p_user_id);
+  if (roleError) throw roleError;
+
+  if (params.p_role === 'csr') {
+    const { error: permError } = await supabase.from('user_permission_levels').upsert(
+      {
+        user_id: params.p_user_id,
+        permission_level: params.p_permission_level,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' },
+    );
+    if (permError) throw permError;
+  } else {
+    const { error: delError } = await supabase
+      .from('user_permission_levels')
+      .delete()
+      .eq('user_id', params.p_user_id);
+    if (delError) throw delError;
+  }
 }
 
 export async function listProfilesForAdmin() {
   if (isNodeApiEnabled('admin')) {
-    const users = await apiClient<
-      Array<{
-        user_id?: string;
-        id?: string;
-        email: string | null;
-        full_name: string | null;
-        created_at: string;
-        role?: string | null;
-      }>
-    >('/admin/users');
-    return users.map(({ user_id, id, email, full_name, created_at }) => ({
-      user_id: user_id ?? id ?? '',
-      email,
-      full_name,
-      created_at,
-    }));
+    const result = await apiClient<
+      | Array<{
+          user_id?: string;
+          id?: string;
+          email: string | null;
+          full_name: string | null;
+          created_at: string;
+        }>
+      | { data: Array<{
+          user_id?: string;
+          id?: string;
+          email: string | null;
+          full_name: string | null;
+          created_at: string;
+        }>; count: number }
+    >('/admin/users?userType=internal');
+    const rows = Array.isArray(result) ? result : (result.data ?? []);
+    return rows.map(({ user_id, id, email, full_name, created_at }) =>
+      mapUserRow({ user_id: user_id ?? id ?? '', id: user_id ?? id ?? '', email, full_name, created_at }),
+    );
   }
-  const { data, error } = await supabase.from('profiles').select('*').order('email');
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, full_name, created_at')
+    .eq('user_type', 'internal')
+    .order('email');
   if (error) throw error;
-  return data || [];
+  return (data || []).map((row) => mapUserRow({ ...row, user_id: row.id }));
 }
 
 export async function listUserRoles() {
   if (isNodeApiEnabled('admin')) {
     return apiClient.get<Array<{ user_id: string; role: string }>>('/admin/user-roles');
   }
-  const { data, error } = await supabase.from('user_roles').select('*');
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, role')
+    .eq('user_type', 'internal');
   if (error) throw error;
-  return data || [];
+  return (data || []).map((u) => ({ user_id: u.id, role: u.role }));
 }
 
 export async function fetchUserRole(userId: string) {
@@ -58,12 +151,12 @@ export async function fetchUserRole(userId: string) {
     return result?.role ?? null;
   }
   const { data, error } = await supabase
-    .from('user_roles')
+    .from('users')
     .select('role')
-    .eq('user_id', userId)
-    .single();
+    .eq('id', userId)
+    .maybeSingle();
   if (error) return null;
-  return data?.role;
+  return data?.role ?? null;
 }
 
 export async function listUserPermissionLevels() {
@@ -84,11 +177,11 @@ export async function listRolesForUserIds(userIds: string[]) {
     );
   }
   const { data, error } = await supabase
-    .from('user_roles')
-    .select('user_id, role')
-    .in('user_id', userIds);
+    .from('users')
+    .select('id, role')
+    .in('id', userIds);
   if (error) throw error;
-  return data || [];
+  return (data || []).map((u) => ({ user_id: u.id, role: u.role }));
 }
 
 export async function listCsrUsersForPermissions() {
@@ -102,21 +195,14 @@ export async function listCsrUsersForPermissions() {
       }>
     >('/admin/csr-users');
   }
-  const { data: roleData, error: roleError } = await supabase
-    .from('user_roles')
-    .select('user_id')
+  const { data: csrUsers, error: usersError } = await supabase
+    .from('users')
+    .select('id, email, full_name')
     .eq('role', 'csr');
-  if (roleError) throw roleError;
-  if (!roleData?.length) return [];
+  if (usersError) throw usersError;
+  if (!csrUsers?.length) return [];
 
-  const userIds = roleData.map((r) => r.user_id);
-
-  const { data: profileData, error: profileError } = await supabase
-    .from('profiles')
-    .select('user_id, email, full_name')
-    .in('user_id', userIds);
-  if (profileError) throw profileError;
-
+  const userIds = csrUsers.map((u) => u.id);
   const { data: permLevelData, error: permError } = await supabase
     .from('user_permission_levels')
     .select('user_id, permission_level')
@@ -127,13 +213,10 @@ export async function listCsrUsersForPermissions() {
     (permLevelData || []).map((p) => [p.user_id, p.permission_level]),
   );
 
-  return userIds.map((uid) => {
-    const profile = (profileData || []).find((p) => p.user_id === uid);
-    return {
-      user_id: uid,
-      email: profile?.email || null,
-      full_name: profile?.full_name || null,
-      permission_level: permMap.get(uid) || 'full',
-    };
-  });
+  return csrUsers.map((u) => ({
+    user_id: u.id,
+    email: u.email || null,
+    full_name: u.full_name || null,
+    permission_level: permMap.get(u.id) || 'full',
+  }));
 }

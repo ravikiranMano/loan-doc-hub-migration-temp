@@ -42,6 +42,7 @@ const PermissionManagementPage: React.FC = () => {
     userPermissions,
     loading,
     permLoading,
+    csrLoadError,
     fetchUserPermissions,
     setSelectedUserId: trackSelectedUser,
     updatePermission,
@@ -118,7 +119,9 @@ const PermissionManagementPage: React.FC = () => {
           </SelectContent>
         </Select>
         {csrUsers.length === 0 && !loading && (
-          <span className="text-sm text-muted-foreground">No CSR users found</span>
+          <span className="text-sm text-muted-foreground">
+            {csrLoadError ?? 'No CSR users found'}
+          </span>
         )}
       </div>
 
@@ -170,7 +173,7 @@ const PermissionManagementPage: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-                {userPermissions.length === 0 && (
+                {!permLoading && userPermissions.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                       No permissions configured

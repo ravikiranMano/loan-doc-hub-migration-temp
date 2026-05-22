@@ -6,11 +6,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["public", "storage"]
+  schemas  = ["public"]
 }
 
-// ─── Public Schema ────────────────────────────────────────────────────────────
-
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model activity_log {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   deal_id        String   @db.Uuid
@@ -25,6 +24,7 @@ model activity_log {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model borrower_attachments {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   contact_id     String   @db.Uuid
@@ -61,7 +61,7 @@ model contacts {
   created_at           DateTime?              @default(now()) @db.Timestamptz(6)
   updated_at           DateTime?              @default(now()) @db.Timestamptz(6)
   borrower_attachments borrower_attachments[]
-  users                users                  @relation(fields: [created_by], references: [id], onUpdate: NoAction)
+  users                users                  @relation(fields: [created_by], references: [id], onDelete: SetNull, onUpdate: NoAction)
   deal_participants    deal_participants[]
 
   @@index([contact_type], map: "idx_contacts_contact_type")
@@ -69,6 +69,7 @@ model contacts {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model conversation_log_types {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   label         String   @unique
@@ -104,7 +105,7 @@ model deal_field_values {
   updated_by          String?   @db.Uuid
   field_dictionary_id String?   @db.Uuid
   deals               deals     @relation(fields: [deal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users               users?    @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?    @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
 
   @@unique([deal_id, field_dictionary_id])
   @@index([deal_id], map: "idx_deal_field_values_deal_id")
@@ -113,6 +114,7 @@ model deal_field_values {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model deal_participants {
   id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   deal_id        String                    @db.Uuid
@@ -177,7 +179,7 @@ model deals {
   deal_field_values   deal_field_values[]
   deal_participants   deal_participants[]
   deal_section_values deal_section_values[]
-  users               users                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users                 @relation(fields: [created_by], references: [id], onDelete: SetNull, onUpdate: NoAction)
   packets             packets?              @relation(fields: [packet_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   event_journal       event_journal[]
   generated_documents generated_documents[]
@@ -207,6 +209,8 @@ model event_journal {
   @@schema("public")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model field_dictionary {
   id                       String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   field_key                String                @unique
@@ -235,6 +239,7 @@ model field_dictionary {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model field_key_migrations {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   old_key     String
@@ -303,6 +308,7 @@ model generated_documents {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model generation_jobs {
   id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   deal_id       String            @db.Uuid
@@ -325,6 +331,7 @@ model generation_jobs {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model loan_history {
   id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   deal_id                 String                 @db.Uuid
@@ -358,6 +365,7 @@ model loan_history {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model loan_history_lenders {
   id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   loan_history_id   String       @db.Uuid
@@ -374,6 +382,7 @@ model loan_history_lenders {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model magic_links {
   id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   deal_participant_id String            @db.Uuid
@@ -392,6 +401,7 @@ model magic_links {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model merge_tag_aliases {
   id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tag_name     String
@@ -411,6 +421,7 @@ model merge_tag_aliases {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model messages {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sender_id     String   @db.Uuid
@@ -428,6 +439,7 @@ model messages {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model packet_templates {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   packet_id     String    @db.Uuid
@@ -458,7 +470,7 @@ model packets {
   generated_documents generated_documents[]
   generation_jobs     generation_jobs[]
   packet_templates    packet_templates[]
-  users               users?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?                @relation(fields: [created_by], references: [id], onUpdate: NoAction)
 
   @@unique([name, state, product_type])
   @@index([state, product_type], map: "idx_packets_state_product")
@@ -466,19 +478,19 @@ model packets {
 }
 
 model refresh_tokens {
-  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id        String          @db.Uuid
-  token_hash     String          @unique
-  expires_at     DateTime        @db.Timestamptz(6)
-  created_at     DateTime        @default(now()) @db.Timestamptz(6)
-  revoked_at     DateTime?       @db.Timestamptz(6)
-  replaced_by_id String?         @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String    @db.Uuid
+  token_hash     String    @unique
+  expires_at     DateTime  @db.Timestamptz(6)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_at     DateTime? @db.Timestamptz(6)
+  replaced_by_id String?   @db.Uuid
   user_agent     String?
   ip_address     String?
-  users          users           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([user_id], map: "idx_refresh_tokens_user_id")
   @@index([expires_at], map: "idx_refresh_tokens_expires_at")
+  @@index([user_id], map: "idx_refresh_tokens_user_id")
   @@schema("public")
 }
 
@@ -494,6 +506,7 @@ model system_settings {
   @@schema("public")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model template_field_maps {
   id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   template_id         String            @db.Uuid
@@ -509,6 +522,7 @@ model template_field_maps {
   @@schema("public")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model templates {
   id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                String
@@ -526,7 +540,7 @@ model templates {
   generation_jobs     generation_jobs[]
   packet_templates    packet_templates[]
   template_field_maps template_field_maps[]
-  users               users?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?                @relation(fields: [created_by], references: [id], onUpdate: NoAction)
 
   @@unique([name, state, product_type, version], map: "idx_templates_version_unique")
   @@unique([name, state, product_type, version])
@@ -546,6 +560,7 @@ model user_form_permissions {
   @@schema("public")
 }
 
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model user_permission_levels {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id          String   @unique @db.Uuid
@@ -558,160 +573,33 @@ model user_permission_levels {
 }
 
 model users {
-  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email           String           @unique
-  password_hash   String
-  full_name       String?
-  phone           String?
-  company         String?
-  license_number  String?
-  user_type       String           @default("internal")
-  role            app_role         @default(other)
-  is_active       Boolean          @default(true)
-  last_sign_in_at DateTime?        @db.Timestamptz(6)
-  created_at      DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime         @default(now()) @db.Timestamptz(6)
-
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email             String              @unique
+  password_hash     String              @default("")
+  full_name         String?
+  phone             String?
+  company           String?
+  license_number    String?
+  user_type         String              @default("internal")
+  role              app_role            @default(other)
+  is_active         Boolean             @default(true)
+  last_sign_in_at   DateTime?           @db.Timestamptz(6)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
   contacts          contacts[]
   deal_field_values deal_field_values[]
-  deal_participants  deal_participants[]
+  deal_participants deal_participants[]
   deals             deals[]
   packets           packets[]
-  templates         templates[]
   refresh_tokens    refresh_tokens[]
+  templates         templates[]
 
   @@index([email], map: "idx_users_email")
+  @@index([is_active], map: "idx_users_is_active")
   @@index([role], map: "idx_users_role")
   @@index([user_type], map: "idx_users_user_type")
-  @@index([is_active], map: "idx_users_is_active")
   @@schema("public")
 }
-
-// ─── Storage Schema ───────────────────────────────────────────────────────────
-
-model buckets {
-  id                         String                       @id
-  name                       String                       @unique(map: "bname")
-  owner                      String?                      @db.Uuid
-  created_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
-  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
-  public                     Boolean?                     @default(false)
-  avif_autodetection         Boolean?                     @default(false)
-  file_size_limit            BigInt?
-  allowed_mime_types         String[]
-  owner_id                   String?
-  type                       buckettype                   @default(STANDARD)
-  objects                    objects[]
-  s3_multipart_uploads       s3_multipart_uploads[]
-  s3_multipart_uploads_parts s3_multipart_uploads_parts[]
-
-  @@schema("storage")
-}
-
-model buckets_analytics {
-  name       String     @unique(map: "buckets_analytics_unique_name_idx", where: raw("(deleted_at IS NULL)"))
-  type       buckettype @default(ANALYTICS)
-  format     String     @default("ICEBERG")
-  created_at DateTime   @default(now()) @db.Timestamptz(6)
-  updated_at DateTime   @default(now()) @db.Timestamptz(6)
-  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  deleted_at DateTime?  @db.Timestamptz(6)
-
-  @@schema("storage")
-}
-
-model buckets_vectors {
-  id             String           @id
-  type           buckettype       @default(VECTOR)
-  created_at     DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime         @default(now()) @db.Timestamptz(6)
-  vector_indexes vector_indexes[]
-
-  @@schema("storage")
-}
-
-model migrations {
-  id          Int       @id
-  name        String    @unique @db.VarChar(100)
-  hash        String    @db.VarChar(40)
-  executed_at DateTime? @default(now()) @db.Timestamp(6)
-
-  @@schema("storage")
-}
-
-model objects {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bucket_id        String?
-  name             String?
-  owner            String?   @db.Uuid
-  created_at       DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
-  last_accessed_at DateTime? @default(now()) @db.Timestamptz(6)
-  metadata         Json?
-  path_tokens      String[]  @default(dbgenerated("string_to_array(name, '/'::text)"))
-  version          String?
-  owner_id         String?
-  user_metadata    Json?
-  buckets          buckets?  @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "objects_bucketId_fkey")
-
-  @@unique([bucket_id, name], map: "bucketid_objname")
-  @@index([bucket_id, name], map: "idx_objects_bucket_id_name")
-  @@index([name], map: "name_prefix_search")
-  @@schema("storage")
-}
-
-model s3_multipart_uploads {
-  id                         String                       @id
-  in_progress_size           BigInt                       @default(0)
-  upload_signature           String
-  bucket_id                  String
-  key                        String
-  version                    String
-  owner_id                   String?
-  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
-  user_metadata              Json?
-  metadata                   Json?
-  buckets                    buckets                      @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  s3_multipart_uploads_parts s3_multipart_uploads_parts[]
-
-  @@index([bucket_id, key, created_at], map: "idx_multipart_uploads_list")
-  @@schema("storage")
-}
-
-model s3_multipart_uploads_parts {
-  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  upload_id            String
-  size                 BigInt               @default(0)
-  part_number          Int
-  bucket_id            String
-  key                  String
-  etag                 String
-  owner_id             String?
-  version              String
-  created_at           DateTime             @default(now()) @db.Timestamptz(6)
-  buckets              buckets              @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  s3_multipart_uploads s3_multipart_uploads @relation(fields: [upload_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@schema("storage")
-}
-
-model vector_indexes {
-  id                     String          @id @default(dbgenerated("gen_random_uuid()"))
-  name                   String
-  bucket_id              String
-  data_type              String
-  dimension              Int
-  distance_metric        String
-  metadata_configuration Json?
-  created_at             DateTime        @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime        @default(now()) @db.Timestamptz(6)
-  buckets_vectors        buckets_vectors @relation(fields: [bucket_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@unique([name, bucket_id], map: "vector_indexes_name_bucket_id_idx")
-  @@schema("storage")
-}
-
-// ─── Enums ────────────────────────────────────────────────────────────────────
 
 enum app_role {
   admin
@@ -891,12 +779,4 @@ enum request_type {
   packet
 
   @@schema("public")
-}
-
-enum buckettype {
-  STANDARD
-  ANALYTICS
-  VECTOR
-
-  @@schema("storage")
 }

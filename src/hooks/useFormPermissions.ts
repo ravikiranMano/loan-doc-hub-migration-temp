@@ -7,9 +7,9 @@ import {
   updateUserFormPermissionById,
 } from '@/services/admin/form-permissions.service';
 import { isNodeApiEnabled } from '@/services/node-api/client';
-import { listUserRoles } from '@/services/admin/users.service';
-import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
+import { listCsrUsersForPermissions } from '@/services/admin/users.service';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 
 export interface FormPermission {
   form_key: string;
@@ -158,38 +158,46 @@ export function useFormPermissionsAdmin() {
   const [userPermissions, setUserPermissions] = useState<Array<{ id: string; form_key: string; access_mode: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [permLoading, setPermLoading] = useState(false);
+  const [csrLoadError, setCsrLoadError] = useState<string | null>(null);
   const selectedUserRef = useRef<string>('');
+  const { toast } = useToast();
 
-  // Fetch all CSR users
+  // Fetch all CSR users (public.users.role = csr via Node or Supabase)
   useEffect(() => {
     const fetchCsrUsers = async () => {
       try {
         setLoading(true);
-        const roles = await listUserRoles();
-        const userIds = (roles || [])
-          .filter((r: any) => r.role === 'csr')
-          .map((r: any) => r.user_id);
-        if (userIds.length === 0) {
-          setCsrUsers([]);
-          setLoading(false);
-          return;
-        }
-
-        const profiles = await fetchProfilesByUserIds(userIds);
-
-        setCsrUsers((profiles || []).map((p: any) => ({
-          user_id: p.user_id,
-          full_name: p.full_name,
-          email: p.email,
-        })));
+        setCsrLoadError(null);
+        const users = await listCsrUsersForPermissions();
+        const sorted = [...users].sort((a, b) => {
+          const nameA = a.full_name || a.email || '';
+          const nameB = b.full_name || b.email || '';
+          return nameA.localeCompare(nameB);
+        });
+        setCsrUsers(
+          sorted.map((u) => ({
+            user_id: u.user_id,
+            full_name: u.full_name,
+            email: u.email,
+          })),
+        );
       } catch (err) {
         console.error('Error fetching CSR users:', err);
+        setCsrUsers([]);
+        const message =
+          err instanceof Error ? err.message : 'Failed to load CSR users';
+        setCsrLoadError(message);
+        toast({
+          title: 'Error',
+          description: message,
+          variant: 'destructive',
+        });
       } finally {
         setLoading(false);
       }
     };
     fetchCsrUsers();
-  }, []);
+  }, [toast]);
 
   // Fetch permissions for a specific user; auto-seed missing forms (single round-trip on Node API).
   const fetchUserPermissions = useCallback(async (userId: string) => {
@@ -224,6 +232,15 @@ export function useFormPermissionsAdmin() {
         }
       } catch (err) {
         console.error('Error fetching user permissions:', err);
+        if (selectedUserRef.current === userId) {
+          setUserPermissions([]);
+          toast({
+            title: 'Error',
+            description:
+              err instanceof Error ? err.message : 'Failed to load form permissions',
+            variant: 'destructive',
+          });
+        }
       } finally {
         if (selectedUserRef.current === userId) {
           setPermLoading(false);
@@ -234,7 +251,7 @@ export function useFormPermissionsAdmin() {
 
     adminPermInflight.set(userId, job);
     return job;
-  }, []);
+  }, [toast]);
 
   const setSelectedUserId = useCallback((userId: string) => {
     selectedUserRef.current = userId;
@@ -257,6 +274,7 @@ export function useFormPermissionsAdmin() {
     userPermissions,
     loading,
     permLoading,
+    csrLoadError,
     fetchUserPermissions,
     setSelectedUserId,
     updatePermission,

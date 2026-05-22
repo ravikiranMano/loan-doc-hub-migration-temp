@@ -137,6 +137,13 @@ export class DocumentsRepository {
     });
   }
 
+  findFieldMapById(id: string) {
+    return this.prisma.template_field_maps.findUnique({
+      where: { id },
+      include: { field_dictionary: true },
+    });
+  }
+
   createFieldMap(templateId: string, dto: CreateTemplateFieldMapDto) {
     return this.prisma.template_field_maps.create({
       data: {
@@ -146,6 +153,7 @@ export class DocumentsRepository {
         transform_rule: dto.transform_rule,
         display_order: dto.display_order,
       } as any,
+      include: { field_dictionary: true },
     });
   }
 
@@ -161,6 +169,7 @@ export class DocumentsRepository {
         ...(transform_rule !== undefined && { transform_rule }),
         ...(display_order !== undefined && { display_order }),
       },
+      include: { field_dictionary: true },
     });
   }
 

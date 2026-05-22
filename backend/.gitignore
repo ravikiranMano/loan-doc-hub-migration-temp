@@ -8,6 +8,8 @@ scripts/
 # Generated Prisma client (rebuild with npm run db:generate)
 /src/generated
 
+supabase/.temp
+supabase/.temp/*
 # Environment files — copy from .env.example
 .env
 .env.local

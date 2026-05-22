@@ -19,9 +19,7 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
-  listProfilesForAdmin,
-  listUserRoles,
-  listUserPermissionLevels,
+  listUsersForManagement,
   assignUserRoleAndPermission,
 } from '@/services/admin/users.service';
 import { Plus, Search, Users, Shield, Loader2 } from 'lucide-react';
@@ -53,26 +51,17 @@ export const UserManagementPage: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      // Fetch profiles
-      const profiles = await listProfilesForAdmin();
-      const roles = await listUserRoles();
-      const permLevels = await listUserPermissionLevels();
-
-      // Combine data
-      const usersWithRoles: UserWithRole[] = (profiles || []).map((profile) => {
-        const userRole = roles?.find((r) => r.user_id === profile.user_id);
-        const userPermLevel = (permLevels as any[] || []).find((p: any) => p.user_id === profile.user_id);
-        return {
-          id: profile.user_id,
-          email: profile.email || '',
-          full_name: profile.full_name,
-          role: userRole?.role as 'admin' | 'csr' | null,
-          created_at: profile.created_at,
-          permission_level: userPermLevel?.permission_level || null,
-        };
-      });
-
-      setUsers(usersWithRoles);
+      const rows = await listUsersForManagement();
+      setUsers(
+        rows.map((row) => ({
+          id: row.id,
+          email: row.email,
+          full_name: row.full_name,
+          role: row.role,
+          created_at: row.created_at,
+          permission_level: row.permission_level,
+        })),
+      );
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({
