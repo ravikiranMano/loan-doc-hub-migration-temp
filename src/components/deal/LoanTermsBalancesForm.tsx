@@ -513,7 +513,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 <p className="text-xs text-muted-foreground pl-5">Held By</p>
               </div>
               <div className="flex-1 flex flex-col gap-2">
-                <div className="relative w-[110px]">
+                <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
                   <Input
                     value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
@@ -521,10 +521,11 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
                     onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
                     disabled={disabled}
-                    className="h-8 text-sm pl-7"
+                    className="h-8 text-sm pl-7 w-full"
                     placeholder="0.00"
                   />
                 </div>
+
                 <Select
                   value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
                   onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
