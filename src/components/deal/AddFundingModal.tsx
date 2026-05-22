@@ -393,6 +393,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const [editingDisbursementIdx, setEditingDisbursementIdx] = useState<number | null>(null);
   const [fundingHidden, setFundingHidden] = useState(false);
   const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
+  const [lenderRateFocused, setLenderRateFocused] = useState(false);
+  const [overrideRateFocused, setOverrideRateFocused] = useState(false);
+
+  const display2dp = (v?: string): string => {
+    const s = String(v ?? '').replace(/[^0-9.]/g, '');
+    if (!s) return '';
+    const [i, d = ''] = s.split('.');
+    return `${i || '0'}.${(d + '00').slice(0, 2)}`;
+  };
   const [showRoundingInfo, setShowRoundingInfo] = useState(false);
 
   useEffect(() => {
