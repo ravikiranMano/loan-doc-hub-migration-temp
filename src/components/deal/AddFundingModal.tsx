@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
+import { OverrideConfirmationDialog } from './OverrideConfirmationDialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter } from '@/components/ui/alert-dialog';
 import { hasModalFormData } from '@/lib/modalFormValidation';
 import {
@@ -391,6 +392,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const [disbursementModalOpen, setDisbursementModalOpen] = useState(false);
   const [editingDisbursementIdx, setEditingDisbursementIdx] = useState<number | null>(null);
   const [fundingHidden, setFundingHidden] = useState(false);
+  const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
   const { user } = useAuth();
   const currentUserId = user?.id || '';
 
@@ -1132,35 +1134,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         onCheckedChange={(checked) => {
                           const on = !!checked;
                           if (on) {
-                            // Optional confirmation (Rule UI). Cancel leaves override off.
-                            const ok = typeof window === 'undefined' ? true : window.confirm(
-                              'Applying override will recalculate dependent payment values for this funding record. Continue?'
-                            );
-                            if (!ok) return;
+                            // Defer until user confirms in custom modal
+                            setOverrideConfirmOpen(true);
+                            return;
                           }
-                          setFormData(prev => {
-                            // Snapshot the calculated value at the moment override is enabled
-                            // (Rule 4 audit metadata). Clear all metadata on disable so the
-                            // record reverts cleanly to the calculated source (Test 14).
-                            const calculatedSource = prev.lenderRate || soldRateVal || '';
-                            return {
-                              ...prev,
-                              lenderRateOverride: on,
-                              lenderRateOverrideValue: on
-                                ? (prev.lenderRateOverrideValue || prev.lenderRate || soldRateVal)
-                                : '',
-                              lenderRateOverrideOriginal: on
-                                ? (prev.lenderRateOverrideOriginal || calculatedSource)
-                                : '',
-                              lenderRateOverrideBy: on
-                                ? (prev.lenderRateOverrideBy || currentUserId)
-                                : '',
-                              lenderRateOverrideAt: on
-                                ? (prev.lenderRateOverrideAt || new Date().toISOString())
-                                : '',
-                              lenderRateOverrideReason: on ? prev.lenderRateOverrideReason : '',
-                            };
-                          });
+                          // Disable: clear all override metadata (Test 14 revert).
+                          setFormData(prev => ({
+                            ...prev,
+                            lenderRateOverride: false,
+                            lenderRateOverrideValue: '',
+                            lenderRateOverrideOriginal: '',
+                            lenderRateOverrideBy: '',
+                            lenderRateOverrideAt: '',
+                            lenderRateOverrideReason: '',
+                          }));
                         }}
                         className="h-3.5 w-3.5"
                       />
@@ -1616,6 +1603,30 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       isEditing={editingDisbursementIdx !== null}
     />
     <ModalSaveConfirmation open={showConfirm} onConfirm={handleConfirmSave} onCancel={() => setShowConfirm(false)} />
+    <OverrideConfirmationDialog
+      open={overrideConfirmOpen}
+      onCancel={() => setOverrideConfirmOpen(false)}
+      onConfirm={() => {
+        setFormData(prev => {
+          const soldRateVal = (prev.rateSoldValue || '').trim();
+          const calculatedSource = prev.lenderRate || soldRateVal || '';
+          return {
+            ...prev,
+            lenderRateOverride: true,
+            lenderRateOverrideValue:
+              prev.lenderRateOverrideValue || prev.lenderRate || soldRateVal,
+            lenderRateOverrideOriginal:
+              prev.lenderRateOverrideOriginal || calculatedSource,
+            lenderRateOverrideBy:
+              prev.lenderRateOverrideBy || currentUserId,
+            lenderRateOverrideAt:
+              prev.lenderRateOverrideAt || new Date().toISOString(),
+            lenderRateOverrideReason: prev.lenderRateOverrideReason || '',
+          };
+        });
+        setOverrideConfirmOpen(false);
+      }}
+    />
     <AlertDialog open={!!duplicateLender} onOpenChange={(o) => { if (!o) setDuplicateLender(null); }}>
       <AlertDialogContent className="z-[9999]">
         <AlertDialogHeader>
