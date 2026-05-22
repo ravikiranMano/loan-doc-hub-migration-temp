@@ -7810,7 +7810,7 @@ async function generateSingleDocument(
             }
 
             blocks.push(
-              paraText(`Lender ${labelN}:`, 60, true),
+              paraText(`Lender ${labelN}:`, 60),
               paraText(displayName, 120),
               paraSigRow(),
             );
