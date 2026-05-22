@@ -240,7 +240,7 @@ function EnhancedCalendar({
           ),
         }}
         {...props}
-        onSelect={handleSelect}
+
 
       />
       {showClearToday && (
