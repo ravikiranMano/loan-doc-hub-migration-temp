@@ -7727,38 +7727,51 @@ async function generateSingleDocument(
             `[lender-sig] template=${tName} lenders.alreadyRendered=${renderedIndexes.size} indexes=[${[...renderedIndexes].sort((a,b)=>a-b).join(",")}]`,
           );
 
-          // Detect dominant font / size / left indent from existing runs.
-          const fontCounts = new Map<string, number>();
-          const sizeCounts = new Map<string, number>();
-          let indLeft = "";
-          const rPrMatches = docXml.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g) || [];
-          for (const rpr of rPrMatches.slice(0, 40)) {
-            const f = rpr.match(/<w:rFonts\b[^>]*\bw:ascii="([^"]+)"/);
-            if (f) fontCounts.set(f[1], (fontCounts.get(f[1]) || 0) + 1);
-            const s = rpr.match(/<w:sz\b[^>]*\bw:val="([^"]+)"/);
-            if (s) sizeCounts.set(s[1], (sizeCounts.get(s[1]) || 0) + 1);
-          }
-          const indMatch = docXml.match(/<w:ind\b[^>]*\bw:left="(\d+)"/);
-          if (indMatch) indLeft = indMatch[1];
-          const topFont = [...fontCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "Arial";
-          const topSize = [...sizeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "22";
+          // STANDARDIZED FORMAT — do NOT sample the document's fonts/indents:
+          // sampling is what caused the visual mismatch in the first place
+          // (every template inherited a different dominant rPr / w:ind). Lock
+          // every appended lender block to a single, enterprise-style spec:
+          //   - Font:      Arial 11pt (w:sz 22)
+          //   - Indent:    left=0 (no inherited indent)
+          //   - Alignment: tab-stop leaders for Signature / Date — guarantees
+          //               equal-length lines in Word, Google Docs and PDF
+          //               regardless of run length.
+          const STD_FONT = "Arial";
+          const STD_SIZE = "22"; // half-points → 11pt
 
           const xmlEsc = (s: string) =>
             s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-          const rPrCommon = `<w:rPr><w:rFonts w:ascii="${xmlEsc(topFont)}" w:hAnsi="${xmlEsc(topFont)}" w:cs="${xmlEsc(topFont)}"/><w:sz w:val="${xmlEsc(topSize)}"/><w:szCs w:val="${xmlEsc(topSize)}"/></w:rPr>`;
-          // Tight spacing: label (after=60), name (after=180 — slightly larger
-          // before signature line), signature (after=60), gap (after=120).
-          const pPr = (afterTwips: number) =>
-            indLeft
-              ? `<w:pPr><w:spacing w:before="0" w:after="${afterTwips}" w:line="240" w:lineRule="auto"/><w:ind w:left="${xmlEsc(indLeft)}"/></w:pPr>`
-              : `<w:pPr><w:spacing w:before="0" w:after="${afterTwips}" w:line="240" w:lineRule="auto"/></w:pPr>`;
-          const para = (text: string, afterTwips: number, bold = false) => {
-            const rPr = bold
-              ? rPrCommon.replace("<w:rPr>", "<w:rPr><w:b/><w:bCs/>")
-              : rPrCommon;
-            return `<w:p>${pPr(afterTwips)}<w:r>${rPr}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`;
-          };
+          const rPrStd = (bold: boolean) =>
+            `<w:rPr>${bold ? "<w:b/><w:bCs/>" : ""}<w:rFonts w:ascii="${STD_FONT}" w:hAnsi="${STD_FONT}" w:cs="${STD_FONT}"/><w:sz w:val="${STD_SIZE}"/><w:szCs w:val="${STD_SIZE}"/></w:rPr>`;
+
+          // Plain text paragraph (label / name) — fixed left=0 indent.
+          const pPrPlain = (afterTwips: number) =>
+            `<w:pPr><w:spacing w:before="0" w:after="${afterTwips}" w:line="240" w:lineRule="auto"/><w:ind w:left="0" w:firstLine="0"/><w:jc w:val="left"/></w:pPr>`;
+          const paraText = (text: string, afterTwips: number, bold = false) =>
+            `<w:p>${pPrPlain(afterTwips)}<w:r>${rPrStd(bold)}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r></w:p>`;
+
+          // Signature/Date row — uses tab stops with underscore leaders so every
+          // lender's signature line and date line have IDENTICAL width and
+          // horizontal position. Positions in twips:
+          //   Signature: ........(leader to 4680) ....Date: ........(leader to 9000)
+          //   ~3.25" signature line, ~2.25" date line, ~0.75" gap between them.
+          const pPrSigRow =
+            `<w:pPr>` +
+              `<w:tabs>` +
+                `<w:tab w:val="left" w:pos="4680" w:leader="underscore"/>` +
+                `<w:tab w:val="left" w:pos="5760"/>` +
+                `<w:tab w:val="left" w:pos="9000" w:leader="underscore"/>` +
+              `</w:tabs>` +
+              `<w:spacing w:before="0" w:after="240" w:line="240" w:lineRule="auto"/>` +
+              `<w:ind w:left="0" w:firstLine="0"/>` +
+              `<w:jc w:val="left"/>` +
+            `</w:pPr>`;
+          const paraSigRow = () =>
+            `<w:p>${pPrSigRow}<w:r>${rPrStd(false)}` +
+              `<w:t xml:space="preserve">Signature:</w:t><w:tab/>` +
+              `<w:t xml:space="preserve">Date:</w:t><w:tab/>` +
+            `</w:r></w:p>`;
 
           const getStr = (k: string) =>
             String(fieldValues.get(k)?.rawValue ?? "").trim();
@@ -7788,9 +7801,9 @@ async function generateSingleDocument(
             }
 
             blocks.push(
-              para(`Lender ${labelN}:`, 60, true),
-              para(displayName, 180),
-              para("Signature: ____________________     Date: ______________", 120),
+              paraText(`Lender ${labelN}:`, 60, true),
+              paraText(displayName, 120),
+              paraSigRow(),
             );
             appendedCount++;
           }
