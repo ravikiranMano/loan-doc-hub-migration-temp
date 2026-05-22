@@ -309,6 +309,137 @@ export async function resolveFieldValues(
         isEmpty,
       };
     }
+
+    // Step 4: Expand loan_terms.funding_records into per-lender document merge fields.
+
+    // FundingRecord.lenderRate is already the override-resolved effective rate
+
+    // (set by handleAddFunding in LoanTermsFundingForm.tsx), so no re-resolution needed.
+
+    const fundingRaw = result.values['loan_terms.funding_records'];
+
+    if (fundingRaw) {
+
+      try {
+
+        const records: Array<Record<string, any>> = JSON.parse(fundingRaw);
+
+        if (Array.isArray(records)) {
+
+          records.forEach((rec, idx) => {
+
+            const n = idx + 1;
+
+            const rateNum = typeof rec.lenderRate === 'number'
+
+              ? rec.lenderRate
+
+              : parseFloat(rec.lenderRate || '') || 0;
+
+            const rateStr = rateNum > 0
+
+              ? `${rateNum.toFixed(4).replace(/\.?0+$/, '')}%`
+
+              : '';
+
+            const fundingAmt = typeof rec.originalAmount === 'number'
+
+              ? rec.originalAmount
+
+              : parseFloat(rec.originalAmount || '') || 0;
+
+            const balance = typeof rec.currentBalance === 'number'
+
+              ? rec.currentBalance
+
+              : fundingAmt;
+
+            const pct = typeof rec.pctOwned === 'number'
+
+              ? rec.pctOwned
+
+              : parseFloat(rec.pctOwned || '') || 0;
+
+            const payment = typeof rec.regularPayment === 'number'
+
+              ? rec.regularPayment
+
+              : parseFloat(rec.regularPayment || '') || 0;
+
+            const fmt$ = (v: number) =>
+
+              v > 0
+
+                ? new Intl.NumberFormat('en-US', {
+
+                    style: 'currency',
+
+                    currency: 'USD',
+
+                    minimumFractionDigits: 2,
+
+                  }).format(v)
+
+                : '';
+
+            const expanded: Record<string, string> = {
+
+              [`lender_${n}_rate`]:          rateStr,
+
+              [`lender_${n}_name`]:          String(rec.lenderName || rec.lenderFullName || ''),
+
+              [`lender_${n}_account`]:       String(rec.lenderAccount || rec.lenderId || ''),
+
+              [`lender_${n}_amount`]:        fmt$(fundingAmt),
+
+              [`lender_${n}_balance`]:       fmt$(balance),
+
+              [`lender_${n}_pct_owned`]:     pct > 0
+
+                ? `${pct.toFixed(4).replace(/\.?0+$/, '')}%`
+
+                : '',
+
+              [`lender_${n}_payment`]:       fmt$(payment),
+
+              [`lender_${n}_rate_override`]: rec.lenderRateOverride === true ? 'Yes' : 'No',
+
+            };
+
+            // Alias first lender to un-indexed names for single-lender templates
+
+            if (idx === 0) {
+
+              Object.entries(expanded).forEach(([k, v]) => {
+
+                result.values[k.replace(/^lender_1_/, 'lender_')] = v;
+
+              });
+
+            }
+
+            Object.entries(expanded).forEach(([k, v]) => {
+
+              result.values[k] = v;
+
+            });
+
+          });
+
+        }
+
+      } catch {
+
+        result.errors.push(
+
+          'Warning: could not expand loan_terms.funding_records for per-lender merge fields.'
+
+        );
+
+      }
+
+    }
+
   } catch (error: any) {
     result.errors.push(`Unexpected error: ${error.message}`);
   }
