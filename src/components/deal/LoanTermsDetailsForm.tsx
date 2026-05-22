@@ -580,6 +580,33 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             'Sold Rate'
           )}
           {renderAdjPercentField('loan_terms.current_rate', 'Current Rate')}
+          {(() => {
+            const rs = getValue(FIELD_KEYS.rateStructure);
+            const note = getValue('loan_terms.note_rate');
+            const cur = getValue('loan_terms.current_rate');
+            let hint = '';
+            if (rs === 'frm_fixed_rate') hint = 'Auto: Note Rate';
+            else if (rs === 'arm_adjustable_rate') hint = 'Auto: Index + Margin (within Floor/Cap)';
+            else if (rs === 'gtm_graduated_terms') hint = getBoolValue(FIELD_KEYS.gtmStepRateProduct) ? 'Auto: Scheduled Period Rate' : 'Auto: Note Rate';
+            return (
+              <DirtyFieldWrapper fieldKey="loan_terms.current_rate">
+                <div className="flex items-center gap-2">
+                  <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
+                  <div className="relative flex-1">
+                    <Input
+                      value={cur ? formatPercentDisplay(cur, 3) : ''}
+                      readOnly
+                      disabled
+                      className="h-8 text-xs pr-5 bg-muted/40"
+                      placeholder="0.00"
+                      title={hint}
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+                  </div>
+                </div>
+              </DirtyFieldWrapper>
+            );
+          })()}
           {renderInlineField('loan_terms.interest_split', 'Interest Split')}
           {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
           {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
