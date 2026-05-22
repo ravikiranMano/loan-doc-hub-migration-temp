@@ -7699,7 +7699,7 @@ async function generateSingleDocument(
     try {
       const lenderCountRaw = fieldValues.get("lender_count")?.rawValue;
       const lenderCount = Number.parseInt(String(lenderCountRaw ?? "0"), 10) || 0;
-      const tName = typeof templateName === "string" ? templateName : "(unknown)";
+      const tName = (template && typeof template.name === "string") ? template.name : "(unknown)";
       console.log(`[lender-sig] template=${tName} lenders.received=${lenderCount}`);
 
       if (lenderCount > 1) {
