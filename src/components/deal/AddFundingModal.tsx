@@ -778,11 +778,24 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Fully-funded soft lock (Rules 1, 2, 5): reject any save that mutates
+    // Funding Amount or Current Balance on a locked row. Allocation changes
+    // must go through the Funding Adjustment workflow.
+    if (lockedFieldsModified) {
+      toast.error('Modification not allowed. Loan funding is already fully allocated.');
+      return;
+    }
+    // Rule 3: when fully funded, Current Balance must equal Funding Amount.
+    if (fullyFundedCBMismatch) {
+      toast.error('Current Balance must equal Funding Amount for fully funded records.');
+      return;
+    }
     // Rule: Funding Amount must be > $0 (Test 7).
     if (thisLenderShare <= 0) {
       toast.error('Funding amount must be greater than $0.');
       return;
     }
+
     // Rule: Funding Amount must not exceed remaining capacity (Tests 4, 6, 12).
     if (totalPercentError) {
       const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentTotal);
