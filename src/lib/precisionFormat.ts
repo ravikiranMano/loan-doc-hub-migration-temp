@@ -243,9 +243,9 @@ export function resolvePercentCategory(fieldKey: string | null | undefined): Per
   return 'interestRate';
 }
 
-/** LTV / CLTV display: min 2dp, max 4dp, trailing zeros trimmed beyond the 2nd decimal. */
+/** LTV / CLTV display: min 2dp, max 2dp per platform standard. */
 export function formatLtv(value: string | number | null | undefined): string {
-  const s = formatPercentDisplay(value, 4);
+  const s = formatPercentDisplay(value, 2);
   return s === '' ? '' : `${s}%`;
 }
 
