@@ -36,6 +36,12 @@ export interface DisbursementFormData {
   overrideEnabled?: boolean;
   overrideReason?: string;
   overrideAmount?: string;
+  /** Audit (Rule 4): snapshot of the auto-calculated amount when override was enabled. */
+  overrideOriginalAmount?: string;
+  /** Audit (Rule 4): user id that toggled override on. */
+  overrideBy?: string;
+  /** Audit (Rule 4): ISO timestamp when override was toggled on. */
+  overrideAt?: string;
 }
 
 const emptyForm = (): DisbursementFormData => ({
