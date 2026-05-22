@@ -492,11 +492,19 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                     onSelect={(d) => { handleChange('startDate', d ? formatDateOnly(d) : ''); setStartDateOpen(false); }}
                     onClear={() => { handleChange('startDate', ''); setStartDateOpen(false); }}
                     onToday={() => { handleChange('startDate', todayDateOnly()); setStartDateOpen(false); }}
+                    disabled={(d: Date) => {
+                      if (origDate && d < origDate) return true;
+                      if (matDate && d > matDate) return true;
+                      return false;
+                    }}
                     initialFocus
                   />
                 </PopoverContent>
               </Popover>
             </div>
+            {errors.startDate && (showAllErrors || !!formData.startDate) && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.startDate}</p>
+            )}
 
             {/* Debit Through */}
             <div className="flex items-center gap-1">
