@@ -1,110 +1,74 @@
-## Override Calculation Validation — Scoped Implementation Plan
+# Platform-Wide Precision & Percentage Handling
 
-The spec covers 14 test cases across UI, API, accounting, documents, and audit. Today the project has exactly **two** override surfaces:
+## Current State
 
-1. **Lender Rate Override** on funding records — `lenderRateOverride` + `lenderRateOverrideValue` (in `AddFundingModal`, `FundingDetailForm`, `LoanFundingGrid`, `LoanTermsFundingForm`).
-2. **Lender Disbursement Override** — `overrideEnabled` + `overrideReason` (in `LenderDisbursementModal`).
+The platform already has a centralized precision utility at `src/lib/precisionFormat.ts` built on `decimal.js` that covers the entire spec surface:
 
-There is no override on servicing rates, accounting GL entries, payoff calc, ledger balances, or document merge tags as separate fields — those all read from the same funding/servicing values that the two overrides above produce. So the realistic scope is: make the two existing overrides **truly authoritative, persistent, audited, and visually marked**, and verify downstream consumers (payment recompute, document tags, exports) read the overridden values.
+- Storage: `roundPctForStorage` (4dp), `roundDollarForStorage` (2dp), `normalizeStoredPrecision`
+- Display: `formatPercentage`, `formatRate` (3dp), `formatProRata` (4dp), `formatRatio`/`formatLtv` (2dp), `formatLateChargePct` (3dp), `formatCurrency`, `formatPercentByFieldKey`
+- Math: `toDecimal`, `sumPercents`, `allocateDollarsByPercent`, `computeLtv`, `computeAmortizedPayment`
 
-Scope is intentionally narrow per project's minimal-change policy. No DB schema migration, no new tables. All metadata stored inside the existing funding record JSON (`loan_terms.funding_records[].*`) and the existing disbursement record JSON.
+So this is **not** a "build the utility" task — it is an **audit + wiring** task to make sure every rate/percent/dollar callsite goes through this utility, never through native `toFixed`/`parseFloat` math, never through display-rounded values, and never with truncated storage.
 
----
+## Scope
 
-### What changes
+Bring every Rate / Percentage / Ratio / Funding / Dollar field on the platform onto the existing utility, with no behavior changes to working flows.
 
-**1. Lender Rate Override — audit metadata (Rule 4, Test 11)**
+### 1. UI display audit
+Replace ad-hoc `.toFixed(...)` / `Intl.NumberFormat` / template-string formatting in these files with the appropriate `formatRate` / `formatProRata` / `formatLtv` / `formatLateChargePct` / `formatPercentage` / `formatCurrency`:
+- `LoanFundingGrid.tsx`, `AddFundingModal.tsx`, `FundingDetailForm.tsx`, `LenderDisbursementModal.tsx`
+- `LoanTermsFundingForm.tsx`, `LoanTermsDetailsForm.tsx`, `LoanTermsBalancesForm.tsx`, `LoanTermsPenaltiesForm.tsx`, `LoanTermsServicingForm.tsx`
+- `OriginationFeesForm.tsx`, `LienDetailForm.tsx`, `LienSectionContent.tsx`
+- Trust ledger views (deal + borrower/lender/broker), Portfolio views, Charges views, History views, PropertiesTableView, attachment file-size formatters (leave file-size `toFixed` alone — not financial)
 
-Extend the funding record shape (in-memory + persisted JSON, no DB column change) with:
-```
-lenderRateOverride: boolean
-lenderRateOverrideValue: string           // already exists
-lenderRateOverrideOriginal: string        // NEW — snapshot of calculated value at moment override toggled on
-lenderRateOverrideReason?: string         // NEW — optional text
-lenderRateOverrideBy: string              // NEW — auth.uid() at toggle time
-lenderRateOverrideAt: string              // NEW — ISO timestamp at toggle time
-```
+Use `formatPercentByFieldKey(fieldKey, value)` as the default in generic renderers (`DealFieldInput.tsx`, grid cells) so category is auto-resolved.
 
-- Captured in `AddFundingModal` Override checkbox `onCheckedChange` and in `FundingDetailForm` Override toggle.
-- Cleared (set to undefined) when Override is toggled off → restores calculated source (Test 14 revert).
-- Persisted as part of the existing funding records JSON write in `LoanTermsFundingForm` / `LoanFundingGrid.handleSaveFundingRecord`.
+### 2. Edit ↔ display lifecycle
+For every editable rate/percent input:
+- On focus: show the raw stored value (4dp, no `%`, no commas) so the user can edit precisely.
+- On blur: route through `normalizeStoredPrecision(value, 'percent' | 'dollar')` before persisting, and `formatPercentByFieldKey` for the display value.
+- Never derive the persisted value from the formatted display string.
 
-**2. Precision storage (Rule 5, Test 12)**
+### 3. Calculation audit
+Walk through every place that currently uses `parseFloat` / native `*` `/` `+` `-` on monetary or rate fields and route through `toDecimal` + Decimal arithmetic:
+- `calculationEngine.ts`, `lienCalculationEngine.ts`, `interestValidation.ts`, `loanAllocationValidation.ts`, `fieldTransforms.ts`, `fieldValueResolver.ts`
+- Funding distribution / pro-rata / lender allocation in `LoanFundingGrid`, `AddFundingModal`, `FundingDetailForm`, `LenderDisbursementModal`
+- Interest/principal split, payment recalculation, override recalculation
+- Charges / penalties / origination-fee totals
+- Trust ledger interest accrual & payoff math
 
-- In `AddFundingModal` and `FundingDetailForm` Override input `onBlur`: store value with up to **4 decimals** using existing `truncateToDecimals(v, 4)`. Display continues using `formatPercentage(v, 3)`.
-- Save path passes the stored 4-dp string, not the display-rounded value.
+Rounding-adjustment rule: after Decimal allocation, compute the residual penny delta and assign it to a single lender (largest share, then earliest sequence as tiebreaker) so totals reconcile to the cent.
 
-**3. Override locking (Rule 1, Rule 9, Test 10)**
+### 4. Storage / API boundary
+- All write paths (`useDealFields`, funding save, trust ledger save, lien save) call `normalizeStoredPrecision` before persisting JSONB/`deal_section_values`/`deal_field_values`.
+- Read path keeps the raw 4dp string; nothing should pre-round on load.
+- DB columns already store as `numeric` (no precision cap) or as JSONB string — no migration needed. Add a one-time QA sweep to confirm no existing row was saved with truncated precision; if any are found, leave them (they were user input) but never re-truncate on edit.
 
-In `AddFundingModal` sync effect (lines ~395–432) and `LoanFundingGrid` lender-rate cell renderer:
-- When `lenderRateOverride === true`, **never** overwrite `lenderRate` from Sold Rate, Note Rate, or any auto-fill chain.
-- The existing precedence (`Override → Sold → Note`) is already correct; this change adds an explicit guard that recompute effects watching `noteRate` / `soldRate` props skip records where `lenderRateOverride === true`.
-- `recomputeLenderPayments` already uses `record.lenderRate`; verify it reads the override value through the normal field and add a comment marking the contract.
+### 5. Document merge / generation
+In `supabase/functions/generate-document` and `supabase/functions/_shared/field-resolver.ts`:
+- Merge tags resolve to the **stored** 4dp value, never the UI-formatted string.
+- Add a small server-side mirror of `formatPercentByFieldKey` for any merge tag that explicitly wants a display-formatted variant (e.g. a `*_display` suffix); default tags emit the raw stored numeric.
+- Existing RE851A/D pipelines and the questionnaire safety passes are not touched.
 
-**4. Override badge + tooltip (UI Requirements)**
+### 6. Tests
+Extend `precisionFormat.test.ts` with the spec's QA matrix (10.0000→"10.00", 10.5000→"10.50", 10.8750→"10.875", 10.8756→"10.8756", 27.2727→"27.2727"), the 33.3333% / 27.2727% three-lender split reconciliation, and a merge-tag stored-vs-display test.
 
-In `LoanFundingGrid` lender-rate cell:
-- When `record.lenderRateOverride === true`, show a small `Pencil` icon next to the value with tooltip:
-  `Manually overridden by {name} on {MM/DD/YYYY}. Original calculated: {original}%. Reason: {reason}`.
-- Use existing `Tooltip` + `Badge` primitives. No new components.
+## Out of scope (do not touch)
 
-**5. Optional confirmation modal (UI Requirements)**
+- Override modal UX and recalculation flow (per minimal-change policy)
+- Field dictionary schema, RLS, auth, or any other module
+- File-size `toFixed` calls in attachment components — not financial
+- Visual styling of any screen
 
-When toggling Override **on** in `AddFundingModal` and `FundingDetailForm`, show a one-line `AlertDialog` confirm:
-`Applying override will recalculate dependent payment values for this funding record. Continue?`
-- Cancel leaves override off.
-- Confirm proceeds and snapshots `lenderRateOverrideOriginal`.
+## Technical Notes
 
-**6. Disbursement Override — parity audit fields**
+- All new code imports from `@/lib/precisionFormat` (UI) and a thin Deno copy in `supabase/functions/_shared/precisionFormat.ts` (edge). Keep a single source of truth — no inline re-implementations.
+- No new dependencies; `decimal.js` is already in the bundle.
+- Each touched file gets surgical edits only (display call swap, normalize on persist, Decimal math in the one function that needed it).
 
-`LenderDisbursementModal` already has `overrideEnabled` + `overrideReason`. Add:
-- `overrideOriginalAmount` (snapshot of computed amount at toggle)
-- `overrideBy`, `overrideAt`
-Persisted in the existing disbursement record JSON. Badge on the disbursement row in `LoanFundingGrid` showing the same tooltip pattern.
+## Deliverables
 
-**7. Downstream verification (no code change, just validation)**
-
-Already correct — but add inline comments documenting the contract so future changes don't regress:
-- `LoanTermsFundingForm.tsx:522` — `lenderRate = override ? overrideValue : computed`. ✓
-- `LoanFundingGrid.tsx:1031` — same precedence in save path. ✓
-- Document merge: funding records flow through existing publishers; they read `record.lenderRate` which already resolves to the override value. No template change needed.
-- Exports / reports: same — they consume `record.lenderRate`.
-
----
-
-### Out of scope (explicit)
-
-- **No new audit table.** Override metadata lives in the funding/disbursement JSON. A separate `override_audit_log` table would touch DB schema and is outside the minimal-change policy. Can be added later.
-- **No servicing / GL / payoff override fields** — those entities don't expose a separate override today and the spec doesn't name new ones.
-- **No new API endpoints.** Reads/writes go through the existing `deal_section_values` save path.
-- **No changes to document templates.** Merge tags already render the resolved `lenderRate`.
-
----
-
-### Files touched
-
-- `src/components/deal/AddFundingModal.tsx` — metadata snapshot on toggle, precision on blur, confirmation dialog, locking guard.
-- `src/components/deal/FundingDetailForm.tsx` — same toggle/snapshot/confirmation.
-- `src/components/deal/LoanFundingGrid.tsx` — badge + tooltip in lender-rate cell and disbursement row; pass-through of new fields.
-- `src/components/deal/LenderDisbursementModal.tsx` — snapshot original amount + by/at on toggle.
-- `src/components/deal/LoanTermsFundingForm.tsx` — pass-through of new metadata fields in save payload.
-
-No DB migration. No edge function. No template change.
-
----
-
-### QA mapping
-
-| Spec test | Covered by |
-|---|---|
-| 1, 2, 3, 4 | Existing precedence + new locking guard (#3) |
-| 5, 7 | No-op — already flows through `record.lenderRate` |
-| 6 | No-op — templates already read resolved value |
-| 8, 9 | Persistence of new metadata in funding/disbursement JSON |
-| 10 | Locking guard (#3) |
-| 11 | Audit metadata (#1, #6) + badge tooltip (#4) |
-| 12 | 4-dp storage on blur (#2) |
-| 13 | Override per-record is independent; no cross-record coupling added |
-| 14 | Toggle-off clears metadata and restores calculated source (#1) |
-
-Approve to implement, or tell me which subset (e.g. just #1+#3+#4, or skip the confirmation modal) to keep it tighter.
+1. Wired callsites across the file list in section 1–3.
+2. `normalizeStoredPrecision` enforced at every write boundary (section 4).
+3. Edge-function `_shared/precisionFormat.ts` + merge-tag wiring (section 5).
+4. Expanded `precisionFormat.test.ts` covering the 10-case QA matrix (section 6).
