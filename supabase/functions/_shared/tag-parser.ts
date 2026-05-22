@@ -2459,7 +2459,9 @@ export function processEachBlocks(
         }
 
         for (const tag of innerChevronTags) {
-          const innerFieldName = tag[1].trim();
+          let innerFieldName = tag[1].trim();
+          if (/^this\./i.test(innerFieldName)) innerFieldName = innerFieldName.slice(5);
+          else if (innerFieldName.toLowerCase() === 'this') innerFieldName = 'fullName';
           const qualifiedKey = `${entityPrefix}.${innerFieldName}`;
           const canonicalKey = resolveFieldKeyWithMap(qualifiedKey, mergeTagMap, validFieldKeys);
           const resolved = getFieldData(canonicalKey, fieldValues);
