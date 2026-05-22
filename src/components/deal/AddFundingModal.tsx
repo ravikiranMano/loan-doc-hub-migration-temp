@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, X, SlidersHorizontal, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, SlidersHorizontal, Info, AlertTriangle } from 'lucide-react';
 import { LenderDisbursementModal, type DisbursementFormData } from './LenderDisbursementModal';
 import { cn } from '@/lib/utils';
 import { LenderIdSearch } from './LenderIdSearch';
@@ -52,6 +52,7 @@ interface AddFundingModalProps {
    * allocations on a fully-funded loan is the Funding Adjustment workflow.
    */
   isFullyFunded?: boolean;
+  currentRoundingLenderName?: string;
 
 }
 
@@ -242,6 +243,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   existingRecords = [],
   editingRecordId,
   isFullyFunded = false,
+  currentRoundingLenderName = '',
 }) => {
 
   // Draft persistence key — survives tab switches and modal close until explicit Save/Cancel
@@ -1345,6 +1347,18 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 </div>
               </RadioGroup>
             </div>
+            {formData.roundingAdjustment && currentRoundingLenderName && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                <span>Enabling this will remove the rounding adjustment from {currentRoundingLenderName}.</span>
+              </div>
+            )}
+            {formData.roundingAdjustment && !currentRoundingLenderName && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                <span>Only one lender per deal can hold the rounding adjustment. Enabling this will clear it from any other lender.</span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={formData.brokerParticipates}

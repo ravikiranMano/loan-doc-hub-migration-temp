@@ -984,6 +984,9 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         onOpenChange={(open) => { setIsAddModalOpen(open); if (!open) { setEditFundingData(null); setSelectedRecord(null); } }}
         loanNumber={loanNumber}
         borrowerName={borrowerName}
+        currentRoundingLenderName={fundingRecords.find(
+          r => r.roundingAdjustment && r.id !== selectedRecord?.id
+        )?.lenderName ?? ''}
         onSubmit={(data) => {
           // Mutual exclusivity for Rounding Adjustment is enforced atomically in the parent's
           // handleAddFunding / handleUpdateRecord (single write to the records array) to avoid
