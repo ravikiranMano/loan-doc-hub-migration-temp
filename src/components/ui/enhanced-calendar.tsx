@@ -172,7 +172,7 @@ function EnhancedCalendar({
 
   return (
     <div className="flex flex-col">
-      <DayPicker
+      <DayPicker {...({ onSelect: handleSelect } as any)}
         showOutsideDays={showOutsideDays}
         month={displayMonth}
         onMonthChange={handleMonthChange}
