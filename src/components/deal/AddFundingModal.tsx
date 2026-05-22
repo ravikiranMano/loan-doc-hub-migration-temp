@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
 import { OverrideConfirmationDialog } from './OverrideConfirmationDialog';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter } from '@/components/ui/alert-dialog';
@@ -393,6 +393,16 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const [editingDisbursementIdx, setEditingDisbursementIdx] = useState<number | null>(null);
   const [fundingHidden, setFundingHidden] = useState(false);
   const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
+  const [showRoundingInfo, setShowRoundingInfo] = useState(false);
+
+  useEffect(() => {
+    if (formData.roundingAdjustment) {
+      setShowRoundingInfo(true);
+      const t = setTimeout(() => setShowRoundingInfo(false), 2000);
+      return () => clearTimeout(t);
+    }
+    setShowRoundingInfo(false);
+  }, [formData.roundingAdjustment]);
   const { user } = useAuth();
   const currentUserId = user?.id || '';
 
@@ -1397,14 +1407,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 </div>
               </RadioGroup>
             </div>
-            {formData.roundingAdjustment && currentRoundingLenderName && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+            {showRoundingInfo && formData.roundingAdjustment && currentRoundingLenderName && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 transition-opacity duration-300">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 <span>Enabling this will remove the rounding adjustment from {currentRoundingLenderName}.</span>
               </div>
             )}
-            {formData.roundingAdjustment && !currentRoundingLenderName && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+            {showRoundingInfo && formData.roundingAdjustment && !currentRoundingLenderName && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 transition-opacity duration-300">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 <span>Only one lender per deal can hold the rounding adjustment. Enabling this will clear it from any other lender.</span>
               </div>
