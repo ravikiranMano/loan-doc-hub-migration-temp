@@ -323,15 +323,23 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     </div>
   );
 
-  const renderPercentageField = (field: keyof PropertyData, label: string) => (
+  const renderPercentageField = (field: keyof PropertyData, label: string, readOnly = false) => (
     <div className="flex items-center gap-2">
       <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
       <div className="relative flex-1">
-        <Input value={String(formData[field] || '')} onChange={(e) => handlePercentageChange(field, e.target.value)} className="h-7 text-xs pr-6" inputMode="decimal" />
+        <Input
+          value={String(formData[field] || '')}
+          onChange={(e) => handlePercentageChange(field, e.target.value)}
+          className="h-7 text-xs pr-6"
+          inputMode="decimal"
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+        />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
       </div>
     </div>
   );
+
 
   return (
     <>
