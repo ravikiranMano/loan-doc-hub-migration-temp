@@ -579,7 +579,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             'loan_terms.sold_rate',
             'Sold Rate'
           )}
-          {renderAdjPercentField('loan_terms.current_rate', 'Current Rate')}
+          
           {(() => {
             const rs = getValue(FIELD_KEYS.rateStructure);
             const note = getValue('loan_terms.note_rate');
