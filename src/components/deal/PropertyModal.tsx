@@ -33,7 +33,12 @@ interface PropertyModalProps {
   borrowerAddress?: { street: string; city: string; state: string; zipCode: string };
   borrowerOptions?: string[];
   borrowerParticipants?: Array<{ name: string; street: string; city: string; state: string; zipCode: string }>;
+  loanAmount?: number;
+  currentPrincipal?: number;
+  existingLiensTotal?: number;
+  liensCurrentBalanceTotal?: number;
 }
+
 
 const PROPERTY_TYPE_OPTIONS = [
   'SFR 1-4', 'Multi-family', 'Condo / Townhouse', 'Mobile Home', 'Commercial',
