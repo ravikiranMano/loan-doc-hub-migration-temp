@@ -27,7 +27,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
-import { roundPctForStorage, computeAmortizedPayment, Decimal, formatPercentDisplay } from '@/lib/precisionFormat';
+import { roundPctForStorage, computeAmortizedPayment, Decimal, formatPercentDisplay, formatPercentByFieldKey } from '@/lib/precisionFormat';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -972,20 +972,28 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     </div>
   );
 
-  const renderPercentInput = (field: keyof FundingFormData, placeholder = '%', disabled = false) => (
-    <div className="relative flex-1">
-      <Input
-        value={(formData[field] as string) || ''}
-        onChange={(e) => handleChange(field, e.target.value.replace(/[^0-9.]/g, ''))}
-        onKeyDown={numericKeyDown}
-        className="h-6 text-xs pr-4"
-        inputMode="decimal"
-        placeholder={placeholder}
-        disabled={disabled}
-      />
-      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-    </div>
-  );
+  const [percentFocusedField, setPercentFocusedField] = useState<string | null>(null);
+  const renderPercentInput = (field: keyof FundingFormData, placeholder = '%', disabled = false) => {
+    const raw = (formData[field] as string) || '';
+    const isFocused = percentFocusedField === String(field);
+    const shown = isFocused || !raw ? raw : formatPercentByFieldKey(String(field), raw);
+    return (
+      <div className="relative flex-1">
+        <Input
+          value={shown}
+          onFocus={() => setPercentFocusedField(String(field))}
+          onBlur={() => setPercentFocusedField(prev => (prev === String(field) ? null : prev))}
+          onChange={(e) => handleChange(field, e.target.value.replace(/[^0-9.]/g, ''))}
+          onKeyDown={numericKeyDown}
+          className="h-6 text-xs pr-4"
+          inputMode="decimal"
+          placeholder={placeholder}
+          disabled={disabled}
+        />
+        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+      </div>
+    );
+  };
 
   const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void) => (
     <Popover open={isOpen} onOpenChange={setOpen} modal={false}>
