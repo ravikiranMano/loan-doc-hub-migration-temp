@@ -155,6 +155,55 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string | null>>({});
 
+  // Derive Current Rate from Rate Structure inputs.
+  // FRM  -> Note Rate
+  // ARM  -> Index + Margin, then clamp to [Floor, Maximum Interest Rate]
+  // GTM  -> Step Rate Product? Scheduled Period Rate : Note Rate
+  useEffect(() => {
+    const structure = values[FIELD_KEYS.rateStructure] || '';
+    const toNum = (v?: string) => {
+      const n = parseFloat((v || '').toString());
+      return isNaN(n) ? null : n;
+    };
+    const noteRate = toNum(values['loan_terms.note_rate']);
+    let derived: number | null = null;
+
+    if (structure === 'frm_fixed_rate') {
+      derived = noteRate;
+    } else if (structure === 'arm_adjustable_rate') {
+      const idx = toNum(values[FIELD_KEYS.armIndexRate]);
+      const margin = toNum(values[FIELD_KEYS.armMargin]);
+      if (idx !== null && margin !== null) {
+        derived = idx + margin;
+        const floor = toNum(values[FIELD_KEYS.armRateFloor]);
+        const cap = toNum(values[FIELD_KEYS.adjMaxInterestRate]);
+        if (floor !== null && derived < floor) derived = floor;
+        if (cap !== null && derived > cap) derived = cap;
+      }
+    } else if (structure === 'gtm_graduated_terms') {
+      const isStep = values[FIELD_KEYS.gtmStepRateProduct] === 'true';
+      derived = isStep ? toNum(values[FIELD_KEYS.gtmScheduledPeriodRate]) : noteRate;
+    }
+
+    if (derived === null || isNaN(derived)) return;
+    const stored = roundPctForStorage(String(derived));
+    if (stored === '') return;
+    const current = (values['loan_terms.current_rate'] || '').toString();
+    if (current !== stored) {
+      onValueChange('loan_terms.current_rate', stored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    values[FIELD_KEYS.rateStructure],
+    values['loan_terms.note_rate'],
+    values[FIELD_KEYS.armIndexRate],
+    values[FIELD_KEYS.armMargin],
+    values[FIELD_KEYS.armRateFloor],
+    values[FIELD_KEYS.adjMaxInterestRate],
+    values[FIELD_KEYS.gtmStepRateProduct],
+    values[FIELD_KEYS.gtmScheduledPeriodRate],
+  ]);
+
   // Brokers list for "Originating Vendor" dropdown — sourced from contacts master (contact_type='broker')
   const [brokerOptions, setBrokerOptions] = useState<{ value: string; label: string }[]>([]);
   useEffect(() => {
