@@ -175,3 +175,47 @@ describe('Spec-named aliases', () => {
     expect(normalizeStoredPrecision('', 'currency')).toBe('');
   });
 });
+
+// Platform-wide spec QA matrix: storage 4dp + display smart-trim, plus
+// penny-safe multi-lender reconciliation for repeating-decimal splits.
+describe('Spec QA matrix — storage & display', () => {
+  const matrix: Array<[string, string]> = [
+    ['10.0000', '10.00'],
+    ['10.5000', '10.50'],
+    ['10.8750', '10.875'],
+    ['10.8756', '10.8756'],
+    ['27.2727', '27.2727'],
+  ];
+  for (const [stored, display] of matrix) {
+    it(`stored ${stored} -> display ${display}`, () => {
+      expect(roundPctForStorage(stored)).toBe(stored);
+      expect(formatPercentDisplay(stored, 4)).toBe(display);
+    });
+  }
+});
+
+describe('Penny-safe reconciliation', () => {
+  it('three lenders @ 33.3333% of $100 reconciles exactly', () => {
+    const parts = allocateDollarsByPercentsWithReconciliation(100, [
+      '33.3333',
+      '33.3333',
+      '33.3334',
+    ]);
+    expect(parts).toHaveLength(3);
+    const total = parts.reduce((a, p) => a + Number(p), 0);
+    expect(total.toFixed(2)).toBe('100.00');
+  });
+  it('three lenders @ 27.2727% / 27.2727% / 45.4546% of $1000', () => {
+    const parts = allocateDollarsByPercentsWithReconciliation(1000, [
+      '27.2727',
+      '27.2727',
+      '45.4546',
+    ]);
+    const total = parts.reduce((a, p) => a + Number(p), 0);
+    expect(total.toFixed(2)).toBe('1000.00');
+  });
+  it('returns [] on invalid input', () => {
+    expect(allocateDollarsByPercentsWithReconciliation('abc', ['50', '50'])).toEqual([]);
+    expect(allocateDollarsByPercentsWithReconciliation(100, ['50', 'xx'])).toEqual([]);
+  });
+});
