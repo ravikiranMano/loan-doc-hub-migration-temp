@@ -28,8 +28,39 @@ function EnhancedCalendar({
   onToday,
   month: controlledMonth,
   onMonthChange,
+  onSelect: onSelectProp,
   ...props
-}: EnhancedCalendarProps) {
+}: EnhancedCalendarProps & { onSelect?: any }) {
+
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const closeParentPopover = React.useCallback(() => {
+    // Dispatch Escape so the nearest Radix DismissableLayer (the Popover) closes.
+    // Radix layer stacking ensures only the topmost open layer (the popover) reacts,
+    // so wrapping Dialogs/Modals are not affected.
+    setTimeout(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    }, 0);
+  }, []);
+
+  const handleSelect = React.useCallback((...args: any[]) => {
+    (onSelectProp as any)?.(...args);
+    const picked = args[0];
+    if (picked) closeParentPopover();
+  }, [onSelectProp, closeParentPopover]);
+
+
+  const handleClear = React.useCallback(() => {
+    onClear?.();
+    closeParentPopover();
+  }, [onClear, closeParentPopover]);
+
+  const handleToday = React.useCallback(() => {
+    onToday?.();
+    closeParentPopover();
+  }, [onToday, closeParentPopover]);
+
+
   const [internalMonth, setInternalMonth] = React.useState<Date>(
     controlledMonth || (props.selected instanceof Date ? props.selected : new Date())
   );
@@ -141,7 +172,7 @@ function EnhancedCalendar({
 
   return (
     <div className="flex flex-col">
-      <DayPicker
+      <DayPicker {...({ onSelect: handleSelect } as any)}
         showOutsideDays={showOutsideDays}
         month={displayMonth}
         onMonthChange={handleMonthChange}
@@ -209,6 +240,8 @@ function EnhancedCalendar({
           ),
         }}
         {...props}
+
+
       />
       {showClearToday && (
         <div className="flex items-center justify-between px-4 pb-3 -mt-1">
@@ -217,7 +250,7 @@ function EnhancedCalendar({
             variant="link"
             size="sm"
             className="h-auto p-0 text-xs text-primary hover:text-primary/80"
-            onClick={onClear}
+            onClick={handleClear}
           >
             Clear
           </Button>
@@ -226,7 +259,7 @@ function EnhancedCalendar({
             variant="link"
             size="sm"
             className="h-auto p-0 text-xs text-primary hover:text-primary/80"
-            onClick={onToday}
+            onClick={handleToday}
           >
             Today
           </Button>
