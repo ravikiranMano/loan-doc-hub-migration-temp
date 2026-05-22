@@ -158,6 +158,48 @@ export function allocateDollarsByPercent(
   return dollars.mul(pct).div(100).toFixed(2);
 }
 
+/**
+ * Penny-safe multi-party allocation.
+ *
+ * Splits `total` (dollars) across `percents` (each 0..100). Each allocation
+ * is rounded to 2dp using Decimal arithmetic; the residual penny delta
+ * (positive or negative) is assigned to a single recipient so the sum of
+ * returned strings reconciles exactly to the input total.
+ *
+ * Recipient selection for the residual:
+ *   1. Largest absolute allocation wins.
+ *   2. On tie, earliest index wins (stable, deterministic).
+ *
+ * Returns an array of 2dp strings in the same order as `percents`.
+ * Returns `[]` when `total` or any percent is invalid.
+ */
+export function allocateDollarsByPercentsWithReconciliation(
+  total: string | number | null | undefined,
+  percents: Array<string | number | null | undefined>
+): string[] {
+  const totalD = toDecimal(total);
+  if (totalD === null) return [];
+  const pcts = percents.map(toDecimal);
+  if (pcts.some((p) => p === null)) return [];
+
+  const allocations = pcts.map((p) =>
+    totalD.mul(p as Decimal).div(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+  );
+
+  const summed = allocations.reduce<Decimal>((acc, v) => acc.plus(v), new Decimal(0));
+  const delta = totalD.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).minus(summed);
+
+  if (!delta.isZero() && allocations.length > 0) {
+    let winnerIdx = 0;
+    for (let i = 1; i < allocations.length; i++) {
+      if (allocations[i].abs().gt(allocations[winnerIdx].abs())) winnerIdx = i;
+    }
+    allocations[winnerIdx] = allocations[winnerIdx].plus(delta);
+  }
+
+  return allocations.map((d) => d.toFixed(2));
+}
+
 // ============================================================================
 // Category-aware display helpers (platform-wide standard)
 // ----------------------------------------------------------------------------
