@@ -269,28 +269,22 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
                 onCheckedChange={(checked) => {
                   const on = !!checked;
                   if (on) {
-                    const ok = typeof window === 'undefined' ? true : window.confirm(
-                      'Applying override will recalculate dependent payment values for this funding record. Continue?'
-                    );
-                    if (!ok) return;
+                    // Defer until user confirms in custom modal
+                    setOverrideConfirmOpen(true);
+                    return;
                   }
                   // Rule 4 audit metadata: snapshot on enable, clear on disable (Test 14 revert).
                   const calculatedSource = data.lenderRate || soldRateVal || '';
                   onChange({
                     ...data,
-                    lenderRateOverride: on,
-                    lenderRateOverrideValue: on
-                      ? (data.lenderRateOverrideValue || data.lenderRate || soldRateVal)
-                      : '',
-                    lenderRateOverrideOriginal: on
-                      ? (data.lenderRateOverrideOriginal || calculatedSource)
-                      : '',
-                    lenderRateOverrideAt: on
-                      ? (data.lenderRateOverrideAt || new Date().toISOString())
-                      : '',
-                    lenderRateOverrideBy: on ? data.lenderRateOverrideBy : '',
-                    lenderRateOverrideReason: on ? data.lenderRateOverrideReason : '',
+                    lenderRateOverride: false,
+                    lenderRateOverrideValue: '',
+                    lenderRateOverrideOriginal: '',
+                    lenderRateOverrideAt: '',
+                    lenderRateOverrideBy: '',
+                    lenderRateOverrideReason: '',
                   });
+                  void calculatedSource;
                 }}
                 className="h-3.5 w-3.5"
               />
