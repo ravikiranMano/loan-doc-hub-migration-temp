@@ -45,6 +45,14 @@ interface AddFundingModalProps {
   remainingPayments?: number;
   existingRecords?: Array<{ id: string; roundingError: boolean; pctOwned: number; originalAmount?: number; currentBalance?: number; lenderId?: string; lenderName?: string }>;
   editingRecordId?: string;
+  /**
+   * Soft-lock indicator: when true and we're editing an existing record, the
+   * Funding Amount and Current Balance inputs are read-only and any attempt
+   * to change those values is rejected on save. The only path to modify
+   * allocations on a fully-funded loan is the Funding Adjustment workflow.
+   */
+  isFullyFunded?: boolean;
+
 }
 
 export interface DisbursementRow {
