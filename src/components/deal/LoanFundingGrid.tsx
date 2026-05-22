@@ -618,25 +618,53 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       case 'noteRate':
         // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
         return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
-      case 'lenderRate':
-        if (!hasLenderRate(record)) {
+      case 'lenderRate': {
+        if (hasLenderRate(record)) {
+          return <span>{formatPercentage(record.lenderRate, 3)}</span>;
+        }
+        // Auto-fill display: when no explicit Lender Rate is stored, fall back
+        // to Sold Rate (if valid) else Note Rate so the cell never appears
+        // blank. Manual overrides are already persisted into record.lenderRate
+        // on save, so the hasLenderRate branch above handles them.
+        const recSold = (record.rateSoldValue || soldRate || '').trim();
+        const hasValidSold = recSold !== '' && !isNaN(parseFloat(recSold)) && parseFloat(recSold) > 0;
+        const fallbackRaw = hasValidSold
+          ? recSold
+          : (noteRate || record.rateNoteValue || record.noteRateDisplay || '').toString().trim();
+        const fallbackNum = parseFloat(fallbackRaw.replace(/[%,]/g, '')) || 0;
+        if (fallbackNum > 0) {
           return (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                    <span>-</span>
+                  <span className="inline-flex items-center gap-1">
+                    <span>{formatPercentage(fallbackNum, 3)}</span>
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">auto</span>
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  Lender Rate not set — defaulting to Note Rate
+                  Auto-filled from {hasValidSold ? 'Sold Rate' : 'Note Rate'}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           );
         }
-        return <span>{formatPercentage(record.lenderRate, 3)}</span>;
+        return (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                  <span>-</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                Lender Rate not set — enter a Note Rate or Sold Rate
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
       case 'regularPayment':
         return <span>{formatCurrency(getDisplayedPayment(record))}</span>;
       case 'disbursements':
