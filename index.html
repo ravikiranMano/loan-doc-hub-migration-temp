@@ -3,6 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Apply theme before first paint to prevent flash-of-wrong-theme during navigation/reload.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.classList.add(theme);
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Hide body until first paint to prevent layout flash on route changes. */
+      html, body { background-color: hsl(0 0% 100%); }
+      html.dark, html.dark body { background-color: hsl(222.2 84% 4.9%); }
+    </style>
+
 
     <link rel="icon" href="/favicon.png" type="image/png" />
 
