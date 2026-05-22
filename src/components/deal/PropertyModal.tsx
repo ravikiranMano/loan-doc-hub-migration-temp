@@ -151,7 +151,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     });
   }, [open, formData.appraisedValue, loanAmount, currentPrincipal, existingLiensTotal, liensCurrentBalanceTotal]);
 
-  const _unused_close_effect = () => {
+  
 
 
   const handleFieldChange = (field: keyof PropertyData, value: string | boolean) => {
