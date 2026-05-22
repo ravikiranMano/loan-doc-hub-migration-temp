@@ -411,17 +411,8 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
                 </Select>
               </div>
 
-              {/* Capacity input for Additional Guarantor / Authorized Party */}
-              {(participantType === 'additional_guarantor' || participantType === 'authorized_party') && (
-                <div className="mb-4">
-                  <Label className="text-sm font-medium mb-1.5 block">Capacity</Label>
-                  <Input
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value)}
-                    placeholder="Enter capacity..."
-                  />
-                </div>
-              )}
+              {/* Capacity field intentionally hidden for Additional Guarantor / Authorized Party — capacity is auto-set from participant type */}
+
 
 
               <div className="flex gap-2">
