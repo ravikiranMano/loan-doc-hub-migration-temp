@@ -276,14 +276,18 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 className="h-6 text-[11px]"
               />
             </div>
+            {errFor('accountId', !!formData.accountId === false && showAllErrors) && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.accountId}</p>
+            )}
 
-            {/* Name */}
+            {/* Name (read-only when linked to a payee — Rule 2) */}
             <div className="flex items-center gap-1">
               <Label className="text-[11px] font-bold min-w-[80px] shrink-0">Name</Label>
               <Input
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
-                className="h-6 text-[11px]"
+                readOnly={!!formData.accountId}
+                className={cn('h-6 text-[11px]', formData.accountId && 'bg-muted/30')}
               />
             </div>
 
@@ -293,7 +297,16 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
               <div className="relative w-[70px]">
                 <Input
                   value={formData.debitPercent}
-                  onChange={(e) => handleChange('debitPercent', e.target.value.replace(/[^0-9.]/g, ''))}
+                  onChange={(e) => {
+                    // Allow digits + single decimal point + up to 4 decimals, clamp <= 100
+                    let v = e.target.value.replace(/[^0-9.]/g, '');
+                    const parts = v.split('.');
+                    if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('');
+                    const m = v.match(/^(\d{0,3})(?:\.(\d{0,4}))?$/);
+                    if (!m && v !== '') return;
+                    if (parseFloat(v) > 100) v = '100';
+                    handleChange('debitPercent', v);
+                  }}
                   onKeyDown={numericKeyDown}
                   className="h-6 text-[11px] pr-5"
                   inputMode="decimal"
@@ -317,6 +330,12 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 </SelectContent>
               </Select>
             </div>
+            {errors.debitPercent && (showAllErrors || formData.debitPercent !== '') && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.debitPercent}</p>
+            )}
+            {errors.debitOf && showAllErrors && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.debitOf}</p>
+            )}
 
             {/* Plus */}
             <div className="flex items-center gap-1">
@@ -336,6 +355,9 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 />
               </div>
             </div>
+            {errors.plusAmount && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.plusAmount}</p>
+            )}
 
             {/* Minimum */}
             <div className="flex items-center gap-1">
@@ -356,7 +378,7 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
               </div>
             </div>
 
-            {/* Maximum (NEW) */}
+            {/* Maximum */}
             <div className="flex items-center gap-1">
               <Label className="text-[11px] font-bold min-w-[80px] shrink-0">Maximum</Label>
               <div className="relative flex-1">
@@ -375,21 +397,83 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
               </div>
             </div>
             {minMaxError && (
-              <p className="text-[10px] text-destructive font-medium pl-[84px]">Minimum must be ≤ Maximum</p>
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.minMax}</p>
             )}
 
-            {/* Calculated Amount (read-only) */}
+            {/* Calculated Amount (read-only unless override enabled — Rule 13/14) */}
             <div className="flex items-center gap-1">
               <Label className="text-[11px] font-bold min-w-[80px] shrink-0">Amount</Label>
               <div className="relative flex-1">
                 <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">$</span>
                 <Input
-                  value={formatCurrencyDisplay(calculatedAmount.toFixed(2))}
-                  readOnly
-                  className="h-6 text-[11px] pl-4 bg-muted/30 font-semibold"
+                  value={
+                    formData.overrideEnabled
+                      ? (formData.overrideAmount || '')
+                      : formatCurrencyDisplay(autoCalculatedAmount.toFixed(2))
+                  }
+                  readOnly={!formData.overrideEnabled}
+                  onChange={(e) => handleChange('overrideAmount', e.target.value.replace(/[^0-9.]/g, ''))}
+                  onKeyDown={numericKeyDown}
+                  onBlur={() => { if (formData.overrideEnabled && formData.overrideAmount) handleChange('overrideAmount', formatCurrencyDisplay(formData.overrideAmount)); }}
+                  onFocus={() => { if (formData.overrideEnabled && formData.overrideAmount) handleChange('overrideAmount', unformatCurrencyDisplay(formData.overrideAmount)); }}
+                  className={cn('h-6 text-[11px] pl-4 font-semibold', !formData.overrideEnabled && 'bg-muted/30')}
                 />
               </div>
             </div>
+            {formData.overrideEnabled && (
+              <p className="text-[10px] text-muted-foreground pl-[84px]">
+                Auto-calculated: ${formatCurrencyDisplay(autoCalculatedAmount.toFixed(2))}
+              </p>
+            )}
+            {errors.amount && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.amount}</p>
+            )}
+
+            {/* Manual override toggle (Rule 14) */}
+            <div className="flex items-center gap-2 pl-[84px]">
+              <input
+                id="disb-override"
+                type="checkbox"
+                checked={!!formData.overrideEnabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setFormData(prev => ({
+                    ...prev,
+                    overrideEnabled: enabled,
+                    overrideAmount: enabled ? (prev.overrideAmount || autoCalculatedAmount.toFixed(2)) : '',
+                    overrideReason: enabled ? prev.overrideReason : '',
+                  }));
+                }}
+                className="h-3 w-3"
+              />
+              <Label htmlFor="disb-override" className="text-[11px] cursor-pointer select-none">
+                Manual override
+              </Label>
+            </div>
+            {formData.overrideEnabled && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Label className="text-[11px] font-bold min-w-[80px] shrink-0">Reason</Label>
+                  <Input
+                    value={formData.overrideReason || ''}
+                    onChange={(e) => handleChange('overrideReason', e.target.value)}
+                    placeholder="Required when override is enabled"
+                    className="h-6 text-[11px]"
+                  />
+                </div>
+                {errors.overrideReason && (showAllErrors || (formData.overrideReason || '') !== '') && (
+                  <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.overrideReason}</p>
+                )}
+              </>
+            )}
+
+            {errors.duplicate && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.duplicate}</p>
+            )}
+            {errors.total && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.total}</p>
+            )}
+
 
             {/* Start Date */}
             <div className="flex items-center gap-1 pt-1 border-t border-border mt-2">
