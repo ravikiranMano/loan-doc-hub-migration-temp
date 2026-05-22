@@ -6,6 +6,8 @@ import {
   mintSupabaseAccessToken,
 } from '../../common/helpers/supabase-jwt';
 import { DocumentsRepository } from './documents.repository';
+import { DocumentDataService } from './document-data.service';
+import { DocxtemplaterService } from './docxtemplater.service';
 import {
   CreateTemplateDto,
   UpdateTemplateDto,
@@ -26,6 +28,8 @@ export class DocumentsService {
   constructor(
     private readonly repo: DocumentsRepository,
     private readonly config: ConfigService,
+    private readonly documentDataService: DocumentDataService,
+    private readonly docxtemplaterService: DocxtemplaterService,
   ) {}
 
   // ─── Templates ───────────────────────────────────────────────────────────────
@@ -240,6 +244,72 @@ export class DocumentsService {
     if (!res.ok) {
       throw new BadRequestException(
         payload.error ?? payload.message ?? `Document generation failed (${res.status})`,
+      );
+    }
+
+    return payload;
+  }
+
+  // ─── v2: docxtemplater engine ─────────────────────────────────────────────────
+
+  /**
+   * Returns the fully-resolved JSON data object that would be passed to docxtemplater.
+   * Useful for inspecting field values, conditions, and transforms before generating.
+   */
+  async getFieldDataV2(dealId: string, templateId: string) {
+    const fieldData = await this.documentDataService.buildTemplateData(dealId, templateId);
+    return this.docxtemplaterService.enrichFieldDataFromFilePath(fieldData);
+  }
+
+  /**
+   * Generates a DOCX using docxtemplater + PizZip entirely within NestJS.
+   * Does NOT save to the database — returns a Buffer for direct download.
+   */
+  generateDocumentV2(dealId: string, templateId: string) {
+    return this.docxtemplaterService.generate(dealId, templateId);
+  }
+
+  /**
+   * Builds the same merge field map as generate-document (previewOnly) without
+   * creating a job or merging DOCX.
+   */
+  async previewDocumentPayload(dealId: string, templateId: string, requestedBy?: string) {
+    if (!requestedBy) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
+    const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/generate-document`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'X-User-Id': requestedBy,
+      },
+      body: JSON.stringify({
+        dealId,
+        templateId,
+        previewOnly: true,
+        outputType: 'docx_only',
+      }),
+    });
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      dealId?: string;
+      dealNumber?: string;
+      templateId?: string;
+      templateName?: string;
+      fieldCount?: number;
+      totalKeysInMap?: number;
+      data?: Record<string, string>;
+    };
+
+    if (!res.ok) {
+      throw new BadRequestException(
+        payload.error ?? `Document payload preview failed (${res.status})`,
       );
     }
 

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -49,6 +50,11 @@ import { subscribePostgresChanges } from '@/services/supabase/realtime';
 import { fetchDealById } from '@/services/deals/deals.service';
 import {
   generateDocument,
+  generateDocumentV2,
+  getFieldDataV2,
+  previewDocumentPayload,
+  type DocumentPayloadPreviewResult,
+  type FieldDataV2Result,
   listGeneratedDocuments,
   listGenerationJobs,
   downloadGeneratedDoc,
@@ -181,10 +187,16 @@ export const DealDocumentsPage: React.FC = () => {
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map());
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingV2, setGeneratingV2] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'legacy' | 'v2'>('legacy');
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [outputType, setOutputType] = useState<OutputType>('docx_only');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<DocumentPayloadPreviewResult | null>(null);
+  const [previewFilter, setPreviewFilter] = useState('');
   const [generationMode, setGenerationMode] = useState<'single' | 'packet'>('packet');
   const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
@@ -351,6 +363,89 @@ export const DealDocumentsPage: React.FC = () => {
     setSelectedTemplateId(templateId || null);
     setShowConfirmDialog(true);
   };
+
+  const handlePreviewPayload = async () => {
+    if (!id || !selectedTemplateId) return;
+    setPreviewMode('legacy');
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    setPreviewFilter('');
+    setShowPreviewDialog(true);
+    try {
+      const result = await previewDocumentPayload(id, selectedTemplateId);
+      setPreviewResult(result);
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Failed to load merge payload';
+      toast({ title: 'Preview failed', description: message, variant: 'destructive' });
+      setShowPreviewDialog(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleGenerateV2 = async () => {
+    if (!id || !selectedTemplateId) return;
+    setGeneratingV2(true);
+    try {
+      const filename = await generateDocumentV2(id, selectedTemplateId);
+      toast({ title: 'Downloaded (v2)', description: filename });
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'v2 generation failed';
+      toast({ title: 'Generate (v2) Failed', description: message, variant: 'destructive' });
+    } finally {
+      setGeneratingV2(false);
+    }
+  };
+
+  const handleInspectFieldData = async () => {
+    if (!id || !selectedTemplateId) return;
+    setPreviewMode('v2');
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    setPreviewFilter('');
+    setShowPreviewDialog(true);
+    try {
+      const result = await getFieldDataV2(id, selectedTemplateId);
+      // Adapt v2 response to the existing preview result shape
+      const tagKeys = result.metadata.templateTagKeys ?? [];
+      setPreviewResult({
+        dealId: result.metadata.dealId,
+        dealNumber: result.metadata.dealNumber,
+        templateId: result.metadata.templateId,
+        templateName: result.metadata.templateName,
+        fieldCount: result.metadata.templateResolvedCount ?? result.metadata.resolvedCount,
+        totalKeysInMap: tagKeys.length || result.metadata.fieldMapCount,
+        templateConditions: result.metadata.templateConditions,
+        data: Object.fromEntries(
+          Object.entries(result.data)
+            .filter(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+            .map(([k, v]) => [k, String(v)])
+        ) as Record<string, string>,
+      });
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Failed to load field data';
+      toast({ title: 'Field data (v2) failed', description: message, variant: 'destructive' });
+      setShowPreviewDialog(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const previewJsonDisplay = useMemo(() => {
+    if (!previewResult?.data) return '';
+    const filter = previewFilter.trim().toLowerCase();
+    const entries = Object.entries(previewResult.data)
+      .filter(([k]) => !filter || k.toLowerCase().includes(filter))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const payload: Record<string, unknown> = { fields: Object.fromEntries(entries) };
+    if (previewMode === 'v2' && previewResult.templateConditions?.length) {
+      payload.conditions = previewResult.templateConditions;
+    }
+    return JSON.stringify(payload, null, 2);
+  }, [previewResult, previewFilter, previewMode]);
 
   const handleGenerate = async () => {
     setShowConfirmDialog(false);
@@ -809,24 +904,86 @@ export const DealDocumentsPage: React.FC = () => {
                   </Select>
                 </div>
 
-                <Button 
-                  onClick={() => handleGenerateClick('single', selectedTemplateId || undefined)}
-                  disabled={!canGenerate || generating || !selectedTemplateId}
-                  className="w-full gap-2"
-                  size="lg"
-                >
-                  {generating ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-5 w-5" />
-                      Generate Document
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handlePreviewPayload}
+                    disabled={!canGenerate || previewLoading || generating || !selectedTemplateId}
+                    className="flex-1 gap-2"
+                    size="lg"
+                  >
+                    {previewLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Loading payload...
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-5 w-5" />
+                        Preview merge data
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleGenerateClick('single', selectedTemplateId || undefined)}
+                    disabled={!canGenerate || generating || !selectedTemplateId}
+                    className="flex-1 gap-2"
+                    size="lg"
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-5 w-5" />
+                        Generate Document
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* v2 docxtemplater test row */}
+                <div className="flex flex-col gap-2 pt-2 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    v2 engine (docxtemplater) — templates must use unbroken <code className="text-[11px]">{'{{field_key}}'}</code> tags typed in Word (no v1 XML repair).
+                  </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <p className="text-xs text-muted-foreground self-center mr-auto sm:hidden">
+                    Actions
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleInspectFieldData}
+                    disabled={!canGenerate || previewLoading || !selectedTemplateId}
+                    className="gap-2"
+                  >
+                    {previewLoading && previewMode === 'v2' ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Loading…</>
+                    ) : (
+                      <><Info className="h-4 w-4" />Inspect field data</>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleGenerateV2}
+                    disabled={!canGenerate || generatingV2 || !selectedTemplateId}
+                    className="gap-2"
+                  >
+                    {generatingV2 ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+                    ) : (
+                      <><FileOutput className="h-4 w-4" />Generate (v2)</>
+                    )}
+                  </Button>
+                </div>
+                </div>
               </div>
             </div>
 
@@ -1435,6 +1592,97 @@ export const DealDocumentsPage: React.FC = () => {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {previewMode === 'v2' ? <Info className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              {previewMode === 'v2' ? 'Merge field data — v2 engine (docxtemplater)' : 'Merge field payload (preview)'}
+            </DialogTitle>
+            <DialogDescription>
+              {previewMode === 'v2'
+                ? 'Values for tags in this template, loaded from deal section data (same source as Generate Document). Empty means no saved value for that field on this deal.'
+                : 'Same key/value map used immediately before the Word template is filled. Keys match merge tags (e.g. pr_p_street_1), not deal form storage IDs.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewLoading && (
+            <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              {previewMode === 'v2' ? 'Building v2 field data…' : 'Building payload from deal data…'}
+            </div>
+          )}
+
+          {!previewLoading && previewResult && (
+            <div className="flex flex-col gap-3 min-h-0 flex-1">
+              <div className="grid grid-cols-2 gap-2 text-sm p-3 rounded-lg bg-muted/50">
+                <div>
+                  <span className="text-muted-foreground">Template</span>
+                  <p className="font-medium">{previewResult.templateName}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">
+                    {previewMode === 'v2' ? 'Filled / tags in template' : 'Non-empty fields'}
+                  </span>
+                  <p className="font-medium">
+                    {previewResult.fieldCount} / {previewResult.totalKeysInMap}
+                    {previewMode === 'v2' ? ' template tags' : ' keys in map'}
+                  </p>
+                </div>
+              </div>
+              {previewMode === 'v2' && previewResult.templateConditions && previewResult.templateConditions.length > 0 && (
+                <div className="text-xs p-3 rounded-lg border bg-background space-y-2 max-h-40 overflow-y-auto">
+                  <p className="font-medium text-muted-foreground">Template conditions</p>
+                  {previewResult.templateConditions.map((c) => (
+                    <div key={c.expression} className="font-mono">
+                      <span className="text-foreground">{c.expression}</span>
+                      {c.driverField && (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          — {c.driverField}={c.driverValue ?? '(empty)'}
+                          {c.matchesCompare != null && (c.matchesCompare ? ' ✓ branch' : ' ✗ else branch')}
+                        </span>
+                      )}
+                      {c.fieldKeys.length > 0 && (
+                        <span className="block text-muted-foreground pl-2">
+                          fields: {c.fieldKeys.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Input
+                placeholder="Filter keys (e.g. pr_p_, broker.)"
+                value={previewFilter}
+                onChange={(e) => setPreviewFilter(e.target.value)}
+              />
+              <Textarea
+                readOnly
+                className="font-mono text-xs min-h-[320px] flex-1 resize-y"
+                value={previewJsonDisplay}
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (previewJsonDisplay) {
+                  void navigator.clipboard.writeText(previewJsonDisplay);
+                  toast({ title: 'Copied to clipboard' });
+                }
+              }}
+              disabled={!previewJsonDisplay}
+            >
+              Copy JSON
+            </Button>
+            <Button onClick={() => setShowPreviewDialog(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

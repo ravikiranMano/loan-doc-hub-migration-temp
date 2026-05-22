@@ -92,3 +92,8 @@ export class GenerateDocumentDto {
   @IsString() @IsOptional() packetId?: string;
   @IsString() @IsOptional() @IsIn(['docx_only', 'docx_and_pdf']) outputType?: string;
 }
+
+/** Body for the docxtemplater v2 generation endpoint. */
+export class GenerateDocumentV2Dto {
+  @IsString() @IsNotEmpty() templateId: string;
+}

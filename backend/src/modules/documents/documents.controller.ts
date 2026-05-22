@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -10,7 +11,11 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { Readable } from 'stream';
 import { DocumentsService } from './documents.service';
 import {
   CreateTemplateDto,
@@ -23,6 +28,7 @@ import {
   CreateMergeTagDto,
   UpdateMergeTagDto,
   GenerateDocumentDto,
+  GenerateDocumentV2Dto,
 } from './dto/documents.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators';
@@ -233,8 +239,48 @@ export class DocumentsController {
     return this.service.generateDocument(dealId, dto, user?.sub);
   }
 
+  @Get('deals/:dealId/documents/preview-payload')
+  previewDocumentPayload(
+    @Param('dealId') dealId: string,
+    @Query('templateId') templateId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    if (!templateId?.trim()) {
+      throw new BadRequestException('templateId query parameter is required');
+    }
+    return this.service.previewDocumentPayload(dealId, templateId.trim(), user?.sub);
+  }
+
   @Get('deals/:dealId/documents/jobs')
   listGenerationJobs(@Param('dealId') dealId: string) {
     return this.service.listGenerationJobs(dealId);
+  }
+
+  // ─── v2: docxtemplater engine (test / parallel path) ─────────────────────────
+
+  @Get('deals/:dealId/documents/field-data-v2')
+  getFieldDataV2(
+    @Param('dealId') dealId: string,
+    @Query('templateId') templateId: string,
+  ) {
+    if (!templateId?.trim()) throw new BadRequestException('templateId query parameter is required');
+    return this.service.getFieldDataV2(dealId, templateId.trim());
+  }
+
+  @Post('deals/:dealId/documents/generate-v2')
+  @HttpCode(HttpStatus.OK)
+  async generateDocumentV2(
+    @Param('dealId') dealId: string,
+    @Body() dto: GenerateDocumentV2Dto,
+    @CurrentUser() user: JwtPayload,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    if (!user?.sub) throw new BadRequestException('Authentication required');
+    const { buffer, filename } = await this.service.generateDocumentV2(dealId, dto.templateId);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return new StreamableFile(Readable.from(buffer));
   }
 }
