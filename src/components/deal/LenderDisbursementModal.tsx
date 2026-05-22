@@ -33,6 +33,9 @@ export interface DisbursementFormData {
   from: 'Payment' | 'Interest' | 'Principal' | 'NA' | '';
   calculatedAmount: string;
   comments: string;
+  overrideEnabled?: boolean;
+  overrideReason?: string;
+  overrideAmount?: string;
 }
 
 const emptyForm = (): DisbursementFormData => ({
@@ -51,7 +54,17 @@ const emptyForm = (): DisbursementFormData => ({
   from: '',
   calculatedAmount: '',
   comments: '',
+  overrideEnabled: false,
+  overrideReason: '',
+  overrideAmount: '',
 });
+
+interface ExistingDisbursementRef {
+  accountId: string;
+  debitThrough?: string;
+  calculatedAmount?: string;
+  amount?: string;
+}
 
 interface LenderDisbursementModalProps {
   open: boolean;
@@ -62,6 +75,16 @@ interface LenderDisbursementModalProps {
   paymentShare?: number;
   interestShare?: number;
   principalShare?: number;
+  /** Other disbursements already configured for this lender row. */
+  existingDisbursements?: ExistingDisbursementRef[];
+  /** Index of the disbursement being edited (excluded from duplicate / total checks). */
+  editingIndex?: number | null;
+  /** Maximum total disbursement amount allowed (e.g., lender's per-period payment). */
+  availablePayment?: number;
+  /** Loan origination date (yyyy-MM-dd). Start Date cannot precede this. */
+  loanOriginationDate?: string;
+  /** Loan maturity date (yyyy-MM-dd). Start Date cannot exceed this. */
+  loanMaturityDate?: string;
 }
 
 const parseNum = (s: string): number => parseFloat((s || '').toString().replace(/[$,]/g, '')) || 0;
