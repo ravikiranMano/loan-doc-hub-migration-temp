@@ -2414,10 +2414,14 @@ export function processEachBlocks(
         const innerChevronTags = [...blockContent.matchAll(/«([^»]+)»/g)];
 
         for (const tag of innerCurlyTags) {
-          const innerFieldName = tag[1].trim();
+          let innerFieldName = tag[1].trim();
           // Skip control tags AND iteration helpers (resolved separately below).
           if (innerFieldName.startsWith('#') || innerFieldName.startsWith('/') || innerFieldName === 'else') continue;
           if (innerFieldName.startsWith('@')) continue;
+          // Handlebars-style {{this.field}} → resolve as {{field}} on current entity.
+          // Bare {{this}} falls back to the conventional .fullName property.
+          if (/^this\./i.test(innerFieldName)) innerFieldName = innerFieldName.slice(5);
+          else if (innerFieldName.toLowerCase() === 'this') innerFieldName = 'fullName';
 
 
           const qualifiedKey = `${entityPrefix}.${innerFieldName}`; // e.g., "property1.address"
@@ -2455,7 +2459,9 @@ export function processEachBlocks(
         }
 
         for (const tag of innerChevronTags) {
-          const innerFieldName = tag[1].trim();
+          let innerFieldName = tag[1].trim();
+          if (/^this\./i.test(innerFieldName)) innerFieldName = innerFieldName.slice(5);
+          else if (innerFieldName.toLowerCase() === 'this') innerFieldName = 'fullName';
           const qualifiedKey = `${entityPrefix}.${innerFieldName}`;
           const canonicalKey = resolveFieldKeyWithMap(qualifiedKey, mergeTagMap, validFieldKeys);
           const resolved = getFieldData(canonicalKey, fieldValues);
@@ -2707,6 +2713,22 @@ export function replaceMergeTags(
     );
   }
   __mark('controlConsolidation');
+
+  // Rewrite Handlebars length comparisons we don't natively evaluate into
+  // pre-published boolean flags, so templates can author:
+  //   {{#if borrowers.length > 1}}Co-Borrowers:{{/if}}
+  //   {{#if borrowers.length}}…{{/if}}
+  // and have them resolve from borrowers_hasMultiple / borrowers_count
+  // (published by generate-document for the borrowers collection). Same for
+  // any other collection that publishes a `<name>_hasMultiple` / `<name>_count` pair.
+  result = result.replace(
+    /\{\{#if\s+([A-Za-z_][A-Za-z0-9_]*)\.length\s*(?:>\s*1|>=\s*2|!=\s*1|!==\s*1)\s*\}\}/g,
+    (_m, name) => `{{#if ${name}_hasMultiple}}`,
+  );
+  result = result.replace(
+    /\{\{#if\s+([A-Za-z_][A-Za-z0-9_]*)\.length\s*\}\}/g,
+    (_m, name) => `{{#if ${name}_count}}`,
+  );
 
   if (result.includes('{{#each')) {
     result = processEachBlocks(result, fieldValues, mergeTagMap, validFieldKeys);
