@@ -1,56 +1,110 @@
-## Goal
+## Override Calculation Validation — Scoped Implementation Plan
 
-Guarantee Lender Rate is never blank when Sold Rate is missing, by falling back to Note Rate everywhere (UI, persistence, reload, downstream calculations) while preserving manual overrides.
+The spec covers 14 test cases across UI, API, accounting, documents, and audit. Today the project has exactly **two** override surfaces:
 
-## Current state (already in place — will not change)
+1. **Lender Rate Override** on funding records — `lenderRateOverride` + `lenderRateOverrideValue` (in `AddFundingModal`, `FundingDetailForm`, `LoanFundingGrid`, `LoanTermsFundingForm`).
+2. **Lender Disbursement Override** — `overrideEnabled` + `overrideReason` (in `LenderDisbursementModal`).
 
-- `AddFundingModal` resolves Lender Rate as: Override value → Sold Rate (validated) → Note Rate (`isValidMortgageRate` guard, lines 395–432).
-- Save path in `LoanFundingGrid.handleSaveFundingRecord` (lines 998–1012) already falls back to Note Rate when no sold/lender rate is present.
-- Override tracking already persisted via `lenderRateOverride` + `lenderRateOverrideValue` on each funding record (this is the existing `isLenderRateOverridden` flag — no new column needed).
-- Note Rate stored at 4dp, displayed via `formatPercentage(..., 3)` — precision rules already met.
+There is no override on servicing rates, accounting GL entries, payoff calc, ledger balances, or document merge tags as separate fields — those all read from the same funding/servicing values that the two overrides above produce. So the realistic scope is: make the two existing overrides **truly authoritative, persistent, audited, and visually marked**, and verify downstream consumers (payment recompute, document tags, exports) read the overridden values.
 
-## Gaps to fix (scope of this change)
+Scope is intentionally narrow per project's minimal-change policy. No DB schema migration, no new tables. All metadata stored inside the existing funding record JSON (`loan_terms.funding_records[].*`) and the existing disbursement record JSON.
 
-1. **Grid display fallback** — `LoanFundingGrid` cell renderer for `lenderRate` (lines 621–639) shows a `-` placeholder with an "defaulting to Note Rate" tooltip when `hasLenderRate(record)` is false. It does not actually render the Note Rate value. Legacy/persisted records that never got a lenderRate value still appear blank to the user.
-2. **Live Note Rate propagation to saved records** — When the deal-level Note Rate changes and a saved funding record has `lenderRateOverride !== true` AND no valid Sold Rate, the record's `lenderRate` is not refreshed. `recomputeLenderPayments` updates payments but leaves the rate field stale.
-3. **Modal manual-edit protection** — The current modal effect (line 412–428) re-syncs `lenderRate` to `effectiveRate` whenever Note/Sold changes, even if the user typed a Lender Rate by hand without toggling Override. Per Rule 4 we must not overwrite a user-typed value; only auto-filled values should track Note Rate.
+---
 
-## Changes
+### What changes
 
-### `src/components/deal/LoanFundingGrid.tsx`
+**1. Lender Rate Override — audit metadata (Rule 4, Test 11)**
 
-- In the `lenderRate` cell renderer, when `hasLenderRate(record)` is false:
-  - If a usable `noteRate` (or `record.rateNoteValue`) exists, render it via `formatPercentage(noteRateValue, 3)` with a small "auto" badge/tooltip ("Auto-filled from Note Rate").
-  - Otherwise keep the existing `-` + warning tooltip.
-- In the records-load/normalization path (around lines 480–520, where records are hydrated from props), when `record.lenderRate <= 0` and `record.lenderRateOverride !== true`, set the in-memory `lenderRate` to the numeric Note Rate so downstream calculations (Pro Rata, payment) are correct without forcing a save.
-- Add an effect that, when the `noteRate` prop changes, walks records and updates `lenderRate` for any record where `lenderRateOverride !== true` AND `(record.rateSoldValue || soldRate)` is empty/invalid. This mirrors the new value into the row state and triggers `recomputeLenderPayments`.
+Extend the funding record shape (in-memory + persisted JSON, no DB column change) with:
+```
+lenderRateOverride: boolean
+lenderRateOverrideValue: string           // already exists
+lenderRateOverrideOriginal: string        // NEW — snapshot of calculated value at moment override toggled on
+lenderRateOverrideReason?: string         // NEW — optional text
+lenderRateOverrideBy: string              // NEW — auth.uid() at toggle time
+lenderRateOverrideAt: string              // NEW — ISO timestamp at toggle time
+```
 
-### `src/components/deal/AddFundingModal.tsx`
+- Captured in `AddFundingModal` Override checkbox `onCheckedChange` and in `FundingDetailForm` Override toggle.
+- Cleared (set to undefined) when Override is toggled off → restores calculated source (Test 14 revert).
+- Persisted as part of the existing funding records JSON write in `LoanTermsFundingForm` / `LoanFundingGrid.handleSaveFundingRecord`.
 
-- Tighten the sync effect (lines 395–432): only overwrite `prev.lenderRate` with `effectiveRate` when one of:
-  - `overrideOn === true` (override controls the field), OR
-  - `prev.lenderRate` is empty / equals the previous `linkedRate` (i.e. the field is still auto-filled, not user-edited).
-- Track a transient `lenderRateUserEdited` flag in `formData` (set true on direct `lenderRate` input change) so the effect can distinguish "auto-filled" vs "manually edited without Override toggle". Reset on Override toggle and on save.
-- When `lenderRateUserEdited` is true, also persist `lenderRateOverride = true` + `lenderRateOverrideValue = lenderRate` on save so reload behavior matches Rule 5/6.
+**2. Precision storage (Rule 5, Test 12)**
 
-### No changes
+- In `AddFundingModal` and `FundingDetailForm` Override input `onBlur`: store value with up to **4 decimals** using existing `truncateToDecimals(v, 4)`. Display continues using `formatPercentage(v, 3)`.
+- Save path passes the stored 4-dp string, not the display-rounded value.
 
-- No schema migration. The spec's `isLenderRateOverridden` requirement is satisfied by the existing `lenderRateOverride` boolean on each funding record (stored in `deal_section_values` JSONB under the funding section).
-- No edge-function / document-generation changes.
-- `LoanTermsFundingForm.tsx` save logic untouched — it already passes the resolved `lenderRate` through.
-- Precision helpers (`precisionFormat.ts`) untouched.
+**3. Override locking (Rule 1, Rule 9, Test 10)**
 
-## Files touched
+In `AddFundingModal` sync effect (lines ~395–432) and `LoanFundingGrid` lender-rate cell renderer:
+- When `lenderRateOverride === true`, **never** overwrite `lenderRate` from Sold Rate, Note Rate, or any auto-fill chain.
+- The existing precedence (`Override → Sold → Note`) is already correct; this change adds an explicit guard that recompute effects watching `noteRate` / `soldRate` props skip records where `lenderRateOverride === true`.
+- `recomputeLenderPayments` already uses `record.lenderRate`; verify it reads the override value through the normal field and add a comment marking the contract.
 
-- `src/components/deal/LoanFundingGrid.tsx`
-- `src/components/deal/AddFundingModal.tsx`
+**4. Override badge + tooltip (UI Requirements)**
 
-## QA mapping (against the 12 test cases)
+In `LoanFundingGrid` lender-rate cell:
+- When `record.lenderRateOverride === true`, show a small `Pencil` icon next to the value with tooltip:
+  `Manually overridden by {name} on {MM/DD/YYYY}. Original calculated: {original}%. Reason: {reason}`.
+- Use existing `Tooltip` + `Badge` primitives. No new components.
 
-- TC1, TC3, TC4: covered by grid display fallback + load-time hydration.
-- TC2, TC11: covered by existing save fallback + new hydration on reload.
-- TC5, TC6, TC8: covered by `lenderRateUserEdited` → `lenderRateOverride` persistence.
-- TC7: covered by the new noteRate-change effect in the grid.
-- TC9: existing Sold Rate priority is unchanged.
-- TC10: existing 4dp storage + `formatPercentage` display — no change needed.
-- TC12: blank Lender Rate no longer reaches downstream consumers because the grid hydrates from Note Rate on load.
+**5. Optional confirmation modal (UI Requirements)**
+
+When toggling Override **on** in `AddFundingModal` and `FundingDetailForm`, show a one-line `AlertDialog` confirm:
+`Applying override will recalculate dependent payment values for this funding record. Continue?`
+- Cancel leaves override off.
+- Confirm proceeds and snapshots `lenderRateOverrideOriginal`.
+
+**6. Disbursement Override — parity audit fields**
+
+`LenderDisbursementModal` already has `overrideEnabled` + `overrideReason`. Add:
+- `overrideOriginalAmount` (snapshot of computed amount at toggle)
+- `overrideBy`, `overrideAt`
+Persisted in the existing disbursement record JSON. Badge on the disbursement row in `LoanFundingGrid` showing the same tooltip pattern.
+
+**7. Downstream verification (no code change, just validation)**
+
+Already correct — but add inline comments documenting the contract so future changes don't regress:
+- `LoanTermsFundingForm.tsx:522` — `lenderRate = override ? overrideValue : computed`. ✓
+- `LoanFundingGrid.tsx:1031` — same precedence in save path. ✓
+- Document merge: funding records flow through existing publishers; they read `record.lenderRate` which already resolves to the override value. No template change needed.
+- Exports / reports: same — they consume `record.lenderRate`.
+
+---
+
+### Out of scope (explicit)
+
+- **No new audit table.** Override metadata lives in the funding/disbursement JSON. A separate `override_audit_log` table would touch DB schema and is outside the minimal-change policy. Can be added later.
+- **No servicing / GL / payoff override fields** — those entities don't expose a separate override today and the spec doesn't name new ones.
+- **No new API endpoints.** Reads/writes go through the existing `deal_section_values` save path.
+- **No changes to document templates.** Merge tags already render the resolved `lenderRate`.
+
+---
+
+### Files touched
+
+- `src/components/deal/AddFundingModal.tsx` — metadata snapshot on toggle, precision on blur, confirmation dialog, locking guard.
+- `src/components/deal/FundingDetailForm.tsx` — same toggle/snapshot/confirmation.
+- `src/components/deal/LoanFundingGrid.tsx` — badge + tooltip in lender-rate cell and disbursement row; pass-through of new fields.
+- `src/components/deal/LenderDisbursementModal.tsx` — snapshot original amount + by/at on toggle.
+- `src/components/deal/LoanTermsFundingForm.tsx` — pass-through of new metadata fields in save payload.
+
+No DB migration. No edge function. No template change.
+
+---
+
+### QA mapping
+
+| Spec test | Covered by |
+|---|---|
+| 1, 2, 3, 4 | Existing precedence + new locking guard (#3) |
+| 5, 7 | No-op — already flows through `record.lenderRate` |
+| 6 | No-op — templates already read resolved value |
+| 8, 9 | Persistence of new metadata in funding/disbursement JSON |
+| 10 | Locking guard (#3) |
+| 11 | Audit metadata (#1, #6) + badge tooltip (#4) |
+| 12 | 4-dp storage on blur (#2) |
+| 13 | Override per-record is independent; no cross-record coupling added |
+| 14 | Toggle-off clears metadata and restores calculated source (#1) |
+
+Approve to implement, or tell me which subset (e.g. just #1+#3+#4, or skip the confirmation modal) to keep it tighter.
