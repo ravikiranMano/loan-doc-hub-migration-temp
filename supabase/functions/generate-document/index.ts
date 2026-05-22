@@ -7784,6 +7784,68 @@ async function generateSingleDocument(
 
           const getStr = (k: string) =>
             String(fieldValues.get(k)?.rawValue ?? "").trim();
+          const getLenderDisplayName = (a: number) => {
+            const firstName = getStr(`additionalLenders${a}.firstName`);
+            const middle = getStr(`additionalLenders${a}.middle`);
+            const last = getStr(`additionalLenders${a}.last`);
+            const vesting = getStr(`additionalLenders${a}.vesting`);
+            return (
+              getStr(`additionalLenders${a}.displayName`)
+              || [firstName, middle, last].filter(Boolean).join(" ")
+              || vesting
+            ).replace(/\s+/g, " ").trim();
+          };
+          const lenderBlock = (labelN: number, displayName: string) => [
+            paraText(`Lender ${labelN}:`, 60),
+            paraText(displayName, 120),
+            paraSigRow(),
+          ].join("");
+
+          let docXmlChanged = false;
+          const normalizedExisting = new Set<number>();
+          const docBlocks: Array<{ start: number; end: number; xml: string; visible: string }> = [];
+          const blockRe = /<w:p\b[\s\S]*?<\/w:p>|<w:tbl\b[\s\S]*?<\/w:tbl>/g;
+          let bm: RegExpExecArray | null;
+          while ((bm = blockRe.exec(docXml)) !== null) {
+            docBlocks.push({
+              start: bm.index,
+              end: bm.index + bm[0].length,
+              xml: bm[0],
+              visible: bm[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+            });
+          }
+          const replacements: Array<{ start: number; end: number; replacement: string; labelN: number }> = [];
+          const numberedLenderInBlock = (visible: string) => {
+            const lm = visible.match(/(?:ADDITIONAL\s+LENDER|Lender)\s+(\d+)\s*:/i);
+            return lm ? Number.parseInt(lm[1], 10) : 0;
+          };
+          for (let a = 1; a <= lenderCount - 1; a++) {
+            const labelN = a + 1;
+            const displayName = getLenderDisplayName(a);
+            if (!displayName) continue;
+            const startIdx = docBlocks.findIndex((b) => numberedLenderInBlock(b.visible) === labelN);
+            if (startIdx === -1) continue;
+            let endIdx = Math.min(startIdx + 2, docBlocks.length);
+            let sawSignatureOrDate = false;
+            for (let j = startIdx + 1; j < Math.min(docBlocks.length, startIdx + 12); j++) {
+              const nextLender = numberedLenderInBlock(docBlocks[j].visible);
+              if (nextLender >= 2 && nextLender !== labelN) break;
+              if (/\b(Signature|Date)\b/i.test(docBlocks[j].visible)) sawSignatureOrDate = true;
+              endIdx = j + 1;
+              if (sawSignatureOrDate && /\bDate\b/i.test(docBlocks[j].visible)) break;
+            }
+            replacements.push({
+              start: docBlocks[startIdx].start,
+              end: docBlocks[Math.max(startIdx, endIdx - 1)].end,
+              replacement: lenderBlock(labelN, displayName),
+              labelN,
+            });
+          }
+          for (const rw of replacements.sort((a, b) => b.start - a.start)) {
+            docXml = docXml.slice(0, rw.start) + rw.replacement + docXml.slice(rw.end);
+            normalizedExisting.add(rw.labelN);
+            docXmlChanged = true;
+          }
 
           const skippedInvalid: Array<{ index: number; reason: string }> = [];
           const blocks: string[] = [];
@@ -7792,28 +7854,16 @@ async function generateSingleDocument(
           // Iterate lenders 2..N. a = 1..lenderCount-1 maps to label N = a+1.
           for (let a = 1; a <= lenderCount - 1; a++) {
             const labelN = a + 1;
-            if (renderedIndexes.has(labelN)) continue;
+            if (normalizedExisting.has(labelN)) continue;
 
-            const firstName = getStr(`additionalLenders${a}.firstName`);
-            const middle = getStr(`additionalLenders${a}.middle`);
-            const last = getStr(`additionalLenders${a}.last`);
-            const vesting = getStr(`additionalLenders${a}.vesting`);
-            const displayName = (
-              getStr(`additionalLenders${a}.displayName`)
-              || [firstName, middle, last].filter(Boolean).join(" ")
-              || vesting
-            ).replace(/\s+/g, " ").trim();
+            const displayName = getLenderDisplayName(a);
 
             if (!displayName) {
               skippedInvalid.push({ index: labelN, reason: "empty name" });
               continue;
             }
 
-            blocks.push(
-              paraText(`Lender ${labelN}:`, 60),
-              paraText(displayName, 120),
-              paraSigRow(),
-            );
+            blocks.push(lenderBlock(labelN, displayName));
             appendedCount++;
           }
 
@@ -7833,13 +7883,17 @@ async function generateSingleDocument(
                 ? lastSectPrIdx
                 : bodyCloseIdx;
               docXml = docXml.slice(0, insertAt) + appended + docXml.slice(insertAt);
-              unz["word/document.xml"] = encoder.encode(docXml);
-              processedDocx = fflateMod.zipSync(unz, { level: 0 });
+              docXmlChanged = true;
             }
           }
 
+          if (docXmlChanged) {
+            unz["word/document.xml"] = encoder.encode(docXml);
+            processedDocx = fflateMod.zipSync(unz, { level: 0 });
+          }
+
           console.log(
-            `[lender-sig] template=${tName} lenders.appended=${appendedCount} lenders.totalExpected=${lenderCount - 1} status=${appendedCount + renderedIndexes.size >= lenderCount - 1 ? "complete" : "incomplete"}`,
+            `[lender-sig] template=${tName} lenders.normalized=${normalizedExisting.size} lenders.appended=${appendedCount} lenders.totalExpected=${lenderCount - 1} status=${appendedCount + normalizedExisting.size >= lenderCount - 1 ? "complete" : "incomplete"}`,
           );
         }
       }
