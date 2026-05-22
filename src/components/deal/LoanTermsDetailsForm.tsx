@@ -335,10 +335,11 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     }
   };
 
-  const handleValidatedPaste = (e: React.ClipboardEvent<HTMLInputElement>, fieldKey: string, config: ValidationConfig) => {
+  const handleValidatedPaste = (e: React.ClipboardEvent<HTMLInputElement>, fieldKey: string, config: ValidationConfig, maxLength?: number) => {
     e.preventDefault();
-    const pasted = e.clipboardData.getData('text');
-    const cleaned = pasted.split('').filter(ch => config.allowedPattern.test(ch)).join('');
+    const pasted = e.clipboardData.getData('text').trim();
+    let cleaned = pasted.split('').filter(ch => config.allowedPattern.test(ch)).join('');
+    if (maxLength && cleaned.length > maxLength) cleaned = cleaned.slice(0, maxLength);
     setValue(fieldKey, cleaned);
   };
 
@@ -349,9 +350,17 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     setValidationErrors(prev => ({ ...prev, [fieldKey]: error }));
   };
 
-  const renderValidatedField = (fieldKey: string, label: string, configKey: string) => {
+  const renderValidatedField = (fieldKey: string, label: string, configKey: string, maxLength?: number) => {
     const config = VALIDATION_CONFIGS[configKey];
     const error = validationErrors[fieldKey];
+    const charClassSrc = config.allowedPattern.source.replace(/^\^/, '').replace(/\$$/, '');
+    const charClassRe = new RegExp(charClassSrc, 'g');
+    const sanitize = (raw: string) => {
+      const matches = raw.match(charClassRe) || [];
+      let out = matches.join('');
+      if (maxLength && out.length > maxLength) out = out.slice(0, maxLength);
+      return out;
+    };
     return (
       <DirtyFieldWrapper fieldKey={fieldKey}>
         <div className="flex items-center gap-2">
@@ -360,11 +369,12 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             <Input
               id={fieldKey}
               value={getValue(fieldKey)}
-              onChange={(e) => setValue(fieldKey, e.target.value)}
+              onChange={(e) => setValue(fieldKey, sanitize(e.target.value))}
               onKeyDown={(e) => handleValidatedKeyDown(e, config)}
-              onPaste={(e) => handleValidatedPaste(e, fieldKey, config)}
+              onPaste={(e) => handleValidatedPaste(e, fieldKey, config, maxLength)}
               onBlur={() => handleValidatedBlur(fieldKey, config)}
               disabled={disabled}
+              maxLength={maxLength}
               className={cn('h-8 text-xs w-full', error && 'border-destructive')}
             />
             {error && <p className="text-destructive text-[10px] mt-0.5">{error}</p>}
@@ -373,6 +383,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
       </DirtyFieldWrapper>
     );
   };
+
 
   const renderInlineSelect = (fieldKey: string, label: string, options: { value: string; label: string }[], placeholder: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
