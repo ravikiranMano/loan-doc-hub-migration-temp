@@ -52,13 +52,14 @@ describe('category helpers (all use min 2 / max 4 smart-trim)', () => {
     expect(formatProRata('50.5000')).toBe('50.50%');
     expect(formatProRata('33.3333')).toBe('33.3333%');
   });
-  it('formatRatio (LTV/CLTV/Protective Equity)', () => {
-    expect(formatRatio('80.1250')).toBe('80.125%');
+  it('formatRatio (LTV/CLTV/Protective Equity) -> max 2dp', () => {
+    expect(formatRatio('80.1250')).toBe('80.13%');
     expect(formatRatio('65.5000')).toBe('65.50%');
     expect(formatRatio('50.0000')).toBe('50.00%');
-    expect(formatRatio('4.1671')).toBe('4.1671%');
-    expect(formatRatio('0.0167')).toBe('0.0167%');
+    expect(formatRatio('4.1671')).toBe('4.17%');
+    expect(formatRatio('0.0167')).toBe('0.02%');
   });
+
   it('formatLateChargePct', () => {
     expect(formatLateChargePct('5.1250')).toBe('5.125%');
     expect(formatLateChargePct('5.1000')).toBe('5.10%');
