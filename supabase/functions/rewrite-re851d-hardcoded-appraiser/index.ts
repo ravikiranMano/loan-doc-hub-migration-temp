@@ -367,13 +367,15 @@ serve(async (req) => {
     const rewrittenAddressCells =
       rewrites.filter((r) => r.kind === "addr").length;
     const afterCellXml = applyRewrites(originalXml, rewrites);
-    const paragraphResult = applyParagraphAppraiserRewrites(afterCellXml);
+    const conditionalResult = computeConditionalRewrites(afterCellXml);
+    const afterConditionalXml = applyRanges(afterCellXml, conditionalResult.ranges);
+    const paragraphResult = applyParagraphAppraiserRewrites(afterConditionalXml);
     const newXml = paragraphResult.xml;
     const rewrittenNameParagraphs = paragraphResult.nameCount;
     const rewrittenAddressParagraphs = paragraphResult.addrCount;
     const nameLabelsSeen = Math.max(cellResult.nameLabelsSeen, paragraphResult.nameLabelsSeen);
     const addrLabelsSeen = Math.max(cellResult.addrLabelsSeen, paragraphResult.addrLabelsSeen);
-    const totalRewrites = rewrites.length + rewrittenNameParagraphs + rewrittenAddressParagraphs;
+    const totalRewrites = rewrites.length + conditionalResult.rewritten + rewrittenNameParagraphs + rewrittenAddressParagraphs;
 
     if (totalRewrites === 0) {
       return new Response(
@@ -382,6 +384,8 @@ serve(async (req) => {
           templatePath,
           rewrittenNameCells: 0,
           rewrittenAddressCells: 0,
+          rewrittenConditionalBlocks: 0,
+          remainingConditionalBlocks: conditionalResult.remainingIfBlocks,
           rewrittenNameParagraphs: 0,
           rewrittenAddressParagraphs: 0,
           nameLabelsSeen,
@@ -422,6 +426,8 @@ serve(async (req) => {
         templatePath,
         rewrittenNameCells,
         rewrittenAddressCells,
+        rewrittenConditionalBlocks: conditionalResult.rewritten,
+        remainingConditionalBlocks: conditionalResult.remainingIfBlocks,
         rewrittenNameParagraphs,
         rewrittenAddressParagraphs,
         nameLabelsSeen,
