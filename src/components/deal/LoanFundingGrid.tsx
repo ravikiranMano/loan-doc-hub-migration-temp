@@ -502,6 +502,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       rateLenderValue: record.rateLenderValue || '',
       lenderRateOverride: record.lenderRateOverride || false,
       lenderRateOverrideValue: record.lenderRateOverrideValue || '',
+      lenderRateOverrideOriginal: record.lenderRateOverrideOriginal || '',
+      lenderRateOverrideReason: record.lenderRateOverrideReason || '',
+      lenderRateOverrideBy: record.lenderRateOverrideBy || '',
+      lenderRateOverrideAt: record.lenderRateOverrideAt || '',
       roundingAdjustment: record.roundingAdjustment || false,
       disbursements: record.disbursements?.length ? record.disbursements.map(d => ({
         active: (d as any).active ?? true,
