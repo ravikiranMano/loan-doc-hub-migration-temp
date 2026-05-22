@@ -797,6 +797,29 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Rule: when this lender already owns 100% Pro Rata AND its Funding
+    // Amount and Current Balance both equal the loan's Principal Balance,
+    // the record is fully allocated to this single lender. Inputs remain
+    // editable for review, but saving any change to Funding Amount or
+    // Current Balance is blocked here with a clear message.
+    if (editingRecord && principalBalanceNum > 0) {
+      const origPct = Number(editingRecord.pctOwned) || 0;
+      const origFunding = Number(editingRecord.originalAmount) || 0;
+      const origCB = Number(editingRecord.currentBalance) || 0;
+      const wasFullyAllocatedToThisLender =
+        Math.abs(origPct - 100) <= 0.01 &&
+        Math.abs(origFunding - principalBalanceNum) <= FUNDING_TOLERANCE &&
+        Math.abs(origCB - principalBalanceNum) <= FUNDING_TOLERANCE;
+      const changedFundingOrCB =
+        Math.abs(thisLenderShare - origFunding) > FUNDING_TOLERANCE ||
+        Math.abs(thisLenderCurrentBalance - origCB) > FUNDING_TOLERANCE;
+      if (wasFullyAllocatedToThisLender && changedFundingOrCB) {
+        toast.error(
+          'Cannot save: this lender already holds 100% Pro Rata with Funding Amount and Current Balance equal to the Principal Balance. Use the Funding Adjustment workflow to reallocate.'
+        );
+        return;
+      }
+    }
     // Fully-funded soft lock (Rules 1, 2, 5): reject any save that mutates
     // Funding Amount or Current Balance on a locked row. Allocation changes
     // must go through the Funding Adjustment workflow.
