@@ -596,6 +596,32 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     .reduce((sum, r) => sum + r.pctOwned, 0);
   const projectedTotal = otherLendersTotal + percentOwnedNum;
 
+  // ---------------------------------------------------------------------------
+  // Fully-funded soft lock
+  // ---------------------------------------------------------------------------
+  // When the loan is fully funded, the parent grid passes isFullyFunded=true.
+  // Funding Amount and Current Balance on the existing row become read-only
+  // and saves that mutate either value are rejected. Only the Funding
+  // Adjustment workflow can change allocations on a fully-allocated loan.
+  const editingRecord = editingRecordId
+    ? existingRecords.find(r => r.id === editingRecordId)
+    : undefined;
+  const isLockedRow = !!(isFullyFunded && editingRecord);
+  const lockedTooltip = 'Funding Amount and Current Balance are locked because loan is fully funded.';
+  const originalLockedFundingAmount = Number(editingRecord?.originalAmount ?? 0);
+  const originalLockedCurrentBalance = Number(editingRecord?.currentBalance ?? 0);
+  const lockedFieldsModified = isLockedRow && (
+    Math.abs(thisLenderShare - originalLockedFundingAmount) > FUNDING_TOLERANCE ||
+    Math.abs(thisLenderCurrentBalance - originalLockedCurrentBalance) > FUNDING_TOLERANCE
+  );
+  // Rule 3: when fully funded, Current Balance must equal Funding Amount.
+  const fullyFundedCBMismatch = isLockedRow
+    && thisLenderShare > 0
+    && thisLenderCurrentBalance > 0
+    && Math.abs(thisLenderShare - thisLenderCurrentBalance) > FUNDING_TOLERANCE;
+
+
+
   const handleChange = (field: keyof FundingFormData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
