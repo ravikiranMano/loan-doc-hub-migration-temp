@@ -293,7 +293,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     );
   };
 
-  const renderCurrencyField = (field: keyof PropertyData, label: string) => (
+  const renderCurrencyField = (field: keyof PropertyData, label: string, readOnly = false) => (
     <div className="flex items-center gap-2">
       <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
       <div className="relative flex-1">
@@ -308,10 +308,13 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
           className="h-7 text-xs pl-6"
           inputMode="decimal"
           placeholder="0.00"
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
         />
       </div>
     </div>
   );
+
 
   const renderCheckboxField = (field: keyof PropertyData, label: string) => (
     <div className="flex items-center gap-2">
