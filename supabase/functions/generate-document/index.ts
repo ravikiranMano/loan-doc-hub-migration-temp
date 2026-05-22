@@ -7922,7 +7922,9 @@ async function generateSingleDocument(
           console.log(
             `[lender-sig] template=${tName} lenders.normalized=${normalizedExisting.size} lenders.appended=${appendedCount} lenders.totalExpected=${lenderCount - 1} status=${appendedCount + normalizedExisting.size >= lenderCount - 1 ? "complete" : "incomplete"}`,
           );
+          } // end else (LENDER_SPECIFIC branch)
         }
+
       }
     } catch (appendErr) {
       console.warn(
