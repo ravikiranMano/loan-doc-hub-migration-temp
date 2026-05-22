@@ -19,7 +19,7 @@
 //   - Idempotent. Re-running returns 0 rewrites.
 //
 // POST body: { templatePath?: string }
-//   templatePath defaults to "1778746922135_RE851D-V12.1.docx".
+//   templatePath defaults to the active RE851D template file.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -31,7 +31,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_TEMPLATE_PATH = "1778746922135_RE851D-V12.1.docx";
+const DEFAULT_TEMPLATE_PATH = "1779290469775_RE851D-V12.1.docx";
 
 /** Extract visible text from a slice of XML (strip all tags + decode entities). */
 function visibleText(xml: string): string {
@@ -44,6 +44,62 @@ function visibleText(xml: string): string {
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function countVisibleMatches(xml: string, re: RegExp): number {
+  return visibleText(xml).match(re)?.length ?? 0;
+}
+
+function buildStrippedIndex(xml: string): { text: string; map: number[] } {
+  const text: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < xml.length;) {
+    if (xml[i] === "<") {
+      const close = xml.indexOf(">", i);
+      if (close === -1) break;
+      i = close + 1;
+      continue;
+    }
+    text.push(xml[i]);
+    map.push(i);
+    i++;
+  }
+  return { text: text.join(""), map };
+}
+
+function computeConditionalRewrites(xml: string): { ranges: Array<{ start: number; end: number; replacement: string }>; rewritten: number; remainingIfBlocks: number } {
+  const { text, map } = buildStrippedIndex(xml);
+  const blockRe = /\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_(N|[1-5])\s*(?:"|&quot;|\u201C|\u201D)\s*Broker\s*(?:"|&quot;|\u201C|\u201D)\s*\)\s*\}\}\s*(BPO Performed by Broker|N\/A)\s*(?:\{\{\s*else\s*\}\}\s*)?\{\{\s*\/\s*if\s*\}\}/g;
+  const ranges: Array<{ start: number; end: number; replacement: string }> = [];
+  const counter: Record<"name" | "addr", number> = { name: 0, addr: 0 };
+  let m: RegExpExecArray | null;
+  while ((m = blockRe.exec(text)) !== null) {
+    const kind: "name" | "addr" = /^BPO Performed by Broker$/i.test(m[2]) ? "name" : "addr";
+    const rawIndex = m[1];
+    const pIdx = rawIndex === "N" ? Math.min(++counter[kind], 5) : parseInt(rawIndex, 10);
+    const start = map[m.index];
+    const end = map[m.index + m[0].length - 1] + 1;
+    const tagBase = kind === "name" ? "pr_p_appraiserName" : "pr_p_appraiserAddress";
+    ranges.push({ start, end, replacement: `{{${tagBase}_${pIdx}}}` });
+  }
+
+  const openerCount = (text.match(/\{\{\s*#\s*if\s*\(\s*eq\s+pr_p_perform(?:e|ed)By_/g) || []).length;
+  return { ranges, rewritten: ranges.length, remainingIfBlocks: Math.max(0, openerCount - ranges.length) };
+}
+
+function applyRanges(xml: string, ranges: Array<{ start: number; end: number; replacement: string }>): string {
+  if (ranges.length === 0) return xml;
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const out: string[] = [];
+  let cursor = 0;
+  for (const r of sorted) {
+    if (r.start < cursor) continue;
+    out.push(xml.slice(cursor, r.start));
+    out.push(r.replacement);
+    cursor = r.end;
+  }
+  out.push(xml.slice(cursor));
+  return out.join("");
 }
 
 /** Find every `<w:tc>...</w:tc>` block in document order. */
@@ -185,6 +241,68 @@ function applyRewrites(xml: string, rewrites: Rewrite[]): string {
   return out.join("");
 }
 
+function replaceTextRunAt(xml: string, textIndex: number, replacementText: string): { xml: string; replaced: boolean } {
+  const openStart = xml.lastIndexOf("<w:t", textIndex);
+  const closeEnd = xml.indexOf("</w:t>", textIndex);
+  if (openStart < 0 || closeEnd < 0) return { xml, replaced: false };
+
+  const openEnd = xml.indexOf(">", openStart);
+  if (openEnd < 0 || openEnd > textIndex) return { xml, replaced: false };
+
+  const current = xml.slice(openEnd + 1, closeEnd);
+  const next = `${xml.slice(openStart, openEnd + 1)}${current.replace(/BPO Performed by Broker|N\/A/, replacementText)}</w:t>`;
+  return { xml: xml.slice(0, openStart) + next + xml.slice(closeEnd + "</w:t>".length), replaced: true };
+}
+
+function applyParagraphAppraiserRewrites(xml: string): { xml: string; nameCount: number; addrCount: number; nameLabelsSeen: number; addrLabelsSeen: number } {
+  let nextXml = xml;
+  let nameCount = 0;
+  let addrCount = 0;
+
+  const nameLabelsSeen = countVisibleMatches(xml, /NAME OF APPRAISER/g);
+  const addrLabelsSeen = countVisibleMatches(xml, /ADDRESS OF APPRAISER/g);
+
+  const nameLabelRe = /NAME OF[\s\S]{0,1200}?APPRAISER(?:[\s\S]{0,200}?IF KNOWN TO BROKER)?/gi;
+  const nameLabelStarts: number[] = [];
+  let nameMatch: RegExpExecArray | null;
+  while ((nameMatch = nameLabelRe.exec(nextXml)) !== null) {
+    nameLabelStarts.push(nameMatch.index + nameMatch[0].length);
+  }
+
+  for (const afterLabel of nameLabelStarts) {
+    const windowEnd = Math.min(nextXml.length, afterLabel + 2500);
+    const window = nextXml.slice(afterLabel, windowEnd);
+    const hit = window.match(/<w:t(?:\s[^>]*)?>\s*BPO Performed by Broker\s*<\/w:t>/i);
+    if (!hit || hit.index === undefined) continue;
+    nameCount += 1;
+    const textIndex = afterLabel + hit.index + hit[0].indexOf("BPO Performed by Broker");
+    const result = replaceTextRunAt(nextXml, textIndex, `{{pr_p_appraiserName_${nameCount}}}`);
+    nextXml = result.xml;
+    if (!result.replaced) nameCount -= 1;
+  }
+
+  const addrLabelRe = /ADDRESS OF APPRAISER/gi;
+  const addrLabelStarts: number[] = [];
+  let addrMatch: RegExpExecArray | null;
+  while ((addrMatch = addrLabelRe.exec(nextXml)) !== null) {
+    addrLabelStarts.push(addrMatch.index + addrMatch[0].length);
+  }
+
+  for (const afterLabel of addrLabelStarts) {
+    const windowEnd = Math.min(nextXml.length, afterLabel + 1800);
+    const window = nextXml.slice(afterLabel, windowEnd);
+    const hit = window.match(/<w:t(?:\s[^>]*)?>\s*N\/A\s*<\/w:t>/i);
+    if (!hit || hit.index === undefined) continue;
+    addrCount += 1;
+    const textIndex = afterLabel + hit.index + hit[0].indexOf("N/A");
+    const result = replaceTextRunAt(nextXml, textIndex, `{{pr_p_appraiserAddress_${addrCount}}}`);
+    nextXml = result.xml;
+    if (!result.replaced) addrCount -= 1;
+  }
+
+  return { xml: nextXml, nameCount, addrCount, nameLabelsSeen, addrLabelsSeen };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -238,31 +356,47 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    // 3) Compute rewrites
-    const { rewrites, nameLabelsSeen, addrLabelsSeen } = computeRewrites(
+    // 3) Compute/apply rewrites. The cell rewrite handles older table-cell
+    // layouts; the paragraph rewrite handles the active RE851D V12.1 layout
+    // where the literal value is in a run after the label in the same flow.
+    const cellResult = computeRewrites(
       originalXml,
     );
+    const { rewrites } = cellResult;
     const rewrittenNameCells = rewrites.filter((r) => r.kind === "name").length;
     const rewrittenAddressCells =
       rewrites.filter((r) => r.kind === "addr").length;
+    const afterCellXml = applyRewrites(originalXml, rewrites);
+    const conditionalResult = computeConditionalRewrites(afterCellXml);
+    const afterConditionalXml = applyRanges(afterCellXml, conditionalResult.ranges);
+    const paragraphResult = applyParagraphAppraiserRewrites(afterConditionalXml);
+    const newXml = paragraphResult.xml;
+    const rewrittenNameParagraphs = paragraphResult.nameCount;
+    const rewrittenAddressParagraphs = paragraphResult.addrCount;
+    const nameLabelsSeen = Math.max(cellResult.nameLabelsSeen, paragraphResult.nameLabelsSeen);
+    const addrLabelsSeen = Math.max(cellResult.addrLabelsSeen, paragraphResult.addrLabelsSeen);
+    const totalRewrites = rewrites.length + conditionalResult.rewritten + rewrittenNameParagraphs + rewrittenAddressParagraphs;
 
-    if (rewrites.length === 0) {
+    if (totalRewrites === 0) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
           rewrittenNameCells: 0,
           rewrittenAddressCells: 0,
+          rewrittenConditionalBlocks: 0,
+          remainingConditionalBlocks: conditionalResult.remainingIfBlocks,
+          rewrittenNameParagraphs: 0,
+          rewrittenAddressParagraphs: 0,
           nameLabelsSeen,
           addrLabelsSeen,
           message:
-            "No hardcoded appraiser cells matched — template already clean or label/value structure changed.",
+            "No hardcoded appraiser values matched — template already clean or label/value structure changed.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const newXml = applyRewrites(originalXml, rewrites);
     decompressed["word/document.xml"] = encoder.encode(newXml);
 
     // 4) Repack
@@ -292,8 +426,13 @@ serve(async (req) => {
         templatePath,
         rewrittenNameCells,
         rewrittenAddressCells,
+        rewrittenConditionalBlocks: conditionalResult.rewritten,
+        remainingConditionalBlocks: conditionalResult.remainingIfBlocks,
+        rewrittenNameParagraphs,
+        rewrittenAddressParagraphs,
         nameLabelsSeen,
         addrLabelsSeen,
+        totalRewrites,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
