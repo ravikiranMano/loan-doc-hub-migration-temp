@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,8 +11,14 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { fetchAllRows } from '@/lib/supabasePagination';
+import { listTemplates } from '@/services/documents/templates.service';
+import {
+  fetchAllFieldDictionaryOrdered,
+  listTemplateFieldMapsWithFields,
+  insertTemplateFieldMap,
+  updateTemplateFieldMap,
+  deleteTemplateFieldMap,
+} from '@/services/documents/template-field-maps.service';
 import { 
   Search, 
   Loader2, 
@@ -64,41 +70,79 @@ const TRANSFORM_RULES = [
   { value: 'ssn_masked', label: 'SSN (XXX-XX-****)' },
 ];
 
+const fieldMapsLoadInflight = new Map<string, Promise<void>>();
+
 export const FieldMapEditorPage: React.FC = () => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [fields, setFields] = useState<FieldDictionary[]>([]);
   const [fieldMaps, setFieldMaps] = useState<TemplateFieldMap[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [mapsLoading, setMapsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'mapped' | 'add'>('mapped');
+  const selectedTemplateRef = useRef('');
   const { toast } = useToast();
 
   useEffect(() => {
     fetchInitialData();
   }, []);
 
+  const fetchFieldMaps = useCallback(async (templateId: string) => {
+    if (!templateId) return;
+
+    const inflight = fieldMapsLoadInflight.get(templateId);
+    if (inflight) return inflight;
+
+    const job = (async () => {
+      try {
+        setMapsLoading(true);
+        const data = await listTemplateFieldMapsWithFields(templateId);
+        if (selectedTemplateRef.current !== templateId) return;
+
+        setFieldMaps(
+          (data || []).map((fm: Record<string, unknown>) => ({
+            ...fm,
+            field: fm.field_dictionary,
+          })) as TemplateFieldMap[],
+        );
+      } catch (error) {
+        console.error('Error fetching field maps:', error);
+      } finally {
+        if (selectedTemplateRef.current === templateId) {
+          setMapsLoading(false);
+        }
+        fieldMapsLoadInflight.delete(templateId);
+      }
+    })();
+
+    fieldMapsLoadInflight.set(templateId, job);
+    return job;
+  }, []);
+
+  const handleTemplateChange = useCallback((templateId: string) => {
+    selectedTemplateRef.current = templateId;
+    setSelectedTemplateId(templateId);
+    setViewMode('mapped');
+  }, []);
+
   useEffect(() => {
     if (selectedTemplateId) {
-      fetchFieldMaps(selectedTemplateId);
-      setViewMode('mapped'); // Reset to mapped view when template changes
+      void fetchFieldMaps(selectedTemplateId);
     } else {
+      selectedTemplateRef.current = '';
       setFieldMaps([]);
     }
-  }, [selectedTemplateId]);
+  }, [selectedTemplateId, fetchFieldMaps]);
 
   const fetchInitialData = async () => {
     try {
-      const [templatesRes, allFields] = await Promise.all([
-        supabase.from('templates').select('*').eq('is_active', true).order('name'),
-        fetchAllRows((client) =>
-          client.from('field_dictionary').select('*').order('section, label')
-        ),
+      const [templatesData, allFields] = await Promise.all([
+        listTemplates(true),
+        fetchAllFieldDictionaryOrdered(),
       ]);
 
-      if (templatesRes.error) throw templatesRes.error;
-
-      setTemplates(templatesRes.data || []);
+      setTemplates(templatesData as Template[]);
       setFields(allFields || []);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -112,27 +156,6 @@ export const FieldMapEditorPage: React.FC = () => {
     }
   };
 
-  const fetchFieldMaps = async (templateId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('template_field_maps')
-        .select('*, field_dictionary!fk_template_field_maps_field_dictionary(*)')
-        .eq('template_id', templateId)
-        .order('display_order');
-
-      if (error) throw error;
-
-      setFieldMaps(
-        (data || []).map((fm: any) => ({
-          ...fm,
-          field: fm.field_dictionary,
-        }))
-      );
-    } catch (error) {
-      console.error('Error fetching field maps:', error);
-    }
-  };
-
   const handleAddField = async (fieldId: string) => {
     if (!selectedTemplateId) return;
 
@@ -141,14 +164,13 @@ export const FieldMapEditorPage: React.FC = () => {
         ? Math.max(...fieldMaps.map((fm) => fm.display_order))
         : -1;
 
-      const { error } = await supabase.from('template_field_maps').insert({
+      await insertTemplateFieldMap({
         template_id: selectedTemplateId,
         field_dictionary_id: fieldId,
         required_flag: false,
         display_order: maxOrder + 1,
       });
-
-      if (error) throw error;
+      fieldMapsLoadInflight.delete(selectedTemplateId);
       await fetchFieldMaps(selectedTemplateId);
       toast({ title: 'Field added to template' });
     } catch (error: any) {
@@ -162,13 +184,9 @@ export const FieldMapEditorPage: React.FC = () => {
 
   const handleRemoveField = async (fieldMapId: string) => {
     try {
-      const { error } = await supabase
-        .from('template_field_maps')
-        .delete()
-        .eq('id', fieldMapId);
-
-      if (error) throw error;
+      await deleteTemplateFieldMap(fieldMapId, selectedTemplateId);
       if (selectedTemplateId) {
+        fieldMapsLoadInflight.delete(selectedTemplateId);
         await fetchFieldMaps(selectedTemplateId);
       }
       toast({ title: 'Field removed from template' });
@@ -186,12 +204,7 @@ export const FieldMapEditorPage: React.FC = () => {
     updates: { required_flag?: boolean; transform_rule?: string | null }
   ) => {
     try {
-      const { error } = await supabase
-        .from('template_field_maps')
-        .update(updates)
-        .eq('id', fieldMapId);
-
-      if (error) throw error;
+      await updateTemplateFieldMap(fieldMapId, updates);
 
       setFieldMaps((prev) =>
         prev.map((fm) => (fm.id === fieldMapId ? { ...fm, ...updates } : fm))
@@ -249,7 +262,7 @@ export const FieldMapEditorPage: React.FC = () => {
       <div className="section-card mb-6">
         <div className="space-y-2">
           <Label>Select Template</Label>
-          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+          <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
             <SelectTrigger className="max-w-md">
               <SelectValue placeholder="Select" />
             </SelectTrigger>
@@ -266,7 +279,12 @@ export const FieldMapEditorPage: React.FC = () => {
 
       {selectedTemplate && viewMode === 'mapped' && (
         <div className="section-card">
-          <div className="flex items-center justify-between mb-4">
+          {mapsLoading && (
+            <div className="flex items-center justify-center py-8 mb-4">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          <div className={cn(mapsLoading && 'opacity-50 pointer-events-none', 'flex items-center justify-between mb-4')}>
             <div>
               <h3 className="text-lg font-semibold text-foreground">Mapped Fields</h3>
               <p className="text-sm text-muted-foreground">

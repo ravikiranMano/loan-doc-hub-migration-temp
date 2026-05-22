@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  assignUserRoleAndPermission,
+  listCsrUsersForPermissions,
+} from '@/services/admin/users.service';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Users } from 'lucide-react';
 import {
@@ -43,50 +46,8 @@ const CsrUserPermissionsTable: React.FC = () => {
     try {
       setLoading(true);
 
-      // Get all users with CSR role
-      const { data: roleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'csr');
+      const users: CsrUser[] = await listCsrUsersForPermissions();
 
-      if (roleError) throw roleError;
-      if (!roleData || roleData.length === 0) {
-        setCsrUsers([]);
-        setLoading(false);
-        return;
-      }
-
-      const userIds = roleData.map(r => r.user_id);
-
-      // Get profiles for these users
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('user_id, email, full_name')
-        .in('user_id', userIds);
-
-      if (profileError) throw profileError;
-
-      // Get permission levels for these users
-      const { data: permLevelData, error: permError } = await supabase
-        .from('user_permission_levels')
-        .select('user_id, permission_level')
-        .in('user_id', userIds);
-
-      if (permError) throw permError;
-
-      const permMap = new Map((permLevelData || []).map(p => [p.user_id, p.permission_level]));
-
-      const users: CsrUser[] = userIds.map(uid => {
-        const profile = (profileData || []).find(p => p.user_id === uid);
-        return {
-          user_id: uid,
-          email: profile?.email || null,
-          full_name: profile?.full_name || null,
-          permission_level: permMap.get(uid) || 'full',
-        };
-      });
-
-      // Sort by name then email
       users.sort((a, b) => {
         const nameA = a.full_name || a.email || '';
         const nameB = b.full_name || b.email || '';
@@ -112,13 +73,11 @@ const CsrUserPermissionsTable: React.FC = () => {
 
   const handlePermissionChange = async (userId: string, newLevel: string) => {
     try {
-      const { error } = await supabase.rpc('assign_user_role_and_permission', {
+      await assignUserRoleAndPermission({
         p_user_id: userId,
         p_role: 'csr',
         p_permission_level: newLevel,
       });
-
-      if (error) throw error;
 
       setCsrUsers(prev =>
         prev.map(u => u.user_id === userId ? { ...u, permission_level: newLevel } : u)

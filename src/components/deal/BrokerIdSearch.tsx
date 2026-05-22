@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, Loader2, Plus } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { searchContactsByType, createContact } from '@/services/contacts/contacts.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
@@ -42,20 +42,7 @@ export const BrokerIdSearch: React.FC<BrokerIdSearchProps> = ({
   const searchBrokers = useCallback(async (searchTerm: string) => {
     setIsLoading(true);
     try {
-      let qb = supabase
-        .from('contacts')
-        .select('contact_id, full_name, contact_data')
-        .eq('contact_type', 'broker');
-
-      if (searchTerm && searchTerm.length >= 1) {
-        qb = qb.or(`contact_id.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error } = await qb
-        .order('contact_id', { ascending: true })
-        .limit(50);
-
-      if (error) throw error;
+      const data = await searchContactsByType('broker', searchTerm, 50);
       const mapped = (data || []).map((row: any) => ({
         contact_id: row.contact_id,
         full_name: row.full_name || '',
@@ -96,28 +83,12 @@ export const BrokerIdSearch: React.FC<BrokerIdSearchProps> = ({
     if (!user) return;
     try {
       const fullName = data.full_name || `${data.first_name || ''} ${data.last_name || ''}`.trim();
-
-      const { data: idData, error: idError } = await supabase.rpc('generate_contact_id', { p_type: 'broker' });
-      if (idError) throw idError;
-
-      const contactId = idData as string;
-      const insertPayload = {
-        contact_type: 'broker' as const,
-        contact_id: contactId,
-        created_by: user.id,
-        full_name: fullName,
-        first_name: data.first_name || '',
-        last_name: data.last_name || '',
-        email: data.email || '',
-        phone: data.phone || data['phone.cell'] || data['phone.home'] || data['phone.work'] || '',
-        city: data['primary_address.city'] || data.city || '',
-        state: data['primary_address.state'] || data.state || '',
-        company: data.company || '',
-        contact_data: data,
-      };
-
-      const { error } = await supabase.from('contacts').insert(insertPayload);
-      if (error) throw error;
+      const created = await createContact({
+        contactType: 'broker',
+        createdBy: user.id,
+        contactData: data,
+      });
+      const contactId = created.contact_id;
 
       toast.success('Broker created');
       setCreateModalOpen(false);

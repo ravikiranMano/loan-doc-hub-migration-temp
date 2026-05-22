@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { getUser } from '@/services/supabase/auth';
+import { updateDeal } from '@/services/deals/deals.service';
+import {
+  fetchSectionValuesByDeal,
+  fetchSectionValuesWithVersion,
+  updateSectionValueById,
+  insertSectionValues,
+  fetchFieldDictionaryTmoSections,
+  fetchFieldDictionaryByIds,
+  fetchFieldDictionaryByFieldKeys,
+} from '@/services/deals/section-values.service';
 import { useEventJournalLogger, type FieldChange } from '@/hooks/useEventJournal';
 import { useToast } from '@/hooks/use-toast';
 import { useFieldDictionaryCacheOptional } from '@/hooks/useFieldDictionaryCache';
@@ -19,7 +29,6 @@ import {
   type CalculatedField,
   type CalculationResult
 } from '@/lib/calculationEngine';
-import { fetchAllRows } from '@/lib/supabasePagination';
 import type { Database } from '@/integrations/supabase/types';
 
 type FieldSection = Database['public']['Enums']['field_section'];
@@ -374,14 +383,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
         if (cache && !cache.loading && cache.allEntries.length > 0) {
           tmoFields = cache.allEntries.filter((e: any) => TMO_TAB_SECTIONS.includes(e.section));
         } else {
-          tmoFields = await fetchAllRows((client) =>
-            client
-              .from('field_dictionary')
-              .select(
-                'id, field_key, label, section, data_type, description, default_value, is_calculated, is_repeatable, validation_rule, calculation_formula, calculation_dependencies'
-              )
-              .in('section', TMO_TAB_SECTIONS as any)
-          );
+          tmoFields = await fetchFieldDictionaryTmoSections(TMO_TAB_SECTIONS);
         }
 
         const existingIds = new Set(resolved.fields.map(f => f.field_dictionary_id));
@@ -480,12 +482,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
 
       // 2. Fetch existing field values for this deal from deal_section_values
       if (mergedResolved.visibleFieldKeys.length > 0) {
-        const { data: sectionValues, error: svError } = await supabase
-          .from('deal_section_values')
-          .select('section, field_values')
-          .eq('deal_id', dealId);
-
-        if (svError) throw svError;
+        const sectionValues = await fetchSectionValuesByDeal(dealId);
 
         // Create lookup map from field_dictionary_id to field metadata
         const fieldDictIdToMeta = new Map<string, { field_key: string; data_type: FieldDataType }>();
@@ -505,23 +502,15 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
 
         if (missingFieldDictIds.length > 0) {
           try {
-            const { data: fallbackFieldRows, error: fallbackFieldError } = await supabase
-              .from('field_dictionary')
-              .select('id, field_key, data_type')
-              .in('id', missingFieldDictIds as any);
-
-            if (fallbackFieldError) {
-              console.warn('[useDealFields] Fallback field_dictionary lookup failed:', fallbackFieldError);
-            } else {
-              (fallbackFieldRows || []).forEach((row: any) => {
-                if (row?.id && row?.field_key && row?.data_type) {
-                  fieldDictIdToMeta.set(row.id, {
-                    field_key: row.field_key,
-                    data_type: row.data_type,
-                  });
-                }
-              });
-            }
+            const fallbackFieldRows = await fetchFieldDictionaryByIds(missingFieldDictIds);
+            (fallbackFieldRows || []).forEach((row: any) => {
+              if (row?.id && row?.field_key && row?.data_type) {
+                fieldDictIdToMeta.set(row.id, {
+                  field_key: row.field_key,
+                  data_type: row.data_type,
+                });
+              }
+            });
           } catch (e) {
             console.warn('[useDealFields] Fallback field_dictionary lookup threw:', e);
           }
@@ -700,7 +689,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
     // Log deletion to event journal
     if (deletedFields.length > 0) {
       try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        const { data: { user: currentUser } } = await getUser();
         if (currentUser) {
           // Determine section from prefix (e.g., "borrower1" -> "borrower", "lender2" -> "lender")
           const sectionMatch = prefix.match(/^([a-z_]+)\d*$/);
@@ -738,12 +727,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
 
     // Immediately persist the deletion to backend by cleaning JSONB storage
     try {
-      const { data: allSections, error: fetchError } = await supabase
-        .from('deal_section_values')
-        .select('id, section, field_values, version')
-        .eq('deal_id', dealId);
-
-      if (fetchError) throw fetchError;
+      const allSections = await fetchSectionValuesWithVersion(dealId);
 
       for (const sv of (allSections || [])) {
         const existingFieldValues = (sv.field_values as unknown as Record<string, JsonbFieldValue>) || {};
@@ -765,14 +749,11 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
         });
 
         if (modified) {
-          await supabase
-            .from('deal_section_values')
-            .update({
-              field_values: JSON.parse(JSON.stringify(existingFieldValues)),
-              updated_at: new Date().toISOString(),
-              version: (sv.version || 0) + 1,
-            })
-            .eq('id', sv.id);
+          await updateSectionValueById(sv.id, {
+            field_values: JSON.parse(JSON.stringify(existingFieldValues)),
+            updated_at: new Date().toISOString(),
+            version: (sv.version || 0) + 1,
+          });
         }
       }
 
@@ -831,7 +812,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
       setSaving(true);
 
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Compute calculated fields before saving using the latest in-memory values
@@ -870,12 +851,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
         const fallbackMetaByKey = new Map<string, { id: string; section: FieldSection; data_type: FieldDataType }>();
 
         if (keysMissingFromMap.length > 0) {
-          const { data: fallbackRows, error: fbError } = await supabase
-            .from('field_dictionary')
-            .select('id, field_key, section, data_type')
-            .in('field_key', keysMissingFromMap as any);
-
-          if (fbError) throw fbError;
+          const fallbackRows = await fetchFieldDictionaryByFieldKeys(keysMissingFromMap);
 
           (fallbackRows || []).forEach((r: any) => {
             if (r?.field_key && r?.id && r?.section && r?.data_type) {
@@ -986,12 +962,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
         const sectionsToPersist = Object.entries(sectionUpdates).filter(([, v]) => Object.keys(v).length > 0);
         
         // Batch: fetch ALL existing sections for this deal in one query (used for both deleted-prefix cleanup AND upsert)
-        const { data: allExistingSections, error: batchFetchError } = await supabase
-          .from('deal_section_values')
-          .select('id, section, field_values, version')
-          .eq('deal_id', dealId);
-
-        if (batchFetchError) throw batchFetchError;
+        const allExistingSections = await fetchSectionValuesWithVersion(dealId);
 
         // Build a lookup map: section -> existing row
         const existingSectionMap = new Map<string, { id: string; field_values: Record<string, JsonbFieldValue>; version: number }>();
@@ -1031,14 +1002,11 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
             });
 
             if (modified) {
-              await supabase
-                .from('deal_section_values')
-                .update({
-                  field_values: JSON.parse(JSON.stringify(existingFieldValues)),
-                  updated_at: new Date().toISOString(),
-                  version: (existing.version || 0) + 1,
-                })
-                .eq('id', existing.id);
+              await updateSectionValueById(existing.id, {
+                field_values: JSON.parse(JSON.stringify(existingFieldValues)),
+                updated_at: new Date().toISOString(),
+                version: (existing.version || 0) + 1,
+              });
             }
           }
         }
@@ -1092,19 +1060,12 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
 
         // Execute inserts in a single batch
         if (inserts.length > 0) {
-          const { error: insertError } = await supabase
-            .from('deal_section_values')
-            .insert(inserts);
-          if (insertError) throw insertError;
+          await insertSectionValues(inserts);
         }
 
         // Execute updates (must be per-row due to different payloads per id)
         for (const { id: rowId, payload } of updates) {
-          const { error: updateError } = await supabase
-            .from('deal_section_values')
-            .update(payload)
-            .eq('id', rowId);
-          if (updateError) throw updateError;
+          await updateSectionValueById(rowId, payload);
         }
       }
 
@@ -1116,7 +1077,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
           dealUpdates.borrower_name = finalValues[borrowerNameKey] || null;
         }
         if (Object.keys(dealUpdates).length > 0) {
-          await supabase.from('deals').update(dealUpdates).eq('id', dealId);
+          await updateDeal(dealId, dealUpdates);
         }
       } catch (syncErr) {
         console.warn('[useDealFields] Failed to sync denormalized deal fields:', syncErr);
@@ -1156,7 +1117,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
           });
         }
 
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        const { data: { user: currentUser } } = await getUser();
         if (currentUser) {
           for (const [section, changes] of Object.entries(changedBySection)) {
             if (changes.length > 0) {

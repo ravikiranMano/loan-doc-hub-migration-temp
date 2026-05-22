@@ -20,7 +20,27 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { invokeValidateTemplate } from '@/services/supabase/functions';
+import {
+  listTemplatesOrdered,
+  insertTemplate,
+  updateTemplate,
+  deleteTemplate,
+  uploadTemplateDocx,
+  uploadTemplatePdf,
+  downloadTemplateFile,
+  removeTemplateFiles,
+} from '@/services/documents/templates.service';
+import {
+  listTemplateFieldMapsWithFields,
+  deleteTemplateFieldMapsByTemplate,
+} from '@/services/documents/template-field-maps.service';
+import { insertMergeTagAlias } from '@/services/documents/merge-tag-aliases.service';
+import { deletePacketTemplatesByTemplate } from '@/services/documents/packets.service';
+import {
+  deleteGeneratedDocumentsByTemplate,
+  deleteGenerationJobsByTemplate,
+} from '@/services/documents/generation.service';
 import { 
   Plus, 
   Search, 
@@ -181,13 +201,7 @@ export const TemplateManagementPage: React.FC = () => {
 
   const fetchTemplates = async () => {
     try {
-      const { data, error } = await supabase
-        .from('templates')
-        .select('*')
-        .order('name')
-        .order('version', { ascending: false });
-
-      if (error) throw error;
+      const data = await listTemplatesOrdered();
       setTemplates((data || []) as Template[]);
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -219,11 +233,7 @@ export const TemplateManagementPage: React.FC = () => {
       // Sanitize filename: replace spaces and special chars with underscores
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const fileName = `${Date.now()}_${sanitizedName}`;
-      const { error } = await supabase.storage
-        .from('templates')
-        .upload(fileName, file);
-
-      if (error) throw error;
+      await uploadTemplateDocx(fileName, file);
 
       setFormData((prev) => ({ ...prev, file_path: fileName }));
       toast({
@@ -260,11 +270,7 @@ export const TemplateManagementPage: React.FC = () => {
       // Sanitize filename: replace spaces and special chars with underscores
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const fileName = `ref_${Date.now()}_${sanitizedName}`;
-      const { error } = await supabase.storage
-        .from('templates')
-        .upload(fileName, file);
-
-      if (error) throw error;
+      await uploadTemplatePdf(fileName, file);
 
       setFormData((prev) => ({ ...prev, reference_pdf_path: fileName }));
       toast({
@@ -306,22 +312,17 @@ export const TemplateManagementPage: React.FC = () => {
     setSaving(true);
     try {
       if (editingTemplate) {
-        const { error } = await supabase
-          .from('templates')
-          .update({
-            name: formData.name,
-            version: formData.version,
-            is_active: formData.is_active,
-            description: formData.description || null,
-            file_path: formData.file_path || null,
-            reference_pdf_path: formData.reference_pdf_path || null,
-          })
-          .eq('id', editingTemplate.id);
-
-        if (error) throw error;
+        await updateTemplate(editingTemplate.id, {
+          name: formData.name,
+          version: formData.version,
+          is_active: formData.is_active,
+          description: formData.description || null,
+          file_path: formData.file_path || null,
+          reference_pdf_path: formData.reference_pdf_path || null,
+        });
         toast({ title: 'Template updated successfully' });
       } else {
-        const { error } = await supabase.from('templates').insert({
+        await insertTemplate({
           name: formData.name,
           state: 'TBD',
           product_type: 'TBD',
@@ -331,8 +332,6 @@ export const TemplateManagementPage: React.FC = () => {
           file_path: formData.file_path || null,
           reference_pdf_path: formData.reference_pdf_path || null,
         });
-
-        if (error) throw error;
         toast({ title: 'Template created successfully' });
       }
 
@@ -400,10 +399,7 @@ export const TemplateManagementPage: React.FC = () => {
       return;
     }
     try {
-      const { data, error } = await supabase.storage
-        .from('templates')
-        .download(template.file_path);
-      if (error) throw error;
+      const data = await downloadTemplateFile(template.file_path);
 
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
@@ -438,18 +434,11 @@ export const TemplateManagementPage: React.FC = () => {
 
     try {
       // Fetch template field maps with joined field dictionary
-      const { data: fieldMapsData, error: fieldMapsError } = await supabase
-        .from('template_field_maps')
-        .select('*, field_dictionary!fk_template_field_maps_field_dictionary(field_key, label, data_type, section)')
-        .eq('template_id', template.id)
-        .order('display_order');
+      const fieldMapsData = await listTemplateFieldMapsWithFields(template.id);
 
-      if (fieldMapsError) throw fieldMapsError;
-
-      // Map to include field_key from joined field_dictionary
-      const fieldMaps: TemplateFieldMap[] = (fieldMapsData || []).map((fm: any) => ({
+      const fieldMaps: TemplateFieldMap[] = fieldMapsData.map((fm: Record<string, unknown>) => ({
         ...fm,
-        field_key: fm.field_dictionary?.field_key || '',
+        field_key: (fm.field_dictionary as { field_key?: string })?.field_key || '',
       }));
 
       // Get unique field keys from mappings
@@ -550,26 +539,7 @@ export const TemplateManagementPage: React.FC = () => {
     setDocxValidationTemplateId(template.id);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-template`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ templateId: template.id }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Validation failed');
-      }
-
-      const result = await response.json();
+      const result = await invokeValidateTemplate(template.id);
       setDocxValidationResult(result);
     } catch (error: any) {
       console.error('DOCX validation error:', error);
@@ -592,26 +562,7 @@ export const TemplateManagementPage: React.FC = () => {
     setDocxValidationResult(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-template`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ templateId: docxValidationTemplateId }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Validation failed');
-      }
-
-      const result = await response.json();
+      const result = await invokeValidateTemplate(docxValidationTemplateId);
       setDocxValidationResult(result);
     } catch (error: any) {
       console.error('DOCX revalidation error:', error);
@@ -631,14 +582,12 @@ export const TemplateManagementPage: React.FC = () => {
       // Determine tag type based on pattern
       const tagType = tagName.match(/^F\d{4,}$/) ? 'f_code' : 'merge_tag';
       
-      const { error } = await supabase.from('merge_tag_aliases').insert({
+      await insertMergeTagAlias({
         tag_name: tagName,
         field_key: fieldKey,
         tag_type: tagType,
         is_active: true,
       });
-
-      if (error) throw error;
       
       toast({
         title: 'Mapping created',
@@ -682,39 +631,14 @@ export const TemplateManagementPage: React.FC = () => {
       if (template.reference_pdf_path) filesToDelete.push(template.reference_pdf_path);
       
       if (filesToDelete.length > 0) {
-        await supabase.storage.from('templates').remove(filesToDelete);
+        await removeTemplateFiles(filesToDelete);
       }
 
-      // Delete dependent records before deleting the template
-      const { error: genDocsError } = await supabase
-        .from('generated_documents')
-        .delete()
-        .eq('template_id', template.id);
-      if (genDocsError) throw genDocsError;
-
-      const { error: fieldMapsError } = await supabase
-        .from('template_field_maps')
-        .delete()
-        .eq('template_id', template.id);
-      if (fieldMapsError) throw fieldMapsError;
-
-      const { error: jobsError } = await supabase
-        .from('generation_jobs')
-        .delete()
-        .eq('template_id', template.id);
-      if (jobsError) throw jobsError;
-
-      const { error: packetTemplatesError } = await supabase
-        .from('packet_templates')
-        .delete()
-        .eq('template_id', template.id);
-      if (packetTemplatesError) throw packetTemplatesError;
-
-      const { error } = await supabase
-        .from('templates')
-        .delete()
-        .eq('id', template.id);
-      if (error) throw error;
+      await deleteGeneratedDocumentsByTemplate(template.id);
+      await deleteTemplateFieldMapsByTemplate(template.id);
+      await deleteGenerationJobsByTemplate(template.id);
+      await deletePacketTemplatesByTemplate(template.id);
+      await deleteTemplate(template.id);
 
       toast({ title: 'Template deleted successfully' });
       fetchTemplates();
@@ -729,12 +653,7 @@ export const TemplateManagementPage: React.FC = () => {
 
   const toggleActive = async (template: Template) => {
     try {
-      const { error } = await supabase
-        .from('templates')
-        .update({ is_active: !template.is_active })
-        .eq('id', template.id);
-
-      if (error) throw error;
+      await updateTemplate(template.id, { is_active: !template.is_active });
       fetchTemplates();
       toast({
         title: template.is_active ? 'Template deactivated' : 'Template activated',

@@ -8,10 +8,13 @@ import {
 } from '@/components/ui/table';
 import SortableTableHead from '@/components/deal/SortableTableHead';
 import { type SortDirection } from '@/hooks/useGridSortFilter';
+import { listParticipantsByContactAndRole } from '@/services/deals/participants.service';
+import { fetchSectionValuesForDeals } from '@/services/deals/section-values.service';
+import { listDealsByIds } from '@/services/deals/deals.service';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+
 import { format, parseISO, differenceInMonths, differenceInDays } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -148,14 +151,13 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
   const loadPortfolio = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data: participants, error: pErr } = await supabase
-        .from('deal_participants')
-        .select('deal_id, role, name')
-        .eq('contact_id', contactDbId)
-        .eq('role', 'lender');
+      const participants = await listParticipantsByContactAndRole(
+        contactDbId,
+        'lender',
+        'deal_id, role, name'
+      );
 
-      if (pErr) throw pErr;
-      if (!participants || participants.length === 0) {
+      if (participants.length === 0) {
         setRows([]);
         setIsLoading(false);
         return;
@@ -163,32 +165,28 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
 
       const dealIds = [...new Set(participants.map(p => p.deal_id))];
 
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('id, deal_number, borrower_name, property_address, loan_amount, status')
-        .in('id', dealIds);
+      const deals = await listDealsByIds(
+        dealIds,
+        'id, deal_number, borrower_name, property_address, loan_amount, status'
+      );
 
-      const dealsMap = new Map((deals || []).map(d => [d.id, d]));
+      const dealsMap = new Map(deals.map((d) => [d.id, d]));
 
-      const { data: loanTermsSections } = await supabase
-        .from('deal_section_values')
-        .select('deal_id, field_values')
-        .in('deal_id', dealIds)
-        .eq('section', 'loan_terms');
+      const loanTermsSections = await fetchSectionValuesForDeals(dealIds, {
+        section: 'loan_terms',
+      });
 
       const loanTermsMap = new Map<string, Record<string, any>>();
-      (loanTermsSections || []).forEach(sv => {
+      loanTermsSections.forEach((sv) => {
         loanTermsMap.set(sv.deal_id, sv.field_values as Record<string, any>);
       });
 
-      const { data: participantSections } = await supabase
-        .from('deal_section_values')
-        .select('deal_id, field_values')
-        .in('deal_id', dealIds)
-        .eq('section', 'participants');
+      const participantSections = await fetchSectionValuesForDeals(dealIds, {
+        section: 'participants',
+      });
 
       const capacityMap = new Map<string, string>();
-      (participantSections || []).forEach(ps => {
+      participantSections.forEach((ps) => {
         const fv = ps.field_values as Record<string, any>;
         if (!fv) return;
         Object.entries(fv).forEach(([key, val]) => {
@@ -202,14 +200,12 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
       });
 
       // Fetch charges section for accrued interest
-      const { data: chargesSections } = await supabase
-        .from('deal_section_values')
-        .select('deal_id, field_values')
-        .in('deal_id', dealIds)
-        .eq('section', 'charges');
+      const chargesSections = await fetchSectionValuesForDeals(dealIds, {
+        section: 'charges',
+      });
 
       const chargesMap = new Map<string, Record<string, any>>();
-      (chargesSections || []).forEach(cs => {
+      chargesSections.forEach((cs) => {
         chargesMap.set(cs.deal_id, cs.field_values as Record<string, any>);
       });
 

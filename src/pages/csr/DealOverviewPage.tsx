@@ -4,7 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchDealById, updateDeal } from '@/services/deals/deals.service';
+import {
+  fetchSectionValuesByDealWithUpdatedAt,
+} from '@/services/deals/section-values.service';
+import {
+  listParticipantsByDealCreatedAsc,
+  updateParticipant,
+} from '@/services/deals/participants.service';
+import {
+  getContactsByIds,
+  getContactById,
+  getContactByEmail,
+} from '@/services/contacts/contacts.service';
+import { fetchPacketById, listPacketTemplatesWithJoin } from '@/services/documents/packets.service';
+import { listTemplateFieldMaps } from '@/services/documents/template-field-maps.service';
 import { resolvePacketFields, resolveAllFields } from '@/lib/requiredFieldsResolver';
 import { ActivityLogViewer } from '@/components/deal/ActivityLogViewer';
 import { InviteParticipantsPanel } from '@/components/deal/InviteParticipantsPanel';
@@ -81,7 +95,7 @@ export const DealOverviewPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { role } = useAuth();
+  const { user, role, loading: authLoading } = useAuth();
   const { isFormViewOnly } = useFormPermissions();
   const workspace = useWorkspaceOptional();
   const [showMaxFilesDialog, setShowMaxFilesDialog] = useState(false);
@@ -98,23 +112,19 @@ export const DealOverviewPage: React.FC = () => {
   const [markingReady, setMarkingReady] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      fetchDealData();
-      fetchParticipants();
+    if (!id || authLoading) return;
+    if (!user) {
+      navigate('/auth');
+      return;
     }
-  }, [id]);
+    fetchDealData();
+    fetchParticipants();
+  }, [id, authLoading, user, navigate]);
 
   const fetchParticipants = async () => {
     if (!id) return;
     try {
-      const { data, error } = await supabase
-        .from('deal_participants')
-        .select('id, name, email, phone, role, status, contact_id')
-        .eq('deal_id', id)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-
-      const rows = data || [];
+      const rows = await listParticipantsByDealCreatedAsc(id);
 
       // Sync latest contact data
       const contactIds = rows
@@ -122,12 +132,12 @@ export const DealOverviewPage: React.FC = () => {
         .filter((cid: string | null): cid is string => !!cid);
 
       if (contactIds.length > 0) {
-        const { data: contacts } = await supabase
-          .from('contacts')
-          .select('id, full_name, email, phone, contact_id')
-          .in('id', contactIds);
+        const contacts = await getContactsByIds(
+          contactIds,
+          'id, full_name, email, phone, contact_id'
+        );
 
-        if (contacts) {
+        if (contacts.length > 0) {
           const contactMap: Record<string, { full_name: string; email: string; phone: string; contact_id: string }> = {};
           for (const c of contacts) {
             contactMap[c.id] = { full_name: c.full_name || '', email: c.email || '', phone: c.phone || '', contact_id: c.contact_id || '' };
@@ -142,11 +152,11 @@ export const DealOverviewPage: React.FC = () => {
                 (contact.email && contact.email !== (p.email || '')) ||
                 (contact.phone && contact.phone !== (p.phone || ''));
               if (needsUpdate) {
-                supabase
-                  .from('deal_participants')
-                  .update({ name: contact.full_name || p.name, email: contact.email || p.email, phone: contact.phone || p.phone })
-                  .eq('id', p.id)
-                  .then(() => {});
+                updateParticipant(p.id, {
+                  name: contact.full_name || p.name,
+                  email: contact.email || p.email,
+                  phone: contact.phone || p.phone,
+                }).catch(() => {});
               }
             }
           }
@@ -175,36 +185,16 @@ export const DealOverviewPage: React.FC = () => {
 
   const fetchDealData = async () => {
     try {
-      // Ensure auth session is available before querying (prevents RLS failures during transient session drops)
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        await new Promise(r => setTimeout(r, 1000));
-        const { data: { session: retrySession } } = await supabase.auth.getSession();
-        if (!retrySession) {
-          // Still no session — don't show "File Not Found", just keep loading
-          return;
-        }
+      const dealData = await fetchDealById(id!);
+      if (!dealData) {
+        setDeal(null);
+        return;
       }
+      setDeal(dealData as Deal);
 
-      // Fetch deal
-      const { data: dealData, error: dealError } = await supabase
-        .from('deals')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (dealError) throw dealError;
-      setDeal(dealData);
-
-      // Fetch packet if exists
       if (dealData.packet_id) {
-        const { data: packetData } = await supabase
-          .from('packets')
-          .select('*')
-          .eq('id', dealData.packet_id)
-          .single();
-        
-        setPacket(packetData);
+        const packetData = await fetchPacketById(dealData.packet_id);
+        setPacket(packetData as Packet);
       }
 
       // Use the resolver to get fields - works with or without packet
@@ -213,11 +203,7 @@ export const DealOverviewPage: React.FC = () => {
         : await resolveAllFields();
       setTotalRequiredFields(resolved.requiredFieldKeys.length);
 
-      // Fetch section values for this deal
-      const { data: sectionValues } = await supabase
-        .from('deal_section_values')
-        .select('section, field_values, updated_at')
-        .eq('deal_id', id);
+      const sectionValues = await fetchSectionValuesByDealWithUpdatedAt(id!);
 
       // Create a map of field_dictionary_id to field_key using resolved fields
       const fieldDictIdToKeyMap = new Map<string, string>();
@@ -264,23 +250,15 @@ export const DealOverviewPage: React.FC = () => {
 
       // Fetch templates in packet for template breakdown (only if packet exists)
       if (dealData.packet_id) {
-        const { data: packetTemplates } = await supabase
-          .from('packet_templates')
-          .select('template_id, templates(id, name)')
-          .eq('packet_id', dealData.packet_id)
-          .order('display_order');
+        const packetTemplates = await listPacketTemplatesWithJoin(dealData.packet_id);
 
-        // Calculate summaries for each template
         const summaries: TemplateFieldSummary[] = [];
         
-        for (const pt of (packetTemplates || [])) {
+        for (const pt of packetTemplates) {
           const template = (pt as any).templates;
           if (!template) continue;
 
-          const { data: fieldMaps } = await supabase
-            .from('template_field_maps')
-            .select('field_dictionary_id, required_flag')
-            .eq('template_id', template.id);
+          const fieldMaps = await listTemplateFieldMaps(template.id);
 
           // Map field_dictionary_ids to field_keys using resolved fields
           const totalFields = fieldMaps?.length || 0;
@@ -308,6 +286,7 @@ export const DealOverviewPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching deal:', error);
+      setDeal(null);
       toast({
         title: 'Error',
         description: 'Failed to load file',
@@ -346,7 +325,7 @@ export const DealOverviewPage: React.FC = () => {
     });
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="page-container space-y-4 animate-pulse">
         <div className="h-8 w-64 rounded-md bg-muted" />
@@ -376,7 +355,7 @@ export const DealOverviewPage: React.FC = () => {
   const isReady = deal.status === 'ready';
   const isGenerated = deal.status === 'generated';
   const canBeReady = totalMissingRequired === 0 && totalRequiredFields > 0;
-  
+
   // Check if user is CSR
   const isCsr = role === 'csr' || role === 'admin';
 
@@ -388,12 +367,7 @@ export const DealOverviewPage: React.FC = () => {
     
     setMarkingReady(true);
     try {
-      const { error } = await supabase
-        .from('deals')
-        .update({ status: 'ready' })
-        .eq('id', deal.id);
-
-      if (error) throw error;
+      await updateDeal(deal.id, { status: 'ready' });
 
       await logDealMarkedReady(deal.id);
 
@@ -536,7 +510,6 @@ export const DealOverviewPage: React.FC = () => {
               </>
             )}
           </div>
-          {/* Action Buttons in Status Banner */}
           {isCsr && canBeReady && deal.status === 'draft' && (
             <Button onClick={handleMarkReady} disabled={markingReady} className="gap-2">
               {markingReady ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -759,22 +732,13 @@ export const DealOverviewPage: React.FC = () => {
                       className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
                       onClick={async () => {
                         if (p.contact_id) {
-                          const { data } = await supabase
-                            .from('contacts')
-                            .select('id, contact_type')
-                            .eq('id', p.contact_id)
-                            .maybeSingle();
+                          const data = await getContactById(p.contact_id);
                           if (data) {
                             const route = data.contact_type === 'lender' ? 'lenders' : data.contact_type === 'broker' ? 'brokers' : 'borrowers';
                             navigate(`/contacts/${route}/${data.id}`);
                           }
                         } else if (p.email) {
-                          const { data } = await supabase
-                            .from('contacts')
-                            .select('id, contact_type')
-                            .eq('email', p.email)
-                            .limit(1)
-                            .maybeSingle();
+                          const data = await getContactByEmail(p.email, 'id, contact_type');
                           if (data) {
                             const route = data.contact_type === 'lender' ? 'lenders' : data.contact_type === 'broker' ? 'brokers' : 'borrowers';
                             navigate(`/contacts/${route}/${data.id}`);

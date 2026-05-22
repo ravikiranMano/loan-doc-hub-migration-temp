@@ -18,7 +18,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listProfilesForAdmin,
+  listUserRoles,
+  listUserPermissionLevels,
+  assignUserRoleAndPermission,
+} from '@/services/admin/users.service';
 import { Plus, Search, Users, Shield, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -49,23 +54,9 @@ export const UserManagementPage: React.FC = () => {
   const fetchUsers = async () => {
     try {
       // Fetch profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*');
-
-      if (profilesError) throw profilesError;
-
-      // Fetch roles
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('*');
-
-      if (rolesError) throw rolesError;
-
-      // Fetch permission levels
-      const { data: permLevels } = await supabase
-        .from('user_permission_levels')
-        .select('*');
+      const profiles = await listProfilesForAdmin();
+      const roles = await listUserRoles();
+      const permLevels = await listUserPermissionLevels();
 
       // Combine data
       const usersWithRoles: UserWithRole[] = (profiles || []).map((profile) => {
@@ -99,13 +90,11 @@ export const UserManagementPage: React.FC = () => {
 
     setSaving(true);
     try {
-      const { error: assignError } = await supabase.rpc('assign_user_role_and_permission', {
+      await assignUserRoleAndPermission({
         p_user_id: selectedUser.id,
         p_role: newRole as 'admin' | 'csr',
         p_permission_level: newRole === 'csr' ? newPermissionLevel : 'full',
       });
-
-      if (assignError) throw assignError;
 
       toast({
         title: 'Role assigned',

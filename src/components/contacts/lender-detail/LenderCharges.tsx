@@ -25,7 +25,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { History, Pencil } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { getUser } from '@/services/supabase/auth';
+import { getContactContactData, patchContactData } from '@/services/contacts/contacts.service';
 import { toast } from 'sonner';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { format } from 'date-fns';
@@ -300,7 +301,7 @@ const LenderCharges: React.FC<LenderChargesProps> = ({ contactDbId, disabled }) 
 
   // Resolve current user once for audit trail
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    getUser().then(({ data }) => {
       setCurrentUserEmail(data.user?.email || data.user?.id || 'Unknown');
     });
   }, []);
@@ -339,19 +340,16 @@ const LenderCharges: React.FC<LenderChargesProps> = ({ contactDbId, disabled }) 
   // Load charges + history from contact_data on mount
   useEffect(() => {
     const loadCharges = async () => {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('contact_data')
-        .eq('id', contactDbId)
-        .single();
-      if (!error && data?.contact_data) {
-        const cd = data.contact_data as Record<string, any>;
+      try {
+        const cd = (await getContactContactData(contactDbId)) as Record<string, any>;
         if (Array.isArray(cd._charges)) {
           setRows((cd._charges as any[]).map(normalizeRow));
         }
         if (Array.isArray(cd._charges_history)) {
           setHistory(cd._charges_history as ChargeHistoryEntry[]);
         }
+      } catch {
+        // ignore load errors
       }
     };
     if (contactDbId) loadCharges();
@@ -360,14 +358,7 @@ const LenderCharges: React.FC<LenderChargesProps> = ({ contactDbId, disabled }) 
   const persistCharges = useCallback(async (updatedRows: ChargeRow[], updatedHistory?: ChargeHistoryEntry[]) => {
     setIsSaving(true);
     try {
-      const { data: current, error: fetchErr } = await supabase
-        .from('contacts')
-        .select('contact_data')
-        .eq('id', contactDbId)
-        .single();
-      if (fetchErr) throw fetchErr;
-
-      const existingData = (current?.contact_data as Record<string, any>) || {};
+      const existingData = (await getContactContactData(contactDbId)) as Record<string, any>;
       // Funding Grid sync: publish a denormalized funding view derived from final values
       const _funding_grid = updatedRows.map(r => ({
         charge_id: r.id,
@@ -392,11 +383,7 @@ const LenderCharges: React.FC<LenderChargesProps> = ({ contactDbId, disabled }) 
       };
       if (updatedHistory) merged._charges_history = updatedHistory;
 
-      const { error } = await supabase
-        .from('contacts')
-        .update({ contact_data: merged as any, updated_at: new Date().toISOString() })
-        .eq('id', contactDbId);
-      if (error) throw error;
+      await patchContactData(contactDbId, merged);
     } catch (err: any) {
       console.error('Failed to save charges:', err);
       toast.error('Failed to save charge');

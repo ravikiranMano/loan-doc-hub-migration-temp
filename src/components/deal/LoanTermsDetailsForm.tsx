@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -11,6 +11,7 @@ import { CalendarIcon } from 'lucide-react';
 import { format, parse, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
+import { listContactsByType } from '@/services/contacts/contacts.service';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { roundPctForStorage, formatPercentDisplay } from '@/lib/precisionFormat';
@@ -209,12 +210,16 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('id, full_name, first_name, last_name, company, contact_id')
-        .eq('contact_type', 'broker')
-        .order('full_name', { ascending: true });
-      if (cancelled || error || !data) return;
+      let data: Array<Record<string, unknown>> = [];
+      try {
+        data = await listContactsByType(
+          'broker',
+          'id, full_name, first_name, last_name, company, contact_id'
+        );
+      } catch {
+        return;
+      }
+      if (cancelled || !data.length) return;
       const opts = data.map((c: any) => {
         const name = (c.full_name && c.full_name.trim())
           || `${c.first_name || ''} ${c.last_name || ''}`.trim()

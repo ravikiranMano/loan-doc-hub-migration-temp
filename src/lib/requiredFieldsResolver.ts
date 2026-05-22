@@ -1,5 +1,7 @@
-import { supabase } from '@/integrations/supabase/client';
-import { fetchAllRows } from '@/lib/supabasePagination';
+import { fetchAllRows } from '@/services/supabase/pagination';
+import { fetchFieldDictionaryBySections, fetchFieldDictionaryByIds } from '@/services/admin/field-dictionary.service';
+import { fetchPacketTemplateIds } from '@/services/documents/packets.service';
+import { fetchFieldMapsByTemplateIds } from '@/services/documents/template-field-maps.service';
 import type { Database } from '@/integrations/supabase/types';
 
 type FieldSection = Database['public']['Enums']['field_section'];
@@ -72,12 +74,7 @@ export type CustomUISection = typeof CUSTOM_UI_SECTIONS[number];
 export async function resolveAllFields(cachedEntries?: any[]): Promise<ResolvedFieldSet> {
   const fieldDictEntries = cachedEntries
     ? cachedEntries.filter((e: any) => SECTION_ORDER.includes(e.section))
-    : await fetchAllRows((client) =>
-        client
-          .from('field_dictionary')
-          .select('*')
-          .in('section', SECTION_ORDER as any)
-      );
+    : await fetchFieldDictionaryBySections(SECTION_ORDER as string[]);
 
   const fields: ResolvedField[] = (fieldDictEntries || []).map(fd => ({
     field_dictionary_id: fd.id,
@@ -150,14 +147,7 @@ export async function resolveAllFields(cachedEntries?: any[]): Promise<ResolvedF
  */
 export async function resolvePacketFields(packetId: string, cachedEntries?: any[]): Promise<ResolvedFieldSet> {
   // 1. Load all templates in the packet
-  const { data: packetTemplates, error: ptError } = await supabase
-    .from('packet_templates')
-    .select('template_id')
-    .eq('packet_id', packetId);
-
-  if (ptError) throw ptError;
-
-  const templateIds = (packetTemplates || []).map(pt => pt.template_id);
+  const templateIds = await fetchPacketTemplateIds(packetId);
 
   if (templateIds.length === 0) {
     return {
@@ -172,12 +162,7 @@ export async function resolvePacketFields(packetId: string, cachedEntries?: any[
   }
 
   // 2. Load all TemplateFieldMap rows
-  const { data: fieldMaps, error: fmError } = await supabase
-    .from('template_field_maps')
-    .select('field_dictionary_id, required_flag, transform_rule')
-    .in('template_id', templateIds);
-
-  if (fmError) throw fmError;
+  const fieldMaps = await fetchFieldMapsByTemplateIds(templateIds);
 
   if (!fieldMaps || fieldMaps.length === 0) {
     return {
@@ -209,12 +194,7 @@ export async function resolvePacketFields(packetId: string, cachedEntries?: any[
   // 3. Load field dictionary entries for those IDs (use cache if available)
   const fieldDictEntries = cachedEntries
     ? cachedEntries.filter((e: any) => fieldDictIds.includes(e.id))
-    : await fetchAllRows((client) =>
-        client
-          .from('field_dictionary')
-          .select('*')
-          .in('id', fieldDictIds)
-      );
+    : await fetchFieldDictionaryByIds(fieldDictIds);
 
   // Create lookup map for field dictionary by ID
   const fieldDictMap = new Map<string, any>();

@@ -15,7 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { searchParticipantsWithEmail } from '@/services/deals/participants.service';
+import { listProfiles } from '@/services/admin/profiles.service';
+import { invokeSendMessage } from '@/services/supabase/functions';
 import {
   Send,
   Paperclip,
@@ -88,17 +90,7 @@ export const GlobalMessageDialog: React.FC<GlobalMessageDialogProps> = ({
     setSearching(true);
     try {
       if (tab === 'contacts') {
-        // Search deal participants (borrower/lender/broker contacts)
-        let q = supabase
-          .from('deal_participants')
-          .select('id, name, email, role')
-          .not('email', 'is', null);
-
-        if (query) {
-          q = q.or(`name.ilike.%${query}%,email.ilike.%${query}%`);
-        }
-
-        const { data } = await q.limit(20);
+        const data = await searchParticipantsWithEmail(query, 20);
         const results: Recipient[] = (data || []).map((p) => ({
           id: p.id,
           name: p.name || p.email || '',
@@ -117,17 +109,7 @@ export const GlobalMessageDialog: React.FC<GlobalMessageDialogProps> = ({
           })
         );
       } else if (tab === 'users') {
-        // Search application users from profiles
-        let q = supabase
-          .from('profiles')
-          .select('user_id, full_name, email')
-          .not('email', 'is', null);
-
-        if (query) {
-          q = q.or(`full_name.ilike.%${query}%,email.ilike.%${query}%`);
-        }
-
-        const { data } = await q.limit(20);
+        const { data } = await listProfiles({ search: query || undefined, pageSize: 20, page: 1 });
         setSearchResults(
           (data || []).map((p) => ({
             id: p.user_id,
@@ -224,25 +206,23 @@ export const GlobalMessageDialog: React.FC<GlobalMessageDialogProps> = ({
 
     setSending(true);
     try {
-      const { data, error } = await supabase.functions.invoke('send-message', {
-        body: {
-          message_type: messageType,
-          subject,
-          message_body: body,
-          recipients: selectedRecipients.map((r) => ({
-            name: r.name,
-            email: r.email,
-            type: r.type,
-          })),
-          attachments:
-            messageType === 'email'
-              ? attachments.map((a) => ({
-                  filename: a.filename,
-                  content: a.content,
-                  size: a.size,
-                }))
-              : [],
-        },
+      const { data, error } = await invokeSendMessage({
+        message_type: messageType,
+        subject,
+        message_body: body,
+        recipients: selectedRecipients.map((r) => ({
+          name: r.name,
+          email: r.email,
+          type: r.type,
+        })),
+        attachments:
+          messageType === 'email'
+            ? attachments.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                size: a.size,
+              }))
+            : [],
       });
 
       if (error) throw error;

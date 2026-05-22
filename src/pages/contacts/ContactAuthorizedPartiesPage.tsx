@@ -125,8 +125,8 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     if (selectedContact?.id === contactId) return;
     let cancelled = false;
     (async () => {
-      const { supabase } = await import('@/integrations/supabase/client');
-      const { data } = await supabase.from('contacts').select('*').eq('id', contactId).maybeSingle();
+      const { getContactById } = await import('@/services/contacts/contacts.service');
+      const data = await getContactById(contactId);
       if (cancelled || !data) return;
       setSelectedContact(hydrateAP({
         id: data.id,

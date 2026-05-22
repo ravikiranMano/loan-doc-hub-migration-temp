@@ -43,17 +43,23 @@ const PermissionManagementPage: React.FC = () => {
     loading,
     permLoading,
     fetchUserPermissions,
+    setSelectedUserId: trackSelectedUser,
     updatePermission,
   } = useFormPermissionsAdmin();
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = React.useState<string>('');
 
-  // When a user is selected, fetch their permissions
+  const handleUserChange = (userId: string) => {
+    setSelectedUserId(userId);
+    trackSelectedUser(userId);
+  };
+
+  // When a user is selected, fetch their permissions (deduped in hook)
   useEffect(() => {
     if (selectedUserId) {
-      fetchUserPermissions(selectedUserId);
+      void fetchUserPermissions(selectedUserId);
     }
-  }, [selectedUserId]);
+  }, [selectedUserId, fetchUserPermissions]);
 
   const handleToggle = async (id: string, currentMode: string) => {
     const newMode = currentMode === 'editable' ? 'view_only' : 'editable';
@@ -99,7 +105,7 @@ const PermissionManagementPage: React.FC = () => {
       {/* CSR User Selector */}
       <div className="mb-6 flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium text-foreground">Select CSR User:</span>
-        <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+        <Select value={selectedUserId} onValueChange={handleUserChange}>
           <SelectTrigger className="w-[300px]">
             <SelectValue placeholder="Select" />
           </SelectTrigger>

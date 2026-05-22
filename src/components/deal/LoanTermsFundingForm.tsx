@@ -3,7 +3,18 @@ import { LoanFundingGrid } from './LoanFundingGrid';
 import type { FundingRecord } from './LoanFundingGrid';
 import type { FundingAdjustmentData } from './FundingAdjustmentModal';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchFieldDictionaryByFieldKeys } from '@/services/deals/section-values.service';
+import {
+  fetchLoanTermsSectionRows,
+  updateSectionValueById,
+  insertLoanTermsSectionRow,
+} from '@/services/deals/section-values.service';
+import {
+  findParticipantByDealNameRole,
+  insertParticipant,
+  listParticipantsByDealAndRole,
+} from '@/services/deals/participants.service';
+import { getContactByContactId, getContactById } from '@/services/contacts/contacts.service';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import type { FundingFormData } from './AddFundingModal';
@@ -80,13 +91,10 @@ async function resolveFieldDictId(fieldKey: string, cache: Map<string, string>):
 
   const candidateKeys = Array.from(new Set([fieldKey, resolveLegacyKey(fieldKey)]));
 
-  const { data: rows, error } = await supabase
-    .from('field_dictionary')
-    .select('id, field_key')
-    .in('field_key', candidateKeys);
+  const rows = await fetchFieldDictionaryByFieldKeys(candidateKeys);
 
-  if (error || !rows?.length) {
-    console.warn(`[LoanTermsFundingForm] Could not resolve field_dictionary id for "${fieldKey}"`, error);
+  if (!rows?.length) {
+    console.warn(`[LoanTermsFundingForm] Could not resolve field_dictionary id for "${fieldKey}"`);
     return null;
   }
 
@@ -115,13 +123,7 @@ async function directPersistFundingField(
     const fieldDictId = await resolveFieldDictId(fieldKey, dictCache);
     if (!fieldDictId) return false;
 
-    const { data: sectionRows, error: fetchError } = await supabase
-      .from('deal_section_values')
-      .select('id, field_values, version')
-      .eq('deal_id', dealId)
-      .eq('section', 'loan_terms');
-
-    if (fetchError) throw fetchError;
+    const sectionRows = await fetchLoanTermsSectionRows(dealId);
 
     if (sectionRows && sectionRows.length > 0) {
       let targetRow = sectionRows.find((sv) => {
@@ -138,16 +140,11 @@ async function directPersistFundingField(
         updated_at: new Date().toISOString(),
       };
 
-      const { error: updateError } = await supabase
-        .from('deal_section_values')
-        .update({
-          field_values: JSON.parse(JSON.stringify(fieldValues)),
-          updated_at: new Date().toISOString(),
-          version: (targetRow.version || 0) + 1,
-        })
-        .eq('id', targetRow.id);
-
-      if (updateError) throw updateError;
+      await updateSectionValueById(targetRow.id, {
+        field_values: JSON.parse(JSON.stringify(fieldValues)),
+        updated_at: new Date().toISOString(),
+        version: (targetRow.version || 0) + 1,
+      });
       return true;
     } else {
       const fieldValues: Record<string, any> = {};
@@ -158,16 +155,7 @@ async function directPersistFundingField(
         updated_at: new Date().toISOString(),
       };
 
-      const { error: insertError } = await supabase
-        .from('deal_section_values')
-        .insert({
-          deal_id: dealId,
-          section: 'loan_terms',
-          field_values: fieldValues,
-          version: 1,
-        });
-
-      if (insertError) throw insertError;
+      await insertLoanTermsSectionRow(dealId, fieldValues);
       return true;
     }
   } catch (err) {
@@ -231,14 +219,13 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     if (!dealId) return;
     const fetchBorrower = async () => {
       // Fetch ALL borrower participants for this deal
-      const { data: participants } = await supabase
-        .from('deal_participants')
-        .select('name, contact_id')
-        .eq('deal_id', dealId)
-        .eq('role', 'borrower')
-        .order('created_at', { ascending: true });
+      const participants = await listParticipantsByDealAndRole(
+        dealId,
+        'borrower',
+        'name, contact_id'
+      );
 
-      if (!participants || participants.length === 0) return;
+      if (!participants.length) return;
 
       // Primary = first borrower participant
       const primary = participants[0];
@@ -246,13 +233,14 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
 
       // If no name on participant row, fallback to contacts table
       if (!primaryName && primary.contact_id) {
-        const { data: contact } = await supabase
-          .from('contacts')
-          .select('full_name, first_name, last_name')
-          .eq('id', primary.contact_id)
-          .maybeSingle();
+        const contact = await getContactById(
+          primary.contact_id as string,
+          'full_name, first_name, last_name'
+        );
         if (contact) {
-          primaryName = contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+          primaryName =
+            (contact.full_name as string) ||
+            `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
         }
       }
 
@@ -472,13 +460,9 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
         const adjId = await resolveFieldDictId(FIELD_KEYS.fundingAdjustments, dictCacheRef.current);
         if (!recId && !histId && !adjId) return;
 
-        const { data: sectionRows, error } = await supabase
-          .from('deal_section_values')
-          .select('field_values')
-          .eq('deal_id', dealId)
-          .eq('section', 'loan_terms');
+        const sectionRows = await fetchLoanTermsSectionRows(dealId);
 
-        if (error || !sectionRows?.length) return;
+        if (!sectionRows.length) return;
 
         for (const sv of sectionRows) {
           const fv = (sv.field_values as Record<string, any>) || {};
@@ -637,36 +621,29 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     // Auto-add lender to deal_participants if not already present
     if (data.lenderFullName) {
       try {
-        const { data: existing } = await supabase
-          .from('deal_participants')
-          .select('id')
-          .eq('deal_id', dealId)
-          .eq('role', 'lender')
-          .eq('name', data.lenderFullName)
-          .maybeSingle();
+        const existing = await findParticipantByDealNameRole(
+          dealId,
+          data.lenderFullName,
+          'lender'
+        );
 
         if (!existing) {
-          // Look up contact for email/phone/contact_id
           let contactId: string | null = null;
           let email: string | null = null;
           let phone: string | null = null;
 
           if (data.lenderId) {
-            const { data: contact } = await supabase
-              .from('contacts')
-              .select('id, email, phone')
-              .eq('contact_id', data.lenderId)
-              .maybeSingle();
+            const contact = await getContactByContactId(data.lenderId, 'id, email, phone');
             if (contact) {
-              contactId = contact.id;
-              email = contact.email;
-              phone = contact.phone;
+              contactId = contact.id as string;
+              email = (contact.email as string) || null;
+              phone = (contact.phone as string) || null;
             }
           }
 
-          await supabase.from('deal_participants').insert({
+          await insertParticipant({
             deal_id: dealId,
-            role: 'lender' as any,
+            role: 'lender',
             name: data.lenderFullName,
             email,
             phone,
@@ -773,15 +750,9 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       const fieldDictId = await resolveFieldDictId(FIELD_KEYS.fundingRecords, dictCacheRef.current);
       if (!fieldDictId) throw new Error('Field dictionary entry not found for funding_records');
 
-      const { data: sectionRows, error: fetchError } = await supabase
-        .from('deal_section_values')
-        .select('id, field_values, version')
-        .eq('deal_id', dealId)
-        .eq('section', 'loan_terms');
+      const sectionRows = await fetchLoanTermsSectionRows(dealId);
 
-      if (fetchError) throw fetchError;
-
-      for (const sv of (sectionRows || [])) {
+      for (const sv of sectionRows) {
         const fieldValues = (sv.field_values as Record<string, any>) || {};
 
         if (fieldValues[fieldDictId]) {
@@ -791,14 +762,11 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
             updated_at: new Date().toISOString(),
           };
 
-          await supabase
-            .from('deal_section_values')
-            .update({
-              field_values: JSON.parse(JSON.stringify(fieldValues)),
-              updated_at: new Date().toISOString(),
-              version: (sv.version || 0) + 1,
-            })
-            .eq('id', sv.id);
+          await updateSectionValueById(sv.id, {
+            field_values: JSON.parse(JSON.stringify(fieldValues)),
+            updated_at: new Date().toISOString(),
+            version: (sv.version || 0) + 1,
+          });
 
           toast.success('Funding record deleted successfully');
           return;

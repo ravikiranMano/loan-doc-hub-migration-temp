@@ -8,7 +8,12 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  insertLoanHistory,
+  updateLoanHistory,
+  deleteLoanHistory,
+  listLoanHistoryByDeal,
+} from '@/services/deals/loan-history.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -182,13 +187,8 @@ export const LoanHistoryViewer: React.FC<LoanHistoryViewerProps> = ({ dealId, di
     queryKey: ['loan-history', dealId],
     enabled: !!dealId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('loan_history')
-        .select('*')
-        .eq('deal_id', dealId)
-        .order('date_received', { ascending: false });
-      if (error) throw error;
-      return (data || []) as LoanHistoryEntry[];
+      const data = await listLoanHistoryByDeal(dealId);
+      return data as LoanHistoryEntry[];
     },
   });
 
@@ -342,12 +342,10 @@ export const LoanHistoryViewer: React.FC<LoanHistoryViewerProps> = ({ dealId, di
     };
     try {
       if (form.id) {
-        const { error } = await supabase.from('loan_history').update(payload).eq('id', form.id);
-        if (error) throw error;
+        await updateLoanHistory(form.id, payload);
         toast({ title: 'Updated', description: 'Payment entry updated.' });
       } else {
-        const { error } = await supabase.from('loan_history').insert(payload);
-        if (error) throw error;
+        await insertLoanHistory(payload);
         toast({ title: 'Added', description: 'Payment entry added.' });
       }
       setEditOpen(false);
@@ -360,8 +358,7 @@ export const LoanHistoryViewer: React.FC<LoanHistoryViewerProps> = ({ dealId, di
   const handleDelete = async () => {
     if (!selectedRow) return;
     try {
-      const { error } = await supabase.from('loan_history').delete().eq('id', selectedRow.id);
-      if (error) throw error;
+      await deleteLoanHistory(selectedRow.id);
       toast({ title: 'Deleted', description: 'Payment entry removed.' });
       setDeleteOpen(false);
       setSelectedId(null);
@@ -386,8 +383,7 @@ export const LoanHistoryViewer: React.FC<LoanHistoryViewerProps> = ({ dealId, di
         reference: `REV-${selectedRow.reference || selectedRow.id.slice(0, 6)}`,
         description: `Reversal of ${selectedRow.reference || selectedRow.id}. ${notesText || ''}`.trim(),
       };
-      const { error } = await supabase.from('loan_history').insert(reversal);
-      if (error) throw error;
+      await insertLoanHistory(reversal);
       toast({ title: 'Reversed', description: 'Reversal entry created.' });
       setReverseOpen(false);
       setNotesText('');
@@ -408,8 +404,7 @@ export const LoanHistoryViewer: React.FC<LoanHistoryViewerProps> = ({ dealId, di
         reference: `NSF-${selectedRow.reference || selectedRow.id.slice(0, 6)}`,
         description: `NSF for ${selectedRow.reference || selectedRow.id}. ${notesText || ''}`.trim(),
       };
-      const { error } = await supabase.from('loan_history').insert(nsf);
-      if (error) throw error;
+      await insertLoanHistory(nsf);
       toast({ title: 'NSF recorded', description: 'NSF entry created.' });
       setNsfOpen(false);
       setNotesText('');
@@ -423,8 +418,7 @@ export const LoanHistoryViewer: React.FC<LoanHistoryViewerProps> = ({ dealId, di
     if (!selectedRow) return;
     try {
       const merged = [selectedRow.description, notesText].filter(Boolean).join('\n');
-      const { error } = await supabase.from('loan_history').update({ description: merged }).eq('id', selectedRow.id);
-      if (error) throw error;
+      await updateLoanHistory(selectedRow.id, { description: merged });
       toast({ title: 'Notes saved', description: 'Notes appended to entry.' });
       setNotesOpen(false);
       setNotesText('');

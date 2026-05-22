@@ -33,7 +33,7 @@ import { SortableTableHead } from '@/components/deal/SortableTableHead';
 import { useGridSortFilter } from '@/hooks/useGridSortFilter';
 import { useGridSelection } from '@/hooks/useGridSelection';
 import { DeleteConfirmationDialog } from '@/components/deal/DeleteConfirmationDialog';
-import { supabase } from '@/integrations/supabase/client';
+import { getContactContactData, patchContactData } from '@/services/contacts/contacts.service';
 import { toast } from 'sonner';
 
 interface LedgerEntry {
@@ -118,7 +118,7 @@ const LenderTrustLedger: React.FC<{ lenderId: string; contactDbId: string; disab
   useEffect(() => {
     if (!contactDbId) return;
     (async () => {
-      const { data } = await supabase.from('contacts').select('contact_data').eq('id', contactDbId).single();
+      const data = { contact_data: await getContactContactData(contactDbId) };
       if (data?.contact_data && (data.contact_data as any)._trust_ledger) {
         setEntries((data.contact_data as any)._trust_ledger);
       }
@@ -127,9 +127,7 @@ const LenderTrustLedger: React.FC<{ lenderId: string; contactDbId: string; disab
 
   const persistEntries = useCallback(async (updated: LedgerEntry[]) => {
     if (!contactDbId) return;
-    const { data: current } = await supabase.from('contacts').select('contact_data').eq('id', contactDbId).single();
-    const existing = (current?.contact_data || {}) as Record<string, any>;
-    await supabase.from('contacts').update({ contact_data: { ...existing, _trust_ledger: updated } as any }).eq('id', contactDbId);
+    await patchContactData(contactDbId, { _trust_ledger: updated });
   }, [contactDbId]);
 
   const preFiltered = useMemo(() => {

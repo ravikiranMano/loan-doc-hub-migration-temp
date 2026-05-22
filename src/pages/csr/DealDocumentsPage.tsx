@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -45,7 +46,27 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { fetchDealById } from '@/services/deals/deals.service';
+import {
+  generateDocument,
+  generateDocumentV2,
+  getFieldDataV2,
+  previewDocumentPayload,
+  type DocumentPayloadPreviewResult,
+  type FieldDataV2Result,
+  listGeneratedDocuments,
+  listGenerationJobs,
+  downloadGeneratedDoc,
+} from '@/services/documents/generation.service';
+import { SessionExpiredError } from '@/services/node-api/client';
+import { listTemplates, updateTemplate, uploadTemplateDocx } from '@/services/documents/templates.service';
+import {
+  listActivePackets,
+  fetchPacketById,
+  listPacketTemplatesWithJoin,
+} from '@/services/documents/packets.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   ArrowLeft, 
@@ -152,7 +173,7 @@ export const DealDocumentsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { role, signOut } = useAuth();
+  const { role } = useAuth();
 
   const [deal, setDeal] = useState<Deal | null>(null);
   const [packet, setPacket] = useState<Packet | null>(null);
@@ -166,10 +187,16 @@ export const DealDocumentsPage: React.FC = () => {
   const [profiles, setProfiles] = useState<Map<string, Profile>>(new Map());
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generatingV2, setGeneratingV2] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'legacy' | 'v2'>('legacy');
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [outputType, setOutputType] = useState<OutputType>('docx_only');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<DocumentPayloadPreviewResult | null>(null);
+  const [previewFilter, setPreviewFilter] = useState('');
   const [generationMode, setGenerationMode] = useState<'single' | 'packet'>('packet');
   const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
@@ -197,36 +224,22 @@ export const DealDocumentsPage: React.FC = () => {
   useEffect(() => {
     if (!id) return;
 
-    const channel = supabase
-      .channel('generated-docs-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'generated_documents',
-          filter: `deal_id=eq.${id}`,
-        },
-        () => {
-          debouncedBackgroundRefresh();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'generation_jobs',
-          filter: `deal_id=eq.${id}`,
-        },
-        () => {
-          debouncedBackgroundRefresh();
-        }
-      )
-      .subscribe();
+    const docsSub = subscribePostgresChanges({
+      channelName: `generated-docs-changes-${id}`,
+      table: 'generated_documents',
+      filter: `deal_id=eq.${id}`,
+      onChange: debouncedBackgroundRefresh,
+    });
+    const jobsSub = subscribePostgresChanges({
+      channelName: `generation-jobs-changes-${id}`,
+      table: 'generation_jobs',
+      filter: `deal_id=eq.${id}`,
+      onChange: debouncedBackgroundRefresh,
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      docsSub.unsubscribe();
+      jobsSub.unsubscribe();
       if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     };
   }, [id]);
@@ -304,85 +317,45 @@ export const DealDocumentsPage: React.FC = () => {
   };
 
   const fetchDeal = async () => {
-    const { data: dealData, error: dealError } = await supabase
-      .from('deals')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (dealError) throw dealError;
+    const dealData = await fetchDealById(id!);
     setDeal(dealData);
 
-    // Always fetch all active templates and all active packets for selection
-    const [templatesRes, packetsRes] = await Promise.all([
-      supabase
-        .from('templates')
-        .select('id, name, file_path, version')
-        .eq('is_active', true)
-        .order('name'),
-      supabase
-        .from('packets')
-        .select('*')
-        .eq('is_active', true)
-        .order('name'),
+    const [templatesData, packetsData] = await Promise.all([
+      listTemplates(true, 'id, name, file_path, version'),
+      listActivePackets(),
     ]);
-    
-    setAllTemplates((templatesRes.data || []) as Template[]);
-    setAvailablePackets((packetsRes.data || []) as Packet[]);
+
+    setAllTemplates(templatesData as Template[]);
+    setAvailablePackets(packetsData as Packet[]);
 
     if (dealData.packet_id) {
-      // Fetch assigned packet info
-      const { data: packetData } = await supabase
-        .from('packets')
-        .select('*')
-        .eq('id', dealData.packet_id)
-        .single();
+      const packetData = await fetchPacketById(dealData.packet_id);
       setPacket(packetData);
 
-      // Fetch assigned packet templates
-      const { data: ptData } = await supabase
-        .from('packet_templates')
-        .select('template_id, display_order, is_required, templates(id, name, file_path, version)')
-        .eq('packet_id', dealData.packet_id)
-        .order('display_order');
-      
-      setPacketTemplates((ptData || []) as any);
+      const ptData = await listPacketTemplatesWithJoin(dealData.packet_id);
+      setPacketTemplates(ptData as any);
     }
   };
 
   const fetchGeneratedDocuments = async () => {
-    const { data } = await supabase
-      .from('generated_documents')
-      .select('*')
-      .eq('deal_id', id)
-      .order('created_at', { ascending: false });
-
+    const data = await listGeneratedDocuments(id!);
     setGeneratedDocuments(data || []);
-    
-    // Fetch profiles for creators
-    if (data && data.length > 0) {
-      const creatorIds = [...new Set(data.map(d => d.created_by))];
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email')
-        .in('user_id', creatorIds);
-      
-      if (profilesData) {
-        const profilesMap = new Map(profilesData.map(p => [p.user_id, p]));
+
+    if (data.length > 0) {
+      const creatorIds = [
+        ...new Set(data.map((d) => d.created_by).filter((id): id is string => Boolean(id))),
+      ];
+      if (creatorIds.length > 0) {
+        const profilesData = await fetchProfilesByUserIds(creatorIds);
+        const profilesMap = new Map(profilesData.map((p) => [p.user_id, p]));
         setProfiles(profilesMap);
       }
     }
   };
 
   const fetchRecentJobs = async () => {
-    const { data } = await supabase
-      .from('generation_jobs')
-      .select('*')
-      .eq('deal_id', id)
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    setRecentJobs(data || []);
+    const data = await listGenerationJobs(id!);
+    setRecentJobs((data || []).slice(0, 5));
   };
 
   const handleGenerateClick = (mode: 'single' | 'packet', templateId?: string) => {
@@ -391,70 +364,125 @@ export const DealDocumentsPage: React.FC = () => {
     setShowConfirmDialog(true);
   };
 
+  const handlePreviewPayload = async () => {
+    if (!id || !selectedTemplateId) return;
+    setPreviewMode('legacy');
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    setPreviewFilter('');
+    setShowPreviewDialog(true);
+    try {
+      const result = await previewDocumentPayload(id, selectedTemplateId);
+      setPreviewResult(result);
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Failed to load merge payload';
+      toast({ title: 'Preview failed', description: message, variant: 'destructive' });
+      setShowPreviewDialog(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleGenerateV2 = async () => {
+    if (!id || !selectedTemplateId) return;
+    setGeneratingV2(true);
+    try {
+      const filename = await generateDocumentV2(id, selectedTemplateId);
+      toast({ title: 'Downloaded (v2)', description: filename });
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'v2 generation failed';
+      toast({ title: 'Generate (v2) Failed', description: message, variant: 'destructive' });
+    } finally {
+      setGeneratingV2(false);
+    }
+  };
+
+  const handleInspectFieldData = async () => {
+    if (!id || !selectedTemplateId) return;
+    setPreviewMode('v2');
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    setPreviewFilter('');
+    setShowPreviewDialog(true);
+    try {
+      const result = await getFieldDataV2(id, selectedTemplateId);
+      // Adapt v2 response to the existing preview result shape
+      const tagKeys = result.metadata.templateTagKeys ?? [];
+      setPreviewResult({
+        dealId: result.metadata.dealId,
+        dealNumber: result.metadata.dealNumber,
+        templateId: result.metadata.templateId,
+        templateName: result.metadata.templateName,
+        fieldCount: result.metadata.templateResolvedCount ?? result.metadata.resolvedCount,
+        totalKeysInMap: tagKeys.length || result.metadata.fieldMapCount,
+        templateConditions: result.metadata.templateConditions,
+        data: Object.fromEntries(
+          Object.entries(result.data)
+            .filter(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+            .map(([k, v]) => [k, String(v)])
+        ) as Record<string, string>,
+      });
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Failed to load field data';
+      toast({ title: 'Field data (v2) failed', description: message, variant: 'destructive' });
+      setShowPreviewDialog(false);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const previewJsonDisplay = useMemo(() => {
+    if (!previewResult?.data) return '';
+    const filter = previewFilter.trim().toLowerCase();
+    const entries = Object.entries(previewResult.data)
+      .filter(([k]) => !filter || k.toLowerCase().includes(filter))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const payload: Record<string, unknown> = { fields: Object.fromEntries(entries) };
+    if (previewMode === 'v2' && previewResult.templateConditions?.length) {
+      payload.conditions = previewResult.templateConditions;
+    }
+    return JSON.stringify(payload, null, 2);
+  }, [previewResult, previewFilter, previewMode]);
+
   const handleGenerate = async () => {
     setShowConfirmDialog(false);
     setGenerating(true);
 
     try {
-      // Ensure we have a valid, refreshable auth session before invoking backend function
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session?.access_token) {
-        throw new Error('Your session has expired. Please sign in again.');
-      }
-
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        await signOut();
-        throw new Error('Your session has expired. Please sign in again.');
-      }
-
-      const body: any = {
-        dealId: deal!.id,
+      const body: { outputType: string; templateId?: string; packetId?: string } = {
         outputType,
       };
 
       if (generationMode === 'single' && selectedTemplateId) {
         body.templateId = selectedTemplateId;
       } else {
-        // Use user-selected packet
-        if (!selectedPacketId) throw new Error('No packet selected');
+        if (!selectedPacketId) throw new Error('Please select a packet before generating.');
         body.packetId = selectedPacketId;
       }
 
-      const { data, error } = await supabase.functions.invoke('generate-document', {
-        body,
-      });
+      const result = await generateDocument(deal!.id, body);
 
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      const result = data as {
-        status?: string;
-        jobId?: string;
-        successCount: number;
-        failCount: number;
-        results: Array<{ templateName: string; success: boolean; error?: string }>;
-      };
-
-      // Handle async background processing response
       if (result.status === 'running' && result.jobId) {
         toast({
-          title: 'Document Generation Started',
-          description: 'Processing in the background. Documents will appear automatically when ready.',
+          title: 'Generation Started',
+          description: 'Documents are being processed in the background and will appear here automatically when ready.',
         });
       } else if (result.failCount === 0 && result.successCount > 0) {
         toast({
           title: 'Documents Generated',
-          description: `Successfully generated ${result.successCount} document${result.successCount > 1 ? 's' : ''}`,
+          description: `Successfully generated ${result.successCount} document${result.successCount > 1 ? 's' : ''}.`,
         });
       } else if (result.successCount > 0) {
         toast({
-          title: 'Partial Success',
-          description: `${result.successCount} succeeded, ${result.failCount} failed`,
+          title: 'Partially Generated',
+          description: `${result.successCount} document${result.successCount > 1 ? 's' : ''} succeeded, ${result.failCount} failed.`,
           variant: 'destructive',
         });
-      } else if (result.results && result.results.length > 0) {
-        const firstError = result.results.find(r => !r.success)?.error || 'Unknown error';
+      } else {
+        const firstError = result.results?.find(r => !r.success)?.error ?? 'Document generation failed.';
         toast({
           title: 'Generation Failed',
           description: firstError,
@@ -462,12 +490,14 @@ export const DealDocumentsPage: React.FC = () => {
         });
       }
 
-      // Refresh data
       refreshDataInBackground();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // Session expired: redirect is already in flight — do not show a toast.
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.';
       toast({
         title: 'Generation Failed',
-        description: error.message || 'Failed to generate documents',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -477,13 +507,7 @@ export const DealDocumentsPage: React.FC = () => {
 
   const handleDownload = async (path: string, filename: string) => {
     try {
-      const { data, error } = await supabase.storage
-        .from('generated-docs')
-        .download(path);
-
-      if (error) throw error;
-
-      // Create download link
+      const data = await downloadGeneratedDoc(path);
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
@@ -492,10 +516,12 @@ export const DealDocumentsPage: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Failed to download file.';
       toast({
         title: 'Download Failed',
-        description: error.message || 'Failed to download file',
+        description: message,
         variant: 'destructive',
       });
     }
@@ -629,19 +655,9 @@ export const DealDocumentsPage: React.FC = () => {
     setUploadingTemplate(true);
     try {
       const fileName = `${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('templates')
-        .upload(fileName, file, { upsert: true });
+      await uploadTemplateDocx(fileName, file, { upsert: true });
 
-      if (uploadError) throw uploadError;
-
-      // Update the template record with the file path
-      const { error: updateError } = await supabase
-        .from('templates')
-        .update({ file_path: fileName })
-        .eq('id', templateId);
-
-      if (updateError) throw updateError;
+      await updateTemplate(templateId, { file_path: fileName });
 
       toast({
         title: 'Template Uploaded',
@@ -778,12 +794,8 @@ export const DealDocumentsPage: React.FC = () => {
                     value={selectedPacketId || ''}
                     onValueChange={async (v) => {
                       setSelectedPacketId(v);
-                      const { data: ptData } = await supabase
-                        .from('packet_templates')
-                        .select('template_id, display_order, is_required, templates(id, name, file_path, version)')
-                        .eq('packet_id', v)
-                        .order('display_order');
-                      setSelectedPacketTemplates((ptData || []) as any);
+                      const ptData = await listPacketTemplatesWithJoin(v);
+                      setSelectedPacketTemplates(ptData as any);
                     }}
                   >
                     <SelectTrigger className="flex-1">
@@ -892,24 +904,86 @@ export const DealDocumentsPage: React.FC = () => {
                   </Select>
                 </div>
 
-                <Button 
-                  onClick={() => handleGenerateClick('single', selectedTemplateId || undefined)}
-                  disabled={!canGenerate || generating || !selectedTemplateId}
-                  className="w-full gap-2"
-                  size="lg"
-                >
-                  {generating ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-5 w-5" />
-                      Generate Document
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handlePreviewPayload}
+                    disabled={!canGenerate || previewLoading || generating || !selectedTemplateId}
+                    className="flex-1 gap-2"
+                    size="lg"
+                  >
+                    {previewLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Loading payload...
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-5 w-5" />
+                        Preview merge data
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleGenerateClick('single', selectedTemplateId || undefined)}
+                    disabled={!canGenerate || generating || !selectedTemplateId}
+                    className="flex-1 gap-2"
+                    size="lg"
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-5 w-5" />
+                        Generate Document
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* v2 docxtemplater test row */}
+                <div className="flex flex-col gap-2 pt-2 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    v2 engine (docxtemplater) — templates must use unbroken <code className="text-[11px]">{'{{field_key}}'}</code> tags typed in Word (no v1 XML repair).
+                  </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <p className="text-xs text-muted-foreground self-center mr-auto sm:hidden">
+                    Actions
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleInspectFieldData}
+                    disabled={!canGenerate || previewLoading || !selectedTemplateId}
+                    className="gap-2"
+                  >
+                    {previewLoading && previewMode === 'v2' ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Loading…</>
+                    ) : (
+                      <><Info className="h-4 w-4" />Inspect field data</>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleGenerateV2}
+                    disabled={!canGenerate || generatingV2 || !selectedTemplateId}
+                    className="gap-2"
+                  >
+                    {generatingV2 ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Generating…</>
+                    ) : (
+                      <><FileOutput className="h-4 w-4" />Generate (v2)</>
+                    )}
+                  </Button>
+                </div>
+                </div>
               </div>
             </div>
 
@@ -1518,6 +1592,97 @@ export const DealDocumentsPage: React.FC = () => {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {previewMode === 'v2' ? <Info className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              {previewMode === 'v2' ? 'Merge field data — v2 engine (docxtemplater)' : 'Merge field payload (preview)'}
+            </DialogTitle>
+            <DialogDescription>
+              {previewMode === 'v2'
+                ? 'Values for tags in this template, loaded from deal section data (same source as Generate Document). Empty means no saved value for that field on this deal.'
+                : 'Same key/value map used immediately before the Word template is filled. Keys match merge tags (e.g. pr_p_street_1), not deal form storage IDs.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewLoading && (
+            <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              {previewMode === 'v2' ? 'Building v2 field data…' : 'Building payload from deal data…'}
+            </div>
+          )}
+
+          {!previewLoading && previewResult && (
+            <div className="flex flex-col gap-3 min-h-0 flex-1">
+              <div className="grid grid-cols-2 gap-2 text-sm p-3 rounded-lg bg-muted/50">
+                <div>
+                  <span className="text-muted-foreground">Template</span>
+                  <p className="font-medium">{previewResult.templateName}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">
+                    {previewMode === 'v2' ? 'Filled / tags in template' : 'Non-empty fields'}
+                  </span>
+                  <p className="font-medium">
+                    {previewResult.fieldCount} / {previewResult.totalKeysInMap}
+                    {previewMode === 'v2' ? ' template tags' : ' keys in map'}
+                  </p>
+                </div>
+              </div>
+              {previewMode === 'v2' && previewResult.templateConditions && previewResult.templateConditions.length > 0 && (
+                <div className="text-xs p-3 rounded-lg border bg-background space-y-2 max-h-40 overflow-y-auto">
+                  <p className="font-medium text-muted-foreground">Template conditions</p>
+                  {previewResult.templateConditions.map((c) => (
+                    <div key={c.expression} className="font-mono">
+                      <span className="text-foreground">{c.expression}</span>
+                      {c.driverField && (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          — {c.driverField}={c.driverValue ?? '(empty)'}
+                          {c.matchesCompare != null && (c.matchesCompare ? ' ✓ branch' : ' ✗ else branch')}
+                        </span>
+                      )}
+                      {c.fieldKeys.length > 0 && (
+                        <span className="block text-muted-foreground pl-2">
+                          fields: {c.fieldKeys.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Input
+                placeholder="Filter keys (e.g. pr_p_, broker.)"
+                value={previewFilter}
+                onChange={(e) => setPreviewFilter(e.target.value)}
+              />
+              <Textarea
+                readOnly
+                className="font-mono text-xs min-h-[320px] flex-1 resize-y"
+                value={previewJsonDisplay}
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (previewJsonDisplay) {
+                  void navigator.clipboard.writeText(previewJsonDisplay);
+                  toast({ title: 'Copied to clipboard' });
+                }
+              }}
+              disabled={!previewJsonDisplay}
+            >
+              Copy JSON
+            </Button>
+            <Button onClick={() => setShowPreviewDialog(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

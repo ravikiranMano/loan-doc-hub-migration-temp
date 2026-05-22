@@ -9,7 +9,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { listParticipantsByDealOrdered } from '@/services/deals/participants.service';
+import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { invokeCompleteParticipantSection } from '@/services/supabase/functions';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMagicLinkSession } from '@/lib/magicLink';
 import type { Database } from '@/integrations/supabase/types';
@@ -111,14 +113,7 @@ export function useEntryOrchestration(dealId: string): UseEntryOrchestrationResu
     }
 
     try {
-      const { data: participants, error } = await supabase
-        .from('deal_participants')
-        .select('*')
-        .eq('deal_id', dealId)
-        .order('sequence_order', { ascending: true, nullsFirst: false });
-
-      if (error) throw error;
-
+      const participants = await listParticipantsByDealOrdered(dealId);
       const allParticipants = (participants || []) as DealParticipant[];
       const mode = determineMode(allParticipants);
 
@@ -180,25 +175,16 @@ export function useEntryOrchestration(dealId: string): UseEntryOrchestrationResu
   useEffect(() => {
     if (!dealId || isInternalUser) return;
 
-    const channel = supabase
-      .channel(`deal-participants-${dealId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'deal_participants',
-          filter: `deal_id=eq.${dealId}`,
-        },
-        () => {
-          fetchParticipants();
-        }
-      )
-      .subscribe();
+    const { unsubscribe } = subscribePostgresChanges({
+      channelName: `deal-participants-${dealId}`,
+      table: 'deal_participants',
+      filter: `deal_id=eq.${dealId}`,
+      onChange: () => {
+        fetchParticipants();
+      },
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }, [dealId, fetchParticipants, isInternalUser]);
 
   const completeSection = useCallback(async (): Promise<boolean> => {
@@ -208,17 +194,16 @@ export function useEntryOrchestration(dealId: string): UseEntryOrchestrationResu
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('complete-participant-section', {
-        body: {
-          participantId: state.currentParticipant.id,
-          dealId,
-        },
+      const { data, error } = await invokeCompleteParticipantSection({
+        participantId: state.currentParticipant.id,
+        dealId,
       });
 
       if (error) throw error;
 
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to complete section');
+      const result = data as { success?: boolean; error?: string } | null;
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to complete section');
       }
 
       await fetchParticipants();

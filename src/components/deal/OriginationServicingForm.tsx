@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { EmailInput } from '@/components/ui/email-input';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { US_STATES } from '@/lib/usStates';
 import type { CalculationResult } from '@/lib/calculationEngine';
+import { getContactByContactId } from '@/services/contacts/contacts.service';
 
 interface OriginationServicingFormProps {
   values: Record<string, string>;
@@ -161,12 +162,12 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
         // Look up the contact by contact_id and populate from contact_data
         (async () => {
           try {
-            const { data } = await supabase
-              .from('contacts')
-              .select('full_name, contact_data')
-              .eq('contact_id', largestLenderAccount)
-              .eq('contact_type', 'lender')
-              .maybeSingle();
+            const data = await getContactByContactId(
+              largestLenderAccount,
+              'full_name, contact_data',
+              'lender'
+            );
+            if (!data) return;
             const cd = (data?.contact_data as Record<string, any>) || {};
             const addr = cd.primary_address || {};
             const phone = cd.phone || {};

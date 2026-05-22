@@ -39,7 +39,15 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listParticipantsByDealOrdered,
+  insertParticipant,
+  updateParticipant,
+  deleteParticipant,
+} from '@/services/deals/participants.service';
+import { getContactsByIds } from '@/services/contacts/contacts.service';
+import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { invokeSendParticipantInvite } from '@/services/supabase/functions';
 import { useAuth } from '@/contexts/AuthContext';
 import { createMagicLink, revokeMagicLink, getMagicLinksForParticipant } from '@/lib/magicLink';
 import { logParticipantInvited, logParticipantRemoved, logAccessRevoked, logParticipantStatusReset } from '@/hooks/useActivityLog';
@@ -73,7 +81,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { Database } from '@/integrations/supabase/types';
+import type { Database } from '@/services/supabase/types';
 
 type AppRole = Database['public']['Enums']['app_role'];
 type ParticipantStatus = Database['public']['Enums']['participant_status'];
@@ -152,14 +160,7 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
   const fetchParticipants = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('deal_participants')
-        .select('*')
-        .eq('deal_id', dealId)
-        .order('sequence_order', { ascending: true, nullsFirst: false });
-
-      if (error) throw error;
-      const rows = data || [];
+      const rows = await listParticipantsByDealOrdered(dealId);
 
       // Fetch contact_id display values for linked participants
       const contactIds = rows
@@ -168,11 +169,8 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
 
       let contactIdMap: Record<string, string> = {};
       if (contactIds.length > 0) {
-        const { data: contacts } = await supabase
-          .from('contacts')
-          .select('id, contact_id')
-          .in('id', contactIds);
-        if (contacts) {
+        const contacts = await getContactsByIds(contactIds, 'id, contact_id');
+        if (contacts.length) {
           for (const c of contacts) {
             contactIdMap[c.id] = c.contact_id || '';
           }
@@ -188,7 +186,7 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
 
       // Fetch magic links for each participant
       const linksByParticipant: Record<string, MagicLinkInfo[]> = {};
-      for (const p of (data || [])) {
+      for (const p of rows) {
         if (p.access_method === 'magic_link') {
           const result = await getMagicLinksForParticipant(p.id);
           if (result.data) {
@@ -216,46 +214,35 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
 
   // Subscribe to realtime updates
   useEffect(() => {
-    const channel = supabase
-      .channel(`deal-participants-overview-${dealId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'deal_participants',
-          filter: `deal_id=eq.${dealId}`,
-        },
-        (payload) => {
-          console.log('Participant change:', payload);
-          fetchParticipants();
-          
-          // Show toast for status changes
-          if (payload.eventType === 'UPDATE' && payload.new) {
-            const newRecord = payload.new as Participant;
-            const oldRecord = payload.old as Participant;
-            
-            if (oldRecord.status !== newRecord.status) {
-              if (newRecord.status === 'completed') {
-                toast({
-                  title: 'Participant Completed',
-                  description: `${getRoleDisplayName(newRecord.role)} has completed their section`,
-                });
-              } else if (newRecord.status === 'in_progress') {
-                toast({
-                  title: 'Participant Active',
-                  description: `${getRoleDisplayName(newRecord.role)} has started entering data`,
-                });
-              }
+    const { unsubscribe } = subscribePostgresChanges({
+      channelName: `deal-participants-overview-${dealId}`,
+      table: 'deal_participants',
+      filter: `deal_id=eq.${dealId}`,
+      onChange: (payload) => {
+        fetchParticipants();
+
+        if (payload?.eventType === 'UPDATE' && payload.new) {
+          const newRecord = payload.new as unknown as Participant;
+          const oldRecord = payload.old as unknown as Participant;
+
+          if (oldRecord.status !== newRecord.status) {
+            if (newRecord.status === 'completed') {
+              toast({
+                title: 'Participant Completed',
+                description: `${getRoleDisplayName(newRecord.role)} has completed their section`,
+              });
+            } else if (newRecord.status === 'in_progress') {
+              toast({
+                title: 'Participant Active',
+                description: `${getRoleDisplayName(newRecord.role)} has started entering data`,
+              });
             }
           }
         }
-      )
-      .subscribe();
+      },
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }, [dealId, fetchParticipants, toast]);
 
   const getAvailableRoles = () => {
@@ -286,13 +273,7 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
         name: name || null,
       };
 
-      const { data: participant, error: participantError } = await supabase
-        .from('deal_participants')
-        .insert(participantData)
-        .select()
-        .single();
-
-      if (participantError) throw participantError;
+      const participant = await insertParticipant(participantData);
 
       // 2. Create magic link if applicable
       let magicLinkUrl: string | null = null;
@@ -309,16 +290,14 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
       }
 
       // 3. Send invite email
-      const { error: emailError } = await supabase.functions.invoke('send-participant-invite', {
-        body: {
-          participantId: participant.id,
-          email,
-          name: name || undefined,
-          accessMethod,
-          magicLinkUrl,
-          dealNumber,
-          role: selectedRole,
-        },
+      const { error: emailError } = await invokeSendParticipantInvite({
+        participantId: participant.id,
+        email,
+        name: name || undefined,
+        accessMethod,
+        magicLinkUrl,
+        dealNumber,
+        role: selectedRole,
       });
 
       if (emailError) {
@@ -362,12 +341,7 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
   const handleRemoveParticipant = async (participant: Participant) => {
     setActionLoading(participant.id);
     try {
-      const { error } = await supabase
-        .from('deal_participants')
-        .delete()
-        .eq('id', participant.id);
-
-      if (error) throw error;
+      await deleteParticipant(participant.id);
 
       await logParticipantRemoved(dealId, { role: participant.role });
       toast({ title: 'Participant removed' });
@@ -412,17 +386,15 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
       }
 
       // Send invite email
-      const { error: emailError } = await supabase.functions.invoke('send-participant-invite', {
-        body: {
-          participantId: participant.id,
-          email: participant.email,
-          name: participant.name || undefined,
-          accessMethod: participant.access_method,
-          magicLinkUrl,
-          dealNumber,
-          role: participant.role,
-          isResend: true,
-        },
+      const { error: emailError } = await invokeSendParticipantInvite({
+        participantId: participant.id,
+        email: participant.email,
+        name: participant.name || undefined,
+        accessMethod: participant.access_method,
+        magicLinkUrl,
+        dealNumber,
+        role: participant.role,
+        isResend: true,
       });
 
       if (emailError) throw emailError;
@@ -454,15 +426,10 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
       }
 
       // Update participant status
-      const { error } = await supabase
-        .from('deal_participants')
-        .update({ 
-          revoked_at: new Date().toISOString(),
-          status: 'expired' as ParticipantStatus,
-        })
-        .eq('id', participant.id);
-
-      if (error) throw error;
+      await updateParticipant(participant.id, {
+        revoked_at: new Date().toISOString(),
+        status: 'expired' as ParticipantStatus,
+      });
 
       // Log the revocation
       await logAccessRevoked(dealId, {
@@ -494,16 +461,11 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
     try {
       const previousStatus = participant.status;
       
-      const { error } = await supabase
-        .from('deal_participants')
-        .update({ 
-          status: 'invited' as ParticipantStatus,
-          completed_at: null,
-          revoked_at: null,
-        })
-        .eq('id', participant.id);
-
-      if (error) throw error;
+      await updateParticipant(participant.id, {
+        status: 'invited' as ParticipantStatus,
+        completed_at: null,
+        revoked_at: null,
+      });
 
       // Log the status reset
       await logParticipantStatusReset(dealId, {

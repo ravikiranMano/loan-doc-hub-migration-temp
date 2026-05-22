@@ -9,10 +9,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+
 import { AddFundingModal, FundingFormData } from './AddFundingModal';
 import { AddServiceModal, AddServiceFormData } from './AddServiceModal';
 import type { FieldDefinition } from '@/hooks/useDealFields';
+import { listParticipantsByDealAndRoles } from '@/services/deals/participants.service';
 import { formatPercentDisplay } from '@/lib/precisionFormat';
 import type { CalculationResult } from '@/lib/calculationEngine';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
@@ -269,12 +270,8 @@ export const LoanTermsServicingForm: React.FC<LoanTermsServicingFormProps> = ({
   useEffect(() => {
     if (!dealId) return;
     const fetchParticipants = async () => {
-      const { data } = await supabase
-        .from('deal_participants')
-        .select('id, name, email, role, contact_id')
-        .eq('deal_id', dealId)
-        .in('role', ['broker', 'lender']);
-      if (data) {
+      const data = await listParticipantsByDealAndRoles(dealId, ['broker', 'lender']);
+      if (data.length) {
         setParticipants(data.map(p => ({
           id: p.id,
           name: p.name || p.email || 'Unknown',

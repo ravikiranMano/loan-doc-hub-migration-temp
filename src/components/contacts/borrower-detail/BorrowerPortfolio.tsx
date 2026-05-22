@@ -9,7 +9,9 @@ import { type SortDirection } from '@/hooks/useGridSortFilter';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
+import { listParticipantsByContact, listParticipantsByDealIds } from '@/services/deals/participants.service';
+import { listDealsByIds } from '@/services/deals/deals.service';
+import { fetchSectionValuesForDeals } from '@/services/deals/section-values.service';
 
 interface ParticipantInfo {
   name: string;
@@ -111,12 +113,10 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
       setIsLoading(true);
       try {
         // 1. Get all deal_participants for this contact (any role/capacity)
-        const { data: participants, error: pErr } = await supabase
-          .from('deal_participants')
-          .select('deal_id, role, name, contact_id')
-          .eq('contact_id', contactDbId);
-
-        if (pErr) throw pErr;
+        const participants = await listParticipantsByContact(
+          contactDbId,
+          'deal_id, role, name, contact_id'
+        );
         if (!participants || participants.length === 0) {
           setRows([]);
           setIsLoading(false);
@@ -127,12 +127,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         const dealIds = [...new Set(participants.map(p => p.deal_id))];
 
         // 3. Fetch deals
-        const { data: deals, error: dErr } = await supabase
-          .from('deals')
-          .select('id, deal_number, loan_amount, status')
-          .in('id', dealIds);
-
-        if (dErr) throw dErr;
+        const deals = await listDealsByIds(dealIds, 'id, deal_number, loan_amount, status');
 
         // 4. Fetch deal_section_values for loan_terms to get interest rate, maturity, etc.
         // Field dictionary UUIDs for the fields we need
@@ -145,11 +140,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           nextPayment: '18cff33e-9553-4860-becf-e6c4b54f2a20',
         };
 
-        const { data: sectionValues } = await supabase
-          .from('deal_section_values')
-          .select('deal_id, field_values')
-          .in('deal_id', dealIds)
-          .eq('section', 'loan_terms');
+        const sectionValues = await fetchSectionValuesForDeals(dealIds, { section: 'loan_terms' });
 
         // Helper to extract a value from the stored field_values JSON structure
         const extractFieldValue = (fieldValues: Record<string, any>, fieldId: string, valueKey: string): any => {
@@ -165,11 +156,9 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         });
 
         // 5. Fetch participant section values for capacity info
-        const { data: participantSections } = await supabase
-          .from('deal_section_values')
-          .select('deal_id, field_values')
-          .in('deal_id', dealIds)
-          .eq('section', 'participants');
+        const participantSections = await fetchSectionValuesForDeals(dealIds, {
+          section: 'participants',
+        });
 
         const parseCapacityValue = (value: unknown): string => {
           if (typeof value === 'string') return value;
@@ -182,10 +171,10 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         };
 
         // 5b. Fetch ALL participants across all linked deals for the info popover
-        const { data: allDealParticipants } = await supabase
-          .from('deal_participants')
-          .select('deal_id, role, name, contact_id')
-          .in('deal_id', dealIds);
+        const allDealParticipants = await listParticipantsByDealIds(
+          dealIds,
+          'deal_id, role, name, contact_id'
+        );
 
         // Build per-deal participants map with resolved capacities
         // Also build a capacity map per contact_id per deal from participant section values
@@ -242,11 +231,9 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         });
 
         // 6. Also fetch funding section for lender funding data
-        const { data: fundingSections } = await supabase
-          .from('deal_section_values')
-          .select('deal_id, field_values')
-          .in('deal_id', dealIds)
-          .in('section', ['loan_terms']);
+        const fundingSections = await fetchSectionValuesForDeals(dealIds, {
+          sections: ['loan_terms'],
+        });
 
         // Build a map for funding records (stored under 'loan_terms.funding_records' key)
         const fundingMap = new Map<string, any[]>();

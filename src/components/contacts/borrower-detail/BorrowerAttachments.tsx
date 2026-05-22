@@ -10,7 +10,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listActiveBorrowerAttachments,
+  insertBorrowerAttachment,
+  updateBorrowerAttachment,
+} from '@/services/contacts/attachments.service';
+import {
+  uploadContactAttachment,
+  downloadContactAttachment,
+  removeContactAttachments,
+} from '@/services/contacts/attachments.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -26,8 +36,6 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table';
 import { GridExportDialog } from '@/components/deal/GridExportDialog';
-
-const BUCKET = 'contact-attachments';
 
 const CATEGORIES = [
   'Identification',
@@ -89,23 +97,18 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
   const { data: attachments = [], isLoading } = useQuery({
     queryKey: ['borrower-attachments', contactDbId],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('borrower_attachments')
-        .select('*')
-        .eq('contact_id', contactDbId)
-        .eq('status', 'active')
-        .order('uploaded_at', { ascending: false });
-      if (error) throw error;
+      const data = await listActiveBorrowerAttachments(contactDbId);
 
-      // Fetch uploader names
-      const uploaderIds: string[] = Array.from(new Set((data || []).map((d: any) => String(d.uploaded_by))));
+      const uploaderIds: string[] = Array.from(new Set(data.map((d) => String(d.uploaded_by))));
       let profileMap: Record<string, string> = {};
       if (uploaderIds.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('user_id, full_name').in('user_id', uploaderIds);
-        (profiles || []).forEach((p: any) => { profileMap[p.user_id] = p.full_name || 'Unknown'; });
+        const profiles = await fetchProfilesByUserIds(uploaderIds);
+        profiles.forEach((p) => {
+          profileMap[p.user_id] = p.full_name || 'Unknown';
+        });
       }
 
-      return (data || []).map((row: any) => ({
+      return data.map((row) => ({
         ...row,
         uploader_name: profileMap[row.uploaded_by] || 'Unknown',
       })) as AttachmentRow[];
@@ -134,10 +137,9 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
       if (disabled) throw new Error('You have read-only access to attachments');
       if (!form.file || !user) throw new Error('Missing file or user');
       const storagePath = `borrower/${contactDbId}/${crypto.randomUUID()}_${form.file.name}`;
-      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, form.file);
-      if (uploadError) throw uploadError;
+      await uploadContactAttachment(storagePath, form.file);
 
-      const { error: dbError } = await (supabase as any).from('borrower_attachments').insert({
+      await insertBorrowerAttachment({
         contact_id: contactDbId,
         file_name: form.file.name,
         file_path: storagePath,
@@ -148,7 +150,6 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
         uploaded_by: user.id,
         version_number: parseInt(form.version_number) || 1,
       });
-      if (dbError) throw dbError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['borrower-attachments', contactDbId] });
@@ -163,9 +164,8 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
   const deleteMutation = useMutation({
     mutationFn: async (attachment: AttachmentRow) => {
       if (disabled) throw new Error('You have read-only access to attachments');
-      await supabase.storage.from(BUCKET).remove([attachment.file_path]);
-      const { error } = await (supabase as any).from('borrower_attachments').update({ status: 'archived' }).eq('id', attachment.id);
-      if (error) throw error;
+      await removeContactAttachments([attachment.file_path]);
+      await updateBorrowerAttachment(attachment.id, { status: 'archived' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['borrower-attachments', contactDbId] });
@@ -179,11 +179,10 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
     mutationFn: async () => {
       if (disabled) throw new Error('You have read-only access to attachments');
       if (!selectedAttachment) return;
-      const { error } = await (supabase as any).from('borrower_attachments').update({
+      await updateBorrowerAttachment(selectedAttachment.id, {
         category: editForm.category,
         description: editForm.description || null,
-      }).eq('id', selectedAttachment.id);
-      if (error) throw error;
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['borrower-attachments', contactDbId] });
@@ -199,12 +198,9 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
       if (disabled) throw new Error('You have read-only access to attachments');
       if (!user) throw new Error('Not authenticated');
       const storagePath = `borrower/${contactDbId}/${crypto.randomUUID()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, file);
-      if (uploadError) throw uploadError;
-      // Archive old version
-      await (supabase as any).from('borrower_attachments').update({ status: 'archived' }).eq('id', attachment.id);
-      // Insert new version
-      const { error: dbError } = await (supabase as any).from('borrower_attachments').insert({
+      await uploadContactAttachment(storagePath, file);
+      await updateBorrowerAttachment(attachment.id, { status: 'archived' });
+      await insertBorrowerAttachment({
         contact_id: contactDbId,
         file_name: file.name,
         file_path: storagePath,
@@ -215,7 +211,6 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
         uploaded_by: user.id,
         version_number: attachment.version_number + 1,
       });
-      if (dbError) throw dbError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['borrower-attachments', contactDbId] });
@@ -225,8 +220,13 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
   });
 
   const handleDownload = useCallback(async (attachment: AttachmentRow) => {
-    const { data, error } = await supabase.storage.from(BUCKET).download(attachment.file_path);
-    if (error || !data) { toast.error('Download failed'); return; }
+    let data: Blob;
+    try {
+      data = await downloadContactAttachment(attachment.file_path);
+    } catch {
+      toast.error('Download failed');
+      return;
+    }
     const url = URL.createObjectURL(data);
     const a = document.createElement('a');
     a.href = url; a.download = attachment.file_name; a.click();
@@ -236,8 +236,13 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
   const handlePreview = useCallback(async (attachment: AttachmentRow) => {
     const isPreviewable = attachment.file_type?.startsWith('image/') || attachment.file_type === 'application/pdf';
     if (!isPreviewable) { handleDownload(attachment); return; }
-    const { data, error } = await supabase.storage.from(BUCKET).download(attachment.file_path);
-    if (error || !data) { toast.error('Preview failed'); return; }
+    let data: Blob;
+    try {
+      data = await downloadContactAttachment(attachment.file_path);
+    } catch {
+      toast.error('Preview failed');
+      return;
+    }
     setPreviewUrl(URL.createObjectURL(data));
     setSelectedAttachment(attachment);
     setShowPreviewModal(true);

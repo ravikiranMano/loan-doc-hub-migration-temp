@@ -1,24 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  listContacts,
+  createContact as createContactRecord,
+  updateContactWithMerge,
+  deleteContact as deleteContactRecord,
+  deleteContacts as deleteContactsRecords,
+  type ContactRecord,
+} from '@/services/contacts/contacts.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-export interface ContactRecord {
-  id: string;
-  contact_id: string;
-  contact_type: string;
-  full_name: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string;
-  city: string;
-  state: string;
-  company: string;
-  contact_data: Record<string, string>;
-  created_at: string;
-  updated_at: string;
-}
+export type { ContactRecord };
 
 export type ContactType =
   | 'lender'
@@ -45,46 +37,19 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
     if (!user) return;
     setIsLoading(true);
     try {
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      // Count query
-      let countQuery = supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .eq('contact_type', contactType);
-
-      if (search) {
-        countQuery = countQuery.or(
-          `full_name.ilike.%${search}%,email.ilike.%${search}%,contact_id.ilike.%${search}%,city.ilike.%${search}%,state.ilike.%${search}%,phone.ilike.%${search}%,company.ilike.%${search}%`
-        );
-      }
-
-      const { count, error: countError } = await countQuery;
-      if (countError) throw countError;
-      setTotalCount(count || 0);
-
-      // Data query
-      let dataQuery = supabase
-        .from('contacts')
-        .select('*')
-        .eq('contact_type', contactType)
-        .order('created_at', { ascending: false })
-        .range(from, to);
-
-      if (search) {
-        dataQuery = dataQuery.or(
-          `full_name.ilike.%${search}%,email.ilike.%${search}%,contact_id.ilike.%${search}%,city.ilike.%${search}%,state.ilike.%${search}%,phone.ilike.%${search}%,company.ilike.%${search}%`
-        );
-      }
-
-      const { data, error } = await dataQuery;
-      if (error) throw error;
-
-      setContacts((data || []).map((row: any) => ({
-        ...row,
-        contact_data: (row.contact_data as Record<string, string>) || {},
-      })));
+      const { contacts: rows, totalCount: count } = await listContacts({
+        contactType,
+        page,
+        pageSize,
+        search: search || undefined,
+      });
+      setTotalCount(count);
+      setContacts(
+        rows.map((row) => ({
+          ...row,
+          contact_data: (row.contact_data as Record<string, string>) || {},
+        }))
+      );
     } catch (err: any) {
       console.error('Error fetching contacts:', err);
       toast.error('Failed to load contacts');
@@ -100,34 +65,11 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
   const createContact = useCallback(async (contactData: Record<string, string>) => {
     if (!user) return null;
     try {
-      const fullName = contactData.full_name || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
-      
-      // Generate contact_id via DB function
-      const { data: idData, error: idError } = await supabase.rpc('generate_contact_id', { p_type: contactType });
-      if (idError) throw idError;
-
-      const insertPayload = {
-        contact_type: contactType,
-        contact_id: idData as string,
-        created_by: user.id,
-        full_name: fullName,
-        first_name: contactData.first_name || contactData['first_name'] || '',
-        last_name: contactData.last_name || contactData['last_name'] || '',
-        email: contactData.email || '',
-        phone: contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '',
-        city: contactData.city || contactData['address.city'] || contactData['primary_address.city'] || '',
-        state: contactData.state || contactData['address.state'] || contactData['primary_address.state'] || '',
-        company: contactData.company || '',
-        contact_data: contactData,
-      };
-
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert(insertPayload)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await createContactRecord({
+        contactType,
+        createdBy: user.id,
+        contactData,
+      });
       toast.success(`${contactType.charAt(0).toUpperCase() + contactType.slice(1)} created`);
       fetchContacts(currentPage, searchQuery);
       return data;
@@ -141,91 +83,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
   const updateContact = useCallback(async (id: string, contactData: Record<string, string>) => {
     if (!user) return false;
     try {
-      const fullName = contactData.full_name || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
-
-      // Preserve underscore-prefixed internal keys (e.g. _events_journal, _charges, _conversation_log, _trust_ledger)
-      const { data: existing } = await supabase
-        .from('contacts')
-        .select('contact_data')
-        .eq('id', id)
-        .single();
-
-      const existingData = (existing?.contact_data as Record<string, any>) || {};
-      const mergedData: Record<string, any> = { ...contactData };
-      Object.entries(existingData).forEach(([key, value]) => {
-        if (key.startsWith('_')) {
-          mergedData[key] = value;
-        }
-      });
-      
-      const { error } = await supabase
-        .from('contacts')
-        .update({
-          full_name: fullName,
-          first_name: contactData.first_name || '',
-          last_name: contactData.last_name || '',
-          email: contactData.email || '',
-          phone: contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '',
-          city: contactData.city || contactData['address.city'] || contactData['primary_address.city'] || '',
-          state: contactData.state || contactData['address.state'] || contactData['primary_address.state'] || '',
-          company: contactData.company || '',
-          contact_data: mergedData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      // Sync updated contact fields back to any linked deal_participants
-      const phoneValue = contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '';
-      const { data: linkedParticipants } = await supabase
-        .from('deal_participants')
-        .select('id, deal_id')
-        .eq('contact_id', id);
-
-      if (linkedParticipants && linkedParticipants.length > 0) {
-        const participantIds = linkedParticipants.map((p: any) => p.id);
-        await supabase
-          .from('deal_participants')
-          .update({
-            name: fullName,
-            email: contactData.email || '',
-            phone: phoneValue,
-          })
-          .in('id', participantIds);
-
-        // Sync per-deal capacity into deal_section_values (section='participants')
-        // so the Participants grid reflects updated Capacity from the contact record.
-        const newCapacity = (contactData.capacity || '').toString().trim();
-        if (newCapacity) {
-          const dealIds = Array.from(
-            new Set(linkedParticipants.map((p: any) => p.deal_id).filter(Boolean))
-          );
-          for (const dealId of dealIds) {
-            const capacityKey = `participant_${id}_capacity`;
-            const { data: existingSection } = await supabase
-              .from('deal_section_values')
-              .select('id, field_values')
-              .eq('deal_id', dealId)
-              .eq('section', 'participants')
-              .maybeSingle();
-
-            const existingFv = (existingSection?.field_values as Record<string, any>) || {};
-            const updatedFv = { ...existingFv, [capacityKey]: newCapacity };
-
-            if (existingSection?.id) {
-              await supabase
-                .from('deal_section_values')
-                .update({ field_values: updatedFv, updated_at: new Date().toISOString() })
-                .eq('id', existingSection.id);
-            } else {
-              await supabase
-                .from('deal_section_values')
-                .insert({ deal_id: dealId, section: 'participants', field_values: updatedFv });
-            }
-          }
-        }
-      }
+      await updateContactWithMerge(id, contactData);
 
       toast.success('Contact saved');
       fetchContacts(currentPage, searchQuery);
@@ -239,8 +97,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
 
   const deleteContact = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase.from('contacts').delete().eq('id', id);
-      if (error) throw error;
+      await deleteContactRecord(id);
       toast.success('Contact deleted');
       fetchContacts(currentPage, searchQuery);
       return true;
@@ -253,26 +110,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
 
   const deleteContacts = useCallback(async (ids: string[]) => {
     try {
-      // Remove linked deal_participants first to avoid FK constraint violations
-      const { error: dpError } = await supabase
-        .from('deal_participants')
-        .delete()
-        .in('contact_id', ids);
-      if (dpError) {
-        console.warn('Could not remove linked deal participants:', dpError);
-      }
-
-      // Also remove linked borrower_attachments
-      const { error: baError } = await supabase
-        .from('borrower_attachments')
-        .delete()
-        .in('contact_id', ids);
-      if (baError) {
-        console.warn('Could not remove linked borrower attachments:', baError);
-      }
-
-      const { error } = await supabase.from('contacts').delete().in('id', ids);
-      if (error) throw error;
+      await deleteContactsRecords(ids);
       toast.success(`${ids.length} contact${ids.length !== 1 ? 's' : ''} deleted`);
       fetchContacts(currentPage, searchQuery);
       return true;

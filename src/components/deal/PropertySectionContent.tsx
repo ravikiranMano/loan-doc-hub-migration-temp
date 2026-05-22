@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { listParticipantsByDealAndRole } from '@/services/deals/participants.service';
+import { getContactsByIds } from '@/services/contacts/contacts.service';
 import { useDealNavigationOptional } from '@/contexts/DealNavigationContext';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -253,19 +254,16 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
     setBorrowerParticipantsLoading(true);
     (async () => {
       try {
-        const { data: parts } = await supabase
-          .from('deal_participants')
-          .select('id, name, contact_id, role')
-          .eq('deal_id', routeDealId)
-          .eq('role', 'borrower');
+        const parts = await listParticipantsByDealAndRole(
+          routeDealId,
+          'borrower',
+          'id, name, contact_id, role'
+        );
         const rows = parts || [];
-        const contactIds = rows.map(r => r.contact_id).filter((x): x is string => !!x);
+        const contactIds = rows.map((r: any) => r.contact_id).filter((x): x is string => !!x);
         let contactMap: Record<string, any> = {};
         if (contactIds.length) {
-          const { data: contacts } = await supabase
-            .from('contacts')
-            .select('id, full_name, contact_data')
-            .in('id', contactIds);
+          const contacts = await getContactsByIds(contactIds, 'id, full_name, contact_data');
           for (const c of contacts || []) contactMap[c.id] = c;
         }
         const list = rows.map(r => {

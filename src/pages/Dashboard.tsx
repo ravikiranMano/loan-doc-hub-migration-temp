@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { countProfiles } from '@/services/admin/profiles.service';
+import { listDealsForDashboard } from '@/services/deals/deals.service';
+import { countActiveTemplates } from '@/services/documents/templates.service';
+import { countFieldDictionary } from '@/services/admin/field-dictionary.service';
 import { 
   FolderOpen, 
   FileText, 
@@ -124,14 +127,7 @@ const CSRDashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       // Fetch all deals for stats
-      const { data: deals, error } = await supabase
-        .from('deals')
-        .select('id, deal_number, borrower_name, status, updated_at')
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
-
-      const allDeals = deals || [];
+      const allDeals = await listDealsForDashboard();
       
       setStats({
         totalDeals: allDeals.length,
@@ -260,15 +256,15 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const [usersRes, templatesRes, fieldsRes] = await Promise.all([
-          supabase.from('profiles').select('*', { count: 'exact', head: true }),
-          supabase.from('templates').select('*', { count: 'exact', head: true }).eq('is_active', true),
-          supabase.from('field_dictionary').select('*', { count: 'exact', head: true }),
+        const [usersCount, templatesCount, fieldsCount] = await Promise.all([
+          countProfiles(),
+          countActiveTemplates(),
+          countFieldDictionary(),
         ]);
         
-        if (usersRes.count !== null) setUserCount(usersRes.count);
-        if (templatesRes.count !== null) setTemplateCount(templatesRes.count);
-        if (fieldsRes.count !== null) setFieldCount(fieldsRes.count);
+        setUserCount(usersCount);
+        setTemplateCount(templatesCount);
+        setFieldCount(fieldsCount);
       } catch (error) {
         console.error('Error fetching counts:', error);
       } finally {

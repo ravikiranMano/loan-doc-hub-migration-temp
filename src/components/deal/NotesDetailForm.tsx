@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { listConversationLogTypes, uploadContactAttachment } from '@/services/contacts/attachments.service';
 import { Paperclip, X, CalendarIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -64,17 +64,17 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
 
   useEffect(() => {
     setTypesLoading(true);
-    (supabase as any)
-      .from('conversation_log_types')
-      .select('label')
-      .eq('is_active', true)
-      .order('display_order')
-      .then(({ data, error }: { data: any[] | null; error: any }) => {
-        if (error || !data?.length) {
+    listConversationLogTypes()
+      .then((data) => {
+        if (!data?.length) {
           setNoteTypes(NOTE_TYPES_FALLBACK);
         } else {
-          setNoteTypes(data.map((r: any) => r.label));
+          setNoteTypes(data.map((r) => r.label));
         }
+        setTypesLoading(false);
+      })
+      .catch(() => {
+        setNoteTypes(NOTE_TYPES_FALLBACK);
         setTypesLoading(false);
       });
   }, []);
@@ -124,8 +124,9 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
     for (const file of files) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const path = `deal/${dealId || 'unknown'}/${noteId}/${Date.now()}_${safeName}`;
-      const { error } = await supabase.storage.from('contact-attachments').upload(path, file);
-      if (error) {
+      try {
+        await uploadContactAttachment(path, file);
+      } catch {
         toast.error(`Failed to upload ${file.name}`);
         continue;
       }

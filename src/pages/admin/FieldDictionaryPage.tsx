@@ -21,8 +21,12 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { fetchAllRows } from '@/lib/supabasePagination';
+import {
+  fetchAllFieldDictionary,
+  insertFieldDictionary,
+  updateFieldDictionary,
+  deleteFieldDictionary,
+} from '@/services/admin/field-dictionary.service';
 import { 
   Plus, 
   Search, 
@@ -333,12 +337,7 @@ export const FieldDictionaryPage: React.FC = () => {
 
   const fetchFields = async () => {
     try {
-      const data = await fetchAllRows((client) =>
-        client
-          .from('field_dictionary')
-          .select('*')
-          .order('section, label')
-      );
+      const data = await fetchAllFieldDictionary('section,label');
       setFields((data || []).map((d: any) => ({
         ...d,
         form_type: d.form_type || 'primary',
@@ -464,16 +463,10 @@ export const FieldDictionaryPage: React.FC = () => {
       };
 
       if (editingField) {
-        const { error } = await supabase
-          .from('field_dictionary')
-          .update(payload as any)
-          .eq('id', editingField.id);
-
-        if (error) throw error;
+        await updateFieldDictionary(editingField.id, payload);
         toast({ title: 'Field updated successfully' });
       } else {
-        const { error } = await supabase.from('field_dictionary').insert(payload as any);
-        if (error) throw error;
+        await insertFieldDictionary(payload);
         toast({ title: 'Field created successfully' });
       }
 
@@ -550,12 +543,7 @@ export const FieldDictionaryPage: React.FC = () => {
     if (!confirm(`Are you sure you want to delete "${field.label}"?`)) return;
 
     try {
-      const { error } = await supabase
-        .from('field_dictionary')
-        .delete()
-        .eq('id', field.id);
-
-      if (error) throw error;
+      await deleteFieldDictionary(field.id);
       toast({ title: 'Field deleted successfully' });
       fetchFields();
     } catch (error: any) {
@@ -569,12 +557,7 @@ export const FieldDictionaryPage: React.FC = () => {
 
   const handleToggleMandatory = async (field: FieldDictionary) => {
     try {
-      const { error } = await supabase
-        .from('field_dictionary')
-        .update({ is_mandatory: !field.is_mandatory } as any)
-        .eq('id', field.id);
-
-      if (error) throw error;
+      await updateFieldDictionary(field.id, { is_mandatory: !field.is_mandatory });
 
       setFields(prev => prev.map(f => 
         f.id === field.id ? { ...f, is_mandatory: !f.is_mandatory } : f

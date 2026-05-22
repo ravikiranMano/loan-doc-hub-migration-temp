@@ -8,9 +8,15 @@ import {
 } from '@/components/ui/table';
 import SortableTableHead from '@/components/deal/SortableTableHead';
 import { type SortDirection } from '@/hooks/useGridSortFilter';
+import { listParticipantsByContactAndRole } from '@/services/deals/participants.service';
+import {
+  fetchSectionValuesBySection,
+  fetchSectionValuesForDeals,
+} from '@/services/deals/section-values.service';
+import { listDealsByIds } from '@/services/deals/deals.service';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabase } from '@/integrations/supabase/client';
+
 import { format, parseISO, differenceInMonths, differenceInDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 
@@ -109,20 +115,14 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
     setIsLoading(true);
     try {
       // 1. Find deal_participants for this broker
-      const { data: participants } = await supabase
-        .from('deal_participants')
-        .select('deal_id, role, name')
-        .eq('contact_id', contactDbId)
-        .eq('role', 'broker');
+      let allParticipants = await listParticipantsByContactAndRole(
+        contactDbId,
+        'broker',
+        'deal_id, role, name'
+      );
 
-      let allParticipants = participants || [];
-
-      // Fallback: search deal_section_values broker section for broker_id match
       if (allParticipants.length === 0 && brokerId) {
-        const { data: brokerSections } = await supabase
-          .from('deal_section_values')
-          .select('deal_id, field_values')
-          .eq('section', 'broker');
+        const brokerSections = await fetchSectionValuesBySection('broker');
 
         const matchedDealIds: string[] = [];
         (brokerSections || []).forEach(bs => {
@@ -153,21 +153,19 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
 
       const dealIds = [...new Set(allParticipants.map(p => p.deal_id))];
 
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('id, deal_number, borrower_name, property_address, loan_amount, status')
-        .in('id', dealIds);
+      const deals = await listDealsByIds(
+        dealIds,
+        'id, deal_number, borrower_name, property_address, loan_amount, status'
+      );
 
-      const dealsMap = new Map((deals || []).map(d => [d.id, d]));
+      const dealsMap = new Map(deals.map((d) => [d.id, d]));
 
-      const { data: loanTermsSections } = await supabase
-        .from('deal_section_values')
-        .select('deal_id, field_values')
-        .in('deal_id', dealIds)
-        .eq('section', 'loan_terms');
+      const loanTermsSections = await fetchSectionValuesForDeals(dealIds, {
+        section: 'loan_terms',
+      });
 
       const loanTermsMap = new Map<string, Record<string, any>>();
-      (loanTermsSections || []).forEach(sv => {
+      loanTermsSections.forEach((sv) => {
         loanTermsMap.set(sv.deal_id, sv.field_values as Record<string, any>);
       });
 

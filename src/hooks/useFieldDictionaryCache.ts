@@ -7,8 +7,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { fetchAllRows } from '@/lib/supabasePagination';
+import { fetchAllFieldDictionary } from '@/services/admin/field-dictionary.service';
 import type { FieldVisibility } from '@/lib/accessControl';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -63,13 +62,7 @@ export const FieldDictionaryCacheProvider: React.FC<{ children: ReactNode }> = (
 
     const loadCache = async () => {
       try {
-        const data = await fetchAllRows((client) =>
-          client
-            .from('field_dictionary')
-            .select(
-              'id, field_key, label, section, data_type, description, default_value, is_calculated, is_repeatable, validation_rule, calculation_formula, calculation_dependencies, allowed_roles, read_only_roles'
-            )
-        );
+        const data = await fetchAllFieldDictionary();
 
         const entries = (data || []) as CachedFieldDictEntry[];
         const byId = new Map<string, CachedFieldDictEntry>();

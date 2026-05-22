@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
-import { supabase } from '@/integrations/supabase/client';
+import { listContactsByTypes } from '@/services/contacts/contacts.service';
 
 export type OtherEntityType = 'broker' | 'lender';
 
@@ -40,13 +40,13 @@ async function fetchBrokersAndLenders(): Promise<BLOption[]> {
   if (cachedOptions) return cachedOptions;
   if (inflight) return inflight;
   inflight = (async () => {
-    const { data, error } = await supabase
-      .from('contacts')
-      .select('id, contact_type, full_name, first_name, last_name, company')
-      .in('contact_type', ['broker', 'lender'])
-      .order('full_name', { ascending: true })
-      .limit(2000);
-    if (error) {
+    let data: Array<Record<string, unknown>> = [];
+    try {
+      data = await listContactsByTypes(
+        ['broker', 'lender'],
+        'id, contact_type, full_name, first_name, last_name, company'
+      );
+    } catch (error) {
       console.error('DistributionOtherSelect fetch error:', error);
       inflight = null;
       return [];

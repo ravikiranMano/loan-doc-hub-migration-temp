@@ -1,6 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  countParticipantsByDeal,
+  listParticipantsByDealOrdered,
+  updateParticipant,
+  deleteParticipantsByIds,
+} from '@/services/deals/participants.service';
+import {
+  getContactsByIds,
+  getContactByEmail,
+  getContactById,
+  updateContactRow,
+} from '@/services/contacts/contacts.service';
+import {
+  fetchSectionValueByDealAndSection,
+  updateSectionValueById,
+  insertSectionValues,
+} from '@/services/deals/section-values.service';
 import { toast } from 'sonner';
 import { Plus, Loader2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -175,22 +191,10 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
     setLoading(true);
     try {
       // Get total count
-      const { count: rowCount } = await supabase
-        .from('deal_participants')
-        .select('id', { count: 'exact', head: true })
-        .eq('deal_id', dealId);
+      const rowCount = await countParticipantsByDeal(dealId);
+      setTotalCount(rowCount);
 
-      setTotalCount(rowCount || 0);
-
-      const { data, error } = await supabase
-        .from('deal_participants')
-        .select('id, name, email, phone, role, status, contact_id, created_at')
-        .eq('deal_id', dealId)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-
-      const rows = data || [];
+      const rows = await listParticipantsByDealOrdered(dealId);
 
       // For participants with a linked contact, fetch latest name/email/phone from contacts
       const contactIds = rows
@@ -199,12 +203,12 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
 
       let contactMap: Record<string, { full_name: string; email: string; phone: string; contact_id: string; capacity: string; contact_type: string }> = {};
       if (contactIds.length > 0) {
-        const { data: contacts } = await supabase
-          .from('contacts')
-          .select('id, full_name, email, phone, contact_id, contact_type, contact_data')
-          .in('id', contactIds);
+        const contacts = await getContactsByIds(
+          contactIds,
+          'id, full_name, email, phone, contact_id, contact_type, contact_data'
+        );
 
-        if (contacts) {
+        if (contacts.length) {
           for (const c of contacts) {
             const cData = (c.contact_data || {}) as Record<string, string>;
             contactMap[c.id] = {
@@ -241,23 +245,14 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
         // Batch-update stale participant records in background
         if (updates.length > 0) {
           for (const u of updates) {
-            supabase
-              .from('deal_participants')
-              .update({ name: u.name, email: u.email, phone: u.phone })
-              .eq('id', u.id)
-              .then(() => {});
+            updateParticipant(u.id, { name: u.name, email: u.email, phone: u.phone }).catch(() => {});
           }
         }
       }
 
       // Fetch deal-specific participant capacities from deal_section_values
       let dealCapacityMap: Record<string, string> = {};
-      const { data: participantSection } = await supabase
-        .from('deal_section_values')
-        .select('field_values')
-        .eq('deal_id', dealId)
-        .eq('section', 'participants')
-        .maybeSingle();
+      const participantSection = await fetchSectionValueByDealAndSection(dealId, 'participants');
 
       if (participantSection?.field_values) {
         const pValues = participantSection.field_values as Record<string, any>;
@@ -335,12 +330,10 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
       toast.info('No contact record linked to this participant');
       return;
     }
-    const { data } = await supabase
-      .from('contacts')
-      .select('id, contact_type, full_name, email, phone, contact_data')
-      .eq('email', participant.email)
-      .limit(1)
-      .maybeSingle();
+    const data = await getContactByEmail(
+      participant.email,
+      'id, contact_type, full_name, email, phone, contact_data'
+    );
 
     if (data) {
       // Sync participant data back to contact — preserve existing contact detail fields
@@ -377,15 +370,11 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
       updates.contact_data = mergedContactData;
 
       if (Object.keys(updates).length > 0) {
-        await supabase.from('contacts').update(updates).eq('id', data.id);
+        await updateContactRow(data.id, updates);
       }
 
-      // Link contact_id back to participant if missing
       if (!participant.contact_id) {
-        await supabase
-          .from('deal_participants')
-          .update({ contact_id: data.id })
-          .eq('id', participant.id);
+        await updateParticipant(participant.id, { contact_id: data.id });
       }
 
       const route =
@@ -401,11 +390,7 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
   };
 
   const navigateToContactById = async (contactId: string, role: string, participant?: Participant) => {
-    const { data } = await supabase
-      .from('contacts')
-      .select('id, contact_type, full_name, email, phone, contact_data')
-      .eq('id', contactId)
-      .maybeSingle();
+    const data = await getContactById(contactId);
 
     if (data) {
       // Sync participant data back to contact — preserve existing contact detail fields
@@ -446,10 +431,7 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
         updates.contact_data = mergedContactData;
 
         if (Object.keys(updates).length > 0) {
-          await supabase
-            .from('contacts')
-            .update(updates)
-            .eq('id', contactId);
+          await updateContactRow(contactId, updates);
         }
       }
 
@@ -469,12 +451,7 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
     setDeleting(true);
     try {
       const ids = Array.from(selectedIds);
-      const { error } = await supabase
-        .from('deal_participants')
-        .delete()
-        .in('id', ids);
-
-      if (error) throw error;
+      await deleteParticipantsByIds(ids);
 
       toast.success(`Deleted ${ids.length} participant(s)`);
       clearSelection();
@@ -529,25 +506,17 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
     async (contactId: string) => {
       setOriginatingVendorId(contactId);
       try {
-        const { data: existing } = await supabase
-          .from('deal_section_values')
-          .select('id, field_values')
-          .eq('deal_id', dealId)
-          .eq('section', 'participants')
-          .maybeSingle();
+        const existing = await fetchSectionValueByDealAndSection(dealId, 'participants');
 
         const currentValues = (existing?.field_values as Record<string, any>) || {};
         const newValues = { ...currentValues, originating_vendor_contact_id: contactId };
 
         if (existing?.id) {
-          await supabase
-            .from('deal_section_values')
-            .update({ field_values: newValues })
-            .eq('id', existing.id);
+          await updateSectionValueById(existing.id, { field_values: newValues });
         } else {
-          await supabase
-            .from('deal_section_values')
-            .insert({ deal_id: dealId, section: 'participants', field_values: newValues });
+          await insertSectionValues([
+            { deal_id: dealId, section: 'participants', field_values: newValues },
+          ]);
         }
       } catch (err) {
         console.error('Error saving originating vendor:', err);

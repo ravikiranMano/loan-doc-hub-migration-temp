@@ -8,7 +8,16 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { getUser } from '@/services/supabase/auth';
+import { fetchUserRole } from '@/services/admin/users.service';
+import { listRolesForUserIds } from '@/services/admin/users.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
+import { fetchFieldDictionaryKeysByIds } from '@/services/admin/field-dictionary.service';
+import { fetchSectionValuesByDeal } from '@/services/deals/section-values.service';
+import {
+  fetchLastExternalDataReview,
+  insertActivityLog,
+} from '@/services/system/activity-log.service';
 import { useFieldDictionaryCacheOptional } from '@/hooks/useFieldDictionaryCache';
 
 interface ExternalModification {
@@ -55,48 +64,25 @@ export function useExternalModificationDetector(
     try {
       setLoading(true);
 
-      // Get the current user (CSR)
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getUser();
       if (!user) {
         setLoading(false);
         return;
       }
 
-      // Get the user's role
-      const { data: userRoleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
+      const userRole = await fetchUserRole(user.id);
 
-      // Only relevant for CSR/Admin users
-      if (!userRoleData || !['csr', 'admin'].includes(userRoleData.role)) {
+      if (!userRole || !['csr', 'admin'].includes(userRole)) {
         setLoading(false);
         return;
       }
 
-      // Find the last time CSR reviewed this deal
-      const { data: lastReviewActivity } = await supabase
-        .from('activity_log')
-        .select('created_at')
-        .eq('deal_id', dealId)
-        .eq('action_type', 'ExternalDataReviewed')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
+      const lastReviewActivity = await fetchLastExternalDataReview(dealId);
       const reviewedAt = lastReviewActivity?.created_at || null;
       setLastReviewedAt(reviewedAt);
 
-      // Fetch deal_section_values
-      const { data: sectionValues, error: svError } = await supabase
-        .from('deal_section_values')
-        .select('section, field_values')
-        .eq('deal_id', dealId);
+      const sectionValues = await fetchSectionValuesByDeal(dealId);
 
-      if (svError) throw svError;
-
-      // Use cache ref for field_key lookup if available, otherwise fetch
       const currentCache = cacheRef.current;
       let fieldDictMap: Map<string, string>;
       if (currentCache && !currentCache.loading) {
@@ -105,26 +91,19 @@ export function useExternalModificationDetector(
           fieldDictMap.set(id, entry.field_key);
         });
       } else {
-        // Collect all field_dictionary_ids from JSONB keys
         const allFieldDictIds: string[] = [];
         ((sectionValues || []) as any[]).forEach((sv) => {
           Object.keys(sv.field_values || {}).forEach(id => {
-            // Handle composite keys (prefix::id)
             const actualId = id.includes('::') ? id.split('::')[1] : id;
             if (!allFieldDictIds.includes(actualId)) allFieldDictIds.push(actualId);
           });
         });
 
-        const { data: fieldDictEntries } = await supabase
-          .from('field_dictionary')
-          .select('id, field_key')
-          .in('id', allFieldDictIds);
-
+        const fieldDictEntries = await fetchFieldDictionaryKeysByIds(allFieldDictIds);
         fieldDictMap = new Map<string, string>();
         (fieldDictEntries || []).forEach((fd: any) => fieldDictMap.set(fd.id, fd.field_key));
       }
 
-      // --- BATCH: Collect all unique updated_by user IDs ---
       const allUpdaterIds = new Set<string>();
       for (const sv of (sectionValues || []) as any[]) {
         for (const [, data] of Object.entries(sv.field_values || {}) as [string, any][]) {
@@ -140,33 +119,21 @@ export function useExternalModificationDetector(
         return;
       }
 
-      // ONE batch query for all user roles
-      const { data: allRoles } = await supabase
-        .from('user_roles')
-        .select('user_id, role')
-        .in('user_id', Array.from(allUpdaterIds));
-
+      const allRoles = await listRolesForUserIds(Array.from(allUpdaterIds));
       const roleMap = new Map<string, string>();
       (allRoles || []).forEach((r: any) => roleMap.set(r.user_id, r.role));
 
-      // Identify external user IDs
       const externalUserIds = Array.from(allUpdaterIds).filter(uid => {
         const role = roleMap.get(uid);
         return role && ['borrower', 'broker', 'lender'].includes(role);
       });
 
-      // ONE batch query for external user profiles
       let profileMap = new Map<string, string | null>();
       if (externalUserIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', externalUserIds);
-
+        const profiles = await fetchProfilesByUserIds(externalUserIds);
         (profiles || []).forEach((p: any) => profileMap.set(p.user_id, p.full_name));
       }
 
-      // --- Process results in memory ---
       const modifications: ExternalModification[] = [];
       for (const sv of (sectionValues || []) as any[]) {
         for (const [storageKey, data] of Object.entries(sv.field_values || {}) as [string, any][]) {
@@ -200,7 +167,6 @@ export function useExternalModificationDetector(
     }
   }, [dealId, enabled]);
 
-  // Only fetch once per dealId, guarded by ref to prevent re-fetches on tab switch
   useEffect(() => {
     if (!dealId || !enabled) return;
     if (hasLoadedRef.current) return;
@@ -210,22 +176,18 @@ export function useExternalModificationDetector(
 
   const markAsReviewed = async (): Promise<boolean> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await getUser();
       if (!user) return false;
 
-      const { error } = await supabase
-        .from('activity_log')
-        .insert({
-          deal_id: dealId,
-          actor_user_id: user.id,
-          action_type: 'ExternalDataReviewed',
-          action_details: {
-            fieldsReviewed: externalModifications.length,
-            fieldKeys: externalModifications.map(m => m.field_key),
-          },
-        });
-
-      if (error) throw error;
+      await insertActivityLog({
+        deal_id: dealId,
+        actor_user_id: user.id,
+        action_type: 'ExternalDataReviewed',
+        action_details: {
+          fieldsReviewed: externalModifications.length,
+          fieldKeys: externalModifications.map(m => m.field_key),
+        },
+      });
 
       setExternalModifications([]);
       setLastReviewedAt(new Date().toISOString());

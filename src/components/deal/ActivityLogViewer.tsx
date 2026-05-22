@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { listActivityLog } from '@/services/system/activity-log.service';
+import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -171,23 +172,13 @@ export const ActivityLogViewer: React.FC<ActivityLogViewerProps> = ({
     try {
       setLoading(true);
       
-      const { data, error } = await supabase
-        .from('activity_log')
-        .select('*')
-        .eq('deal_id', dealId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const data = await listActivityLog(dealId);
       
       setActivities(data || []);
       
-      // Fetch actor names
-      const actorIds = [...new Set((data || []).map(a => a.actor_user_id))];
+      const actorIds = [...new Set((data || []).map((a: ActivityLogEntry) => a.actor_user_id))];
       if (actorIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, email')
-          .in('user_id', actorIds);
+        const profiles = await fetchProfilesByUserIds(actorIds);
         
         const names: Record<string, string> = {};
         (profiles || []).forEach(p => {

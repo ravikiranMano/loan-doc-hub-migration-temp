@@ -14,7 +14,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import SortableTableHead from '@/components/deal/SortableTableHead';
 import { RichTextEditor } from '@/components/deal/RichTextEditor';
 import { type SortDirection } from '@/hooks/useGridSortFilter';
-import { supabase } from '@/integrations/supabase/client';
+import { getContactContactData, patchContactData } from '@/services/contacts/contacts.service';
+import {
+  listConversationLogTypes,
+  uploadContactAttachment,
+  downloadContactAttachment,
+} from '@/services/contacts/attachments.service';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -132,29 +137,31 @@ const LenderConversationLog: React.FC<{ lenderId: string; contactDbId: string; d
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    (supabase as any).from('conversation_log_types').select('label').eq('is_active', true).order('display_order').then(({ data, error }: any) => {
-      if (error || !data?.length) setLogTypes(LOG_TYPES_FALLBACK);
-      else setLogTypes(data.map((r: any) => r.label));
-    });
+    listConversationLogTypes()
+      .then((data) => {
+        if (!data?.length) setLogTypes(LOG_TYPES_FALLBACK);
+        else setLogTypes(data.map((r) => r.label));
+      })
+      .catch(() => setLogTypes(LOG_TYPES_FALLBACK));
   }, []);
 
   useEffect(() => {
     if (!contactDbId) return;
     const load = async () => {
-      const { data } = await supabase.from('contacts').select('contact_data').eq('id', contactDbId).single();
-      if (data?.contact_data && (data.contact_data as any)._conversation_logs) {
-        setRows((data.contact_data as any)._conversation_logs);
+      const contactData = await getContactContactData(contactDbId);
+      if (contactData._conversation_logs) {
+        setRows(contactData._conversation_logs as LogRow[]);
       }
     };
     load();
   }, [contactDbId]);
 
   const persistLogs = async (updated: LogRow[]) => {
-    const { data: current } = await supabase.from('contacts').select('contact_data').eq('id', contactDbId).single();
-    const existing = (current?.contact_data as Record<string, any>) || {};
-    const merged = { ...existing, _conversation_logs: updated };
-    const { error } = await supabase.from('contacts').update({ contact_data: merged as any }).eq('id', contactDbId);
-    if (error) toast.error('Failed to save conversation log');
+    try {
+      await patchContactData(contactDbId, { _conversation_logs: updated });
+    } catch {
+      toast.error('Failed to save conversation log');
+    }
   };
 
   const handleSort = (col: string) => {
@@ -201,8 +208,9 @@ const LenderConversationLog: React.FC<{ lenderId: string; contactDbId: string; d
     for (const file of files) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const path = `lender/${contactDbId}/${logId}/${Date.now()}_${safeName}`;
-      const { error } = await supabase.storage.from('contact-attachments').upload(path, file);
-      if (error) {
+      try {
+        await uploadContactAttachment(path, file);
+      } catch (error) {
         console.error('Upload failed:', error);
         toast.error(`Failed to upload ${file.name}`);
         continue;
@@ -293,8 +301,13 @@ const LenderConversationLog: React.FC<{ lenderId: string; contactDbId: string; d
       toast.info('This attachment has no downloadable file');
       return;
     }
-    const { data, error } = await supabase.storage.from('contact-attachments').download(path);
-    if (error || !data) {
+    let data: Blob;
+    try {
+      data = await downloadContactAttachment(path);
+    } catch {
+      data = null as unknown as Blob;
+    }
+    if (!data) {
       toast.error('Failed to download file');
       return;
     }
