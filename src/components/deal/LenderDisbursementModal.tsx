@@ -36,6 +36,12 @@ export interface DisbursementFormData {
   overrideEnabled?: boolean;
   overrideReason?: string;
   overrideAmount?: string;
+  /** Audit (Rule 4): snapshot of the auto-calculated amount when override was enabled. */
+  overrideOriginalAmount?: string;
+  /** Audit (Rule 4): user id that toggled override on. */
+  overrideBy?: string;
+  /** Audit (Rule 4): ISO timestamp when override was toggled on. */
+  overrideAt?: string;
 }
 
 const emptyForm = (): DisbursementFormData => ({
@@ -57,6 +63,9 @@ const emptyForm = (): DisbursementFormData => ({
   overrideEnabled: false,
   overrideReason: '',
   overrideAmount: '',
+  overrideOriginalAmount: '',
+  overrideBy: '',
+  overrideAt: '',
 });
 
 interface ExistingDisbursementRef {
@@ -440,6 +449,12 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                     overrideEnabled: enabled,
                     overrideAmount: enabled ? (prev.overrideAmount || autoCalculatedAmount.toFixed(2)) : '',
                     overrideReason: enabled ? prev.overrideReason : '',
+                    // Audit metadata (Rule 4): snapshot original on enable, clear on disable.
+                    overrideOriginalAmount: enabled
+                      ? (prev.overrideOriginalAmount || autoCalculatedAmount.toFixed(2))
+                      : '',
+                    overrideAt: enabled ? (prev.overrideAt || new Date().toISOString()) : '',
+                    overrideBy: enabled ? prev.overrideBy : '',
                   }));
                 }}
                 className="h-3 w-3"

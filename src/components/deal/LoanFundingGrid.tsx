@@ -81,6 +81,11 @@ export interface FundingRecord {
   rateLenderValue?: string;
   lenderRateOverride?: boolean;
   lenderRateOverrideValue?: string;
+  /** Audit metadata for Lender Rate override (Rule 4). */
+  lenderRateOverrideOriginal?: string;
+  lenderRateOverrideReason?: string;
+  lenderRateOverrideBy?: string;
+  lenderRateOverrideAt?: string;
   brokerParticipates?: boolean;
   interestFrom?: string;
   roundingAdjustment?: boolean;
@@ -497,6 +502,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       rateLenderValue: record.rateLenderValue || '',
       lenderRateOverride: record.lenderRateOverride || false,
       lenderRateOverrideValue: record.lenderRateOverrideValue || '',
+      lenderRateOverrideOriginal: record.lenderRateOverrideOriginal || '',
+      lenderRateOverrideReason: record.lenderRateOverrideReason || '',
+      lenderRateOverrideBy: record.lenderRateOverrideBy || '',
+      lenderRateOverrideAt: record.lenderRateOverrideAt || '',
       roundingAdjustment: record.roundingAdjustment || false,
       disbursements: record.disbursements?.length ? record.disbursements.map(d => ({
         active: (d as any).active ?? true,
@@ -620,6 +629,34 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
       case 'lenderRate': {
         if (hasLenderRate(record)) {
+          // Rule 4 + UI: when override is active, mark the cell with a Pencil glyph
+          // and surface the audit trail (original value, who, when) in a tooltip.
+          if (record.lenderRateOverride) {
+            const origRaw = (record.lenderRateOverrideOriginal || '').trim();
+            const origNum = parseFloat(origRaw.replace(/[%,]/g, ''));
+            const origDisplay = !isNaN(origNum) && origNum > 0 ? `${formatPercentage(origNum, 3)}` : '—';
+            const whenISO = (record.lenderRateOverrideAt || '').trim();
+            const whenDisplay = whenISO ? new Date(whenISO).toLocaleString() : '—';
+            const reason = (record.lenderRateOverrideReason || '').trim();
+            return (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1">
+                      <span>{formatPercentage(record.lenderRate, 3)}</span>
+                      <Pencil className="h-3 w-3 text-amber-600" aria-label="Manually overridden" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs max-w-[280px]">
+                    <div className="font-semibold">Manually overridden</div>
+                    <div>Original calculated: {origDisplay}</div>
+                    <div>When: {whenDisplay}</div>
+                    {reason && <div>Reason: {reason}</div>}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          }
           return <span>{formatPercentage(record.lenderRate, 3)}</span>;
         }
         // Auto-fill display: when no explicit Lender Rate is stored, fall back
@@ -1062,6 +1099,10 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
               rateLenderValue: data.rateLenderValue,
               lenderRateOverride: data.lenderRateOverride,
               lenderRateOverrideValue: data.lenderRateOverrideValue,
+              lenderRateOverrideOriginal: data.lenderRateOverrideOriginal,
+              lenderRateOverrideReason: data.lenderRateOverrideReason,
+              lenderRateOverrideBy: data.lenderRateOverrideBy,
+              lenderRateOverrideAt: data.lenderRateOverrideAt,
               brokerParticipates: data.brokerParticipates,
               interestFrom: data.interestFrom,
               roundingAdjustment: data.roundingAdjustment,
