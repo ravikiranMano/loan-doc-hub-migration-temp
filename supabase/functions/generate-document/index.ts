@@ -7746,7 +7746,8 @@ async function generateSingleDocument(
           const rPrStd = (bold: boolean) =>
             `<w:rPr>${bold ? "<w:b/><w:bCs/>" : ""}<w:rFonts w:ascii="${STD_FONT}" w:hAnsi="${STD_FONT}" w:cs="${STD_FONT}"/><w:sz w:val="${STD_SIZE}"/><w:szCs w:val="${STD_SIZE}"/></w:rPr>`;
 
-          const noBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>`;
+          const tblNoBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/>`;
+          const tcNoBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/>`;
           const lineBorder = `<w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/><w:right w:val="nil"/>`;
           const cellMargins = `<w:tcMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tcMar>`;
 
@@ -7763,11 +7764,11 @@ async function generateSingleDocument(
             `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>` +
               (text ? `<w:r>${rPrStd(false)}<w:t xml:space="preserve">${xmlEsc(text)}</w:t></w:r>` : `<w:r>${rPrStd(false)}<w:t></w:t></w:r>`) +
             `</w:p>`;
-          const tc = (width: number, children: string, borders = noBorder) =>
+          const tc = (width: number, children: string, borders = tcNoBorder) =>
             `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:tcBorders>${borders}</w:tcBorders>${cellMargins}</w:tcPr>${children}</w:tc>`;
           const paraSigRow = () =>
             `<w:tbl>` +
-              `<w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar><w:tblBorders>${noBorder}</w:tblBorders></w:tblPr>` +
+              `<w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblBorders>${tblNoBorder}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>` +
               `<w:tblGrid><w:gridCol w:w="960"/><w:gridCol w:w="3540"/><w:gridCol w:w="540"/><w:gridCol w:w="840"/><w:gridCol w:w="2520"/><w:gridCol w:w="960"/></w:tblGrid>` +
               `<w:tr><w:trPr><w:trHeight w:val="360" w:hRule="exact"/></w:trPr>` +
                 tc(960, paraCell("Signature:")) +
