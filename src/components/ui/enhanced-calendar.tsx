@@ -250,7 +250,7 @@ function EnhancedCalendar({
             variant="link"
             size="sm"
             className="h-auto p-0 text-xs text-primary hover:text-primary/80"
-            onClick={onClear}
+            onClick={handleClear}
           >
             Clear
           </Button>
