@@ -1248,17 +1248,17 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Funding Date</Label>
                 {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen)}
               </div>
-              <div className="flex items-center gap-1" title={isLockedRow ? lockedTooltip : undefined}>
+              <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Original Funding</Label>
-                {renderCurrencyInput('fundingAmount', '0.00', isLockedRow)}
+                {renderCurrencyInput('fundingAmount', '0.00', false)}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Base Fee</Label>
                 {renderCurrencyInput('baseFee', 'Enter amount')}
               </div>
-              <div className="flex items-center gap-1" title={isLockedRow ? lockedTooltip : undefined}>
+              <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Current Balance</Label>
-                {renderCurrencyInput('currentBalance', '0.00', isLockedRow)}
+                {renderCurrencyInput('currentBalance', '0.00', false)}
               </div>
 
               <div className="flex items-center gap-1">
