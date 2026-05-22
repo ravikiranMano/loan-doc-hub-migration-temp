@@ -521,6 +521,9 @@ export const LenderDisbursementModal: React.FC<LenderDisbursementModalProps> = (
                 </SelectContent>
               </Select>
             </div>
+            {errors.debitThrough && showAllErrors && (
+              <p className="text-[10px] text-destructive font-medium pl-[84px]">{errors.debitThrough}</p>
+            )}
 
             {/* Dynamic field based on selection */}
             {formData.debitThrough === 'date' && (
