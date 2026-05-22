@@ -63,6 +63,9 @@ const emptyForm = (): DisbursementFormData => ({
   overrideEnabled: false,
   overrideReason: '',
   overrideAmount: '',
+  overrideOriginalAmount: '',
+  overrideBy: '',
+  overrideAt: '',
 });
 
 interface ExistingDisbursementRef {
