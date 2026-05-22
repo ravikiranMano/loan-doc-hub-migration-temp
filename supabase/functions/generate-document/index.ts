@@ -850,6 +850,71 @@ async function generateSingleDocument(
         }
       }
 
+      // ─── Multi-borrower repeater feed for {{#each borrowers}} ───
+      // Publishes dotted entity keys `borrowersN.<field>` that the existing
+      // processEachBlocks pass consumes to expand:
+      //   {{#each borrowers}} ... {{this.fullName}} ... {{/each}}
+      // per borrower participant (primary borrower first, then co-borrowers,
+      // ordered by sequence_order → created_at).
+      //
+      // Also publishes `borrowers_count` and `borrowers_hasMultiple` helpers
+      // so templates can guard on `{{#if borrowers.length > 1}}` / `{{#if borrowers.length}}`
+      // (the tag-parser pre-rewrites those length comparisons to these flags).
+      //
+      // Backward compatibility: existing `br_p_fullName`, `borrower.*`,
+      // `co_borrower1.*`, `coborrower.*` aliases are preserved untouched.
+      {
+        const orderedBorrowerParticipants = [...borrowerParticipants].sort((a: any, b: any) => {
+          // Primary borrower first
+          if (a === primaryBorrower && b !== primaryBorrower) return -1;
+          if (b === primaryBorrower && a !== primaryBorrower) return 1;
+          const aSeq = typeof a.sequence_order === "number" ? a.sequence_order : Number.MAX_SAFE_INTEGER;
+          const bSeq = typeof b.sequence_order === "number" ? b.sequence_order : Number.MAX_SAFE_INTEGER;
+          if (aSeq !== bSeq) return aSeq - bSeq;
+          return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+        });
+
+        const setBAlias = (key: string, value: string) => {
+          fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
+        };
+
+        let publishedBorrowers = 0;
+        orderedBorrowerParticipants.forEach((bp: any, idx: number) => {
+          const n = idx + 1;
+          let firstName = "", middle = "", lastName = "", email = "", phone = "", fullName = "";
+          if (bp?.contact_id) {
+            const bc = contactRowsByUuid.get(bp.contact_id);
+            const cd = bc?.contact_data || {};
+            firstName = (cd.first_name || bc?.first_name || "").toString().trim();
+            middle = (cd.middle_initial || cd.middle_name || "").toString().trim();
+            lastName = (cd.last_name || bc?.last_name || "").toString().trim();
+            email = (cd.email || bc?.email || "").toString().trim();
+            phone = (cd["phone.cell"] || cd["phone.work"] || cd["phone.home"] || bc?.phone || "").toString().trim();
+            const assembled = [firstName, middle, lastName].filter(Boolean).join(" ").trim();
+            fullName = (assembled || cd.full_name || bc?.full_name || bp.name || "").toString().trim();
+          } else if (bp?.name) {
+            fullName = String(bp.name).trim();
+          }
+          if (!fullName && !firstName && !lastName) return; // skip empty entries
+
+          setBAlias(`borrowers${n}.index`, String(n));
+          setBAlias(`borrowers${n}.fullName`, fullName);
+          setBAlias(`borrowers${n}.firstName`, firstName);
+          setBAlias(`borrowers${n}.middle`, middle);
+          setBAlias(`borrowers${n}.lastName`, lastName);
+          setBAlias(`borrowers${n}.email`, email);
+          setBAlias(`borrowers${n}.phone`, phone);
+          setBAlias(`borrowers${n}.exists`, "true");
+          setBAlias(`borrowers${n}.isPrimary`, n === 1 ? "true" : "false");
+          publishedBorrowers++;
+        });
+
+        setBAlias("borrowers_count", publishedBorrowers > 0 ? String(publishedBorrowers) : "");
+        setBAlias("borrowers_hasMultiple", publishedBorrowers > 1 ? "true" : "false");
+        debugLog(`[generate-document] Published {{#each borrowers}} feed: ${publishedBorrowers} borrower(s)`);
+      }
+
+
       if (guarantorParticipant?.contact_id) {
         const gc = contactRowsByUuid.get(guarantorParticipant.contact_id);
         if (gc) {
