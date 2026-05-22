@@ -117,7 +117,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   //   Current LTV       = Balances → Principal / Estimate of Value × 100  (recalcs whenever
   //                       Principal or Estimate of Value changes)
   //   Principal Paid    = Loan Amount − Balances → Principal      (derived; not user-editable)
-  const loanAmountRaw = values['loan_terms.loan_amount'] || '';
+  const loanAmountRaw = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || values['ln_p_originalAmount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
   const currentPrincipalRaw = values['loan_terms.principal'] || '';
   const liensBalanceForEquity = liensCurrentBalanceTotal;
