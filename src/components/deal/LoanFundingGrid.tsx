@@ -948,28 +948,31 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             )}
 
             {effectiveLoanPrincipal > 0 ? (
-              <>
-                <span className="font-medium text-foreground">Funded:</span>{' '}
-                {formatCurrency(fundedAmount)} of {formatCurrency(effectiveLoanPrincipal)}{' '}
-                ({formatPercentDisplay(fundedPct, 4)}%)
-                {fundingStatus !== 'over' && (
-                  <>
-                    {' '}|{' '}
-                    <span className="font-medium text-foreground">Unfunded:</span>{' '}
-                    {formatCurrency(unfundedAmount)} ({formatPercentDisplay(unfundedPct, 4)}%)
-                  </>
-                )}
-                {fundingStatus === 'over' && (
-                  <>
-                    {' '}|{' '}
-                    <span className="font-medium text-destructive">Over by:</span>{' '}
-                    {formatCurrency(overAmount)}
-                  </>
-                )}
-              </>
+              fundingStatus === 'full' ? null : (
+                <>
+                  <span className="font-medium text-foreground">Funded:</span>{' '}
+                  {formatCurrency(fundedAmount)} of {formatCurrency(effectiveLoanPrincipal)}{' '}
+                  ({formatPercentDisplay(fundedPct, 4)}%)
+                  {fundingStatus !== 'over' && (
+                    <>
+                      {' '}|{' '}
+                      <span className="font-medium text-foreground">Unfunded:</span>{' '}
+                      {formatCurrency(unfundedAmount)} ({formatPercentDisplay(unfundedPct, 4)}%)
+                    </>
+                  )}
+                  {fundingStatus === 'over' && (
+                    <>
+                      {' '}|{' '}
+                      <span className="font-medium text-destructive">Over by:</span>{' '}
+                      {formatCurrency(overAmount)}
+                    </>
+                  )}
+                </>
+              )
             ) : (
               <>Total Funding Amount: {formatCurrency(totalFundingAmount)}</>
             )}
+
           </div>
           <div className="text-sm text-muted-foreground">
             {filteredData.length !== fundingRecords.length && `Showing ${filteredData.length} of `}
