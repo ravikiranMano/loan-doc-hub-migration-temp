@@ -120,11 +120,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   const loanAmountRaw = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || values['loan_terms.original_amount'] || values['ln_p_originalAmount'] || values['loan.original_amount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
   const currentPrincipalRaw = values['loan_terms.principal'] || '';
+  const purchasePriceRaw = values[FIELD_KEYS.purchasePrice] || '';
   const liensBalanceForEquity = liensCurrentBalanceTotal;
 
   const loanAmountNum = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
   const estValueNum = parseFloat(estValueRaw.replace(/[, $]/g, ''));
   const currentPrincipalNum = parseFloat(currentPrincipalRaw.replace(/[, $]/g, ''));
+  const purchasePriceNum = parseFloat(purchasePriceRaw.replace(/[, $]/g, ''));
 
   // Inline validation flags (skip the offending calc, surface near the field).
   const estValueInvalid = estValueRaw.trim() !== '' && (!Number.isFinite(estValueNum) || estValueNum <= 0);
