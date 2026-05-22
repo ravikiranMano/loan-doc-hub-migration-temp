@@ -327,6 +327,28 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
         <Checkbox id="detail-brokerParticipates" checked={data.brokerParticipates} onCheckedChange={(checked) => handleChange('brokerParticipates', !!checked)} />
         <Label htmlFor="detail-brokerParticipates" className="text-sm font-medium leading-tight cursor-pointer">Lender is: The Broker, Employee or Family of Broker</Label>
       </div>
+
+      <OverrideConfirmationDialog
+        open={overrideConfirmOpen}
+        onCancel={() => setOverrideConfirmOpen(false)}
+        onConfirm={() => {
+          const soldRateVal = (data.rateSoldValue || '').trim();
+          const calculatedSource = data.lenderRate || soldRateVal || '';
+          onChange({
+            ...data,
+            lenderRateOverride: true,
+            lenderRateOverrideValue:
+              data.lenderRateOverrideValue || data.lenderRate || soldRateVal,
+            lenderRateOverrideOriginal:
+              data.lenderRateOverrideOriginal || calculatedSource,
+            lenderRateOverrideAt:
+              data.lenderRateOverrideAt || new Date().toISOString(),
+            lenderRateOverrideBy: data.lenderRateOverrideBy || '',
+            lenderRateOverrideReason: data.lenderRateOverrideReason || '',
+          });
+          setOverrideConfirmOpen(false);
+        }}
+      />
     </div>
   );
 };
