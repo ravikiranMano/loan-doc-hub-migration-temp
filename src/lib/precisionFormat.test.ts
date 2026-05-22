@@ -12,6 +12,7 @@ import {
   roundDollarForStorage,
   sumPercents,
   allocateDollarsByPercent,
+  allocateDollarsByPercentsWithReconciliation,
   computeAmortizedPayment,
 } from './precisionFormat';
 
