@@ -393,6 +393,16 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const [editingDisbursementIdx, setEditingDisbursementIdx] = useState<number | null>(null);
   const [fundingHidden, setFundingHidden] = useState(false);
   const [overrideConfirmOpen, setOverrideConfirmOpen] = useState(false);
+  const [showRoundingInfo, setShowRoundingInfo] = useState(false);
+
+  useEffect(() => {
+    if (formData.roundingAdjustment) {
+      setShowRoundingInfo(true);
+      const t = setTimeout(() => setShowRoundingInfo(false), 2000);
+      return () => clearTimeout(t);
+    }
+    setShowRoundingInfo(false);
+  }, [formData.roundingAdjustment]);
   const { user } = useAuth();
   const currentUserId = user?.id || '';
 
