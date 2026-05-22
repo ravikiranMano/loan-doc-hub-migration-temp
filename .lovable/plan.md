@@ -1,100 +1,56 @@
-# Add Disbursement Modal — Validation Hardening (Rules 1-15)
+## Goal
 
-Target: `src/components/deal/LenderDisbursementModal.tsx` (407 lines, already wired
-through `LoanFundingGrid.tsx` via `data.disbursements`). All persistence stays on
-the existing `disbursements` array path — no schema, no new tables, no API rewiring.
+Guarantee Lender Rate is never blank when Sold Rate is missing, by falling back to Note Rate everywhere (UI, persistence, reload, downstream calculations) while preserving manual overrides.
 
-## Current gaps vs. spec
+## Current state (already in place — will not change)
 
-The modal already handles auto-calc (Rule 5), read-only amount (Rule 13), `debitOf`
-auto-default to NA at 0% (partial Rule 4), and min ≤ max sanity. It is missing
-explicit per-rule error messages, debit % bounds, percentage 4-decimal precision,
-plus negative guard, date-range bounds, duplicate-payee guard, total-disbursement
-guard, and manual-override-with-reason flow.
+- `AddFundingModal` resolves Lender Rate as: Override value → Sold Rate (validated) → Note Rate (`isValidMortgageRate` guard, lines 395–432).
+- Save path in `LoanFundingGrid.handleSaveFundingRecord` (lines 998–1012) already falls back to Note Rate when no sold/lender rate is present.
+- Override tracking already persisted via `lenderRateOverride` + `lenderRateOverrideValue` on each funding record (this is the existing `isLenderRateOverridden` flag — no new column needed).
+- Note Rate stored at 4dp, displayed via `formatPercentage(..., 3)` — precision rules already met.
 
-## Changes (all inside `LenderDisbursementModal.tsx` unless noted)
+## Gaps to fix (scope of this change)
 
-### A. Per-field inline errors with spec-exact copy
-Add a `touched` set and an `errors` object keyed by field. Show `<p
-className="text-[10px] text-destructive ...">` under each affected row using the
-spec's exact text:
+1. **Grid display fallback** — `LoanFundingGrid` cell renderer for `lenderRate` (lines 621–639) shows a `-` placeholder with an "defaulting to Note Rate" tooltip when `hasLenderRate(record)` is false. It does not actually render the Note Rate value. Legacy/persisted records that never got a lenderRate value still appear blank to the user.
+2. **Live Note Rate propagation to saved records** — When the deal-level Note Rate changes and a saved funding record has `lenderRateOverride !== true` AND no valid Sold Rate, the record's `lenderRate` is not refreshed. `recomputeLenderPayments` updates payments but leaves the rate field stale.
+3. **Modal manual-edit protection** — The current modal effect (line 412–428) re-syncs `lenderRate` to `effectiveRate` whenever Note/Sold changes, even if the user typed a Lender Rate by hand without toggling Override. Per Rule 4 we must not overwrite a user-typed value; only auto-filled values should track Note Rate.
 
-| Rule | Field | Message |
-|------|-------|---------|
-| 1 | Payee | `Payee is required.` |
-| 3 | Debit % > 100 | `Debit percentage cannot exceed 100%.` |
-| 3 | Debit % < 0 | `Debit percentage cannot be negative.` |
-| 4 | Debit Through unset when % > 0 | `Please select Debit Through option.` |
-| 6 | Calc < Min (override mode) | `Calculated amount cannot be less than minimum amount.` |
-| 7 | Calc > Max (override mode) | `Calculated amount cannot exceed maximum amount.` |
-| 8 | Plus < 0 | (block via input filter + msg) `Plus amount cannot be negative.` |
-| 9 | Start date invalid / out of [origination, maturity] | `Invalid disbursement start date.` |
-| 10 | Same payee + same Debit Through already present | `Duplicate disbursement configuration already exists.` |
-| 11 | Σ disbursements (incl. this one) > available payment | `Total disbursement exceeds available payment amount.` |
-| 14 | Override reason blank when override on | `Override reason is required.` |
+## Changes
 
-Save button stays disabled while any error is present (Rule 15 client-side guard);
-on click, `handleSaveClick` re-validates and aborts to the first error if found.
+### `src/components/deal/LoanFundingGrid.tsx`
 
-### B. Input bounds & precision (Rules 3, 8, 12)
-- `debitPercent`: clamp displayed range to `[0, 100]`, allow up to 4 decimals via
-  regex `^(\d{0,3})(\.\d{0,4})?$`, strip on paste, store raw string. On blur,
-  normalize to up to 4 decimals (suppress trailing zeros past 2 decimals).
-- `plusAmount`, `minimumAmount`, `maximumAmount`: 2-decimal currency (already
-  formatted on blur), reject negatives via filter.
+- In the `lenderRate` cell renderer, when `hasLenderRate(record)` is false:
+  - If a usable `noteRate` (or `record.rateNoteValue`) exists, render it via `formatPercentage(noteRateValue, 3)` with a small "auto" badge/tooltip ("Auto-filled from Note Rate").
+  - Otherwise keep the existing `-` + warning tooltip.
+- In the records-load/normalization path (around lines 480–520, where records are hydrated from props), when `record.lenderRate <= 0` and `record.lenderRateOverride !== true`, set the in-memory `lenderRate` to the numeric Note Rate so downstream calculations (Pro Rata, payment) are correct without forcing a save.
+- Add an effect that, when the `noteRate` prop changes, walks records and updates `lenderRate` for any record where `lenderRateOverride !== true` AND `(record.rateSoldValue || soldRate)` is empty/invalid. This mirrors the new value into the row state and triggers `recomputeLenderPayments`.
 
-### C. Date validation (Rule 9)
-Read `loan_terms.origination_date` and `loan_terms.maturity_date` from the parent
-through two new optional props (`loanOriginationDate?: string`,
-`loanMaturityDate?: string`) supplied from `LoanFundingGrid.tsx` (already has
-loan terms in scope via `useDealFields`). Pass them to the `EnhancedCalendar`'s
-disabled-day predicate and validate on save.
+### `src/components/deal/AddFundingModal.tsx`
 
-### D. Duplicate prevention (Rule 10)
-Add prop `existingDisbursements?: Array<{ accountId: string; debitThrough: string }>`.
-Block save (with message) when `(accountId, debitThrough)` matches an existing
-row other than the one being edited.
+- Tighten the sync effect (lines 395–432): only overwrite `prev.lenderRate` with `effectiveRate` when one of:
+  - `overrideOn === true` (override controls the field), OR
+  - `prev.lenderRate` is empty / equals the previous `linkedRate` (i.e. the field is still auto-filled, not user-edited).
+- Track a transient `lenderRateUserEdited` flag in `formData` (set true on direct `lenderRate` input change) so the effect can distinguish "auto-filled" vs "manually edited without Override toggle". Reset on Override toggle and on save.
+- When `lenderRateUserEdited` is true, also persist `lenderRateOverride = true` + `lenderRateOverrideValue = lenderRate` on save so reload behavior matches Rule 5/6.
 
-### E. Total disbursement guard (Rule 11)
-Add prop `availablePayment?: number` (= per-lender share already computed in
-`LoanFundingGrid.tsx`). Compute `Σ otherDisbursements + calculatedAmount` and
-block if it exceeds `availablePayment`.
+### No changes
 
-### F. Manual override (Rules 13, 14)
-- Add `overrideEnabled: boolean` and `overrideReason: string` to
-  `DisbursementFormData` and `emptyForm()`.
-- Add a checkbox "Manual override" below the Amount row. When off → Amount stays
-  read-only and uses the auto-calculated value (current behavior). When on →
-  Amount becomes editable (currency-formatted), the auto-calc is shown as a
-  hint, and a required "Override reason" text input appears. Save blocked
-  until reason is non-empty.
-- Persist `overrideEnabled` / `overrideReason` through the existing
-  `onSubmit(data)` path — `LoanFundingGrid.tsx`'s `disbursements` row type
-  already passes the form object through unchanged (line 1034) and the
-  serializer spreads arbitrary keys (`...d`) at line 501.
+- No schema migration. The spec's `isLenderRateOverridden` requirement is satisfied by the existing `lenderRateOverride` boolean on each funding record (stored in `deal_section_values` JSONB under the funding section).
+- No edge-function / document-generation changes.
+- `LoanTermsFundingForm.tsx` save logic untouched — it already passes the resolved `lenderRate` through.
+- Precision helpers (`precisionFormat.ts`) untouched.
 
-### G. Parent wiring (`LoanFundingGrid.tsx`, minimal touch)
-At the existing `<LenderDisbursementModal ... />` render site, add the four new
-props sourced from already-computed values:
-- `loanOriginationDate={loanTerms.origination_date}` / `maturityDate`
-- `existingDisbursements={record.disbursements ?? []}`
-- `availablePayment={record.lenderPayment}` (already computed)
+## Files touched
 
-No changes to save/update functions, payload shape, or `disbursements` columns.
+- `src/components/deal/LoanFundingGrid.tsx`
+- `src/components/deal/AddFundingModal.tsx`
 
-### H. Logging
-On every blocked save, `console.warn('[disbursement-validate]', { rule, field,
-value })` so QA can trace failures without changing UX.
+## QA mapping (against the 12 test cases)
 
-## Acceptance mapping
-
-Test Cases 1-16 map 1:1 to the rules above. All copy strings are taken verbatim
-from the spec. Rule 2 (name auto-populate) already works via `AccountIdSearch`
-(line 174-180) — keep as-is; mark Name read-only when `accountId` is set.
-
-## Out of scope (per "do not modify")
-- Existing calculation formula in `useMemo` (Rule 5) — unchanged.
-- DB schema, RLS, save/update endpoints — unchanged.
-- Layout of unaffected rows; error messages are additive `<p>` elements.
-- Audit-log persistence beyond storing `overrideReason` on the disbursement
-  itself (no new audit table per "no schema changes").
+- TC1, TC3, TC4: covered by grid display fallback + load-time hydration.
+- TC2, TC11: covered by existing save fallback + new hydration on reload.
+- TC5, TC6, TC8: covered by `lenderRateUserEdited` → `lenderRateOverride` persistence.
+- TC7: covered by the new noteRate-change effect in the grid.
+- TC9: existing Sold Rate priority is unchanged.
+- TC10: existing 4dp storage + `formatPercentage` display — no change needed.
+- TC12: blank Lender Rate no longer reaches downstream consumers because the grid hydrates from Note Rate on load.
