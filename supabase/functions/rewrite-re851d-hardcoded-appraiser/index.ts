@@ -189,6 +189,68 @@ function applyRewrites(xml: string, rewrites: Rewrite[]): string {
   return out.join("");
 }
 
+function replaceTextRunAt(xml: string, textIndex: number, replacementText: string): { xml: string; replaced: boolean } {
+  const openStart = xml.lastIndexOf("<w:t", textIndex);
+  const closeEnd = xml.indexOf("</w:t>", textIndex);
+  if (openStart < 0 || closeEnd < 0) return { xml, replaced: false };
+
+  const openEnd = xml.indexOf(">", openStart);
+  if (openEnd < 0 || openEnd > textIndex) return { xml, replaced: false };
+
+  const current = xml.slice(openEnd + 1, closeEnd);
+  const next = `${xml.slice(openStart, openEnd + 1)}${current.replace(/BPO Performed by Broker|N\/A/, replacementText)}</w:t>`;
+  return { xml: xml.slice(0, openStart) + next + xml.slice(closeEnd + "</w:t>".length), replaced: true };
+}
+
+function applyParagraphAppraiserRewrites(xml: string): { xml: string; nameCount: number; addrCount: number; nameLabelsSeen: number; addrLabelsSeen: number } {
+  let nextXml = xml;
+  let nameCount = 0;
+  let addrCount = 0;
+
+  const nameLabelsSeen = countVisibleMatches(xml, /NAME OF APPRAISER/g);
+  const addrLabelsSeen = countVisibleMatches(xml, /ADDRESS OF APPRAISER/g);
+
+  const nameLabelRe = /NAME OF[\s\S]{0,1200}?APPRAISER(?:[\s\S]{0,200}?IF KNOWN TO BROKER)?/gi;
+  const nameLabelStarts: number[] = [];
+  let nameMatch: RegExpExecArray | null;
+  while ((nameMatch = nameLabelRe.exec(nextXml)) !== null) {
+    nameLabelStarts.push(nameMatch.index + nameMatch[0].length);
+  }
+
+  for (const afterLabel of nameLabelStarts) {
+    const windowEnd = Math.min(nextXml.length, afterLabel + 2500);
+    const window = nextXml.slice(afterLabel, windowEnd);
+    const hit = window.match(/<w:t(?:\s[^>]*)?>\s*BPO Performed by Broker\s*<\/w:t>/i);
+    if (!hit || hit.index === undefined) continue;
+    nameCount += 1;
+    const textIndex = afterLabel + hit.index + hit[0].indexOf("BPO Performed by Broker");
+    const result = replaceTextRunAt(nextXml, textIndex, `{{pr_p_appraiserName_${nameCount}}}`);
+    nextXml = result.xml;
+    if (!result.replaced) nameCount -= 1;
+  }
+
+  const addrLabelRe = /ADDRESS OF APPRAISER/gi;
+  const addrLabelStarts: number[] = [];
+  let addrMatch: RegExpExecArray | null;
+  while ((addrMatch = addrLabelRe.exec(nextXml)) !== null) {
+    addrLabelStarts.push(addrMatch.index + addrMatch[0].length);
+  }
+
+  for (const afterLabel of addrLabelStarts) {
+    const windowEnd = Math.min(nextXml.length, afterLabel + 1800);
+    const window = nextXml.slice(afterLabel, windowEnd);
+    const hit = window.match(/<w:t(?:\s[^>]*)?>\s*N\/A\s*<\/w:t>/i);
+    if (!hit || hit.index === undefined) continue;
+    addrCount += 1;
+    const textIndex = afterLabel + hit.index + hit[0].indexOf("N/A");
+    const result = replaceTextRunAt(nextXml, textIndex, `{{pr_p_appraiserAddress_${addrCount}}}`);
+    nextXml = result.xml;
+    if (!result.replaced) addrCount -= 1;
+  }
+
+  return { xml: nextXml, nameCount, addrCount, nameLabelsSeen, addrLabelsSeen };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
