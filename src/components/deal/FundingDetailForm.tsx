@@ -19,6 +19,7 @@ import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import type { FundingFormData } from './AddFundingModal';
 import { LenderIdSearch } from './LenderIdSearch';
+import { OverrideConfirmationDialog } from './OverrideConfirmationDialog';
 
 interface FundingDetailFormProps {
   data: FundingFormData;
