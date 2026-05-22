@@ -98,9 +98,10 @@ describe('resolvePercentCategory', () => {
 
 describe('formatPercentByFieldKey', () => {
   it('routes through correct category', () => {
-    expect(formatPercentByFieldKey('ln_p_note_rate', '8.8756')).toBe('8.8756%');
+    expect(formatPercentByFieldKey('ln_p_note_rate', '8.8756')).toBe('8.876%');
     expect(formatPercentByFieldKey('lender_pro_rata', '27.2727')).toBe('27.2727%');
-    expect(formatPercentByFieldKey('ltv', '80.1250')).toBe('80.125%');
+    expect(formatPercentByFieldKey('ltv', '80.1250')).toBe('80.13%');
+
     expect(formatPercentByFieldKey('late_charge_pct', '5.125')).toBe('5.125%');
   });
 });
