@@ -7712,6 +7712,32 @@ async function generateSingleDocument(
           let docXml = decoder.decode(docBytes);
           const visibleText = docXml.replace(/<[^>]+>/g, " ");
 
+          // ── TEMPLATE CLASSIFICATION (LENDER_SPECIFIC vs COMMON_TEMPLATE) ──
+          // Append per-lender signature blocks ONLY when the template is
+          // lender-specific. A template is lender-specific when it contains:
+          //   (a) explicit per-lender labels in the rendered output
+          //       ("Lender N:", "ADDITIONAL LENDER N:", "Co-Lender",
+          //       "Lender Name", "Lender Signature"), OR
+          //   (b) a generic lender-execution surface: a "Lender" token paired
+          //       with an execution/signature marker ("Signature", "Initials",
+          //       "Executed", "Guarantor", "Date:", "Sign here").
+          // Common templates (disclosures, instructions, summaries, static
+          // compliance forms) do NOT match either pattern and must not be
+          // duplicated per lender.
+          const lenderLabelRe = /(?:ADDITIONAL\s+LENDER|Co[-\s]?Lender|Lender\s+\d+\s*:|Lender\s+Name|Lender\s+Signature|Lender\s+Initials)/i;
+          const lenderTokenRe = /\bLender(?:s|'s)?\b/i;
+          const executionMarkerRe = /\b(Signature|Initials?|Executed|Execution|Guarantor|Sign\s+here|Date\s*:)\b/i;
+          const isLenderSpecificTemplate =
+            lenderLabelRe.test(visibleText)
+            || (lenderTokenRe.test(visibleText) && executionMarkerRe.test(visibleText));
+          if (!isLenderSpecificTemplate) {
+            console.log(
+              `[lender-sig] template=${tName} classification=COMMON_TEMPLATE skipping per-lender append (single copy preserved)`,
+            );
+            return;
+          }
+          console.log(`[lender-sig] template=${tName} classification=LENDER_SPECIFIC`);
+
           // Count signature blocks already in the rendered document for
           // lenders 2..N. Accept either the new "Lender N:" format, the
           // legacy "ADDITIONAL LENDER N:" format, or any explicit numbered
@@ -7726,6 +7752,7 @@ async function generateSingleDocument(
           console.log(
             `[lender-sig] template=${tName} lenders.alreadyRendered=${renderedIndexes.size} indexes=[${[...renderedIndexes].sort((a,b)=>a-b).join(",")}]`,
           );
+
 
           // STANDARDIZED FORMAT — do NOT sample the document's fonts/indents:
           // sampling is what caused the visual mismatch in the first place
