@@ -1129,7 +1129,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   return (
                     <div className="relative flex-1">
                       <Input
-                        value={formData.lenderRate || ''}
+                        value={lenderRateFocused ? (formData.lenderRate || '') : display2dp(formData.lenderRate)}
+                        onFocus={() => setLenderRateFocused(true)}
                         onChange={(e) => {
                           if (hasLenderRate) return;
                           // Allow only digits and a single decimal. Truncate (do NOT round) to 2 decimals.
@@ -1143,6 +1144,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                           setFormData(prev => ({ ...prev, lenderRate: v, rateLenderValue: v }));
                         }}
                         onBlur={(e) => {
+                          setLenderRateFocused(false);
                           if (hasLenderRate) return;
                           // Pad to exactly 2 decimal places without rounding.
                           const raw = (e.target.value || '').replace(/[^0-9.]/g, '');
