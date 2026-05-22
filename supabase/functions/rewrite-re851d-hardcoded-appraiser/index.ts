@@ -304,31 +304,43 @@ serve(async (req) => {
     const encoder = new TextEncoder();
     const originalXml = decoder.decode(docXmlBytes);
 
-    // 3) Compute rewrites
-    const { rewrites, nameLabelsSeen, addrLabelsSeen } = computeRewrites(
+    // 3) Compute/apply rewrites. The cell rewrite handles older table-cell
+    // layouts; the paragraph rewrite handles the active RE851D V12.1 layout
+    // where the literal value is in a run after the label in the same flow.
+    const cellResult = computeRewrites(
       originalXml,
     );
+    const { rewrites } = cellResult;
     const rewrittenNameCells = rewrites.filter((r) => r.kind === "name").length;
     const rewrittenAddressCells =
       rewrites.filter((r) => r.kind === "addr").length;
+    const afterCellXml = applyRewrites(originalXml, rewrites);
+    const paragraphResult = applyParagraphAppraiserRewrites(afterCellXml);
+    const newXml = paragraphResult.xml;
+    const rewrittenNameParagraphs = paragraphResult.nameCount;
+    const rewrittenAddressParagraphs = paragraphResult.addrCount;
+    const nameLabelsSeen = Math.max(cellResult.nameLabelsSeen, paragraphResult.nameLabelsSeen);
+    const addrLabelsSeen = Math.max(cellResult.addrLabelsSeen, paragraphResult.addrLabelsSeen);
+    const totalRewrites = rewrites.length + rewrittenNameParagraphs + rewrittenAddressParagraphs;
 
-    if (rewrites.length === 0) {
+    if (totalRewrites === 0) {
       return new Response(
         JSON.stringify({
           ok: true,
           templatePath,
           rewrittenNameCells: 0,
           rewrittenAddressCells: 0,
+          rewrittenNameParagraphs: 0,
+          rewrittenAddressParagraphs: 0,
           nameLabelsSeen,
           addrLabelsSeen,
           message:
-            "No hardcoded appraiser cells matched — template already clean or label/value structure changed.",
+            "No hardcoded appraiser values matched — template already clean or label/value structure changed.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const newXml = applyRewrites(originalXml, rewrites);
     decompressed["word/document.xml"] = encoder.encode(newXml);
 
     // 4) Repack
@@ -358,8 +370,11 @@ serve(async (req) => {
         templatePath,
         rewrittenNameCells,
         rewrittenAddressCells,
+        rewrittenNameParagraphs,
+        rewrittenAddressParagraphs,
         nameLabelsSeen,
         addrLabelsSeen,
+        totalRewrites,
         originalSize: inputBytes.length,
         newSize: repacked.length,
       }),
