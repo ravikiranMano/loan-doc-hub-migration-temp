@@ -155,6 +155,55 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string | null>>({});
 
+  // Derive Current Rate from Rate Structure inputs.
+  // FRM  -> Note Rate
+  // ARM  -> Index + Margin, then clamp to [Floor, Maximum Interest Rate]
+  // GTM  -> Step Rate Product? Scheduled Period Rate : Note Rate
+  useEffect(() => {
+    const structure = values[FIELD_KEYS.rateStructure] || '';
+    const toNum = (v?: string) => {
+      const n = parseFloat((v || '').toString());
+      return isNaN(n) ? null : n;
+    };
+    const noteRate = toNum(values['loan_terms.note_rate']);
+    let derived: number | null = null;
+
+    if (structure === 'frm_fixed_rate') {
+      derived = noteRate;
+    } else if (structure === 'arm_adjustable_rate') {
+      const idx = toNum(values[FIELD_KEYS.armIndexRate]);
+      const margin = toNum(values[FIELD_KEYS.armMargin]);
+      if (idx !== null && margin !== null) {
+        derived = idx + margin;
+        const floor = toNum(values[FIELD_KEYS.armRateFloor]);
+        const cap = toNum(values[FIELD_KEYS.adjMaxInterestRate]);
+        if (floor !== null && derived < floor) derived = floor;
+        if (cap !== null && derived > cap) derived = cap;
+      }
+    } else if (structure === 'gtm_graduated_terms') {
+      const isStep = values[FIELD_KEYS.gtmStepRateProduct] === 'true';
+      derived = isStep ? toNum(values[FIELD_KEYS.gtmScheduledPeriodRate]) : noteRate;
+    }
+
+    if (derived === null || isNaN(derived)) return;
+    const stored = roundPctForStorage(String(derived));
+    if (stored === '') return;
+    const current = (values['loan_terms.current_rate'] || '').toString();
+    if (current !== stored) {
+      onValueChange('loan_terms.current_rate', stored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    values[FIELD_KEYS.rateStructure],
+    values['loan_terms.note_rate'],
+    values[FIELD_KEYS.armIndexRate],
+    values[FIELD_KEYS.armMargin],
+    values[FIELD_KEYS.armRateFloor],
+    values[FIELD_KEYS.adjMaxInterestRate],
+    values[FIELD_KEYS.gtmStepRateProduct],
+    values[FIELD_KEYS.gtmScheduledPeriodRate],
+  ]);
+
   // Brokers list for "Originating Vendor" dropdown — sourced from contacts master (contact_type='broker')
   const [brokerOptions, setBrokerOptions] = useState<{ value: string; label: string }[]>([]);
   useEffect(() => {
@@ -530,7 +579,34 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             'loan_terms.sold_rate',
             'Sold Rate'
           )}
-          {renderAdjPercentField('loan_terms.current_rate', 'Current Rate')}
+          
+          {(() => {
+            const rs = getValue(FIELD_KEYS.rateStructure);
+            const note = getValue('loan_terms.note_rate');
+            const cur = getValue('loan_terms.current_rate');
+            let hint = '';
+            if (rs === 'frm_fixed_rate') hint = 'Auto: Note Rate';
+            else if (rs === 'arm_adjustable_rate') hint = 'Auto: Index + Margin (within Floor/Cap)';
+            else if (rs === 'gtm_graduated_terms') hint = getBoolValue(FIELD_KEYS.gtmStepRateProduct) ? 'Auto: Scheduled Period Rate' : 'Auto: Note Rate';
+            return (
+              <DirtyFieldWrapper fieldKey="loan_terms.current_rate">
+                <div className="flex items-center gap-2">
+                  <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
+                  <div className="relative flex-1">
+                    <Input
+                      value={cur ? formatPercentDisplay(cur, 3) : ''}
+                      readOnly
+                      disabled
+                      className="h-8 text-xs pr-5 bg-muted/40"
+                      placeholder="0.00"
+                      title={hint}
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+                  </div>
+                </div>
+              </DirtyFieldWrapper>
+            );
+          })()}
           {renderInlineField('loan_terms.interest_split', 'Interest Split')}
           {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
           {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
@@ -586,6 +662,21 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
         <div className="mt-4 border-t border-border pt-4">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-3">Adjustable / Graduated Loan Details</h3>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
+            {getValue(FIELD_KEYS.rateStructure) === 'arm_adjustable_rate' && (
+              <>
+                {renderAdjPercentField(FIELD_KEYS.armIndexRate, 'Index Rate')}
+                {renderAdjPercentField(FIELD_KEYS.armMargin, 'Margin')}
+                {renderAdjPercentField(FIELD_KEYS.armRateFloor, 'Rate Floor')}
+              </>
+            )}
+            {getValue(FIELD_KEYS.rateStructure) === 'gtm_graduated_terms' && (
+              <>
+                {renderInlineCheckbox(FIELD_KEYS.gtmStepRateProduct, 'Step Rate Product')}
+                {getBoolValue(FIELD_KEYS.gtmStepRateProduct) && (
+                  renderAdjPercentField(FIELD_KEYS.gtmScheduledPeriodRate, 'Scheduled Period Rate')
+                )}
+              </>
+            )}
             {renderAdjIntegerField(FIELD_KEYS.adjInitialRateMonths, 'Initial Adjustable Rate in effect for', 'Months')}
             {renderAdjPercentField(FIELD_KEYS.adjFullyIndexedRate, 'Fully Indexed Interest Rate')}
             {renderAdjPercentField(FIELD_KEYS.adjMaxInterestRate, 'Maximum Interest Rate')}

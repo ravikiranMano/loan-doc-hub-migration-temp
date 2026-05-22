@@ -532,6 +532,13 @@ export const LOAN_TERMS_DETAILS_KEYS = {
   months: 'loan_terms.months',
   loanProvisions: 'loan_terms.loan_provisions',
   rateStructureOther: 'loan_terms.rate_structure_other',
+  // ARM inputs for Current Rate derivation
+  armIndexRate: 'loan_terms.arm_index_rate',
+  armMargin: 'loan_terms.arm_margin',
+  armRateFloor: 'loan_terms.arm_rate_floor',
+  // GTM inputs for Current Rate derivation
+  gtmStepRateProduct: 'loan_terms.gtm_step_rate_product',
+  gtmScheduledPeriodRate: 'loan_terms.gtm_scheduled_period_rate',
   // Redesigned Loan Details — Details column additions
   companyId: 'loan_terms.company_id',
   previousLoanNumber: 'loan_terms.previous_loan_number',
