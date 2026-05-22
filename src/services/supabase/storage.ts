@@ -2,7 +2,7 @@
 // Frontend never calls Supabase Storage directly — the API handles auth.
 // When S3 migration happens, only the backend storage.service.ts changes.
 
-import { uploadFile as apiUpload, BASE_URL } from '@/services/node-api/client';
+import { uploadFile as apiUpload, apiFetch } from '@/services/node-api/client';
 
 export const STORAGE_BUCKETS = {
   contactAttachments: 'contact-attachments',
@@ -21,33 +21,37 @@ export async function uploadFile(
   return apiUpload(bucket, path, file, options);
 }
 
+async function storageFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await apiFetch(path, init);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error((err as { message?: string }).message ?? `Storage request failed: ${res.status}`);
+  }
+  return res;
+}
+
 export async function downloadFile(bucket: StorageBucket, path: string): Promise<Blob> {
-  const res = await fetch(
-    `${BASE_URL}/storage/${bucket}/file/${encodeURIComponent(path)}`,
-    { credentials: 'include' },
+  const res = await storageFetch(
+    `/storage/${bucket}/file/${encodeURIComponent(path)}`,
+    { method: 'GET' },
   );
-  if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
   return res.blob();
 }
 
 export async function getSignedUrl(bucket: StorageBucket, path: string, expiresIn = 3600): Promise<string> {
-  const res = await fetch(
-    `${BASE_URL}/storage/${bucket}/signed?path=${encodeURIComponent(path)}&expires=${expiresIn}`,
-    { credentials: 'include' },
+  const res = await storageFetch(
+    `/storage/${bucket}/signed?path=${encodeURIComponent(path)}&expires=${expiresIn}`,
+    { method: 'GET' },
   );
-  if (!res.ok) throw new Error(`Signed URL failed: ${res.statusText}`);
   const data = await res.json() as { url: string };
   return data.url;
 }
 
 export async function removeFiles(bucket: StorageBucket, paths: string[]) {
-  const res = await fetch(`${BASE_URL}/storage/${bucket}/remove`, {
+  await storageFetch(`/storage/${bucket}/remove`, {
     method: 'DELETE',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths }),
   });
-  if (!res.ok) throw new Error(`Remove failed: ${res.statusText}`);
 }
 
 export async function uploadGeneratedDoc(path: string, file: File | Blob, options?: { upsert?: boolean }) {

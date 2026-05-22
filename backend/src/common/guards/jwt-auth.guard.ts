@@ -4,9 +4,11 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators';
+import { resolveUserFromRequest } from '../helpers/access-token.verify';
 
 export interface JwtPayload {
   sub: string;
@@ -17,25 +19,30 @@ export interface JwtPayload {
   exp?: number;
 }
 
+/**
+ * Accepts Nest auth via httpOnly cookie (primary) or Authorization Bearer (legacy /
+ * non-browser clients). Supabase JWTs in Bearer are still accepted during migration.
+ */
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') implements CanActivate {
-  constructor(private readonly reflector: Reflector) {
-    super();
-  }
+export class JwtAuthGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly config: ConfigService,
+  ) {}
 
-  canActivate(context: ExecutionContext) {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
     if (isPublic) return true;
-    return super.canActivate(context);
-  }
 
-  handleRequest<T = JwtPayload>(err: Error | null, user: T): T {
-    if (err || !user) {
-      throw err ?? new UnauthorizedException('Invalid or expired token');
+    const request = context.switchToHttp().getRequest<Request>();
+    try {
+      request['user'] = await resolveUserFromRequest(request, this.config);
+      return true;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired token');
     }
-    return user;
   }
 }

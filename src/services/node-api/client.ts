@@ -51,25 +51,47 @@ async function attemptRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
+/** Low-level fetch with cookie auth and automatic token refresh on 401. */
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+  isRetry = false,
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (init.body !== undefined && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+    headers,
+  });
+
+  if (res.status === 401 && !isRetry) {
+    const refreshed = await attemptRefresh();
+    if (refreshed) return apiFetch(path, init, true);
+    window.location.replace('/auth');
+    throw new SessionExpiredError();
+  }
+
+  return res;
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   isRetry = false,
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
-  if (res.status === 401 && !isRetry) {
-    const refreshed = await attemptRefresh();
-    if (refreshed) return request<T>(method, path, body, true);
-    window.location.replace('/auth');
-    throw new SessionExpiredError();
-  }
+  const res = await apiFetch(
+    path,
+    {
+      method,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    isRetry,
+  );
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -99,18 +121,11 @@ export async function uploadFile(
   const form = new FormData();
   form.append('file', file);
 
-  const url = `${BASE_URL}/storage/${bucket}/upload?path=${encodeURIComponent(path)}${
+  const uploadPath = `/storage/${bucket}/upload?path=${encodeURIComponent(path)}${
     options?.upsert ? '&upsert=true' : ''
   }`;
 
-  const res = await fetch(url, { method: 'POST', credentials: 'include', body: form });
-
-  if (res.status === 401) {
-    const refreshed = await attemptRefresh();
-    if (refreshed) return uploadFile(bucket, path, file, options);
-    window.location.replace('/auth');
-    throw new SessionExpiredError();
-  }
+  const res = await apiFetch(uploadPath, { method: 'POST', body: form });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));

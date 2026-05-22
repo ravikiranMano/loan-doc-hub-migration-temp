@@ -138,7 +138,12 @@ export class AuthService {
 
   private setAuthCookies(res: Response, tokens: IssuedTokens) {
     const isProd = this.config.get('app.nodeEnv') === 'production';
-    const base = { httpOnly: true, secure: isProd, sameSite: 'strict' as const };
+    const base = {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: (isProd ? 'strict' : 'lax') as 'strict' | 'lax',
+      path: '/',
+    };
     const refreshDays = this.config.get<number>('jwt.refreshExpiresInDays', 7);
 
     res.cookie(COOKIE_ACCESS_TOKEN, tokens.accessToken, {
@@ -153,7 +158,7 @@ export class AuthService {
   }
 
   private clearAuthCookies(res: Response) {
-    res.clearCookie(COOKIE_ACCESS_TOKEN);
+    res.clearCookie(COOKIE_ACCESS_TOKEN, { path: '/' });
     res.clearCookie(COOKIE_REFRESH_TOKEN, { path: COOKIE_REFRESH_PATH });
   }
 

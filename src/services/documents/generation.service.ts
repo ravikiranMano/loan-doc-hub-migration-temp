@@ -1,9 +1,6 @@
 import { supabase } from '@/services/supabase/client';
 import { downloadFile, STORAGE_BUCKETS } from '@/services/supabase/storage';
-import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
-
-const nodeApiBase = (): string =>
-  (import.meta.env.VITE_NODE_API_URL as string | undefined) || 'http://localhost:3000/api';
+import { apiClient, apiFetch, isNodeApiEnabled } from '@/services/node-api/client';
 
 export interface GenerateDocumentBody {
   outputType: 'docx_only' | 'docx_and_pdf';
@@ -191,10 +188,8 @@ export async function getFieldDataV2(dealId: string, templateId: string): Promis
  * Returns the template name so the caller can show feedback.
  */
 export async function generateDocumentV2(dealId: string, templateId: string): Promise<string> {
-  const res = await fetch(`${nodeApiBase()}/deals/${dealId}/documents/generate-v2`, {
+  const res = await apiFetch(`/deals/${dealId}/documents/generate-v2`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify({ templateId }),
   });
 
