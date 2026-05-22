@@ -28,8 +28,37 @@ function EnhancedCalendar({
   onToday,
   month: controlledMonth,
   onMonthChange,
+  onSelect,
   ...props
 }: EnhancedCalendarProps) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const closeParentPopover = React.useCallback(() => {
+    // Dispatch Escape so the nearest Radix DismissableLayer (the Popover) closes.
+    // Radix layer stacking ensures only the topmost open layer (the popover) reacts,
+    // so wrapping Dialogs/Modals are not affected.
+    setTimeout(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    }, 0);
+  }, []);
+
+  const handleSelect = React.useCallback((...args: any[]) => {
+    (onSelect as any)?.(...args);
+    const picked = args[0];
+    if (picked) closeParentPopover();
+  }, [onSelect, closeParentPopover]);
+
+  const handleClear = React.useCallback(() => {
+    onClear?.();
+    closeParentPopover();
+  }, [onClear, closeParentPopover]);
+
+  const handleToday = React.useCallback(() => {
+    onToday?.();
+    closeParentPopover();
+  }, [onToday, closeParentPopover]);
+
+
   const [internalMonth, setInternalMonth] = React.useState<Date>(
     controlledMonth || (props.selected instanceof Date ? props.selected : new Date())
   );
