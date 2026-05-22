@@ -123,6 +123,14 @@ export interface FundingFormData {
   lenderRateOverride?: boolean;
   /** Editable override value entered by user when Override checkbox is on. */
   lenderRateOverrideValue?: string;
+  /** Audit (Rule 4): snapshot of the calculated rate captured the moment override was enabled. */
+  lenderRateOverrideOriginal?: string;
+  /** Audit (Rule 4): optional reason text. */
+  lenderRateOverrideReason?: string;
+  /** Audit (Rule 4): user id (auth.uid()) that toggled override on. */
+  lenderRateOverrideBy?: string;
+  /** Audit (Rule 4): ISO timestamp when override was toggled on. */
+  lenderRateOverrideAt?: string;
   roundingAdjustment: boolean;
   disbursements: DisbursementRow[];
   principalBalance?: string;
