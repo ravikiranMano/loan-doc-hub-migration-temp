@@ -75,7 +75,7 @@ const getEmptyProperty = (): PropertyData => ({
   propertyOwner: '',
 });
 
-export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange, property, onSave, isEdit = false, borrowerAddress, borrowerOptions = [], borrowerParticipants = [] }) => {
+export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange, property, onSave, isEdit = false, borrowerAddress, borrowerOptions = [], borrowerParticipants = [], loanAmount = 0, currentPrincipal = 0, existingLiensTotal = 0, liensCurrentBalanceTotal = 0 }) => {
   const [formData, setFormData] = useState<PropertyData>(getEmptyProperty());
   const [showConfirm, setShowConfirm] = useState(false);
   const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
