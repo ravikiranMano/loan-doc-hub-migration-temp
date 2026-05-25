@@ -1014,8 +1014,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             {/* Section 6: Total Balance Due & Estimated Balloon Payment */}
             <div className="pt-2 space-y-2">
               <div>
-              {renderCurrencyField(
-                FIELD_KEYS.totalBalanceDue,
+              {renderReadOnlyCurrencyField(
+                calculatedTotalBalanceDue,
                 "Total Balance Due",
                 cn(LABEL_CLASS, "text-primary font-medium"),
               )}
@@ -1024,8 +1024,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 </p>
               </div>
               <div>
-                {renderCurrencyField(
-                  FIELD_KEYS.estimatedBalloonPayment,
+                {renderReadOnlyCurrencyField(
+                  calculatedEstimatedBalloon,
                   "Estimated Balloon Payment",
                   cn(LABEL_CLASS, "text-primary font-medium"),
                 )}

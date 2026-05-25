@@ -117,14 +117,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   //   Current LTV       = Balances → Principal / Estimate of Value × 100  (recalcs whenever
   //                       Principal or Estimate of Value changes)
   //   Principal Paid    = Loan Amount − Balances → Principal      (derived; not user-editable)
-  const loanAmountRaw = values['loan_terms.loan_amount'] || '';
+  const loanAmountRaw = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || values['loan_terms.original_amount'] || values['ln_p_originalAmount'] || values['loan.original_amount'] || '';
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
   const currentPrincipalRaw = values['loan_terms.principal'] || '';
+  const purchasePriceRaw = values[FIELD_KEYS.purchasePrice] || '';
   const liensBalanceForEquity = liensCurrentBalanceTotal;
 
   const loanAmountNum = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
   const estValueNum = parseFloat(estValueRaw.replace(/[, $]/g, ''));
   const currentPrincipalNum = parseFloat(currentPrincipalRaw.replace(/[, $]/g, ''));
+  const purchasePriceNum = parseFloat(purchasePriceRaw.replace(/[, $]/g, ''));
 
   // Inline validation flags (skip the offending calc, surface near the field).
   const estValueInvalid = estValueRaw.trim() !== '' && (!Number.isFinite(estValueNum) || estValueNum <= 0);
@@ -187,7 +189,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     ) {
       writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(loanAmountNum - currentPrincipalNum));
     }
-  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
+
+    // Down Payment = Purchase Price − Loan Amount (auto-calculated, persisted)
+    if (Number.isFinite(purchasePriceNum) && purchasePriceNum >= 0 && Number.isFinite(loanAmountNum) && loanAmountNum >= 0) {
+      const dp = Math.max(0, purchasePriceNum - loanAmountNum);
+      writeIfChanged(FIELD_KEYS.downPayment, roundDollarForStorage(dp));
+    }
+  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, purchasePriceRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
 
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
@@ -503,7 +511,15 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           </div>
           {renderDateField(FIELD_KEYS.purchaseDate, 'Purchase Date')}
           {renderCurrencyField(FIELD_KEYS.purchasePrice, 'Purchase Price')}
-          {renderCurrencyField(FIELD_KEYS.downPayment, 'Down Payment')}
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.downPayment}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[110px] shrink-0 text-xs text-foreground">Down Payment</Label>
+              <div className="flex-1">
+                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={() => {}} disabled />
+              </div>
+            </div>
+          </DirtyFieldWrapper>
+
 
           {renderInlineSelect(FIELD_KEYS.propertyType, 'Property Type', PROPERTY_TYPE_OPTIONS, 'Select type')}
           {renderInlineSelect(FIELD_KEYS.occupancy, 'Occupancy', OCCUPANCY_OPTIONS, 'Select')}

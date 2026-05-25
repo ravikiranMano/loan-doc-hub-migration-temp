@@ -33,7 +33,12 @@ interface PropertyModalProps {
   borrowerAddress?: { street: string; city: string; state: string; zipCode: string };
   borrowerOptions?: string[];
   borrowerParticipants?: Array<{ name: string; street: string; city: string; state: string; zipCode: string }>;
+  loanAmount?: number;
+  currentPrincipal?: number;
+  existingLiensTotal?: number;
+  liensCurrentBalanceTotal?: number;
 }
+
 
 const PROPERTY_TYPE_OPTIONS = [
   'SFR 1-4', 'Multi-family', 'Condo / Townhouse', 'Mobile Home', 'Commercial',
@@ -70,7 +75,7 @@ const getEmptyProperty = (): PropertyData => ({
   propertyOwner: '',
 });
 
-export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange, property, onSave, isEdit = false, borrowerAddress, borrowerOptions = [], borrowerParticipants = [] }) => {
+export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange, property, onSave, isEdit = false, borrowerAddress, borrowerOptions = [], borrowerParticipants = [], loanAmount = 0, currentPrincipal = 0, existingLiensTotal = 0, liensCurrentBalanceTotal = 0 }) => {
   const [formData, setFormData] = useState<PropertyData>(getEmptyProperty());
   const [showConfirm, setShowConfirm] = useState(false);
   const [ownerPickerOpen, setOwnerPickerOpen] = useState(false);
@@ -109,6 +114,45 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
       lastCopiedAddressRef.current = null;
     }
   }, [open, property]);
+
+  // Auto-calculate OLTV, Current LTV, CLTV, and Protective Equity from
+  // Estimate of Value + loan/lien context. Mirrors PropertyDetailsForm spec:
+  //   Protective Equity = Estimate of Value − Total Current Lien Balance
+  //   Origination LTV   = Loan Amount / Estimate of Value × 100
+  //   Current LTV       = Current Principal / Estimate of Value × 100
+  //   CLTV              = Sum of all liens / Estimate of Value × 100
+  useEffect(() => {
+    if (!open) return;
+    const evRaw = String(formData.appraisedValue || '').replace(/[, $]/g, '');
+    const ev = parseFloat(evRaw);
+    if (!Number.isFinite(ev) || ev <= 0) return;
+
+    const fmtPct = (num: number, denom: number): string => {
+      if (!Number.isFinite(num) || !Number.isFinite(denom) || denom <= 0) return '';
+      return ((num / denom) * 100).toFixed(2);
+    };
+    const fmtDollar = (n: number): string => {
+      if (!Number.isFinite(n)) return '';
+      return formatCurrencyDisplay(n.toFixed(2));
+    };
+
+    const nextProtective = fmtDollar(ev - (liensCurrentBalanceTotal || 0));
+    const nextOLtv = fmtPct(loanAmount || 0, ev);
+    const nextCurLtv = fmtPct(currentPrincipal || 0, ev);
+    const nextCltv = fmtPct(existingLiensTotal || 0, ev);
+
+    setFormData(prev => {
+      const updates: Partial<PropertyData> = {};
+      if (String(prev.protectiveEquity || '') !== nextProtective) updates.protectiveEquity = nextProtective;
+      if (String(prev.originationLtv || '') !== nextOLtv) updates.originationLtv = nextOLtv;
+      if (String(prev.ltv || '') !== nextCurLtv) updates.ltv = nextCurLtv;
+      if (String(prev.cltv || '') !== nextCltv) updates.cltv = nextCltv;
+      return Object.keys(updates).length ? { ...prev, ...updates } : prev;
+    });
+  }, [open, formData.appraisedValue, loanAmount, currentPrincipal, existingLiensTotal, liensCurrentBalanceTotal]);
+
+  
+
 
   const handleFieldChange = (field: keyof PropertyData, value: string | boolean) => {
     const resolved = value === '__none__' ? '' : value;
@@ -249,7 +293,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     );
   };
 
-  const renderCurrencyField = (field: keyof PropertyData, label: string) => (
+  const renderCurrencyField = (field: keyof PropertyData, label: string, readOnly = false) => (
     <div className="flex items-center gap-2">
       <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
       <div className="relative flex-1">
@@ -264,10 +308,13 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
           className="h-7 text-xs pl-6"
           inputMode="decimal"
           placeholder="0.00"
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
         />
       </div>
     </div>
   );
+
 
   const renderCheckboxField = (field: keyof PropertyData, label: string) => (
     <div className="flex items-center gap-2">
@@ -276,15 +323,23 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
     </div>
   );
 
-  const renderPercentageField = (field: keyof PropertyData, label: string) => (
+  const renderPercentageField = (field: keyof PropertyData, label: string, readOnly = false) => (
     <div className="flex items-center gap-2">
       <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
       <div className="relative flex-1">
-        <Input value={String(formData[field] || '')} onChange={(e) => handlePercentageChange(field, e.target.value)} className="h-7 text-xs pr-6" inputMode="decimal" />
+        <Input
+          value={String(formData[field] || '')}
+          onChange={(e) => handlePercentageChange(field, e.target.value)}
+          className="h-7 text-xs pr-6"
+          inputMode="decimal"
+          readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
+        />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
       </div>
     </div>
   );
+
 
   return (
     <>
@@ -425,10 +480,11 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
 
                 
                 {renderCurrencyField('pledgedEquity', 'Pledged Equity')}
-                {renderCurrencyField('protectiveEquity', 'Protective Equity')}
-                {renderPercentageField('originationLtv' as keyof PropertyData, 'Original LTV')}
-                {renderPercentageField('ltv', 'Current LTV')}
-                {renderPercentageField('cltv', 'CLTV (If a Junior Lien)')}
+                {renderCurrencyField('protectiveEquity', 'Protective Equity', true)}
+                {renderPercentageField('originationLtv' as keyof PropertyData, 'Original LTV', true)}
+                {renderPercentageField('ltv', 'Current LTV', true)}
+                {renderPercentageField('cltv', 'CLTV (If a Junior Lien)', true)}
+
               </div>
             </div>
           </div>

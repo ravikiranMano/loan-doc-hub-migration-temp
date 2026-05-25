@@ -66,6 +66,8 @@ const FK = {
   oc_umbrella_months: 'origination_ins.oc_umbrella_months',
   oc_umbrella_per: 'origination_ins.oc_umbrella_per',
   oc_loss_of_rents: 'origination_ins.oc_loss_of_rents',
+  oc_loss_of_rents_amount: 'origination_ins.coverage_loss_rents_months',
+  oc_loss_of_rents_months: 'origination_ins.coverage_loss_rents_per_month',
   oc_vacancy: 'origination_ins.oc_vacancy',
   oc_other: 'origination_ins.oc_other',
   oc_other_amount: 'origination_ins.oc_other_amount',
@@ -253,9 +255,17 @@ export const OriginationInsuranceConditionsForm: React.FC<OriginationInsuranceCo
             </DirtyFieldWrapper>
             {/* Loss of Rents */}
             <DirtyFieldWrapper fieldKey={FK.oc_loss_of_rents}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 flex-wrap">
                 <Checkbox checked={bv(FK.oc_loss_of_rents)} onCheckedChange={(c) => sbv(FK.oc_loss_of_rents, !!c)} disabled={disabled} />
                 <Label className="text-xs shrink-0">Loss of Rents</Label>
+                {renderCurrencyInline(FK.oc_loss_of_rents_amount, 'w-[70px]')}
+                <Label className="text-xs shrink-0">per month for</Label>
+                <DirtyFieldWrapper fieldKey={FK.oc_loss_of_rents_months}>
+                  <Input value={v(FK.oc_loss_of_rents_months)} onChange={(e) => sv(FK.oc_loss_of_rents_months, e.target.value)}
+                    onKeyDown={numericKeyDown} disabled={disabled || !bv(FK.oc_loss_of_rents)} placeholder="0" inputMode="numeric"
+                    className="h-6 text-xs w-[40px] text-right" />
+                </DirtyFieldWrapper>
+                <Label className="text-xs shrink-0">Months</Label>
               </div>
             </DirtyFieldWrapper>
             {/* Vacancy Endorsement Required */}
