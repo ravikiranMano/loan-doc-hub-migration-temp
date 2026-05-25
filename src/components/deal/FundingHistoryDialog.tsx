@@ -208,7 +208,7 @@ export const FundingHistoryDialog: React.FC<FundingHistoryDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[80vh]">
+      <DialogContent className="max-w-5xl max-h-[80vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="text-primary">💾</span>
@@ -240,7 +240,7 @@ export const FundingHistoryDialog: React.FC<FundingHistoryDialogProps> = ({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* Search */}
           <div className="relative max-w-sm">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
