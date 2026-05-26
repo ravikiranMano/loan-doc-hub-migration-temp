@@ -8154,7 +8154,7 @@ async function generateSingleDocument(
                 );
               }
             }
-            return labelOut + nameOut + tpl.sigXmls.join("");
+            return stripJustifyBoth(labelOut + nameOut + tpl.sigXmls.join(""));
           };
 
           for (let a = 1; a <= lenderCount - 1; a++) {
