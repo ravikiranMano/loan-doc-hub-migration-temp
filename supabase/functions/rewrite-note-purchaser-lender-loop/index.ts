@@ -97,9 +97,10 @@ function buildPrimaryParagraph(
 function rewriteDocumentXml(
   xml: string,
 ): { xml: string; replaced: number; note: string } {
-  if (xml.includes(MARKER_V3)) {
-    return { xml, replaced: 0, note: "already at v3" };
-  }
+  // Note: we no longer early-exit on MARKER_V3 — re-running may be needed to
+  // refresh formatting (e.g. the paragraph 32 written by the first v3 pass
+  // had empty pPr/rPr because it was built from a minimal v1 source).
+
 
   // Collect all <w:p> spans with their visible text.
   const pRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
