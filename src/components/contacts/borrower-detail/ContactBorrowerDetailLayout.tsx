@@ -14,6 +14,7 @@ import TaxReportingCard, { type TaxPartyType } from '@/components/contacts/share
 import BorrowerTrustLedger from './BorrowerTrustLedger';
 import BorrowerDashboard from './BorrowerDashboard';
 import BorrowerPortfolio from './BorrowerPortfolio';
+import GuarantorPortfolio from './GuarantorPortfolio';
 import BorrowerHistory from './BorrowerHistory';
 import BorrowerCharges from './BorrowerCharges';
 import BorrowerConversationLog from './BorrowerConversationLog';
