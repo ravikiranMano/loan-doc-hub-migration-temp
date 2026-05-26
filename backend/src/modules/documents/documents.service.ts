@@ -1,13 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  assertServiceRoleJwt,
-  isUsableSupabaseJwtSecret,
-  mintSupabaseAccessToken,
-} from '../../common/helpers/supabase-jwt';
 import { DocumentsRepository } from './documents.repository';
 import { DocumentDataService } from './document-data.service';
 import { DocxtemplaterService } from './docxtemplater.service';
+import { StorageService } from '../storage/storage.service';
+import { GenerationService } from '../generation/generation.service';
 import { toTemplateFieldMapCompat } from './template-field-map.mapper';
 import {
   CreateTemplateDto,
@@ -31,6 +28,8 @@ export class DocumentsService {
     private readonly config: ConfigService,
     private readonly documentDataService: DocumentDataService,
     private readonly docxtemplaterService: DocxtemplaterService,
+    private readonly storageService: StorageService,
+    private readonly generationService: GenerationService,
   ) {}
 
   // ─── Templates ───────────────────────────────────────────────────────────────
@@ -175,6 +174,24 @@ export class DocumentsService {
   }
 
   // ─── Documents & Generation ──────────────────────────────────────────────────
+  //
+  // Four independent document generation approaches:
+  //
+  //  generate        NestJS · docxtemplater engine · persists job + document records.
+  //                  The primary NestJS generation path using DocxtemplaterService.
+  //
+  //  generate-api    NestJS · raw XML merge-tag engine (GenerationService).
+  //                  Port of the Supabase edge function running entirely in NestJS.
+  //                  Uses fflate ZIP manipulation + regex-based merge-tag replacement.
+  //                  Persists job + document records.
+  //
+  //  generate-edge   Supabase · proxies to the generate-document edge function.
+  //                  The original Deno implementation; use for comparison or fallback.
+  //
+  //  generate-v2     NestJS · docxtemplater engine · streams DOCX directly.
+  //                  Same engine as "generate" but returns the file as a download
+  //                  with no DB writes. Separate track experimenting with docxtemplater
+  //                  as a drop-in replacement for the raw XML approach.
 
   listGeneratedDocuments(dealId: string) {
     return this.repo.findGeneratedDocuments(dealId);
@@ -189,75 +206,128 @@ export class DocumentsService {
   }
 
   /**
-   * Proxies to Supabase edge `generate-document` (DOCX merge logic stays in Deno).
-   * Nest JWT auth → service-role call with X-User-Id for created_by / activity.
+   * Generate Document — NestJS · docxtemplater engine.
+   * Renders the template via DocxtemplaterService, uploads to storage,
+   * and persists generation_job + generated_document records.
    */
   async generateDocument(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
     if (!requestedBy) {
       throw new BadRequestException('Authentication required');
     }
 
-    const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
-    const publishableKey = this.config.getOrThrow<string>('supabase.publishableKey');
-    const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');
-    const supabaseJwtSecret = this.config.get<string>('supabase.jwtSecret');
-    const nestJwtSecret = this.config.get<string>('jwt.secret');
-    const useMintedUserJwt = isUsableSupabaseJwtSecret(supabaseJwtSecret, nestJwtSecret);
+    const outputType = dto.outputType ?? 'docx_only';
 
-    const edgeBody = {
-      dealId,
-      templateId: dto.templateId,
-      packetId: dto.packetId,
-      outputType: dto.outputType ?? 'docx_only',
-    };
+    const job = await this.repo.createGenerationJob({
+      deal_id: dealId,
+      requested_by: requestedBy,
+      request_type: 'single_doc',
+      template_id: dto.templateId ?? null,
+      packet_id: dto.packetId ?? null,
+      output_type: outputType,
+      status: 'running',
+      started_at: new Date(),
+    });
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      apikey: publishableKey,
-    };
+    try {
+      const { buffer, filename, templateName } = await this.docxtemplaterService.generate(
+        dealId,
+        dto.templateId!,
+      );
 
-    if (useMintedUserJwt) {
-      headers.Authorization = `Bearer ${mintSupabaseAccessToken(
-        requestedBy,
-        supabaseJwtSecret!,
-        supabaseUrl,
-      )}`;
-    } else {
-      if (supabaseJwtSecret && supabaseJwtSecret === nestJwtSecret) {
-        this.logger.warn(
-          'SUPABASE_JWT_SECRET matches JWT_SECRET — ignored. Use the Supabase Dashboard JWT secret, or deploy generate-document for service-role proxy.',
-        );
-      }
-      try {
-        assertServiceRoleJwt(serviceRoleKey);
-      } catch (err) {
-        throw new BadRequestException((err as Error).message);
-      }
-      headers.Authorization = `Bearer ${serviceRoleKey}`;
-      headers['X-User-Id'] = requestedBy;
+      const storagePath = `${dealId}/${filename}`;
+      await this.storageService.upload('generated-docs', storagePath, buffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', true);
+
+      const docxUrl = await this.storageService.getSignedUrl('generated-docs', storagePath, 3600);
+
+      const doc = await this.repo.createGeneratedDocument({
+        deal_id: dealId,
+        template_id: dto.templateId ?? null,
+        packet_id: dto.packetId ?? null,
+        output_docx_path: storagePath,
+        output_type: outputType,
+        generation_status: 'success',
+        template_name: templateName,
+        created_by: requestedBy,
+        generation_batch_id: job.id,
+      });
+
+      await this.repo.updateGenerationJob(job.id, {
+        status: 'success',
+        completed_at: new Date(),
+      });
+
+      await this.repo.createActivityLog({
+        deal_id: dealId,
+        actor_user_id: requestedBy,
+        action_type: 'document_generated',
+        action_details: { templateId: dto.templateId, templateName, documentId: doc.id },
+      });
+
+      return { success: true, templateId: dto.templateId, templateName, docxUrl };
+    } catch (err) {
+      await this.repo.updateGenerationJob(job.id, {
+        status: 'failed',
+        completed_at: new Date(),
+        error_message: (err as Error).message,
+      });
+      throw new BadRequestException((err as Error).message ?? 'Document generation failed');
     }
+  }
+
+  /**
+   * Generate Document (API) — NestJS · raw XML merge-tag engine.
+   * Delegates to GenerationService which runs the ported Supabase edge function
+   * pipeline (fflate ZIP + regex merge-tag replacement) entirely within NestJS.
+   * Persists generation_job + generated_document records.
+   */
+  generateDocumentApi(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
+    if (!requestedBy) throw new BadRequestException('Authentication required');
+    if (!dto.templateId) throw new BadRequestException('templateId is required');
+    return this.generationService.generate(dealId, dto.templateId, requestedBy, dto.outputType);
+  }
+
+  /**
+   * Generate Document (Edge) — Supabase edge function proxy.
+   * Forwards the request verbatim to the generate-document Deno edge function.
+   * Use for direct comparison against the NestJS ports or as a fallback.
+   */
+  async generateDocumentEdge(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
+    if (!requestedBy) throw new BadRequestException('Authentication required');
+
+    const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
+    const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');
 
     const res = await fetch(`${supabaseUrl}/functions/v1/generate-document`, {
       method: 'POST',
-      headers,
-      body: JSON.stringify(edgeBody),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'X-User-Id': requestedBy,
+      },
+      body: JSON.stringify({
+        dealId,
+        templateId: dto.templateId,
+        packetId: dto.packetId,
+        outputType: dto.outputType ?? 'docx_only',
+      }),
     });
 
-    const payload = (await res.json().catch(() => ({}))) as {
-      error?: string;
-      message?: string;
-    };
+    const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (!res.ok) {
       throw new BadRequestException(
-        payload.error ?? payload.message ?? `Document generation failed (${res.status})`,
+        (payload['error'] as string) ?? `Edge generation failed (${res.status})`,
       );
     }
 
     return payload;
   }
 
-  // ─── v2: docxtemplater engine ─────────────────────────────────────────────────
+  // ─── v2: docxtemplater engine (experimental track) ───────────────────────────
+  //
+  // Separate track attempting to achieve the same output as generate-api using
+  // docxtemplater as the template engine instead of raw XML manipulation.
+  // Templates must use clean {{field_key}} syntax — no Word MERGEFIELD markup.
 
   /**
    * Returns the fully-resolved JSON data object that would be passed to docxtemplater.
@@ -269,11 +339,50 @@ export class DocumentsService {
   }
 
   /**
-   * Generates a DOCX using docxtemplater + PizZip entirely within NestJS.
-   * Does NOT save to the database — returns a Buffer for direct download.
+   * Generate Document (v2) — NestJS · docxtemplater engine · download stream.
+   * Same engine as "generate" but returns the DOCX file directly with no DB writes.
    */
   generateDocumentV2(dealId: string, templateId: string) {
     return this.docxtemplaterService.generate(dealId, templateId);
+  }
+
+  // ─── Template validation (Phase 4 migration) ────────────────────────────────
+
+  async validateTemplate(templateId: string) {
+    const template = await this.repo.findTemplateById(templateId);
+    if (!template) throw new NotFoundException(`Template '${templateId}' not found`);
+    if (!template.file_path) throw new BadRequestException('No DOCX file uploaded for this template');
+
+    const inspect = await this.docxtemplaterService.inspectFromFilePath(
+      template.file_path,
+      template.name,
+    );
+
+    const allDict = await this.repo.findAllFieldDictionary();
+    const dictKeys = new Set(allDict.map((d) => d.field_key));
+
+    const mappedTags: string[] = [];
+    const unmappedTags: string[] = [];
+    for (const key of inspect.mergeFieldKeys) {
+      if (dictKeys.has(key)) mappedTags.push(key);
+      else unmappedTags.push(key);
+    }
+
+    const warnings: string[] = [];
+    if (unmappedTags.length > 0) {
+      warnings.push(`${unmappedTags.length} tag(s) not found in field dictionary: ${unmappedTags.slice(0, 5).join(', ')}${unmappedTags.length > 5 ? '…' : ''}`);
+    }
+
+    return {
+      valid: unmappedTags.length === 0,
+      totalTagsFound: inspect.mergeFieldKeys.length,
+      mappedTags,
+      unmappedTags,
+      warnings,
+      errors: [],
+      conditions: inspect.conditions,
+      summary: `Found ${inspect.mergeFieldKeys.length} tag(s): ${mappedTags.length} mapped, ${unmappedTags.length} unmapped`,
+    };
   }
 
   /**

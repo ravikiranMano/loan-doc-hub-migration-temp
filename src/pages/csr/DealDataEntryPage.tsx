@@ -33,6 +33,7 @@ import { EventJournalViewer } from "@/components/deal/EventJournalViewer";
 import { ParticipantsSectionContent } from "@/components/deal/ParticipantsSectionContent";
 import { logDealUpdated, logDealMarkedReady, logDealRevertedToDraft } from "@/hooks/useActivityLog";
 import { validateBalancesSoldRate, validatePenaltyDistributions } from "@/lib/loanAllocationValidation";
+import { getValueForResolvedField } from "@/lib/requiredFieldsResolver";
 import {
   ArrowLeft,
   Loader2,
@@ -200,16 +201,24 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
 
   const fetchDeal = async () => {
     try {
-      const data = await fetchDealById(id!, 'id, deal_number, state, product_type, mode, status, packet_id');
-      setDeal(data);
+      const raw = await fetchDealById(id!) as Record<string, unknown>;
+      setDeal({
+        id: String(raw.id),
+        deal_number: String(raw.deal_number ?? ''),
+        state: String(raw.state ?? ''),
+        product_type: String(raw.product_type ?? ''),
+        mode: (raw.mode as Deal['mode']) || 'doc_prep',
+        status: (raw.status as Deal['status']) || 'draft',
+        packet_id: (raw.packet_id as string | null) ?? null,
+      });
 
       // Register with workspace if available (only if not already open)
-      if (workspace && data && !workspace.openFiles.find(f => f.id === data.id)) {
+      if (workspace && raw && !workspace.openFiles.find(f => f.id === raw.id)) {
         workspace.openFile({
-          id: data.id,
-          dealNumber: data.deal_number,
-          state: data.state || '',
-          productType: data.product_type || '',
+          id: String(raw.id),
+          dealNumber: String(raw.deal_number ?? ''),
+          state: String(raw.state ?? ''),
+          productType: String(raw.product_type ?? ''),
           openedAt: Date.now(),
         });
       }
@@ -349,7 +358,9 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
     if (!isExternalUser) {
       // Internal users see everything
       const totalRequired = fields.filter((f) => f.is_required).length;
-      const filledRequired = fields.filter((f) => f.is_required && values[f.field_key]?.trim()).length;
+      const filledRequired = fields.filter(
+        (f) => f.is_required && getValueForResolvedField(values, f),
+      ).length;
       return {
         visibleSections: sections,
         visibleFieldsBySection: fieldsBySection,
@@ -376,7 +387,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
         visibleFields.forEach((f) => {
           if (f.is_required) {
             requiredCount++;
-            if (values[f.field_key]?.trim()) {
+            if (getValueForResolvedField(values, f)) {
               filledRequired++;
             } else {
               missing.push(f);
@@ -693,7 +704,16 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
 
   // Calculate missing/progress based on user type
   const totalMissing = isExternalUser ? externalMissingFields.length : getMissingRequiredFields().length;
+  const templateMissingCount = fields.filter(
+    (f) => f.is_required && !getValueForResolvedField(values, f),
+  ).length;
   const canMarkReady = isPacketComplete() && deal?.status === "draft";
+  const markReadyDisabledReason =
+    deal?.status !== "draft"
+      ? `File status is "${deal?.status ?? 'unknown'}" — only draft files can be marked ready`
+      : templateMissingCount > 0
+        ? `${templateMissingCount} required field${templateMissingCount === 1 ? '' : 's'} still missing`
+        : undefined;
   const showCompleteSectionButton = isExternalUser && currentParticipant && !hasCompleted && orchestrationCanEdit;
   const progressPercent =
     visibleRequiredCount > 0 ? Math.round((visibleFilledRequiredCount / visibleRequiredCount) * 100) : 100;
@@ -784,7 +804,12 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
 
             {/* Mark Ready button - CSR only */}
             {isInternalUser && (
-              <Button onClick={handleMarkReady} disabled={!canMarkReady || markingReady || saving} className="gap-2">
+              <Button
+                onClick={handleMarkReady}
+                disabled={!canMarkReady || markingReady || saving}
+                title={markReadyDisabledReason}
+                className="gap-2"
+              >
                 {markingReady ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Mark File Ready
               </Button>

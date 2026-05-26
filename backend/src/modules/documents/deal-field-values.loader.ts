@@ -1,4 +1,5 @@
 import { PrismaService } from '../../prisma/prisma.service';
+import { applyRe851dBridges } from './re851d-properties.builder';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -117,8 +118,105 @@ export class DealFieldValuesLoader {
 
     await this.applyLenderBridges(dealId, fieldValues);
     this.applyBasicBridges(fieldValues, deal);
+    this.applyRe885Bridges(fieldValues);
+    applyRe851dBridges(fieldValues);
 
     return fieldValues;
+  }
+
+  /**
+   * RE885 / origination_fees publishers mirrored from generate-document edge (subset for v2).
+   */
+  private applyRe885Bridges(fieldValues: Map<string, ResolvedDealField>): void {
+    const get = (k: string) => fieldValues.get(k)?.rawValue;
+    const setBool = (key: string, on: boolean) => {
+      fieldValues.set(key, { rawValue: on ? 'true' : 'false', dataType: 'boolean' });
+    };
+    const toBool = (v: unknown): boolean => {
+      if (v === true) return true;
+      if (v === false || v == null) return false;
+      const s = String(v).trim().toLowerCase();
+      return s === 'true' || s === 'yes' || s === 'y' || s === '1' || s === 'checked' || s === 'on';
+    };
+    const setIfEmpty = (key: string, raw: string, dataType = 'text') => {
+      if (!raw || fieldValues.has(key)) return;
+      const existing = get(key);
+      if (existing != null && String(existing).trim() !== '') return;
+      fieldValues.set(key, { rawValue: raw, dataType });
+    };
+
+    const aliasPairs: Array<{ out: string; sources: string[]; dataType?: string }> = [
+      { out: 'of_re_subtotalDeductions', sources: ['of_re_subtotalDeductions', 'origination_fees.re885_subtotal_deductions'] },
+      {
+        out: 'origination_fees.re885_cash_at_closing_amount',
+        sources: [
+          'origination_fees.re885_cash_at_closing_amount',
+          'of_re_cashAtClosingAmount',
+          're885_cash_at_closing_amount',
+        ],
+      },
+      { out: 'of_int_days', sources: ['of_int_days', 'origination_fees.901_interest_for_days_days'], dataType: 'number' },
+      { out: 'of_int_pd', sources: ['of_int_pd', 'origination_fees.901_interest_for_days_per_day'], dataType: 'currency' },
+      { out: 'of_haz_mon', sources: ['of_haz_mon', 'origination_fees.1001_hazard_insurance_months'], dataType: 'number' },
+      { out: 'of_haz_amt', sources: ['of_haz_amt', 'origination_fees.1001_hazard_insurance_per_month'], dataType: 'currency' },
+      { out: 'of_mi_mon', sources: ['of_mi_mon', 'origination_fees.1002_mortgage_insurance_months'], dataType: 'number' },
+      { out: 'of_mi_amt', sources: ['of_mi_amt', 'origination_fees.1002_mortgage_insurance_per_month'], dataType: 'currency' },
+      { out: 'of_tax_mon', sources: ['of_tax_mon', 'origination_fees.1004_co_property_taxes_months'], dataType: 'number' },
+      { out: 'of_tax_amt', sources: ['of_tax_amt', 'origination_fees.1004_co_property_taxes_per_month'], dataType: 'currency' },
+    ];
+
+    for (const { out, sources, dataType } of aliasPairs) {
+      if (get(out)) continue;
+      for (const s of sources) {
+        const v = get(s);
+        if (v) {
+          setIfEmpty(out, v, dataType ?? 'text');
+          break;
+        }
+      }
+    }
+
+    const payable =
+      get('of_fe_estimatedCashPayableToYou') ??
+      get('origination_fees.re885_cash_payable_to_you');
+    const mustPay =
+      get('of_fe_estimatedCashYouMustPay') ??
+      get('origination_fees.re885_cash_you_must_pay');
+    if (payable != null) setBool('of_fe_estimatedCashPayableToYou', toBool(payable));
+    if (mustPay != null) setBool('of_fe_estimatedCashYouMustPay', toBool(mustPay));
+
+    const unit = (
+      get('of_re_loanTermUnit') ??
+      get('origination_fees.re885_loan_term_unit') ??
+      ''
+    )
+      .trim()
+      .toLowerCase();
+    setBool('of_re_proposedLoanTerm.years', unit === 'years' || unit === 'year' || unit === 'y');
+    setBool('of_re_proposedLoanTerm.months', unit === 'months' || unit === 'month' || unit === 'm');
+
+    const fixedRaw =
+      get('origination_fees.re885_rate_type_fixed') ?? get('of_re_rateTypeFixed');
+    const adjRaw =
+      get('origination_fees.re885_rate_type_adjustable') ?? get('of_re_rateTypeAdjustable');
+    setBool('of_re_interestRate.fixed', toBool(fixedRaw));
+    setBool('of_re_interestRate.adjustable', toBool(adjRaw));
+
+    const ppRaw =
+      get('loan_terms.penalties.prepayment.enabled') ??
+      get('loan_terms.prepayment_penalty_enabled');
+    setBool('ln_pn_prepaymePenalt', toBool(ppRaw));
+
+    const igRaw = get('loan_terms.penalties.interest_guarantee.enabled');
+    setBool('loan_terms.penalties.interest_guarantee.enabled', toBool(igRaw));
+
+    const vFully =
+      get('of_re_vFullyIndexedRate') ??
+      get('origination_fees.re885_v_fully_indexed_rate');
+    if (vFully) {
+      setIfEmpty('of_re_vfullyIndexedRate', vFully);
+      setIfEmpty('of_re_vFullyIndexedRate', vFully);
+    }
   }
 
   /**

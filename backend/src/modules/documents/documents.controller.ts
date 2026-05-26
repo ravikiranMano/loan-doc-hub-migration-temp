@@ -104,6 +104,12 @@ export class DocumentsController {
     return this.service.deletePacketTemplateByRowId(rowId);
   }
 
+  // POST /api/templates/:id/validate (Phase 4 migration)
+  @Post('templates/:id/validate')
+  validateTemplate(@Param('id') id: string) {
+    return this.service.validateTemplate(id);
+  }
+
   @Get('templates/:id')
   getTemplate(@Param('id') id: string) {
     return this.service.getTemplate(id);
@@ -230,13 +236,9 @@ export class DocumentsController {
     return this.service.listGeneratedDocuments(dealId);
   }
 
-  @Post('deals/:dealId/documents/generate')
-  generateDocument(
-    @Param('dealId') dealId: string,
-    @Body() dto: GenerateDocumentDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.service.generateDocument(dealId, dto, user?.sub);
+  @Get('deals/:dealId/documents/jobs')
+  listGenerationJobs(@Param('dealId') dealId: string) {
+    return this.service.listGenerationJobs(dealId);
   }
 
   @Get('deals/:dealId/documents/preview-payload')
@@ -251,12 +253,58 @@ export class DocumentsController {
     return this.service.previewDocumentPayload(dealId, templateId.trim(), user?.sub);
   }
 
-  @Get('deals/:dealId/documents/jobs')
-  listGenerationJobs(@Param('dealId') dealId: string) {
-    return this.service.listGenerationJobs(dealId);
+  // ─── Document Generation ──────────────────────────────────────────────────────
+  //
+  // Four independent generation routes targeting the same output:
+  //
+  //  generate        NestJS · docxtemplater engine.
+  //                  Primary NestJS path. Persists job + document records.
+  //
+  //  generate-api    NestJS · raw XML merge-tag engine (port of edge function).
+  //                  Runs fflate ZIP manipulation + regex merge-tag replacement
+  //                  entirely within NestJS. Persists job + document records.
+  //
+  //  generate-edge   Supabase · proxies to the generate-document edge function.
+  //                  The original Deno implementation. Use for comparison or as
+  //                  a fallback while the NestJS ports are being validated.
+  //
+  //  generate-v2     NestJS · docxtemplater engine · streams DOCX directly.
+  //                  Separate experimental track — same engine as "generate" but
+  //                  returns the file as a download with no DB writes.
+  //                  v2 is attempting to achieve the same output as generate-api
+  //                  using docxtemplater instead of raw XML manipulation.
+
+  /** Generate Document — NestJS · docxtemplater engine · persists records. */
+  @Post('deals/:dealId/documents/generate')
+  generateDocument(
+    @Param('dealId') dealId: string,
+    @Body() dto: GenerateDocumentDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.generateDocument(dealId, dto, user?.sub);
   }
 
-  // ─── v2: docxtemplater engine (test / parallel path) ─────────────────────────
+  /** Generate Document (API) — NestJS · raw XML merge-tag engine · persists records. */
+  @Post('deals/:dealId/documents/generate-api')
+  generateDocumentApi(
+    @Param('dealId') dealId: string,
+    @Body() dto: GenerateDocumentDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.generateDocumentApi(dealId, dto, user?.sub);
+  }
+
+  /** Generate Document (Edge) — Supabase edge function proxy. */
+  @Post('deals/:dealId/documents/generate-edge')
+  generateDocumentEdge(
+    @Param('dealId') dealId: string,
+    @Body() dto: GenerateDocumentDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.generateDocumentEdge(dealId, dto, user?.sub);
+  }
+
+  // ─── v2: docxtemplater engine (experimental track) ───────────────────────────
 
   @Get('deals/:dealId/documents/field-data-v2')
   getFieldDataV2(
@@ -267,6 +315,7 @@ export class DocumentsController {
     return this.service.getFieldDataV2(dealId, templateId.trim());
   }
 
+  /** Generate Document (v2) — NestJS · docxtemplater engine · streams DOCX, no DB writes. */
   @Post('deals/:dealId/documents/generate-v2')
   @HttpCode(HttpStatus.OK)
   async generateDocumentV2(

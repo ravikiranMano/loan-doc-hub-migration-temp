@@ -71,6 +71,11 @@ export class DocxtemplaterService {
     return this.enrichFieldDataFromTemplateBuffer(fieldData, templateBuffer);
   }
 
+  async inspectFromFilePath(filePath: string, templateName: string): Promise<TemplateInspectResult> {
+    const buffer = await this.downloadTemplate(filePath);
+    return this.inspectTemplate(buffer, templateName);
+  }
+
   private async downloadTemplate(filePath: string): Promise<Buffer> {
     const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
     const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');

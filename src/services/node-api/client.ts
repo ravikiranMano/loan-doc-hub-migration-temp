@@ -98,8 +98,11 @@ async function request<T>(
     throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
   }
 
+  // 204 No Content, or 200/201 with an empty body (mirrors Supabase update calls that return no row).
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  if (!text.trim()) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 export const apiClient = {

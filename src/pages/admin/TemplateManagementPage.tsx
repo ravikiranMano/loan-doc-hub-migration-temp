@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { invokeValidateTemplate } from '@/services/supabase/functions';
+import { validateTemplate as invokeValidateTemplate } from '@/services/documents/template-validate.service';
 import {
   listTemplatesOrdered,
   insertTemplate,

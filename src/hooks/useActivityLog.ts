@@ -4,7 +4,7 @@
  * Provides functions to log deal-related activities for accountability.
  */
 
-import { getUser } from '@/services/supabase/auth';
+import { getMe } from '@/services/node-api/auth.service';
 import { insertActivityLog } from '@/services/system/activity-log.service';
 
 export type ActionType = 
@@ -47,8 +47,8 @@ export interface LogActivityParams {
  */
 export async function logActivity(params: LogActivityParams): Promise<boolean> {
   try {
-    const { data: { user } } = await getUser();
-    if (!user) {
+    const user = await getMe();
+    if (!user?.id) {
       console.warn('Cannot log activity: user not authenticated');
       return false;
     }

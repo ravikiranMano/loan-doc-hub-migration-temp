@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateDealNumber as generateDealNumberRpc } from '../../common/helpers/db-sequences';
 import { DealsRepository } from './deals.repository';
@@ -16,9 +23,12 @@ import {
 
 @Injectable()
 export class DealsService {
+  private readonly logger = new Logger(DealsService.name);
+
   constructor(
     private readonly repo: DealsRepository,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   // ─── Deals ───────────────────────────────────────────────────────────────────
@@ -249,5 +259,236 @@ export class DealsService {
 
   revokeMagicLink(id: string) {
     return this.repo.revokeMagicLink(id);
+  }
+
+  // ─── Participant invite ───────────────────────────────────────────────────────
+
+  async inviteParticipant(
+    participantId: string,
+    dto: {
+      email: string;
+      name?: string;
+      accessMethod: 'login' | 'magic_link';
+      magicLinkUrl?: string;
+      dealNumber: string;
+      role: string;
+    },
+  ) {
+    const resendApiKey = this.config.get<string>('resend.apiKey');
+    if (!resendApiKey) throw new InternalServerErrorException('Email service not configured');
+
+    const recipientName = dto.name || 'there';
+    const roleDisplay = dto.role.charAt(0).toUpperCase() + dto.role.slice(1);
+    const subject = `You're invited to participate in Deal ${dto.dealNumber}`;
+
+    let html: string;
+    if (dto.accessMethod === 'magic_link' && dto.magicLinkUrl) {
+      const link = dto.magicLinkUrl;
+      html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <h1 style="color:#1a1a1a;font-size:24px;margin-bottom:20px;">Hello ${recipientName}!</h1>
+          <p style="color:#4a4a4a;font-size:16px;line-height:1.6;">You have been invited to participate as a <strong>${roleDisplay}</strong> in deal <strong>${dto.dealNumber}</strong>.</p>
+          <p style="color:#4a4a4a;font-size:16px;line-height:1.6;">Click the button below to securely access the deal and complete your required information:</p>
+          <div style="text-align:center;margin:30px 0;">
+            <a href="${link}" style="display:inline-block;background-color:#2563eb;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">Access Deal</a>
+          </div>
+          <p style="color:#6b7280;font-size:14px;">This link is secure and unique to you. Please do not share it with others.</p>
+          <p style="color:#6b7280;font-size:14px;">If you have any questions, please contact your loan officer.</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;" />
+          <p style="color:#9ca3af;font-size:12px;">If the button doesn't work, copy and paste this link into your browser:<br><a href="${link}" style="color:#2563eb;word-break:break-all;">${link}</a></p>
+        </div>`;
+    } else {
+      const appUrl = this.config.get<string>('app.corsOrigin') || '';
+      const loginUrl = `${appUrl}/auth`;
+      html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+          <h1 style="color:#1a1a1a;font-size:24px;margin-bottom:20px;">Hello ${recipientName}!</h1>
+          <p style="color:#4a4a4a;font-size:16px;line-height:1.6;">You have been invited to participate as a <strong>${roleDisplay}</strong> in deal <strong>${dto.dealNumber}</strong>.</p>
+          <p style="color:#4a4a4a;font-size:16px;line-height:1.6;">To access the deal, please log in to your account:</p>
+          <div style="text-align:center;margin:30px 0;">
+            <a href="${loginUrl}" style="display:inline-block;background-color:#2563eb;color:white;padding:14px 28px;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">Log In</a>
+          </div>
+          <p style="color:#6b7280;font-size:14px;">If you don't have an account yet, please register using this email address (${dto.email}).</p>
+          <p style="color:#6b7280;font-size:14px;">If you have any questions, please contact your loan officer.</p>
+        </div>`;
+    }
+
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'Loan Portal <onboarding@resend.dev>', to: [dto.email], subject, html }),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({})) as { message?: string };
+      throw new InternalServerErrorException(
+        `Failed to send invite email: ${errData.message || `HTTP ${resp.status}`}`,
+      );
+    }
+
+    return { success: true, participantId };
+  }
+
+  // ─── Complete participant section ─────────────────────────────────────────────
+
+  async completeParticipantSection(participantId: string, dealId: string) {
+    const participant = await this.prisma.deal_participants.findFirst({
+      where: { id: participantId, deal_id: dealId },
+      include: { deals: { select: { deal_number: true, created_by: true } } },
+    });
+
+    if (!participant) throw new NotFoundException('Participant not found');
+    if (participant.status === 'completed') throw new BadRequestException('Section already completed');
+
+    await this.prisma.deal_participants.update({
+      where: { id: participantId },
+      data: { status: 'completed', completed_at: new Date() },
+    });
+
+    const actorId = participant.user_id || participant.deals.created_by;
+    this.prisma.activity_log.create({
+      data: {
+        deal_id: dealId,
+        actor_user_id: actorId,
+        action_type: 'ParticipantCompleted',
+        action_details: { role: participant.role, participantId: participant.id } as any,
+      },
+    }).catch((err: unknown) => this.logger.warn('activity_log insert failed', err));
+
+    const allParticipants = await this.prisma.deal_participants.findMany({
+      where: { deal_id: dealId },
+      orderBy: { sequence_order: 'asc' },
+    });
+
+    let nextParticipant: { id: string; role: string } | null = null;
+    if (participant.sequence_order !== null) {
+      const next = allParticipants.find(
+        (p) =>
+          p.sequence_order !== null &&
+          p.sequence_order > participant.sequence_order! &&
+          p.status !== 'completed',
+      );
+      if (next) nextParticipant = { id: next.id, role: next.role };
+    }
+
+    const resendApiKey = this.config.get<string>('resend.apiKey');
+    if (resendApiKey && participant.deals.created_by) {
+      const csrUser = await this.prisma.users.findUnique({
+        where: { id: participant.deals.created_by },
+        select: { email: true },
+      });
+
+      if (csrUser?.email) {
+        const roleDisplay = participant.role.charAt(0).toUpperCase() + participant.role.slice(1);
+        const dealNumber = participant.deals.deal_number;
+        const emailHtml = `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <h2 style="color:#1a1a1a;">Section Completed</h2>
+            <p>The <strong>${roleDisplay}</strong> has completed their section for deal <strong>${dealNumber}</strong>.</p>
+            ${nextParticipant
+              ? `<p style="color:#666;">Next in sequence: <strong>${nextParticipant.role}</strong> has been unlocked and can now enter their data.</p>`
+              : `<p style="color:#22c55e;">All participants in sequence have completed their sections!</p>`}
+            <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+            <p style="color:#888;font-size:12px;">This is an automated notification from your deal management system.</p>
+          </div>`;
+
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${resendApiKey}` },
+          body: JSON.stringify({
+            from: 'Deal System <noreply@resend.dev>',
+            to: [csrUser.email],
+            subject: `[${dealNumber}] ${roleDisplay} completed their section`,
+            html: emailHtml,
+          }),
+        }).catch(() => {});
+      }
+    }
+
+    return { success: true, nextParticipant };
+  }
+
+  // ─── Validate magic link ──────────────────────────────────────────────────────
+
+  async validateMagicLink(token: string) {
+    if (!token) throw new BadRequestException('Token is required');
+
+    type MagicLinkRpcRow = {
+      is_valid: boolean;
+      error_message: string | null;
+      participant_id: string | null;
+      deal_id: string | null;
+      role: string | null;
+      deal_number: string | null;
+    };
+
+    const rows = await this.prisma.$queryRaw<MagicLinkRpcRow[]>`
+      SELECT * FROM validate_magic_link(${token})
+    `;
+
+    const result = rows?.[0];
+    if (!result?.is_valid) {
+      return { isValid: false, error: result?.error_message || 'Invalid or expired link' };
+    }
+
+    this.prisma.deal_participants.update({
+      where: { id: result.participant_id! },
+      data: { status: 'in_progress' },
+    }).catch((err: unknown) => this.logger.warn('participant status update failed', err));
+
+    this.prisma.activity_log.create({
+      data: {
+        deal_id: result.deal_id!,
+        actor_user_id: result.participant_id!,
+        action_type: 'MagicLinkAccessed',
+        action_details: {
+          role: result.role,
+          participantId: result.participant_id,
+          dealNumber: result.deal_number,
+        } as any,
+      },
+    }).catch((err: unknown) => this.logger.warn('activity_log insert failed', err));
+
+    return {
+      isValid: true,
+      dealId: result.deal_id,
+      role: result.role,
+      participantId: result.participant_id,
+      dealNumber: result.deal_number,
+      sessionToken: crypto.randomUUID(),
+    };
+  }
+
+  // ─── SSE polling helpers ──────────────────────────────────────────────────────
+
+  async hasRecentDealsChanges(since: Date): Promise<boolean> {
+    const count = await this.prisma.deals.count({ where: { updated_at: { gt: since } } });
+    return count > 0;
+  }
+
+  async hasRecentParticipantChanges(dealId: string, since: Date): Promise<boolean> {
+    const count = await this.prisma.deal_participants.count({
+      where: { deal_id: dealId, updated_at: { gt: since } },
+    });
+    return count > 0;
+  }
+
+  async hasRecentDocumentChanges(dealId: string, since: Date): Promise<boolean> {
+    const [docCount, jobCount] = await Promise.all([
+      this.prisma.generated_documents.count({
+        where: { deal_id: dealId, created_at: { gt: since } },
+      }),
+      this.prisma.generation_jobs.count({
+        where: {
+          deal_id: dealId,
+          OR: [
+            { created_at: { gt: since } },
+            { started_at: { gt: since } },
+            { completed_at: { gt: since } },
+          ],
+        },
+      }),
+    ]);
+    return docCount > 0 || jobCount > 0;
   }
 }

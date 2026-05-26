@@ -14,4 +14,7 @@ export default () => ({
     /** Legacy JWT secret — Dashboard → API → JWT Settings (for edge function auth). */
     jwtSecret: process.env.SUPABASE_JWT_SECRET,
   },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY,
+  },
 });

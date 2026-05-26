@@ -46,8 +46,8 @@ import {
   deleteParticipant,
 } from '@/services/deals/participants.service';
 import { getContactsByIds } from '@/services/contacts/contacts.service';
-import { subscribePostgresChanges } from '@/services/supabase/realtime';
-import { invokeSendParticipantInvite } from '@/services/supabase/functions';
+import { subscribeToChanges } from '@/services/node-api/realtime';
+import { sendParticipantInvite } from '@/services/deals/participants-invite.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { createMagicLink, revokeMagicLink, getMagicLinksForParticipant } from '@/lib/magicLink';
 import { logParticipantInvited, logParticipantRemoved, logAccessRevoked, logParticipantStatusReset } from '@/hooks/useActivityLog';
@@ -214,7 +214,7 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
 
   // Subscribe to realtime updates
   useEffect(() => {
-    const { unsubscribe } = subscribePostgresChanges({
+    const { unsubscribe } = subscribeToChanges({
       channelName: `deal-participants-overview-${dealId}`,
       table: 'deal_participants',
       filter: `deal_id=eq.${dealId}`,
@@ -290,7 +290,7 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
       }
 
       // 3. Send invite email
-      const { error: emailError } = await invokeSendParticipantInvite({
+      const { error: emailError } = await sendParticipantInvite(dealId, {
         participantId: participant.id,
         email,
         name: name || undefined,
@@ -386,15 +386,14 @@ export const InviteParticipantsPanel: React.FC<InviteParticipantsPanelProps> = (
       }
 
       // Send invite email
-      const { error: emailError } = await invokeSendParticipantInvite({
+      const { error: emailError } = await sendParticipantInvite(dealId, {
         participantId: participant.id,
         email: participant.email,
         name: participant.name || undefined,
-        accessMethod: participant.access_method,
+        accessMethod: participant.access_method as 'login' | 'magic_link',
         magicLinkUrl,
         dealNumber,
         role: participant.role,
-        isResend: true,
       });
 
       if (emailError) throw emailError;

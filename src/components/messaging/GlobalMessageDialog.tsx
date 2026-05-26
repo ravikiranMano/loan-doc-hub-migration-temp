@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { searchParticipantsWithEmail } from '@/services/deals/participants.service';
 import { listProfiles } from '@/services/admin/profiles.service';
-import { invokeSendMessage } from '@/services/supabase/functions';
+import { sendMessage } from '@/services/system/messages.service';
 import {
   Send,
   Paperclip,
@@ -206,7 +206,7 @@ export const GlobalMessageDialog: React.FC<GlobalMessageDialogProps> = ({
 
     setSending(true);
     try {
-      const { data, error } = await invokeSendMessage({
+      const { data, error } = await sendMessage({
         message_type: messageType,
         subject,
         message_body: body,

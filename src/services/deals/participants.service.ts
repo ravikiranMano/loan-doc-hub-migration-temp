@@ -13,7 +13,10 @@ function participantBodyForApi(payload: Record<string, unknown>) {
     revoked_at: _revokedAt,
     ...body
   } = payload;
-  return body;
+  // Omit nulls — Nest ValidationPipe rejects null for @IsString() optional fields.
+  return Object.fromEntries(
+    Object.entries(body).filter(([, v]) => v !== null && v !== undefined),
+  );
 }
 
 export async function listParticipantsByDeal(dealId: string) {

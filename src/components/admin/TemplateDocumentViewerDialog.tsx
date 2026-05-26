@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getSession } from '@/services/supabase/auth';
-import { invokeValidateTemplate } from '@/services/supabase/functions';
+import { validateTemplate as invokeValidateTemplate } from '@/services/documents/template-validate.service';
 import {
   listMergeTagAliasesByTagNames,
   updateMergeTagAlias,

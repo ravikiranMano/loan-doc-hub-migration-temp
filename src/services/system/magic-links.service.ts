@@ -78,7 +78,14 @@ export async function createMagicLinkRecord(payload: Record<string, unknown>) {
   return data as MagicLinkData;
 }
 
-export async function validateMagicLinkToken(token: string) {
+export async function validateMagicLinkToken(token: string): Promise<MagicLinkValidationResult> {
+  if (isNodeApiEnabled('system') || isNodeApiEnabled('deals')) {
+    try {
+      return await apiClient.post<MagicLinkValidationResult>('/deals/magic-links/validate', { token });
+    } catch (err) {
+      return { isValid: false, error: (err as Error).message };
+    }
+  }
   const response = await invokeValidateMagicLink(token);
   if (response.error) {
     return { isValid: false, error: response.error.message } as MagicLinkValidationResult;

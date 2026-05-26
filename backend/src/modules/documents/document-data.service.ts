@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DealFieldValuesLoader } from './deal-field-values.loader';
+import { buildRe851dPropertiesArray } from './re851d-properties.builder';
 import { TemplateConditionInfo, TemplateInspectResult } from './template-inspect.util';
 
 export interface TemplateFieldData {
@@ -101,7 +102,13 @@ export class DocumentDataService {
     // ── 5. Computed fields ───────────────────────────────────────────────────
     data['currentDate'] = this.formatDate(new Date().toISOString(), 'long');
 
-    // ── 6. Build dot-notation nested objects ─────────────────────────────────
+    // ── 6. RE851D LTV loop array ─────────────────────────────────────────────
+    const properties = buildRe851dPropertiesArray(fieldValuesByKey);
+    if (properties.length > 0) {
+      data['properties'] = properties;
+    }
+
+    // ── 7. Build dot-notation nested objects ─────────────────────────────────
     // {{broker.first_name}} requires data.broker = { first_name: "..." }
     this.buildNestedObjects(data);
 
@@ -135,9 +142,12 @@ export class DocumentDataService {
     let templateResolvedCount = 0;
 
     for (const key of [...keysToInclude].sort()) {
-      const val = fieldData.data[key];
+      const trimmedKey = key.trim();
+      const val =
+        fieldData.data[trimmedKey] ??
+        fieldData.data[key];
       const resolved = val != null && String(val).trim() !== '' ? String(val) : '';
-      scoped[key] = resolved;
+      scoped[trimmedKey] = resolved;
       if (resolved) templateResolvedCount++;
     }
 
@@ -155,6 +165,13 @@ export class DocumentDataService {
           this.conditionMatches(cond.operator, driverValue, cond.compareValue),
       };
     });
+
+    // Preserve loop arrays (e.g. {{#properties}}) — merge keys are nested field names only.
+    for (const cond of inspect.conditions) {
+      if (cond.operator != null || !cond.driverField) continue;
+      const loopVal = fieldData.data[cond.driverField];
+      if (Array.isArray(loopVal)) scoped[cond.driverField] = loopVal;
+    }
 
     return {
       data: scoped,

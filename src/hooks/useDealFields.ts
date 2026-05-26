@@ -18,6 +18,8 @@ import {
   resolvePacketFields,
   resolveAllFields,
   getMissingRequiredFields as getResolverMissingFields,
+  getMissingTemplateRequiredFields,
+  getValueForResolvedField,
   isSectionComplete as isResolverSectionComplete,
   SECTION_ORDER,
   type ResolvedField,
@@ -588,6 +590,14 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
               }
             }
           });
+        });
+
+        // Mirror legacy/indexed keys under dictionary field_key so completeness checks and DealSectionTab agree
+        mergedResolved.fields.forEach((field) => {
+          if (!valuesMap[field.field_key]?.trim()) {
+            const resolved = getValueForResolvedField(valuesMap, field);
+            if (resolved) valuesMap[field.field_key] = resolved;
+          }
         });
 
         // Apply default values for fields without values
@@ -1171,8 +1181,9 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
   }, [resolvedFields, values]);
 
   const isPacketComplete = useCallback((): boolean => {
-    return getMissingRequiredFields().length === 0;
-  }, [getMissingRequiredFields]);
+    if (!resolvedFields) return false;
+    return getMissingTemplateRequiredFields(resolvedFields, values).length === 0;
+  }, [resolvedFields, values]);
 
   const hasRequiredFieldChanged = useCallback((): boolean => {
     return requiredFieldChanged;

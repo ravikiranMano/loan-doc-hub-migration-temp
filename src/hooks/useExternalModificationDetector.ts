@@ -8,8 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getUser } from '@/services/supabase/auth';
-import { fetchUserRole } from '@/services/admin/users.service';
+import { useAuth } from '@/contexts/AuthContext';
 import { listRolesForUserIds } from '@/services/admin/users.service';
 import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import { fetchFieldDictionaryKeysByIds } from '@/services/admin/field-dictionary.service';
@@ -47,6 +46,7 @@ export function useExternalModificationDetector(
   dealId: string,
   enabled: boolean = true
 ): UseExternalModificationDetectorReturn {
+  const { user, role } = useAuth();
   const [externalModifications, setExternalModifications] = useState<ExternalModification[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastReviewedAt, setLastReviewedAt] = useState<string | null>(null);
@@ -64,15 +64,12 @@ export function useExternalModificationDetector(
     try {
       setLoading(true);
 
-      const { data: { user } } = await getUser();
-      if (!user) {
+      if (!user?.id) {
         setLoading(false);
         return;
       }
 
-      const userRole = await fetchUserRole(user.id);
-
-      if (!userRole || !['csr', 'admin'].includes(userRole)) {
+      if (!role || !['csr', 'admin'].includes(role)) {
         setLoading(false);
         return;
       }
@@ -165,7 +162,7 @@ export function useExternalModificationDetector(
     } finally {
       setLoading(false);
     }
-  }, [dealId, enabled]);
+  }, [dealId, enabled, user, role]);
 
   useEffect(() => {
     if (!dealId || !enabled) return;
@@ -176,8 +173,7 @@ export function useExternalModificationDetector(
 
   const markAsReviewed = async (): Promise<boolean> => {
     try {
-      const { data: { user } } = await getUser();
-      if (!user) return false;
+      if (!user?.id) return false;
 
       await insertActivityLog({
         deal_id: dealId,

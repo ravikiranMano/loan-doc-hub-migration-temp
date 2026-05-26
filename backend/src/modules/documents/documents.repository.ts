@@ -239,6 +239,18 @@ export class DocumentsRepository {
     return this.prisma.generation_jobs.create({ data: data as any });
   }
 
+  updateGenerationJob(id: string, data: Record<string, unknown>) {
+    return this.prisma.generation_jobs.update({ where: { id }, data: data as any });
+  }
+
+  createGeneratedDocument(data: Record<string, unknown>) {
+    return this.prisma.generated_documents.create({ data: data as any });
+  }
+
+  createActivityLog(data: Record<string, unknown>) {
+    return this.prisma.activity_log.create({ data: data as any });
+  }
+
   deleteGeneratedDocumentsByTemplateId(templateId: string) {
     return this.prisma.generated_documents.deleteMany({
       where: { template_id: templateId },
@@ -248,6 +260,14 @@ export class DocumentsRepository {
   deleteGenerationJobsByTemplateId(templateId: string) {
     return this.prisma.generation_jobs.deleteMany({
       where: { template_id: templateId },
+    });
+  }
+
+  // ─── Field Dictionary ────────────────────────────────────────────────────────
+
+  findAllFieldDictionary() {
+    return this.prisma.field_dictionary.findMany({
+      select: { field_key: true, label: true, data_type: true, section: true, canonical_key: true },
     });
   }
 }

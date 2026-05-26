@@ -28,15 +28,44 @@ export interface DocumentPayloadPreviewResult {
   templateConditions?: TemplateConditionV2[];
 }
 
+export interface GenerateDocumentApiResult {
+  success: boolean;
+  templateId?: string;
+  templateName?: string;
+  docxUrl?: string;
+  error?: string;
+}
+
 /**
- * Document generation runs on the Supabase `generate-document` edge function.
- * The Nest route proxies there (cookie auth) — it does not reimplement merge logic.
+ * Generate Document — NestJS · docxtemplater engine · persists records.
  */
 export async function generateDocument(
   dealId: string,
   body: GenerateDocumentBody,
 ): Promise<GenerateDocumentResult> {
   return apiClient.post<GenerateDocumentResult>(`/deals/${dealId}/documents/generate`, body);
+}
+
+/**
+ * Generate Document (API) — NestJS · raw XML merge-tag engine · persists records.
+ * Port of the Supabase edge function running entirely in NestJS.
+ */
+export async function generateDocumentApi(
+  dealId: string,
+  body: GenerateDocumentBody,
+): Promise<GenerateDocumentApiResult> {
+  return apiClient.post<GenerateDocumentApiResult>(`/deals/${dealId}/documents/generate-api`, body);
+}
+
+/**
+ * Generate Document (Edge) — Supabase edge function proxy.
+ * Forwards the request to the original Deno implementation.
+ */
+export async function generateDocumentEdge(
+  dealId: string,
+  body: GenerateDocumentBody,
+): Promise<GenerateDocumentApiResult> {
+  return apiClient.post<GenerateDocumentApiResult>(`/deals/${dealId}/documents/generate-edge`, body);
 }
 
 /** Merge field map that would be sent to the DOCX engine (same pipeline as generate, stops before merge). */

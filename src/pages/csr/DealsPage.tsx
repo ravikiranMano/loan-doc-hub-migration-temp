@@ -15,7 +15,7 @@ import {
   insertDeal,
   deleteDeal,
 } from '@/services/deals/deals.service';
-import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { subscribeToChanges } from '@/services/node-api/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspaceOptional } from '@/contexts/WorkspaceContext';
 import { MaxFilesDialog } from '@/components/workspace/MaxFilesDialog';
@@ -163,7 +163,7 @@ export const DealsPage: React.FC = () => {
     fetchDeals(currentPage, { silent: !!cachedState });
 
     // Real-time subscription - refresh current page
-    const { unsubscribe } = subscribePostgresChanges({
+    const { unsubscribe } = subscribeToChanges({
       channelName: 'deals-changes',
       table: 'deals',
       onChange: () => fetchDeals(1, { silent: true }),

@@ -2,6 +2,7 @@ import { fetchAllRows } from '@/services/supabase/pagination';
 import { fetchFieldDictionaryBySections, fetchFieldDictionaryByIds } from '@/services/admin/field-dictionary.service';
 import { fetchPacketTemplateIds } from '@/services/documents/packets.service';
 import { fetchFieldMapsByTemplateIds } from '@/services/documents/template-field-maps.service';
+import { resolveDbKeyToLegacy, resolveLegacyKey } from '@/lib/legacyKeyMap';
 import type { Database } from '@/integrations/supabase/types';
 
 type FieldSection = Database['public']['Enums']['field_section'];
@@ -313,6 +314,64 @@ export async function resolvePacketFields(packetId: string, cachedEntries?: any[
 }
 
 /**
+ * Resolve a field value from the values map.
+ * UI / JSONB persistence uses legacy dot-notation and indexed keys (borrower1.first_name);
+ * field_dictionary uses DB keys (br_p_firstName). Check all aliases so completeness matches saved data.
+ */
+export function getValueForResolvedField(
+  values: Record<string, string>,
+  field: Pick<ResolvedField, 'field_key'>,
+): string {
+  const keysToTry = new Set<string>();
+  keysToTry.add(field.field_key);
+  const legacy = resolveDbKeyToLegacy(field.field_key);
+  if (legacy) keysToTry.add(legacy);
+  const dbFromLegacy = resolveLegacyKey(field.field_key);
+  if (dbFromLegacy !== field.field_key) keysToTry.add(dbFromLegacy);
+
+  for (const key of keysToTry) {
+    const direct = values[key]?.trim();
+    if (direct) return direct;
+
+    const dotIdx = key.indexOf('.');
+    if (dotIdx <= 0) continue;
+
+    const entityPart = key.slice(0, dotIdx);
+    const suffix = key.slice(dotIdx + 1);
+    const entityBase = entityPart.replace(/\d+$/, '');
+
+    for (let n = 1; n <= 9; n++) {
+      const indexed = `${entityBase}${n}.${suffix}`;
+      const indexedVal = values[indexed]?.trim();
+      if (indexedVal) return indexedVal;
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Mark-ready / packet completeness uses template-required fields only (same as CSR progress bar).
+ */
+export function getMissingTemplateRequiredFields(
+  resolvedFields: ResolvedFieldSet,
+  values: Record<string, string>,
+): ResolvedField[] {
+  const requiredKeys = new Set(resolvedFields.requiredFieldKeys);
+  return resolvedFields.fields.filter((field) => {
+    if (!requiredKeys.has(field.field_key)) return false;
+    return !getValueForResolvedField(values, field);
+  });
+}
+
+export function isPacketReadyForMark(
+  resolvedFields: ResolvedFieldSet,
+  values: Record<string, string>,
+): boolean {
+  return getMissingTemplateRequiredFields(resolvedFields, values).length === 0;
+}
+
+/**
  * Check if a specific field is required for a packet
  */
 export function isFieldRequired(resolvedFields: ResolvedFieldSet, fieldKey: string): boolean {
@@ -337,8 +396,7 @@ export function getMissingRequiredFields(
   return resolvedFields.fields.filter(field => {
     if (section && field.section !== section) return false;
     if (!field.is_required && !field.is_mandatory) return false;
-    const value = values[field.field_key];
-    return !value || value.trim() === '';
+    return !getValueForResolvedField(values, field);
   });
 }
 
@@ -360,5 +418,6 @@ export function isPacketComplete(
   resolvedFields: ResolvedFieldSet,
   values: Record<string, string>
 ): boolean {
-  return getMissingRequiredFields(resolvedFields, values).length === 0;
+  // Mark-ready gate: template-required fields only (aligns with CSR progress bar on DealDataEntryPage).
+  return isPacketReadyForMark(resolvedFields, values);
 }

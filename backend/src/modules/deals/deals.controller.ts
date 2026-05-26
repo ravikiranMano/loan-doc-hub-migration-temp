@@ -10,7 +10,10 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { DealsService } from './deals.service';
 import {
   CreateDealDto,
@@ -24,7 +27,7 @@ import {
   CreateActivityLogDto,
 } from './dto/deals.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../../common/decorators';
+import { CurrentUser, Public } from '../../common/decorators';
 import { JwtPayload } from '../../common/guards/jwt-auth.guard';
 
 @Controller('deals')
@@ -189,6 +192,53 @@ export class DealsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteLoanHistoryEntry(@Param('entryId') entryId: string) {
     return this.service.deleteLoanHistory(entryId);
+  }
+
+  // ─── SSE realtime (Phase 6 migration) ────────────────────────────────────────
+
+  @Public()
+  @Sse('events')
+  dealsChanges(): Observable<MessageEvent> {
+    return new Observable<MessageEvent>(subscriber => {
+      let lastCheck = new Date();
+      const timer = setInterval(async () => {
+        const since = lastCheck;
+        lastCheck = new Date();
+        const changed = await this.service.hasRecentDealsChanges(since).catch(() => false);
+        if (changed) subscriber.next({ data: { event: 'change' } } as MessageEvent);
+      }, 3000);
+      return () => clearInterval(timer);
+    });
+  }
+
+  @Public()
+  @Sse(':id/participants/events')
+  participantsChanges(@Param('id') id: string): Observable<MessageEvent> {
+    return new Observable<MessageEvent>(subscriber => {
+      let lastCheck = new Date();
+      const timer = setInterval(async () => {
+        const since = lastCheck;
+        lastCheck = new Date();
+        const changed = await this.service.hasRecentParticipantChanges(id, since).catch(() => false);
+        if (changed) subscriber.next({ data: { event: 'change' } } as MessageEvent);
+      }, 3000);
+      return () => clearInterval(timer);
+    });
+  }
+
+  @Public()
+  @Sse(':id/documents/events')
+  documentsChanges(@Param('id') id: string): Observable<MessageEvent> {
+    return new Observable<MessageEvent>(subscriber => {
+      let lastCheck = new Date();
+      const timer = setInterval(async () => {
+        const since = lastCheck;
+        lastCheck = new Date();
+        const changed = await this.service.hasRecentDocumentChanges(id, since).catch(() => false);
+        if (changed) subscriber.next({ data: { event: 'change' } } as MessageEvent);
+      }, 3000);
+      return () => clearInterval(timer);
+    });
   }
 
   @Get(':id')
@@ -376,5 +426,43 @@ export class DealsController {
   @Patch(':id/participants/:pid/magic-links/:mlId/revoke')
   revokeMagicLink(@Param('mlId') mlId: string) {
     return this.service.revokeMagicLink(mlId);
+  }
+
+  // ─── Participant invite (Phase 2 migration) ───────────────────────────────────
+
+  // POST /api/deals/participants/:pid/invite (legacy path — no dealId)
+  @Post('participants/:pid/invite')
+  inviteParticipant(
+    @Param('pid') pid: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.service.inviteParticipant(pid, body as any);
+  }
+
+  // POST /api/deals/:id/participants/:pid/invite (frontend path — with dealId)
+  @Post(':id/participants/:pid/invite')
+  inviteParticipantByDeal(
+    @Param('pid') pid: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.service.inviteParticipant(pid, body as any);
+  }
+
+  // ─── Complete participant section (Phase 3 migration — public, no auth) ───────
+
+  // POST /api/deals/:id/participants/:pid/complete
+  @Public()
+  @Post(':id/participants/:pid/complete')
+  completeParticipantSection(@Param('id') dealId: string, @Param('pid') pid: string) {
+    return this.service.completeParticipantSection(pid, dealId);
+  }
+
+  // ─── Validate magic link (Phase 5 migration — public, no auth) ───────────────
+
+  // POST /api/deals/magic-links/validate
+  @Public()
+  @Post('magic-links/validate')
+  validateMagicLink(@Body('token') token: string) {
+    return this.service.validateMagicLink(token);
   }
 }

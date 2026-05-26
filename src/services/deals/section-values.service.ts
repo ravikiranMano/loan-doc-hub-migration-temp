@@ -118,7 +118,7 @@ export async function insertSectionValues(rows: Record<string, unknown>[]) {
   if (isNodeApiEnabled('deals')) {
     return Promise.all(
       rows.map((row) =>
-        apiClient.patch(`/deals/${row['deal_id']}/sections/${row['section']}`, {
+        apiClient.patch(`/deals/${row['deal_id']}/sections/${encodeURIComponent(String(row['section']))}`, {
           field_values: row['field_values'],
         })
       )

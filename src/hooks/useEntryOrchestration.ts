@@ -10,8 +10,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { listParticipantsByDealOrdered } from '@/services/deals/participants.service';
-import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { subscribeToChanges } from '@/services/node-api/realtime';
 import { invokeCompleteParticipantSection } from '@/services/supabase/functions';
+import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMagicLinkSession } from '@/lib/magicLink';
 import type { Database } from '@/integrations/supabase/types';
@@ -175,7 +176,7 @@ export function useEntryOrchestration(dealId: string): UseEntryOrchestrationResu
   useEffect(() => {
     if (!dealId || isInternalUser) return;
 
-    const { unsubscribe } = subscribePostgresChanges({
+    const { unsubscribe } = subscribeToChanges({
       channelName: `deal-participants-${dealId}`,
       table: 'deal_participants',
       filter: `deal_id=eq.${dealId}`,
@@ -194,14 +195,21 @@ export function useEntryOrchestration(dealId: string): UseEntryOrchestrationResu
     }
 
     try {
-      const { data, error } = await invokeCompleteParticipantSection({
-        participantId: state.currentParticipant.id,
-        dealId,
-      });
+      let result: { success?: boolean; error?: string; nextParticipant?: unknown } | null;
+      if (isNodeApiEnabled('deals')) {
+        result = await apiClient.post<{ success: boolean; nextParticipant: unknown | null }>(
+          `/deals/${dealId}/participants/${state.currentParticipant.id}/complete`,
+          {},
+        );
+      } else {
+        const { data, error } = await invokeCompleteParticipantSection({
+          participantId: state.currentParticipant.id,
+          dealId,
+        });
+        if (error) throw error;
+        result = data as { success?: boolean; error?: string } | null;
+      }
 
-      if (error) throw error;
-
-      const result = data as { success?: boolean; error?: string } | null;
       if (!result?.success) {
         throw new Error(result?.error || 'Failed to complete section');
       }

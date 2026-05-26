@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAttachmentDto, UpdateAttachmentDto } from './dto/contact.dto';
@@ -97,7 +97,7 @@ export class ContactsRepository {
   async updateWithMerge(id: string, contactData: Record<string, unknown>) {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.contacts.findUnique({ where: { id } });
-      if (!existing) throw new Error(`Contact '${id}' not found`);
+      if (!existing) throw new NotFoundException(`Contact '${id}' not found`);
 
       const cd = contactData as Record<string, string>;
       const fullName =
@@ -190,16 +190,15 @@ export class ContactsRepository {
 
   async patchContactData(id: string, patch: Record<string, unknown>) {
     const existing = await this.prisma.contacts.findUnique({ where: { id } });
-    if (!existing) throw new Error(`Contact '${id}' not found`);
+    if (!existing) throw new NotFoundException(`Contact '${id}' not found`);
     const merged = {
       ...((existing.contact_data as Record<string, unknown>) || {}),
       ...patch,
     };
-    await this.prisma.contacts.update({
+    return this.prisma.contacts.update({
       where: { id },
       data: { contact_data: merged as Prisma.InputJsonValue, updated_at: new Date() },
     });
-    return merged;
   }
 
   delete(id: string) {

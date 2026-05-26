@@ -46,10 +46,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { subscribePostgresChanges } from '@/services/supabase/realtime';
+import { subscribeToChanges } from '@/services/node-api/realtime';
 import { fetchDealById } from '@/services/deals/deals.service';
 import {
   generateDocument,
+  generateDocumentApi,
+  generateDocumentEdge,
   generateDocumentV2,
   getFieldDataV2,
   previewDocumentPayload,
@@ -188,6 +190,8 @@ export const DealDocumentsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatingV2, setGeneratingV2] = useState(false);
+  const [generatingApi, setGeneratingApi] = useState(false);
+  const [generatingEdge, setGeneratingEdge] = useState(false);
   const [previewMode, setPreviewMode] = useState<'legacy' | 'v2'>('legacy');
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -224,13 +228,13 @@ export const DealDocumentsPage: React.FC = () => {
   useEffect(() => {
     if (!id) return;
 
-    const docsSub = subscribePostgresChanges({
+    const docsSub = subscribeToChanges({
       channelName: `generated-docs-changes-${id}`,
       table: 'generated_documents',
       filter: `deal_id=eq.${id}`,
       onChange: debouncedBackgroundRefresh,
     });
-    const jobsSub = subscribePostgresChanges({
+    const jobsSub = subscribeToChanges({
       channelName: `generation-jobs-changes-${id}`,
       table: 'generation_jobs',
       filter: `deal_id=eq.${id}`,
@@ -396,6 +400,38 @@ export const DealDocumentsPage: React.FC = () => {
       toast({ title: 'Generate (v2) Failed', description: message, variant: 'destructive' });
     } finally {
       setGeneratingV2(false);
+    }
+  };
+
+  const handleGenerateApi = async () => {
+    if (!id || !selectedTemplateId || !deal) return;
+    setGeneratingApi(true);
+    try {
+      const result = await generateDocumentApi(deal.id, { outputType, templateId: selectedTemplateId });
+      toast({ title: 'Generated (API)', description: result.templateName ?? 'Document generated successfully.' });
+      refreshDataInBackground();
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'API generation failed';
+      toast({ title: 'Generate (API) Failed', description: message, variant: 'destructive' });
+    } finally {
+      setGeneratingApi(false);
+    }
+  };
+
+  const handleGenerateEdge = async () => {
+    if (!id || !selectedTemplateId || !deal) return;
+    setGeneratingEdge(true);
+    try {
+      await generateDocumentEdge(deal.id, { outputType, templateId: selectedTemplateId });
+      toast({ title: 'Generated (Edge)', description: 'Document generated successfully.' });
+      refreshDataInBackground();
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return;
+      const message = error instanceof Error ? error.message : 'Edge generation failed';
+      toast({ title: 'Generate (Edge) Failed', description: message, variant: 'destructive' });
+    } finally {
+      setGeneratingEdge(false);
     }
   };
 
@@ -909,11 +945,11 @@ export const DealDocumentsPage: React.FC = () => {
                     type="button"
                     variant="outline"
                     onClick={handlePreviewPayload}
-                    disabled={!canGenerate || previewLoading || generating || !selectedTemplateId}
+                    disabled={!canGenerate || previewLoading || generating || generatingApi || generatingEdge || !selectedTemplateId}
                     className="flex-1 gap-2"
                     size="lg"
                   >
-                    {previewLoading ? (
+                    {previewLoading && previewMode === 'legacy' ? (
                       <>
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Loading payload...
@@ -926,12 +962,12 @@ export const DealDocumentsPage: React.FC = () => {
                     )}
                   </Button>
                   <Button
-                    onClick={() => handleGenerateClick('single', selectedTemplateId || undefined)}
-                    disabled={!canGenerate || generating || !selectedTemplateId}
+                    onClick={handleGenerateApi}
+                    disabled={!canGenerate || generatingApi || generatingEdge || !selectedTemplateId}
                     className="flex-1 gap-2"
                     size="lg"
                   >
-                    {generating ? (
+                    {generatingApi ? (
                       <>
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Generating...
@@ -939,7 +975,26 @@ export const DealDocumentsPage: React.FC = () => {
                     ) : (
                       <>
                         <Play className="h-5 w-5" />
-                        Generate Document
+                        Generate (API)
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleGenerateEdge}
+                    disabled={!canGenerate || generatingApi || generatingEdge || !selectedTemplateId}
+                    variant="secondary"
+                    className="flex-1 gap-2"
+                    size="lg"
+                  >
+                    {generatingEdge ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-5 w-5" />
+                        Generate (Edge)
                       </>
                     )}
                   </Button>
