@@ -343,6 +343,12 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
       case 'outstandingBalance': return fmtCurrency(row.outstandingBalance);
       case 'maturityDate': return fmtDate(row.maturityDate);
       case 'nextPaymentDate': return fmtDate(row.nextPaymentDate);
+      case 'originationDate': return fmtDate(row.originationDate);
+      case 'closingDate': return fmtDate(row.closingDate);
+      case 'feePaymentDate': return fmtDate(row.feePaymentDate);
+      case 'brokerFeeAmount': return fmtCurrency(row.brokerFeeAmount);
+      case 'commissionEarned': return fmtCurrency(row.commissionEarned);
+      case 'feePct': return fmtPct(row.feePct);
       case 'daysLate': return row.daysLate > 0 ? String(row.daysLate) : '0';
       default: return String((row as any)[colId] || '-');
     }
