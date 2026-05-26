@@ -215,7 +215,7 @@ function rewriteDocumentXml(
     const before = xml.substring(0, paras[startIdx].start);
     const after = xml.substring(paras[endIdx].end);
     let out = before + replacement + after;
-    out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+    out = out.replace(/<\/w:body>/, `${MARKER_V4}</w:body>`);
     return {
       xml: out,
       replaced: endIdx - startIdx + 1,
