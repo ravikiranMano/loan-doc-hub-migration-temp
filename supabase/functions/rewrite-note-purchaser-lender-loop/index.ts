@@ -148,16 +148,16 @@ function rewriteDocumentXml(
       const before = xml.substring(0, paras[i].start);
       const after = xml.substring(paras[i].end);
       let out = before + replacement + after;
-      out = out.replace(MARKER_V1, "").replace(MARKER_V2, "");
-      out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+      out = out.replace(MARKER_V1, "").replace(MARKER_V2, "").replace(MARKER_V3, "");
+      out = out.replace(/<\/w:body>/, `${MARKER_V4}</w:body>`);
       return { xml: out, replaced: 1, note: `rewrote stale loop literal at paragraph ${i}` };
     }
   }
 
-  // (c) v3-style primary already present. If it's missing pPr/rPr (which can
-  // happen when the first v3 pass built it from a stripped v1 source), or if
-  // the caller wants a forced refresh, re-emit using the Signature paragraph
-  // as the formatting anchor. Otherwise just refresh the marker.
+  // (c) v3-style primary already present. Re-emit if missing pPr/rPr OR if
+  // pPr still contains <w:jc w:val="both"/> (v4 needs jc=left to avoid
+  // Word stretching the label+name lines across the column). Otherwise just
+  // refresh the marker.
   for (let i = sigIdx - 1; i >= Math.max(0, sigIdx - 4); i--) {
     if (
       /Lender\s*:/i.test(paras[i].text) &&
@@ -166,22 +166,23 @@ function rewriteDocumentXml(
     ) {
       const hasPPr = /<w:pPr>/.test(paras[i].xml);
       const hasRPr = /<w:rPr>/.test(paras[i].xml);
-      if (!hasPPr || !hasRPr) {
+      const hasJcBoth = /<w:jc\b[^>]*\bw:val="both"/.test(paras[i].xml);
+      if (!hasPPr || !hasRPr || hasJcBoth) {
         const replacement = buildPrimaryParagraph(paras[i].xml, paras[sigIdx].xml);
         const before = xml.substring(0, paras[i].start);
         const after = xml.substring(paras[i].end);
         let out = before + replacement + after;
-        out = out.replace(MARKER_V1, "").replace(MARKER_V2, "");
-        if (!out.includes(MARKER_V3)) {
-          out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+        out = out.replace(MARKER_V1, "").replace(MARKER_V2, "").replace(MARKER_V3, "");
+        if (!out.includes(MARKER_V4)) {
+          out = out.replace(/<\/w:body>/, `${MARKER_V4}</w:body>`);
         }
-        return { xml: out, replaced: 1, note: `refreshed v3 primary paragraph ${i} formatting from Signature anchor` };
+        return { xml: out, replaced: 1, note: `refreshed v4 primary paragraph ${i} (hasJcBoth=${hasJcBoth})` };
       }
-      let out = xml.replace(MARKER_V1, "").replace(MARKER_V2, "");
-      if (!out.includes(MARKER_V3)) {
-        out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+      let out = xml.replace(MARKER_V1, "").replace(MARKER_V2, "").replace(MARKER_V3, "");
+      if (!out.includes(MARKER_V4)) {
+        out = out.replace(/<\/w:body>/, `${MARKER_V4}</w:body>`);
       }
-      return { xml: out, replaced: 0, note: `v3 primary paragraph already present at ${i} with formatting; marker refreshed` };
+      return { xml: out, replaced: 0, note: `v4 primary paragraph already correct at ${i}; marker refreshed` };
     }
   }
 
