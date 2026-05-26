@@ -38,7 +38,21 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
+  // Spec additions
+  accountNumber: string;
+  originationDate: string;
+  closingDate: string;
+  brokerFeeAmount: number;
+  feePct: number;
+  feePaymentStatus: string;
+  feePaymentDate: string;
+  commissionEarned: number;
 }
+
+const DEFAULT_VISIBLE_BRP = new Set([
+  'dealNumber', 'borrowerName', 'noteRate', 'regularPayment', 'outstandingBalance',
+  'nextPaymentDate', 'maturityDate', 'termLeft', 'daysLate', 'propertyAddress',
+]);
 
 const ALL_COLUMNS = [
   { id: 'dealNumber', label: 'Loan Account' },
@@ -51,6 +65,17 @@ const ALL_COLUMNS = [
   { id: 'termLeft', label: 'Term Left' },
   { id: 'daysLate', label: 'Days Late' },
   { id: 'propertyAddress', label: 'Property Description' },
+  // Spec additions (hidden by default)
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Loan Amount' },
+  { id: 'originationDate', label: 'Origination Date' },
+  { id: 'closingDate', label: 'Closing Date' },
+  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
+  { id: 'feePct', label: 'Fee %' },
+  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
+  { id: 'feePaymentDate', label: 'Fee Payment Date' },
+  { id: 'commissionEarned', label: 'Commission Earned' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
@@ -101,9 +126,7 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-    new Set(ALL_COLUMNS.map(c => c.id))
-  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE_BRP));
 
   const loadPortfolio = useCallback(async () => {
     setIsLoading(true);
@@ -205,6 +228,29 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
         }
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
+        // Spec column lookups (best-effort from loan_terms; '-' fallback)
+        const findLT = (...frags: string[]): any => {
+          for (const [k, v] of Object.entries(lt)) {
+            const lk = k.toLowerCase();
+            if (frags.some(f => lk.includes(f))) {
+              if (v && typeof v === 'object') {
+                const o = v as Record<string, any>;
+                return o.value_number ?? o.value_date ?? o.value_text ?? null;
+              }
+              return v;
+            }
+          }
+          return null;
+        };
+        const accountNumberVal = findLT('account_number', 'loan_account');
+        const originationDateVal = findLT('origination_date', 'funding_date');
+        const closingDateVal = findLT('closing_date');
+        const brokerFeeAmountVal = Number(findLT('broker_fee_amount', 'broker_fee') || 0);
+        const feePctVal = Number(findLT('broker_fee_pct', 'fee_percent', 'fee_pct') || 0);
+        const feePaymentStatusVal = findLT('fee_payment_status', 'fee_status');
+        const feePaymentDateVal = findLT('fee_payment_date', 'fee_paid_date');
+        const commissionEarnedVal = Number(findLT('commission_earned', 'broker_commission') || 0);
+
         portfolioRows.push({
           id: `${dealId}-${brokerId}`,
           dealId,
@@ -221,6 +267,14 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           termLeft: calcTermLeft(maturityDateVal),
           daysLate,
           regularPayment: 0,
+          accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+          originationDate: originationDateVal ? String(originationDateVal) : '',
+          closingDate: closingDateVal ? String(closingDateVal) : '',
+          brokerFeeAmount: brokerFeeAmountVal,
+          feePct: feePctVal,
+          feePaymentStatus: feePaymentStatusVal ? String(feePaymentStatusVal) : '-',
+          feePaymentDate: feePaymentDateVal ? String(feePaymentDateVal) : '',
+          commissionEarned: commissionEarnedVal,
         });
       }
 
@@ -289,6 +343,12 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
       case 'outstandingBalance': return fmtCurrency(row.outstandingBalance);
       case 'maturityDate': return fmtDate(row.maturityDate);
       case 'nextPaymentDate': return fmtDate(row.nextPaymentDate);
+      case 'originationDate': return fmtDate(row.originationDate);
+      case 'closingDate': return fmtDate(row.closingDate);
+      case 'feePaymentDate': return fmtDate(row.feePaymentDate);
+      case 'brokerFeeAmount': return fmtCurrency(row.brokerFeeAmount);
+      case 'commissionEarned': return fmtCurrency(row.commissionEarned);
+      case 'feePct': return fmtPct(row.feePct);
       case 'daysLate': return row.daysLate > 0 ? String(row.daysLate) : '0';
       default: return String((row as any)[colId] || '-');
     }

@@ -50,7 +50,21 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
+  // Spec additions
+  accountNumber: string;
+  fundingDate: string;
+  interestFromDate: string;
+  spreadPct: number;
+  disbursements: number;
+  netPayment: number;
+  totalEarnedToDate: number;
 }
+
+const DEFAULT_VISIBLE_LP = new Set([
+  'dealNumber', 'borrowerName', 'noteRate', 'lenderRate', 'regularPayment',
+  'outstandingBalance', 'nextPaymentDate', 'maturityDate', 'termLeft',
+  'daysLate', 'ownershipPct', 'propertyAddress',
+]);
 
 const ALL_COLUMNS = [
   { id: 'dealNumber', label: 'Loan Account' },
@@ -63,8 +77,19 @@ const ALL_COLUMNS = [
   { id: 'maturityDate', label: 'Maturity Date' },
   { id: 'termLeft', label: 'Term Left' },
   { id: 'daysLate', label: 'Days Late' },
-  { id: 'ownershipPct', label: 'Pct Owned' },
+  { id: 'ownershipPct', label: 'Pro Rata %' },
   { id: 'propertyAddress', label: 'Property Description' },
+  // Spec additions (hidden by default)
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'fundingAmount', label: 'Funding Amount' },
+  { id: 'currentBalance', label: 'Current Balance' },
+  { id: 'fundingDate', label: 'Funding Date' },
+  { id: 'interestFromDate', label: 'Interest From Date' },
+  { id: 'spreadPct', label: 'Spread %' },
+  { id: 'disbursements', label: 'Disbursements' },
+  { id: 'netPayment', label: 'Net Payment' },
+  { id: 'totalEarnedToDate', label: 'Total Earned to Date' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
@@ -139,9 +164,7 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-    new Set(ALL_COLUMNS.map(c => c.id))
-  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE_LP));
   const [capacityFilter, setCapacityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -322,6 +345,29 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
         // Auto-detect delinquent based on days late
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
+        // Spec column derivations from fundingRec / loan_terms
+        const findLT = (...frags: string[]): any => {
+          for (const [k, v] of Object.entries(lt)) {
+            const lk = k.toLowerCase();
+            if (frags.some(f => lk.includes(f))) {
+              if (v && typeof v === 'object') {
+                const o = v as Record<string, any>;
+                return o.value_number ?? o.value_date ?? o.value_text ?? null;
+              }
+              return v;
+            }
+          }
+          return null;
+        };
+        const accountNumberVal = fundingRec?.lenderAccount || fundingRec?.accountNumber
+          || findLT('account_number', 'loan_account') || '';
+        const fundingDateVal = fundingRec?.fundingDate || findLT('funding_date') || '';
+        const interestFromDateVal = fundingRec?.interestFromDate || findLT('interest_from') || '';
+        const spreadPctVal = (noteRateVal || 0) - (lenderRate || 0);
+        const disbursementsSum = disbSumLender;
+        const netPaymentVal = regularPayment - disbursementsSum;
+        const totalEarnedVal = Number(fundingRec?.totalEarned || fundingRec?.totalInterestEarned || 0);
+
         portfolioRows.push({
           id: `${dealId}-${lenderId}`,
           dealId,
@@ -346,6 +392,13 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
           termLeft: calcTermLeft(maturityDateVal),
           daysLate,
           regularPayment,
+          accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+          fundingDate: fundingDateVal ? String(fundingDateVal) : '',
+          interestFromDate: interestFromDateVal ? String(interestFromDateVal) : '',
+          spreadPct: spreadPctVal,
+          disbursements: disbursementsSum,
+          netPayment: netPaymentVal,
+          totalEarnedToDate: totalEarnedVal,
         });
       }
 
@@ -463,6 +516,12 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
       case 'maturityDate': return fmtDate(row.maturityDate);
       case 'nextPaymentDate': return fmtDate(row.nextPaymentDate);
       case 'daysLate': return row.daysLate > 0 ? String(row.daysLate) : '0';
+      case 'fundingDate': return fmtDate(row.fundingDate);
+      case 'interestFromDate': return fmtDate(row.interestFromDate);
+      case 'spreadPct': return fmtPct(row.spreadPct);
+      case 'disbursements': return fmtCurrency(row.disbursements);
+      case 'netPayment': return fmtCurrency(row.netPayment);
+      case 'totalEarnedToDate': return fmtCurrency(row.totalEarnedToDate);
       default: return String((row as any)[colId] || '-');
     }
   };
