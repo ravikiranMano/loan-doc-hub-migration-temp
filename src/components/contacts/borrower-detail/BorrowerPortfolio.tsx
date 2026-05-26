@@ -355,6 +355,39 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           const displayLoanAmount = loanAmountVal ?? deal.loan_amount;
           const displayPrincipalBalance = principalBalanceVal ?? loanAmountVal ?? deal.loan_amount;
 
+          // Spec column lookups (best-effort; '-' when not present in loan_terms)
+          const findByKey = (...frags: string[]): any => {
+            for (const [k, v] of Object.entries(loanTerms)) {
+              const lk = k.toLowerCase();
+              if (frags.some(f => lk.includes(f))) {
+                if (v && typeof v === 'object') {
+                  const o = v as Record<string, any>;
+                  return o.value_number ?? o.value_date ?? o.value_text ?? null;
+                }
+                return v;
+              }
+            }
+            return null;
+          };
+          const accountNumberVal = findByKey('account_number', 'loan_account');
+          const loanTypeVal = findByKey('loan_type') ?? deal.product_type;
+          const originationDateVal = findByKey('origination_date', 'funding_date', 'closing_date');
+          const paymentAmountVal = findByKey('regular_payment', 'monthly_payment', 'payment_amount');
+          const lastPaymentDateVal = findByKey('last_payment_date');
+          const lastPaymentAmountVal = findByKey('last_payment_amount');
+          const totalPaidVal = findByKey('total_paid', 'paid_to_date');
+
+          let daysPastDueStr = '-';
+          if (nextPaymentDateVal) {
+            try {
+              const d = new Date(String(nextPaymentDateVal));
+              if (!isNaN(d.getTime())) {
+                const diff = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+                daysPastDueStr = diff > 0 ? String(diff) : '0';
+              }
+            } catch { /* ignore */ }
+          }
+
           portfolioRows.push({
             id: `${p.deal_id}`,
             dealId: p.deal_id,
@@ -367,6 +400,15 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
             interestRate: formatPercent(noteRateVal),
             maturityDate: formatDate(maturityDateVal),
             participants: allParticipantsMap.get(p.deal_id) || [],
+            accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+            loanType: loanTypeVal ? String(loanTypeVal) : '-',
+            originationDate: formatDate(originationDateVal),
+            paymentAmount: formatCurrency(paymentAmountVal),
+            lastPaymentDate: formatDate(lastPaymentDateVal),
+            lastPaymentAmount: formatCurrency(lastPaymentAmountVal),
+            daysPastDue: daysPastDueStr,
+            totalPaidToDate: formatCurrency(totalPaidVal),
+            propertyAddress: deal.property_address || '-',
           });
         }
 
