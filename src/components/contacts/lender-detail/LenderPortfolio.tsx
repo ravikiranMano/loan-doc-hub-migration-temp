@@ -164,9 +164,7 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-    new Set(ALL_COLUMNS.map(c => c.id))
-  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE_LP));
   const [capacityFilter, setCapacityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
