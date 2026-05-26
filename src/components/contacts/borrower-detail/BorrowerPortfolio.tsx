@@ -174,6 +174,15 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           maturityDate: '33fadfcb-b70c-4425-944e-23044f21a06b',
           nextPaymentDate: '384a8113-5d6d-47fd-9146-b3b1e9f65037',
           nextPayment: '18cff33e-9553-4860-becf-e6c4b54f2a20',
+          // Spec additions resolved from field_dictionary
+          accountNumber: 'b593a1fb-df22-405c-8ed0-670d251901a4', // ln_p_previousAccountNumber
+          loanStatus: '356839ff-f156-4431-ac7d-87f038428178',    // ln_p_loanStatus
+          loanType: '81a92eba-59f3-41cf-a032-b4f5f6950e04',      // ln_p_loanType
+          originationDate: '60aac148-679d-4ebf-afaa-260c839cea13', // ln_p_originat
+          closingDate: '674e4a01-7621-4eec-88f4-87c75d8867fc',   // ln_p_closingDate
+          paymentAmount: '273499a9-02a6-4a18-abb7-47c7cc9755ac', // ln_p_paymentAmount
+          lastPaymentAmount: 'a0e73041-0c9e-4dd7-a6f0-426319e2b6e0', // ln_p_lastPaymen
+          lastPaymentDate: '5fd9bd0c-dc57-497b-a1f8-fe142a35771a',   // ln_p_lastPaymenReceiv
         };
 
         const { data: sectionValues } = await supabase
