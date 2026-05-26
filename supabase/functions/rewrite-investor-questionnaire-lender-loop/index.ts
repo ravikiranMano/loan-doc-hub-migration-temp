@@ -176,7 +176,35 @@ serve(async (req) => {
     const results: unknown[] = [];
     for (const id of targets) {
       try {
-        results.push(await rewriteTemplate(supabase, id, force));
+        if (body.debug) {
+          const { data: row } = await supabase.from("templates").select("file_path").eq("id", id).maybeSingle();
+          const fp = row?.file_path as string | undefined;
+          if (!fp) { results.push({ id, err: "no file_path" }); continue; }
+          const { data: blob } = await supabase.storage.from("templates").download(fp);
+          if (!blob) { results.push({ id, err: "no blob" }); continue; }
+          const buf = new Uint8Array(await blob.arrayBuffer());
+          const u = fflate.unzipSync(buf);
+          const x = new TextDecoder().decode(u["word/document.xml"]);
+          const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
+          const cells: Array<{ idx: number; text: string; hasBr: number; hasEmptyT: number; xmlSnippet?: string }> = [];
+          let mm: RegExpExecArray | null; let i = 0;
+          while ((mm = tcRe.exec(x)) !== null) {
+            const t = visibleText(mm[0]);
+            if (/INVESTOR|QUESTIONNAIRE|PERSON|COMPLETING|lender|each/i.test(t) || mm[0].includes("{{")) {
+              cells.push({
+                idx: i,
+                text: t.slice(0, 200),
+                hasBr: (mm[0].match(/<w:br\s*\/>/g) || []).length,
+                hasEmptyT: (mm[0].match(/<w:t(?:\s[^>]*)?\/>/g) || []).length,
+                xmlSnippet: mm[0].length < 4000 ? mm[0] : mm[0].slice(0, 4000),
+              });
+            }
+            i++;
+          }
+          results.push({ id, totalCells: i, interesting: cells });
+        } else {
+          results.push(await rewriteTemplate(supabase, id, force));
+        }
       } catch (e) {
         results.push({ templateId: id, error: (e as Error).message });
       }
