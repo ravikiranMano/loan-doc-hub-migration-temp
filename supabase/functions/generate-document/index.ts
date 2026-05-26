@@ -7997,9 +7997,32 @@ async function generateSingleDocument(
           const lenderBlockFromTemplate = (labelN: number, displayName: string): string => {
             if (!primaryTpl) return lenderBlock(labelN, displayName);
             const tpl = primaryTpl;
-            // 1) Label paragraph: swap the matched <w:t> inner text once.
+
+            // Helper: in a given paragraph XML, replace the first non-empty
+            // <w:t> whose inner text does NOT match `Lender\s*:` with the new
+            // displayName, and blank out any subsequent non-empty non-label
+            // <w:t>s. <w:br/> markers and run properties are preserved.
+            const swapNameInParagraph = (paraXml: string, newName: string): string => {
+              let replaced = false;
+              return paraXml.replace(
+                /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi,
+                (full, attrs, inner) => {
+                  if (!inner || !inner.trim()) return full;
+                  if (/Lender\s*:/i.test(inner)) return full; // skip the label run
+                  if (!replaced) {
+                    replaced = true;
+                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
+                    return `<w:t${a}>${xmlEsc(newName)}</w:t>`;
+                  }
+                  return `<w:t${attrs || ""}></w:t>`;
+                },
+              );
+            };
+
+            // 1) Label paragraph: swap the matched <w:t> inner text once for
+            //    "Lender N:" (preserving trailing whitespace).
             const newLabel = `Lender ${labelN}:` + tpl.labelText.replace(/^.*?Lender\s*:/i, "");
-            const labelOut = tpl.labelXml.replace(
+            let labelOut = tpl.labelXml.replace(
               /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
               (full, attrs, inner) => {
                 if (!/Lender\s*:/i.test(inner)) return full;
@@ -8007,26 +8030,22 @@ async function generateSingleDocument(
                 return `<w:t${a}>${xmlEsc(newLabel)}</w:t>`;
               },
             );
-            // 2) Name paragraph: replace the first non-empty <w:t> with displayName,
-            //    blank out any subsequent non-empty <w:t>s (so a multi-run primary
-            //    name like "Horizon Capital LLC " collapses to just the new name).
-            //    <w:br/> runs are preserved because we only touch <w:t> contents.
+            // Inline name case: name run lives in the same <w:p> as the label
+            // (nameXml is empty or equals labelXml). Rewrite the secondary
+            // (non-label) <w:t>(s) in the label paragraph to displayName so
+            // the appended block shows the correct lender's name instead of
+            // inheriting the primary lender's resolved name.
+            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
+            if (inlineName) {
+              labelOut = swapNameInParagraph(labelOut, displayName);
+            }
+
+            // 2) Separate name paragraph (when present): replace first non-empty
+            //    <w:t> with displayName, blank subsequent ones.
             let nameOut = "";
-            if (tpl.nameXml && tpl.nameXml !== tpl.labelXml) {
-              let replaced = false;
-              nameOut = tpl.nameXml.replace(
-                /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi,
-                (full, attrs, inner) => {
-                  if (!inner || !inner.trim()) return full;
-                  if (!replaced) {
-                    replaced = true;
-                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                    return `<w:t${a}>${xmlEsc(displayName)}</w:t>`;
-                  }
-                  return `<w:t${attrs || ""}></w:t>`;
-                },
-              );
-              if (!replaced) {
+            if (!inlineName && tpl.nameXml) {
+              nameOut = swapNameInParagraph(tpl.nameXml, displayName);
+              if (nameOut === tpl.nameXml) {
                 // Primary had only empty <w:t>s — inject displayName into the first one.
                 nameOut = tpl.nameXml.replace(
                   /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
