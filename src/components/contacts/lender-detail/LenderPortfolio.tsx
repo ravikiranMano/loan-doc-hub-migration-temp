@@ -50,7 +50,21 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
+  // Spec additions
+  accountNumber: string;
+  fundingDate: string;
+  interestFromDate: string;
+  spreadPct: number;
+  disbursements: number;
+  netPayment: number;
+  totalEarnedToDate: number;
 }
+
+const DEFAULT_VISIBLE_LP = new Set([
+  'dealNumber', 'borrowerName', 'noteRate', 'lenderRate', 'regularPayment',
+  'outstandingBalance', 'nextPaymentDate', 'maturityDate', 'termLeft',
+  'daysLate', 'ownershipPct', 'propertyAddress',
+]);
 
 const ALL_COLUMNS = [
   { id: 'dealNumber', label: 'Loan Account' },
@@ -63,8 +77,19 @@ const ALL_COLUMNS = [
   { id: 'maturityDate', label: 'Maturity Date' },
   { id: 'termLeft', label: 'Term Left' },
   { id: 'daysLate', label: 'Days Late' },
-  { id: 'ownershipPct', label: 'Pct Owned' },
+  { id: 'ownershipPct', label: 'Pro Rata %' },
   { id: 'propertyAddress', label: 'Property Description' },
+  // Spec additions (hidden by default)
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'fundingAmount', label: 'Funding Amount' },
+  { id: 'currentBalance', label: 'Current Balance' },
+  { id: 'fundingDate', label: 'Funding Date' },
+  { id: 'interestFromDate', label: 'Interest From Date' },
+  { id: 'spreadPct', label: 'Spread %' },
+  { id: 'disbursements', label: 'Disbursements' },
+  { id: 'netPayment', label: 'Net Payment' },
+  { id: 'totalEarnedToDate', label: 'Total Earned to Date' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
