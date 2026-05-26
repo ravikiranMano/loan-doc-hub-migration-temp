@@ -12,7 +12,7 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
+# .env
 src/generated/
 tmp/
 .playwright-mcp
