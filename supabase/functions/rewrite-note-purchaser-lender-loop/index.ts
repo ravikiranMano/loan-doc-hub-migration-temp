@@ -142,20 +142,37 @@ function rewriteDocumentXml(
     }
   }
 
-  // (c) v3-style primary already present? (idempotent — just refresh marker.)
+  // (c) v3-style primary already present. If it's missing pPr/rPr (which can
+  // happen when the first v3 pass built it from a stripped v1 source), or if
+  // the caller wants a forced refresh, re-emit using the Signature paragraph
+  // as the formatting anchor. Otherwise just refresh the marker.
   for (let i = sigIdx - 1; i >= Math.max(0, sigIdx - 4); i--) {
     if (
       /Lender\s*:/i.test(paras[i].text) &&
       paras[i].text.includes("ld_p_displayName") &&
       paras[i].xml.includes("<w:br/>")
     ) {
+      const hasPPr = /<w:pPr>/.test(paras[i].xml);
+      const hasRPr = /<w:rPr>/.test(paras[i].xml);
+      if (!hasPPr || !hasRPr) {
+        const replacement = buildPrimaryParagraph(paras[i].xml, paras[sigIdx].xml);
+        const before = xml.substring(0, paras[i].start);
+        const after = xml.substring(paras[i].end);
+        let out = before + replacement + after;
+        out = out.replace(MARKER_V1, "").replace(MARKER_V2, "");
+        if (!out.includes(MARKER_V3)) {
+          out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+        }
+        return { xml: out, replaced: 1, note: `refreshed v3 primary paragraph ${i} formatting from Signature anchor` };
+      }
       let out = xml.replace(MARKER_V1, "").replace(MARKER_V2, "");
       if (!out.includes(MARKER_V3)) {
         out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
       }
-      return { xml: out, replaced: 0, note: `v3 primary paragraph already present at ${i}; marker refreshed` };
+      return { xml: out, replaced: 0, note: `v3 primary paragraph already present at ${i} with formatting; marker refreshed` };
     }
   }
+
 
   // (b) Original {{#if (eq ld_p_lenderType ...)}} block (may span paragraphs).
   let startIdx = -1;
