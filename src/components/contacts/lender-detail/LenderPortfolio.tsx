@@ -368,9 +368,10 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
           return null;
         };
         const accountNumberVal = fundingRec?.lenderAccount || fundingRec?.accountNumber
-          || findLT('account_number', 'loan_account') || '';
-        const fundingDateVal = fundingRec?.fundingDate || findLT('funding_date') || '';
-        const interestFromDateVal = fundingRec?.interestFromDate || findLT('interest_from') || '';
+          || extractFieldValue(lt, FIELD_IDS.accountNumber, 'value_text')
+          || findLT('account_number', 'loan_account', 'previousaccount') || '';
+        const fundingDateVal = fundingRec?.fundingDate || findLT('funding_date', 'closing_date', 'originat') || '';
+        const interestFromDateVal = fundingRec?.interestFromDate || findLT('interest_from', 'interestpaidto') || '';
         const spreadPctVal = (noteRateVal || 0) - (lenderRate || 0);
         const disbursementsSum = disbSumLender;
         const netPaymentVal = regularPayment - disbursementsSum;
