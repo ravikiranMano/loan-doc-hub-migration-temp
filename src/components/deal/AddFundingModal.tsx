@@ -1425,7 +1425,16 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               </TooltipProvider>
               <RadioGroup
                 value={formData.roundingAdjustment ? 'yes' : 'no'}
-                onValueChange={(v) => handleChange('roundingAdjustment', v === 'yes')}
+                onValueChange={(v) => {
+                  const next = v === 'yes';
+                  if (next && !formData.roundingAdjustment) {
+                    const msg = currentRoundingLenderName
+                      ? `Enabling this will remove the rounding adjustment from ${currentRoundingLenderName}.`
+                      : 'Only one lender per deal can hold the rounding adjustment. Enabling this will clear it from any other lender.';
+                    toast(msg, { duration: 5000 });
+                  }
+                  handleChange('roundingAdjustment', next);
+                }}
                 className="flex items-center gap-3"
               >
                 <div className="flex items-center gap-1">
