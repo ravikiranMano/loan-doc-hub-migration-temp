@@ -228,6 +228,29 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
         }
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
+        // Spec column lookups (best-effort from loan_terms; '-' fallback)
+        const findLT = (...frags: string[]): any => {
+          for (const [k, v] of Object.entries(lt)) {
+            const lk = k.toLowerCase();
+            if (frags.some(f => lk.includes(f))) {
+              if (v && typeof v === 'object') {
+                const o = v as Record<string, any>;
+                return o.value_number ?? o.value_date ?? o.value_text ?? null;
+              }
+              return v;
+            }
+          }
+          return null;
+        };
+        const accountNumberVal = findLT('account_number', 'loan_account');
+        const originationDateVal = findLT('origination_date', 'funding_date');
+        const closingDateVal = findLT('closing_date');
+        const brokerFeeAmountVal = Number(findLT('broker_fee_amount', 'broker_fee') || 0);
+        const feePctVal = Number(findLT('broker_fee_pct', 'fee_percent', 'fee_pct') || 0);
+        const feePaymentStatusVal = findLT('fee_payment_status', 'fee_status');
+        const feePaymentDateVal = findLT('fee_payment_date', 'fee_paid_date');
+        const commissionEarnedVal = Number(findLT('commission_earned', 'broker_commission') || 0);
+
         portfolioRows.push({
           id: `${dealId}-${brokerId}`,
           dealId,
@@ -244,6 +267,14 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           termLeft: calcTermLeft(maturityDateVal),
           daysLate,
           regularPayment: 0,
+          accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+          originationDate: originationDateVal ? String(originationDateVal) : '',
+          closingDate: closingDateVal ? String(closingDateVal) : '',
+          brokerFeeAmount: brokerFeeAmountVal,
+          feePct: feePctVal,
+          feePaymentStatus: feePaymentStatusVal ? String(feePaymentStatusVal) : '-',
+          feePaymentDate: feePaymentDateVal ? String(feePaymentDateVal) : '',
+          commissionEarned: commissionEarnedVal,
         });
       }
 
