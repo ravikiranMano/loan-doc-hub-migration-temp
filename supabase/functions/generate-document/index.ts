@@ -7911,6 +7911,135 @@ async function generateSingleDocument(
             const lm = visible.match(/(?:ADDITIONAL\s+LENDER|Lender)\s+(\d+)\s*:/i);
             return lm ? Number.parseInt(lm[1], 10) : 0;
           };
+
+          // ── Capture the PRIMARY (unnumbered) Lender block from the template ──
+          // We deep-clone its raw XML to emit Lender 2..N so font/spacing/structure
+          // match the template exactly (no hardcoded Arial/sz=22/table).
+          type PrimaryLenderTpl = {
+            labelXml: string;       // <w:p> containing "Lender:" label
+            labelText: string;      // exact original text inside the matched <w:t> (e.g. "Lender:  ")
+            nameXml: string;        // <w:p> containing the primary lender display name
+            nameText: string;       // visible name text inside the matched <w:t>(s)
+            sigXmls: string[];      // 1+ trailing blocks for Signature/Date (verbatim)
+          };
+          let primaryTpl: PrimaryLenderTpl | null = null;
+          try {
+            const primaryIdx = docBlocks.findIndex((b) => {
+              if (numberedLenderInBlock(b.visible) > 0) return false;
+              return /(^|[^A-Za-z0-9])Lender\s*:/i.test(b.visible);
+            });
+            if (primaryIdx !== -1) {
+              const labelBlock = docBlocks[primaryIdx];
+              // Extract the literal text inside the <w:t> that contains "Lender:"
+              const tTextRe = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gi;
+              let mt: RegExpExecArray | null;
+              let labelText = "";
+              while ((mt = tTextRe.exec(labelBlock.xml)) !== null) {
+                if (/Lender\s*:/i.test(mt[1])) { labelText = mt[1]; break; }
+              }
+              // Name block = the next non-empty block before Signature/Date,
+              // or the same paragraph if name lives inline. Default: next block.
+              let nameIdx = primaryIdx + 1;
+              while (
+                nameIdx < docBlocks.length &&
+                !docBlocks[nameIdx].visible &&
+                !/\b(Signature|Date)\b/i.test(docBlocks[nameIdx].visible)
+              ) nameIdx++;
+              // If next block already contains Signature/Date, the name is in
+              // the label paragraph itself — skip name-block capture in that case.
+              let nameXml = "";
+              let nameText = "";
+              if (
+                nameIdx < docBlocks.length &&
+                !/\b(Signature|Date)\b/i.test(docBlocks[nameIdx].visible) &&
+                numberedLenderInBlock(docBlocks[nameIdx].visible) === 0
+              ) {
+                nameXml = docBlocks[nameIdx].xml;
+                nameText = docBlocks[nameIdx].visible;
+              } else {
+                nameIdx = primaryIdx; // no separate name paragraph
+              }
+              // Trailing signature/date blocks (up to next 3, stop at next Lender label)
+              const sigXmls: string[] = [];
+              const sigStart = nameIdx === primaryIdx ? primaryIdx + 1 : nameIdx + 1;
+              let sawDate = false;
+              for (let j = sigStart; j < Math.min(docBlocks.length, sigStart + 6); j++) {
+                const vis = docBlocks[j].visible;
+                if (/(^|[^A-Za-z0-9])Lender\s*:/i.test(vis) || numberedLenderInBlock(vis) > 0) break;
+                sigXmls.push(docBlocks[j].xml);
+                if (/\bDate\b/i.test(vis)) { sawDate = true; break; }
+                if (sigXmls.length >= 3) break;
+              }
+              if (labelText && sawDate) {
+                primaryTpl = {
+                  labelXml: labelBlock.xml,
+                  labelText,
+                  nameXml,
+                  nameText,
+                  sigXmls,
+                };
+                console.log(
+                  `[lender-sig] template=${tName} primaryBlock.captured=true labelText="${labelText}" nameSep=${nameIdx !== primaryIdx} sigBlocks=${sigXmls.length}`,
+                );
+              }
+            }
+            if (!primaryTpl) {
+              console.log(`[lender-sig] template=${tName} primaryBlock.captured=false (using standardized fallback)`);
+            }
+          } catch (capErr) {
+            console.warn(`[lender-sig] template=${tName} primaryBlock.capture-failed:`, capErr instanceof Error ? capErr.message : String(capErr));
+            primaryTpl = null;
+          }
+
+          // Build a Lender N block by deep-cloning the primary template fragments
+          // and substituting ONLY the visible label text and the visible name text.
+          // All <w:rPr>/<w:pPr>/<w:br/>/<w:pStyle> formatting is preserved verbatim.
+          const lenderBlockFromTemplate = (labelN: number, displayName: string): string => {
+            if (!primaryTpl) return lenderBlock(labelN, displayName);
+            const tpl = primaryTpl;
+            // 1) Label paragraph: swap the matched <w:t> inner text once.
+            const newLabel = `Lender ${labelN}:` + tpl.labelText.replace(/^.*?Lender\s*:/i, "");
+            const labelOut = tpl.labelXml.replace(
+              /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
+              (full, attrs, inner) => {
+                if (!/Lender\s*:/i.test(inner)) return full;
+                const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
+                return `<w:t${a}>${xmlEsc(newLabel)}</w:t>`;
+              },
+            );
+            // 2) Name paragraph: replace the first non-empty <w:t> with displayName,
+            //    blank out any subsequent non-empty <w:t>s (so a multi-run primary
+            //    name like "Horizon Capital LLC " collapses to just the new name).
+            //    <w:br/> runs are preserved because we only touch <w:t> contents.
+            let nameOut = "";
+            if (tpl.nameXml && tpl.nameXml !== tpl.labelXml) {
+              let replaced = false;
+              nameOut = tpl.nameXml.replace(
+                /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi,
+                (full, attrs, inner) => {
+                  if (!inner || !inner.trim()) return full;
+                  if (!replaced) {
+                    replaced = true;
+                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
+                    return `<w:t${a}>${xmlEsc(displayName)}</w:t>`;
+                  }
+                  return `<w:t${attrs || ""}></w:t>`;
+                },
+              );
+              if (!replaced) {
+                // Primary had only empty <w:t>s — inject displayName into the first one.
+                nameOut = tpl.nameXml.replace(
+                  /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
+                  (_full, attrs) => {
+                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
+                    return `<w:t${a}>${xmlEsc(displayName)}</w:t>`;
+                  },
+                );
+              }
+            }
+            return labelOut + nameOut + tpl.sigXmls.join("");
+          };
+
           for (let a = 1; a <= lenderCount - 1; a++) {
             const labelN = a + 1;
             const displayName = getLenderDisplayName(a);
@@ -7929,7 +8058,7 @@ async function generateSingleDocument(
             replacements.push({
               start: docBlocks[startIdx].start,
               end: docBlocks[Math.max(startIdx, endIdx - 1)].end,
-              replacement: lenderBlock(labelN, displayName),
+              replacement: lenderBlockFromTemplate(labelN, displayName),
               labelN,
             });
           }
