@@ -8084,7 +8084,7 @@ async function generateSingleDocument(
               continue;
             }
 
-            blocks.push(lenderBlock(labelN, displayName));
+            blocks.push(lenderBlockFromTemplate(labelN, displayName));
             appendedCount++;
           }
 
