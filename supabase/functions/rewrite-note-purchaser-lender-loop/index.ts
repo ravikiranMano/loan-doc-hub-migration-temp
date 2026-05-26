@@ -76,7 +76,18 @@ function buildPrimaryParagraph(
   // because the stale v1 paragraph this is replacing has no pPr/rPr at all.
   const anchor = formattingAnchorPXml || sourcePXml;
   const pPrMatch = anchor.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = pPrMatch ? pPrMatch[0] : "";
+  // Strip <w:jc w:val="both"/> → "left" on the primary lender paragraph.
+  // The label/name pair uses <w:br/> soft line breaks, and full justification
+  // on a paragraph containing <w:br/> stretches every line except the last,
+  // producing "Horizon    Capital    LLC" output. See note-purchaser-lender-
+  // loop:v4. Labels and names are fixed short strings — left-aligned is the
+  // visually correct choice and matches the appended Lender 2..N blocks.
+  const pPr = pPrMatch
+    ? pPrMatch[0].replace(
+        /<w:jc\b[^>]*\bw:val="both"[^>]*\/>/g,
+        '<w:jc w:val="left"/>',
+      )
+    : "";
   const firstRun = anchor.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/);
   const rPrMatch = firstRun ? firstRun[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) : null;
   const rPr = rPrMatch ? rPrMatch[0] : "";
