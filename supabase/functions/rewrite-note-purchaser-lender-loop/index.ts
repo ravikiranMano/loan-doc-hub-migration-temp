@@ -45,6 +45,7 @@ const TEMPLATE_ID = "680299de-f1eb-4a63-9b31-4b7b70c66948";
 const MARKER_V1 = "<!-- note-purchaser-lender-loop:v1 -->";
 const MARKER_V2 = "<!-- note-purchaser-lender-loop:v2 -->";
 const MARKER_V3 = "<!-- note-purchaser-lender-loop:v3 -->";
+const MARKER_V4 = "<!-- note-purchaser-lender-loop:v4 -->";
 const STALE_LOOP_LITERAL =
   "{{#each lenders}}{{this.displayName}}{{/each}}";
 
