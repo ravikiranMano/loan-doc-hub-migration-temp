@@ -15,6 +15,7 @@ import BorrowerTrustLedger from './BorrowerTrustLedger';
 import BorrowerDashboard from './BorrowerDashboard';
 import BorrowerPortfolio from './BorrowerPortfolio';
 import GuarantorPortfolio from './GuarantorPortfolio';
+import AuthPartyPortfolio from './AuthPartyPortfolio';
 import BorrowerHistory from './BorrowerHistory';
 import BorrowerCharges from './BorrowerCharges';
 import BorrowerConversationLog from './BorrowerConversationLog';
