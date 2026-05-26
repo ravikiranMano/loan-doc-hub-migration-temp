@@ -8056,8 +8056,21 @@ async function generateSingleDocument(
           // Build a Lender N block by deep-cloning the primary template fragments
           // and substituting ONLY the visible label text and the visible name text.
           // All <w:rPr>/<w:pPr>/<w:br/>/<w:pStyle> formatting is preserved verbatim.
+          // Strip <w:jc w:val="both"/> -> "left" in every <w:pPr> of the given
+          // paragraph(s). Justified paragraphs containing <w:br/> soft line
+          // breaks cause Word to stretch the label line and name line across
+          // the column. Labels/names are short fixed strings, not flowing
+          // prose, so left alignment is always correct here. Applied to ALL
+          // cloned paragraphs in an appended lender block (label, Signature,
+          // Date) for visual consistency. See note-purchaser-lender-loop:v4.
+          const stripJustifyBoth = (xml: string): string => {
+            return xml.replace(
+              /<w:jc\b[^>]*\bw:val="both"[^>]*\/>/g,
+              '<w:jc w:val="left"/>',
+            );
+          };
           const lenderBlockFromTemplate = (labelN: number, displayName: string): string => {
-            if (!primaryTpl) return lenderBlock(labelN, displayName);
+            if (!primaryTpl) return stripJustifyBoth(lenderBlock(labelN, displayName));
             const tpl = primaryTpl;
 
             // ── Synth path ─────────────────────────────────────────────────
