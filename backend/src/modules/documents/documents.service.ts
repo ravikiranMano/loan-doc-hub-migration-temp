@@ -263,7 +263,12 @@ export class DocumentsService {
         action_details: { templateId: dto.templateId, templateName, documentId: doc.id },
       });
 
-      return { success: true, templateId: dto.templateId, templateName, docxUrl };
+      return {
+        successCount: 1,
+        failCount: 0,
+        results: [{ templateName, success: true }],
+        docxUrl,
+      };
     } catch (err) {
       await this.repo.updateGenerationJob(job.id, {
         status: 'failed',
