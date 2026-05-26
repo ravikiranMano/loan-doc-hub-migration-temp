@@ -516,6 +516,12 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
       case 'maturityDate': return fmtDate(row.maturityDate);
       case 'nextPaymentDate': return fmtDate(row.nextPaymentDate);
       case 'daysLate': return row.daysLate > 0 ? String(row.daysLate) : '0';
+      case 'fundingDate': return fmtDate(row.fundingDate);
+      case 'interestFromDate': return fmtDate(row.interestFromDate);
+      case 'spreadPct': return fmtPct(row.spreadPct);
+      case 'disbursements': return fmtCurrency(row.disbursements);
+      case 'netPayment': return fmtCurrency(row.netPayment);
+      case 'totalEarnedToDate': return fmtCurrency(row.totalEarnedToDate);
       default: return String((row as any)[colId] || '-');
     }
   };
