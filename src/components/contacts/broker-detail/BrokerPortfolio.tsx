@@ -38,7 +38,21 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
+  // Spec additions
+  accountNumber: string;
+  originationDate: string;
+  closingDate: string;
+  brokerFeeAmount: number;
+  feePct: number;
+  feePaymentStatus: string;
+  feePaymentDate: string;
+  commissionEarned: number;
 }
+
+const DEFAULT_VISIBLE_BRP = new Set([
+  'dealNumber', 'borrowerName', 'noteRate', 'regularPayment', 'outstandingBalance',
+  'nextPaymentDate', 'maturityDate', 'termLeft', 'daysLate', 'propertyAddress',
+]);
 
 const ALL_COLUMNS = [
   { id: 'dealNumber', label: 'Loan Account' },
@@ -51,6 +65,17 @@ const ALL_COLUMNS = [
   { id: 'termLeft', label: 'Term Left' },
   { id: 'daysLate', label: 'Days Late' },
   { id: 'propertyAddress', label: 'Property Description' },
+  // Spec additions (hidden by default)
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Loan Amount' },
+  { id: 'originationDate', label: 'Origination Date' },
+  { id: 'closingDate', label: 'Closing Date' },
+  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
+  { id: 'feePct', label: 'Fee %' },
+  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
+  { id: 'feePaymentDate', label: 'Fee Payment Date' },
+  { id: 'commissionEarned', label: 'Commission Earned' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
