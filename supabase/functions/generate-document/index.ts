@@ -8019,10 +8019,23 @@ async function generateSingleDocument(
               );
             };
 
-            // 1) Label paragraph: swap the matched <w:t> inner text once for
-            //    "Lender N:" (preserving trailing whitespace).
+            // ORDER MATTERS for the inline-name case (label and name in the
+            // same <w:p>): do the NAME swap FIRST while the label run still
+            // reads "Lender:" so swapNameInParagraph correctly skips it.
+            // Swapping the label first would leave "Lender N:" in the label
+            // run, which `/Lender\s*:/i` does NOT match (digit between
+            // "Lender" and ":"), so the name pass would clobber the label
+            // and blank out the real name run — leaving the appended block
+            // with no label and no name.
+            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
+            let labelOut = tpl.labelXml;
+            if (inlineName) {
+              labelOut = swapNameInParagraph(labelOut, displayName);
+            }
+            // Now swap the label run: "Lender:" → "Lender N:" (preserve
+            // original trailing whitespace and xml:space="preserve").
             const newLabel = `Lender ${labelN}:` + tpl.labelText.replace(/^.*?Lender\s*:/i, "");
-            let labelOut = tpl.labelXml.replace(
+            labelOut = labelOut.replace(
               /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
               (full, attrs, inner) => {
                 if (!/Lender\s*:/i.test(inner)) return full;
@@ -8030,15 +8043,7 @@ async function generateSingleDocument(
                 return `<w:t${a}>${xmlEsc(newLabel)}</w:t>`;
               },
             );
-            // Inline name case: name run lives in the same <w:p> as the label
-            // (nameXml is empty or equals labelXml). Rewrite the secondary
-            // (non-label) <w:t>(s) in the label paragraph to displayName so
-            // the appended block shows the correct lender's name instead of
-            // inheriting the primary lender's resolved name.
-            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
-            if (inlineName) {
-              labelOut = swapNameInParagraph(labelOut, displayName);
-            }
+
 
             // 2) Separate name paragraph (when present): replace first non-empty
             //    <w:t> with displayName, blank subsequent ones.
