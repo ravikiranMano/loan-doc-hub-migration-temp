@@ -42,20 +42,54 @@ function visibleText(xml: string): string {
     .join("");
 }
 
-/** Collapse whitespace bleed inside a single cell's XML. */
+/**
+ * Collapse whitespace bleed inside a single target cell's XML.
+ *
+ * The template authored the {{#each lenders}}...{{/each}} block with a
+ * <w:br/> sitting inside almost every run that carries a Handlebars tag —
+ * one before {{#if}}, one before {{firstName}}, one before {{else}}, one
+ * before {{vesting}}, one before {{/if}}, one before {{/each}}. That's 5–6
+ * soft line breaks per loop iteration, which is exactly why each rendered
+ * lender name is separated by 4 blank visual lines.
+ *
+ * Fix: scope to runs that carry Handlebars syntax (text contains "{{").
+ * Strip every <w:br/> from those runs. Then re-introduce exactly ONE
+ * <w:br/> immediately before the {{/each}} run's text, so that each loop
+ * iteration still emits a single line break between lender names.
+ *
+ * We do NOT touch the label run ("INVESTOR NAME:" / "NAME OF PERSON
+ * COMPLETING THIS QUESTIONNAIRE") nor the single <w:br/> the template
+ * author placed between the label and the loop — those carry no "{{".
+ */
 function tidyCellXml(cellXml: string): { xml: string; changed: boolean } {
-  let out = cellXml;
-  const before = out;
-
-  // 1. Remove empty self-closing <w:t/> (with or without attributes). They
-  //    carry no visible content; their only role here is whitespace bleed.
-  out = out.replace(/<w:t(?:\s[^>]*)?\/>/g, "");
-
-  // 2. Collapse 2+ consecutive <w:br/> (possibly separated by whitespace) to
-  //    a single <w:br/>. This is the actual source of the visible blank lines
-  //    between lender names.
-  out = out.replace(/(?:<w:br\s*\/>\s*){2,}/g, "<w:br/>");
-
+  const before = cellXml;
+  const rRe = /<w:r\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:r>)/g;
+  let out = "";
+  let cursor = 0;
+  let m: RegExpExecArray | null;
+  while ((m = rRe.exec(cellXml)) !== null) {
+    out += cellXml.substring(cursor, m.index);
+    cursor = m.index + m[0].length;
+    let runXml = m[0];
+    const text = (runXml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
+      .map((t) => t.replace(/<w:t(?:\s[^>]*)?>/, "").replace(/<\/w:t>/, ""))
+      .join("");
+    if (text.includes("{{")) {
+      // Strip every <w:br/> inside this Handlebars-carrying run.
+      runXml = runXml.replace(/<w:br\s*\/>/g, "");
+      // If this run carries the {{/each}} closer, re-introduce ONE <w:br/>
+      // immediately before its first <w:t> so iteration N -> N+1 still
+      // produces a single visual line break.
+      if (/\{\{\s*\/each\s*\}\}/.test(text)) {
+        runXml = runXml.replace(
+          /(<w:t(?:\s[^>]*)?>)/,
+          "<w:br/>$1",
+        );
+      }
+    }
+    out += runXml;
+  }
+  out += cellXml.substring(cursor);
   return { xml: out, changed: out !== before };
 }
 
