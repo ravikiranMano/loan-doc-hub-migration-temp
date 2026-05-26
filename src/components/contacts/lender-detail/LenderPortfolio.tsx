@@ -24,6 +24,10 @@ const FIELD_IDS = {
   nextPaymentDate: '384a8113-5d6d-47fd-9146-b3b1e9f65037',
   fundingRecords: 'fe607d1f-3d27-4e37-8d10-326ac34d7a3f',
   fundingHistory: 'b179de11-dbe6-4e3b-b987-0a155114bc52',
+  // Spec additions resolved from field_dictionary
+  accountNumber: 'b593a1fb-df22-405c-8ed0-670d251901a4', // ln_p_previousAccountNumber
+  loanStatus: '356839ff-f156-4431-ac7d-87f038428178',    // ln_p_loanStatus
+  paymentAmount: '273499a9-02a6-4a18-abb7-47c7cc9755ac', // ln_p_paymentAmount
 };
 
 interface PortfolioRow {
