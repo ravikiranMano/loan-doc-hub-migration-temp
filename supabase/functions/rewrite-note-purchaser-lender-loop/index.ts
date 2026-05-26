@@ -180,7 +180,7 @@ function rewriteDocumentXml(
     }
   }
   if (startIdx !== -1 && endIdx !== -1) {
-    const replacement = buildPrimaryParagraph(paras[startIdx].xml);
+    const replacement = buildPrimaryParagraph(paras[startIdx].xml, paras[sigIdx].xml);
     const before = xml.substring(0, paras[startIdx].start);
     const after = xml.substring(paras[endIdx].end);
     let out = before + replacement + after;
