@@ -41,29 +41,35 @@ interface PortfolioLoan {
 }
 
 const DEFAULT_VISIBLE_BP = new Set([
-  'loanNumber', 'loanAmount', 'capacity', 'status',
-  'nextPaymentDate', 'principalBalance', 'interestRate', 'maturityDate',
+  'loanNumber', 'accountNumber', 'status',
+  'loanAmount', 'principalBalance',
+  'interestRate', 'loanType',
+  'originationDate', 'maturityDate',
+  'nextPaymentDate', 'paymentAmount',
+  'lastPaymentDate', 'lastPaymentAmount',
+  'daysPastDue', 'totalPaidToDate',
+  'propertyAddress',
 ]);
 
 const ALL_COLUMNS = [
-  { id: 'loanNumber', label: 'Loan Number' },
-  { id: 'loanAmount', label: 'Loan Amount' },
-  { id: 'capacity', label: 'Capacity' },
-  { id: 'status', label: 'Status' },
-  { id: 'nextPaymentDate', label: 'Next Payment Date' },
-  { id: 'principalBalance', label: 'Principal Balance' },
-  { id: 'interestRate', label: 'Interest Rate' },
-  { id: 'maturityDate', label: 'Maturity Date' },
-  // Spec additions (hidden by default)
+  { id: 'loanNumber', label: 'Loan ID' },
   { id: 'accountNumber', label: 'Account Number' },
+  { id: 'status', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Original Amount' },
+  { id: 'principalBalance', label: 'Current Balance' },
+  { id: 'interestRate', label: 'Note Rate' },
   { id: 'loanType', label: 'Loan Type' },
   { id: 'originationDate', label: 'Origination Date' },
+  { id: 'maturityDate', label: 'Maturity Date' },
+  { id: 'nextPaymentDate', label: 'Next Payment Date' },
   { id: 'paymentAmount', label: 'Payment Amount' },
   { id: 'lastPaymentDate', label: 'Last Payment Date' },
   { id: 'lastPaymentAmount', label: 'Last Payment Amount' },
   { id: 'daysPastDue', label: 'Days Past Due' },
   { id: 'totalPaidToDate', label: 'Total Paid to Date' },
-  { id: 'propertyAddress', label: 'Property Address' },
+  { id: 'propertyAddress', label: 'Property/Collateral Address' },
+  // Optional (hidden by default)
+  { id: 'capacity', label: 'Capacity' },
 ];
 
 const ROLE_FILTER_OPTIONS = ['Borrower (Primary)', 'Borrower', 'Co-Borrower', 'Additional Guarantor', 'Trustee', 'Co-Trustee', 'Managing Member', 'Authorized Signer', 'Lender', 'Broker'];
