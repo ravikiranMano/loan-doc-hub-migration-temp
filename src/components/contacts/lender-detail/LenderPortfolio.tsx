@@ -340,17 +340,19 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
           roiYield = effectiveRate;
         }
 
-        // Loan status with delinquent detection
+        // Loan status: prefer ln_p_loanStatus, fall back to legacy keys and date-based detection
         const daysLate = calcDaysLate(nextPaymentVal);
         let loanStatus = 'Active';
-        const lsRaw = lt['loan_status'] || lt['status'] || '';
-        if (typeof lsRaw === 'string') {
-          if (lsRaw.toLowerCase().includes('paid') || lsRaw.toLowerCase().includes('closed')) loanStatus = 'Paid Off';
-          if (lsRaw.toLowerCase().includes('default')) loanStatus = 'Default';
-          if (lsRaw.toLowerCase().includes('delinquent')) loanStatus = 'Delinquent';
+        const lsRaw = extractFieldValue(lt, FIELD_IDS.loanStatus, 'value_text')
+          || lt['loan_status'] || lt['status'] || '';
+        if (typeof lsRaw === 'string' && lsRaw.trim()) {
+          const r = lsRaw.toLowerCase();
+          if (r.includes('paid') || r.includes('closed')) loanStatus = 'Paid Off';
+          else if (r.includes('default')) loanStatus = 'Default';
+          else if (r.includes('delinquent')) loanStatus = 'Delinquent';
+          else loanStatus = lsRaw;
         }
         if (deal.status === 'generated') loanStatus = loanStatus === 'Active' ? 'Active' : loanStatus;
-        // Auto-detect delinquent based on days late
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
         // Spec column derivations from fundingRec / loan_terms
