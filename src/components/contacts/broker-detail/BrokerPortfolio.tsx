@@ -20,6 +20,9 @@ const FIELD_IDS = {
   principalBalance: '27c1bee2-05d4-46e5-a16b-e10c1e38cafd',
   maturityDate: '33fadfcb-b70c-4425-944e-23044f21a06b',
   nextPaymentDate: '384a8113-5d6d-47fd-9146-b3b1e9f65037',
+  accountNumber: 'b593a1fb-0000-0000-0000-000000000000',
+  loanStatus: '356839ff-0000-0000-0000-000000000000',
+  originationDate: '60aac148-0000-0000-0000-000000000000',
 };
 
 interface PortfolioRow {
@@ -38,7 +41,6 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
-  // Spec additions
   accountNumber: string;
   originationDate: string;
   closingDate: string;
@@ -50,13 +52,28 @@ interface PortfolioRow {
 }
 
 const DEFAULT_VISIBLE_BRP = new Set([
-  'dealNumber', 'borrowerName', 'noteRate', 'regularPayment', 'outstandingBalance',
-  'nextPaymentDate', 'maturityDate', 'termLeft', 'daysLate', 'propertyAddress',
+  'dealNumber', 'accountNumber', 'loanStatus',
+  'loanAmount', 'originationDate', 'closingDate',
+  'borrowerName',
+  'brokerFeeAmount', 'feePct',
+  'feePaymentStatus', 'feePaymentDate',
+  'commissionEarned',
 ]);
 
 const ALL_COLUMNS = [
-  { id: 'dealNumber', label: 'Loan Account' },
+  { id: 'dealNumber', label: 'Loan ID' },
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Loan Amount' },
+  { id: 'originationDate', label: 'Origination Date' },
+  { id: 'closingDate', label: 'Closing Date' },
   { id: 'borrowerName', label: 'Borrower Name' },
+  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
+  { id: 'feePct', label: 'Fee %' },
+  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
+  { id: 'feePaymentDate', label: 'Fee Payment Date' },
+  { id: 'commissionEarned', label: 'Commission Earned' },
+  // Optional columns (hidden by default)
   { id: 'noteRate', label: 'Note Rate' },
   { id: 'regularPayment', label: 'Regular Payment' },
   { id: 'outstandingBalance', label: 'Principal Balance' },
@@ -65,17 +82,6 @@ const ALL_COLUMNS = [
   { id: 'termLeft', label: 'Term Left' },
   { id: 'daysLate', label: 'Days Late' },
   { id: 'propertyAddress', label: 'Property Description' },
-  // Spec additions (hidden by default)
-  { id: 'accountNumber', label: 'Account Number' },
-  { id: 'loanStatus', label: 'Loan Status' },
-  { id: 'loanAmount', label: 'Loan Amount' },
-  { id: 'originationDate', label: 'Origination Date' },
-  { id: 'closingDate', label: 'Closing Date' },
-  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
-  { id: 'feePct', label: 'Fee %' },
-  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
-  { id: 'feePaymentDate', label: 'Fee Payment Date' },
-  { id: 'commissionEarned', label: 'Commission Earned' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
@@ -219,12 +225,16 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           extractFieldValue(lt, FIELD_IDS.nextPaymentDate, 'value_text') || '';
 
         const daysLate = calcDaysLate(nextPaymentVal);
+        const lsField = extractFieldValue(lt, FIELD_IDS.loanStatus, 'value_text');
         let loanStatus = 'Active';
-        const lsRaw = lt['loan_status'] || lt['status'] || '';
-        if (typeof lsRaw === 'string') {
-          if (lsRaw.toLowerCase().includes('paid') || lsRaw.toLowerCase().includes('closed')) loanStatus = 'Paid Off';
-          if (lsRaw.toLowerCase().includes('default')) loanStatus = 'Default';
-          if (lsRaw.toLowerCase().includes('delinquent')) loanStatus = 'Delinquent';
+        const lsRaw = lsField || lt['loan_status'] || lt['status'] || '';
+        if (typeof lsRaw === 'string' && lsRaw) {
+          loanStatus = lsRaw;
+          const lsLow = lsRaw.toLowerCase();
+          if (lsLow.includes('paid') || lsLow.includes('closed')) loanStatus = 'Paid Off';
+          else if (lsLow.includes('default')) loanStatus = 'Default';
+          else if (lsLow.includes('delinquent')) loanStatus = 'Delinquent';
+          else if (lsLow.includes('active')) loanStatus = 'Active';
         }
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
@@ -242,8 +252,13 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           }
           return null;
         };
-        const accountNumberVal = findLT('account_number', 'loan_account');
-        const originationDateVal = findLT('origination_date', 'funding_date');
+        const accountNumberVal =
+          extractFieldValue(lt, FIELD_IDS.accountNumber, 'value_text') ||
+          findLT('account_number', 'loan_account');
+        const originationDateVal =
+          extractFieldValue(lt, FIELD_IDS.originationDate, 'value_date') ||
+          extractFieldValue(lt, FIELD_IDS.originationDate, 'value_text') ||
+          findLT('origination_date', 'funding_date');
         const closingDateVal = findLT('closing_date');
         const brokerFeeAmountVal = Number(findLT('broker_fee_amount', 'broker_fee') || 0);
         const feePctVal = Number(findLT('broker_fee_pct', 'fee_percent', 'fee_pct') || 0);
