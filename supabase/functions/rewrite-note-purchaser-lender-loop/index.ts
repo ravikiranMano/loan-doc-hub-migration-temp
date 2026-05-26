@@ -131,7 +131,7 @@ function rewriteDocumentXml(
   // (a) Stale loop literal directly above Signature?
   for (let i = sigIdx - 1; i >= Math.max(0, sigIdx - 4); i--) {
     if (paras[i].text.includes(STALE_LOOP_LITERAL)) {
-      const replacement = buildPrimaryParagraph(paras[i].xml);
+      const replacement = buildPrimaryParagraph(paras[i].xml, paras[sigIdx].xml);
       const before = xml.substring(0, paras[i].start);
       const after = xml.substring(paras[i].end);
       let out = before + replacement + after;
