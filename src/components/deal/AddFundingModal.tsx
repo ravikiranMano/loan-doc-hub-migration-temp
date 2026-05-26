@@ -402,16 +402,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     const [i, d = ''] = s.split('.');
     return `${i || '0'}.${(d + '00').slice(0, 2)}`;
   };
-  const [showRoundingInfo, setShowRoundingInfo] = useState(false);
-
-  useEffect(() => {
-    if (formData.roundingAdjustment) {
-      setShowRoundingInfo(true);
-      const t = setTimeout(() => setShowRoundingInfo(false), 2000);
-      return () => clearTimeout(t);
-    }
-    setShowRoundingInfo(false);
-  }, [formData.roundingAdjustment]);
+  // Rounding-adjustment toast is fired imperatively from handleChange when
+  // the user actively enables the option — never on mount/edit/re-open.
   const { user } = useAuth();
   const currentUserId = user?.id || '';
 
