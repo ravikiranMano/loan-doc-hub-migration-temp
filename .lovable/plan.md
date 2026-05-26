@@ -1,74 +1,75 @@
-# Platform-Wide Precision & Percentage Handling
+# Fix: Multi-Lender Append — Clone Primary Lender's Formatting
 
-## Current State
+## Root cause
 
-The platform already has a centralized precision utility at `src/lib/precisionFormat.ts` built on `decimal.js` that covers the entire spec surface:
+In `supabase/functions/generate-document/index.ts` (~lines 7822–7894), the per-lender append routine deliberately uses a **"STANDARDIZED FORMAT"** that hardcodes XML:
 
-- Storage: `roundPctForStorage` (4dp), `roundDollarForStorage` (2dp), `normalizeStoredPrecision`
-- Display: `formatPercentage`, `formatRate` (3dp), `formatProRata` (4dp), `formatRatio`/`formatLtv` (2dp), `formatLateChargePct` (3dp), `formatCurrency`, `formatPercentByFieldKey`
-- Math: `toDecimal`, `sumPercents`, `allocateDollarsByPercent`, `computeLtv`, `computeAmortizedPayment`
+- `STD_FONT = "Arial"` and `STD_SIZE = "22"` (11pt)
+- `rPrStd()` emits `<w:rFonts w:ascii="Arial" .../>` + `<w:sz w:val="22"/>`
+- `pPrPlain()` emits `<w:spacing w:before="0" w:after=".../>` + `<w:ind w:left="0" w:firstLine="0"/>` + `<w:jc w:val="left"/>`
+- `paraSigRow()` wraps Signature/Date in a `<w:tbl>` with three `<w:gridCol>`s and a `lineBorder` underline
 
-So this is **not** a "build the utility" task — it is an **audit + wiring** task to make sure every rate/percent/dollar callsite goes through this utility, never through native `toFixed`/`parseFloat` math, never through display-rounded values, and never with truncated storage.
+This is then used by both the **normalize** pass (rewrites existing `Lender N:` blocks in place) and the **append** pass (inserts missing `Lender N:` blocks before `</w:body>`). The primary Lender block from the template uses Times New Roman, `<w:pStyle w:val="NoSpacing"/>`, and plain `<w:p>` paragraphs with literal underscore lines — so the appended/normalized blocks visually diverge from Lender 1.
 
-## Scope
+## Approach
 
-Bring every Rate / Percentage / Ratio / Funding / Dollar field on the platform onto the existing utility, with no behavior changes to working flows.
+Replace the standardized emitters with a **template-cloning** strategy. On the first call per template, scan `docXml` for the primary `Lender:` paragraph block (the one **without** a trailing number — Lender 1), capture the contiguous paragraph fragments verbatim, and reuse them to emit Lender 2..N by substituting only the user-visible text of the label run and the display-name run.
 
-### 1. UI display audit
-Replace ad-hoc `.toFixed(...)` / `Intl.NumberFormat` / template-string formatting in these files with the appropriate `formatRate` / `formatProRata` / `formatLtv` / `formatLateChargePct` / `formatPercentage` / `formatCurrency`:
-- `LoanFundingGrid.tsx`, `AddFundingModal.tsx`, `FundingDetailForm.tsx`, `LenderDisbursementModal.tsx`
-- `LoanTermsFundingForm.tsx`, `LoanTermsDetailsForm.tsx`, `LoanTermsBalancesForm.tsx`, `LoanTermsPenaltiesForm.tsx`, `LoanTermsServicingForm.tsx`
-- `OriginationFeesForm.tsx`, `LienDetailForm.tsx`, `LienSectionContent.tsx`
-- Trust ledger views (deal + borrower/lender/broker), Portfolio views, Charges views, History views, PropertiesTableView, attachment file-size formatters (leave file-size `toFixed` alone — not financial)
+The existing block-scan (`blockRe` over `<w:p>…</w:p>` / `<w:tbl>…</w:tbl>`) and the normalize-vs-append control flow (`normalizedExisting`, `replacements`, append-before-`</w:body>`) stay unchanged. Only the XML emitted per lender changes.
 
-Use `formatPercentByFieldKey(fieldKey, value)` as the default in generic renderers (`DealFieldInput.tsx`, grid cells) so category is auto-resolved.
+## Changes
 
-### 2. Edit ↔ display lifecycle
-For every editable rate/percent input:
-- On focus: show the raw stored value (4dp, no `%`, no commas) so the user can edit precisely.
-- On blur: route through `normalizeStoredPrecision(value, 'percent' | 'dollar')` before persisting, and `formatPercentByFieldKey` for the display value.
-- Never derive the persisted value from the formatted display string.
+**File:** `supabase/functions/generate-document/index.ts` — only the `LENDER_SPECIFIC` branch (~lines 7803–7990).
 
-### 3. Calculation audit
-Walk through every place that currently uses `parseFloat` / native `*` `/` `+` `-` on monetary or rate fields and route through `toDecimal` + Decimal arithmetic:
-- `calculationEngine.ts`, `lienCalculationEngine.ts`, `interestValidation.ts`, `loanAllocationValidation.ts`, `fieldTransforms.ts`, `fieldValueResolver.ts`
-- Funding distribution / pro-rata / lender allocation in `LoanFundingGrid`, `AddFundingModal`, `FundingDetailForm`, `LenderDisbursementModal`
-- Interest/principal split, payment recalculation, override recalculation
-- Charges / penalties / origination-fee totals
-- Trust ledger interest accrual & payoff math
+### 1. Locate the primary Lender template block
 
-Rounding-adjustment rule: after Decimal allocation, compute the residual penny delta and assign it to a single lender (largest share, then earliest sequence as tiebreaker) so totals reconcile to the cent.
+Right after `docBlocks` is built (~line 7908), add a helper:
 
-### 4. Storage / API boundary
-- All write paths (`useDealFields`, funding save, trust ledger save, lien save) call `normalizeStoredPrecision` before persisting JSONB/`deal_section_values`/`deal_field_values`.
-- Read path keeps the raw 4dp string; nothing should pre-round on load.
-- DB columns already store as `numeric` (no precision cap) or as JSONB string — no migration needed. Add a one-time QA sweep to confirm no existing row was saved with truncated precision; if any are found, leave them (they were user input) but never re-truncate on edit.
+- Walk `docBlocks` and find the first block whose visible text matches `/\bLender\s*:/i` **and does not** match `/Lender\s+\d+\s*:/i` (i.e. the unnumbered primary label).
+- From that index, capture up to the next 4 blocks until and including the first block whose visible text contains `\bDate\b` (or hit the next numbered `Lender N:` first, whichever comes first).
+- Store the captured fragments as `{ labelBlockXml, nameBlockXml, sigBlockXml, dateBlockXml? }`. If signature and date live in a single `<w:tbl>` or single `<w:p>`, store that one combined fragment as `sigDateBlockXml`.
+- Also extract from the label block: the exact label text run (so trailing whitespace and `xml:space="preserve"` are preserved when swapping `Lender:` → `Lender N:`).
+- Extract from the name block: a list of `<w:t>…</w:t>` text-content ranges so we can replace only the visible text, preserving wrapping `<w:r>`/`<w:rPr>` and intra-run `<w:br/>` markers.
 
-### 5. Document merge / generation
-In `supabase/functions/generate-document` and `supabase/functions/_shared/field-resolver.ts`:
-- Merge tags resolve to the **stored** 4dp value, never the UI-formatted string.
-- Add a small server-side mirror of `formatPercentByFieldKey` for any merge tag that explicitly wants a display-formatted variant (e.g. a `*_display` suffix); default tags emit the raw stored numeric.
-- Existing RE851A/D pipelines and the questionnaire safety passes are not touched.
+If no primary block is found (e.g. template anchors lender on a different label, or the block is missing), **fall back to the existing standardized emitter** — preserves single-lender / non-conforming templates byte-identically.
 
-### 6. Tests
-Extend `precisionFormat.test.ts` with the spec's QA matrix (10.0000→"10.00", 10.5000→"10.50", 10.8750→"10.875", 10.8756→"10.8756", 27.2727→"27.2727"), the 33.3333% / 27.2727% three-lender split reconciliation, and a merge-tag stored-vs-display test.
+### 2. Build cloned blocks per lender
 
-## Out of scope (do not touch)
+Add `lenderBlockFromTemplate(labelN, displayName)`:
 
-- Override modal UX and recalculation flow (per minimal-change policy)
-- Field dictionary schema, RLS, auth, or any other module
-- File-size `toFixed` calls in attachment components — not financial
-- Visual styling of any screen
+- Deep-clone the captured fragments as raw XML strings (they're already valid `<w:p>`/`<w:tbl>` XML).
+- In the label fragment: replace only the inner text of the matched label `<w:t>` (regex anchored on the captured text) with `Lender ${labelN}:` plus the original trailing whitespace; do **not** touch its `<w:rPr>` / `<w:pPr>`.
+- In the name fragment: walk the captured `<w:t>` ranges and either (a) concatenate the existing texts to detect the primary's display name and replace it whole, or (b) replace the first non-empty `<w:t>` with `displayName` and zero out subsequent non-empty `<w:t>`s. `<w:br/>` runs in between are kept as-is so the line-break pattern around the name is preserved.
+- The signature/date fragment(s) are appended **verbatim** (underscore lines and all).
 
-## Technical Notes
+XML escape only the substituted text (`displayName`, label string) — reuse the existing `xmlEsc`.
 
-- All new code imports from `@/lib/precisionFormat` (UI) and a thin Deno copy in `supabase/functions/_shared/precisionFormat.ts` (edge). Keep a single source of truth — no inline re-implementations.
-- No new dependencies; `decimal.js` is already in the bundle.
-- Each touched file gets surgical edits only (display call swap, normalize on persist, Decimal math in the one function that needed it).
+### 3. Use the cloner in both passes
 
-## Deliverables
+- **Normalize pass** (~line 7929): `replacement: lenderBlockFromTemplate(labelN, displayName)` instead of `lenderBlock(labelN, displayName)`.
+- **Append pass** (~line 7958): same swap.
+- Keep the standardized `lenderBlock` available only as the fallback when the primary block could not be located.
 
-1. Wired callsites across the file list in section 1–3.
-2. `normalizeStoredPrecision` enforced at every write boundary (section 4).
-3. Edge-function `_shared/precisionFormat.ts` + merge-tag wiring (section 5).
-4. Expanded `precisionFormat.test.ts` covering the 10-case QA matrix (section 6).
+### 4. No other changes
+
+- `COMMON_TEMPLATE` skip path (~7798) untouched.
+- `renderedIndexes` / numbered-label regex untouched.
+- Append insertion point (before `<w:sectPr>` / `</w:body>`) untouched.
+- Lender ordering, merge-key families, tag-parser orphan pass, `ld_p_*` bare keys — all untouched.
+
+## Verification
+
+1. Inspect the `LENDER_SPECIFIC` branch console logs to confirm `[lender-sig] template=… primaryBlock.captured=true` (new debug line).
+2. Generate `Waiver_of_Appraisal` with 1, 2, and 4 lenders. Unzip and diff `word/document.xml`:
+   - 1-lender output is byte-identical to pre-change.
+   - 2/4-lender outputs contain **no** `<w:rFonts w:ascii="Arial"`, **no** `w:sz w:val="22"`, **no** `<w:tbl>` wrapping Signature/Date in the appended blocks.
+   - Each Lender N's `<w:rPr>` matches Lender 1's `<w:rPr>` character-for-character.
+3. Single-lender templates: confirm append path is skipped (`lenderCount === 1`) — unchanged.
+4. Fallback path: temporarily run against a template lacking a `Lender:` anchor and confirm the legacy standardized emitter still fires (regression safety).
+
+## Out of scope
+
+- Field-resolver / merge-key publication
+- `tag-parser.ts` orphan stripping
+- Bare `ld_p_*` aggregation behavior
+- Lender ordering / primary determination
