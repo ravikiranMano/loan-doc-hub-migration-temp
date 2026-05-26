@@ -326,12 +326,6 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           const loanTerms = sectionMap.get(p.deal_id) || {};
           const displayRole = resolveCapacity(p.deal_id, contactDbId, p.role);
 
-          // Map deal status to portfolio status
-          let displayStatus = 'Active';
-          const loanStatus = loanTerms['loan_status'] || loanTerms['status'] || '';
-          if (typeof loanStatus === 'string' && loanStatus.toLowerCase().includes('closed')) displayStatus = 'Closed';
-          if (typeof loanStatus === 'string' && loanStatus.toLowerCase().includes('default')) displayStatus = 'Default';
-
           const formatCurrency = (val: any) => {
             if (val == null || val === '') return '-';
             const num = typeof val === 'number' ? val : parseFloat(String(val));
@@ -370,7 +364,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           const displayLoanAmount = loanAmountVal ?? deal.loan_amount;
           const displayPrincipalBalance = principalBalanceVal ?? loanAmountVal ?? deal.loan_amount;
 
-          // Spec column lookups (best-effort; '-' when not present in loan_terms)
+          // Fallback fragment lookup for legacy keys
           const findByKey = (...frags: string[]): any => {
             for (const [k, v] of Object.entries(loanTerms)) {
               const lk = k.toLowerCase();
@@ -384,13 +378,46 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
             }
             return null;
           };
-          const accountNumberVal = findByKey('account_number', 'loan_account');
-          const loanTypeVal = findByKey('loan_type') ?? deal.product_type;
-          const originationDateVal = findByKey('origination_date', 'funding_date', 'closing_date');
-          const paymentAmountVal = findByKey('regular_payment', 'monthly_payment', 'payment_amount');
-          const lastPaymentDateVal = findByKey('last_payment_date');
-          const lastPaymentAmountVal = findByKey('last_payment_amount');
-          const totalPaidVal = findByKey('total_paid', 'paid_to_date');
+
+          // Spec column lookups: prefer field_dictionary UUID; fallback to legacy keys
+          const accountNumberVal =
+            extractFieldValue(loanTerms, FIELD_IDS.accountNumber, 'value_text') ??
+            findByKey('account_number', 'loan_account', 'previousaccount');
+          const loanStatusVal =
+            extractFieldValue(loanTerms, FIELD_IDS.loanStatus, 'value_text') ??
+            findByKey('loan_status', 'loanstatus');
+          const loanTypeVal =
+            extractFieldValue(loanTerms, FIELD_IDS.loanType, 'value_text') ??
+            findByKey('loan_type', 'loantype') ?? deal.product_type;
+          const originationDateVal =
+            extractFieldValue(loanTerms, FIELD_IDS.originationDate, 'value_date') ??
+            extractFieldValue(loanTerms, FIELD_IDS.originationDate, 'value_text') ??
+            extractFieldValue(loanTerms, FIELD_IDS.closingDate, 'value_date') ??
+            extractFieldValue(loanTerms, FIELD_IDS.closingDate, 'value_text') ??
+            findByKey('origination_date', 'funding_date', 'closing_date', 'originat');
+          const paymentAmountVal =
+            extractFieldValue(loanTerms, FIELD_IDS.paymentAmount, 'value_number') ??
+            findByKey('regular_payment', 'monthly_payment', 'payment_amount', 'paymentamount');
+          const lastPaymentDateVal =
+            extractFieldValue(loanTerms, FIELD_IDS.lastPaymentDate, 'value_date') ??
+            extractFieldValue(loanTerms, FIELD_IDS.lastPaymentDate, 'value_text') ??
+            findByKey('last_payment_date', 'lastpaymen');
+          const lastPaymentAmountVal =
+            extractFieldValue(loanTerms, FIELD_IDS.lastPaymentAmount, 'value_number') ??
+            findByKey('last_payment_amount', 'lastpaymenamount');
+          const totalPaidVal = findByKey('total_paid', 'paid_to_date', 'totalpaid');
+
+          // Display status: prefer ln_p_loanStatus, fall back to legacy
+          let displayStatus = 'Active';
+          const rawStatus = (typeof loanStatusVal === 'string' ? loanStatusVal : '') ||
+            (typeof loanTerms['loan_status'] === 'string' ? loanTerms['loan_status'] : '') ||
+            (typeof loanTerms['status'] === 'string' ? loanTerms['status'] : '');
+          if (rawStatus) {
+            const r = rawStatus.toLowerCase();
+            if (r.includes('closed') || r.includes('paid')) displayStatus = 'Closed';
+            else if (r.includes('default')) displayStatus = 'Default';
+            else if (rawStatus.trim()) displayStatus = rawStatus;
+          }
 
           let daysPastDueStr = '-';
           if (nextPaymentDateVal) {
@@ -402,6 +429,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
               }
             } catch { /* ignore */ }
           }
+
 
           portfolioRows.push({
             id: `${p.deal_id}`,
