@@ -20,6 +20,9 @@ const FIELD_IDS = {
   principalBalance: '27c1bee2-05d4-46e5-a16b-e10c1e38cafd',
   maturityDate: '33fadfcb-b70c-4425-944e-23044f21a06b',
   nextPaymentDate: '384a8113-5d6d-47fd-9146-b3b1e9f65037',
+  accountNumber: 'b593a1fb-0000-0000-0000-000000000000',
+  loanStatus: '356839ff-0000-0000-0000-000000000000',
+  originationDate: '60aac148-0000-0000-0000-000000000000',
 };
 
 interface PortfolioRow {
@@ -38,7 +41,6 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
-  // Spec additions
   accountNumber: string;
   originationDate: string;
   closingDate: string;
@@ -50,13 +52,28 @@ interface PortfolioRow {
 }
 
 const DEFAULT_VISIBLE_BRP = new Set([
-  'dealNumber', 'borrowerName', 'noteRate', 'regularPayment', 'outstandingBalance',
-  'nextPaymentDate', 'maturityDate', 'termLeft', 'daysLate', 'propertyAddress',
+  'dealNumber', 'accountNumber', 'loanStatus',
+  'loanAmount', 'originationDate', 'closingDate',
+  'borrowerName',
+  'brokerFeeAmount', 'feePct',
+  'feePaymentStatus', 'feePaymentDate',
+  'commissionEarned',
 ]);
 
 const ALL_COLUMNS = [
-  { id: 'dealNumber', label: 'Loan Account' },
+  { id: 'dealNumber', label: 'Loan ID' },
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Loan Amount' },
+  { id: 'originationDate', label: 'Origination Date' },
+  { id: 'closingDate', label: 'Closing Date' },
   { id: 'borrowerName', label: 'Borrower Name' },
+  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
+  { id: 'feePct', label: 'Fee %' },
+  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
+  { id: 'feePaymentDate', label: 'Fee Payment Date' },
+  { id: 'commissionEarned', label: 'Commission Earned' },
+  // Optional columns (hidden by default)
   { id: 'noteRate', label: 'Note Rate' },
   { id: 'regularPayment', label: 'Regular Payment' },
   { id: 'outstandingBalance', label: 'Principal Balance' },
@@ -65,17 +82,6 @@ const ALL_COLUMNS = [
   { id: 'termLeft', label: 'Term Left' },
   { id: 'daysLate', label: 'Days Late' },
   { id: 'propertyAddress', label: 'Property Description' },
-  // Spec additions (hidden by default)
-  { id: 'accountNumber', label: 'Account Number' },
-  { id: 'loanStatus', label: 'Loan Status' },
-  { id: 'loanAmount', label: 'Loan Amount' },
-  { id: 'originationDate', label: 'Origination Date' },
-  { id: 'closingDate', label: 'Closing Date' },
-  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
-  { id: 'feePct', label: 'Fee %' },
-  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
-  { id: 'feePaymentDate', label: 'Fee Payment Date' },
-  { id: 'commissionEarned', label: 'Commission Earned' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
