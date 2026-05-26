@@ -28,7 +28,22 @@ interface PortfolioLoan {
   interestRate: string;
   maturityDate: string;
   participants: ParticipantInfo[];
+  // Spec additions (read-only, '-' when unavailable)
+  accountNumber: string;
+  loanType: string;
+  originationDate: string;
+  paymentAmount: string;
+  lastPaymentDate: string;
+  lastPaymentAmount: string;
+  daysPastDue: string;
+  totalPaidToDate: string;
+  propertyAddress: string;
 }
+
+const DEFAULT_VISIBLE_BP = new Set([
+  'loanNumber', 'loanAmount', 'capacity', 'status',
+  'nextPaymentDate', 'principalBalance', 'interestRate', 'maturityDate',
+]);
 
 const ALL_COLUMNS = [
   { id: 'loanNumber', label: 'Loan Number' },
@@ -39,6 +54,16 @@ const ALL_COLUMNS = [
   { id: 'principalBalance', label: 'Principal Balance' },
   { id: 'interestRate', label: 'Interest Rate' },
   { id: 'maturityDate', label: 'Maturity Date' },
+  // Spec additions (hidden by default)
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanType', label: 'Loan Type' },
+  { id: 'originationDate', label: 'Origination Date' },
+  { id: 'paymentAmount', label: 'Payment Amount' },
+  { id: 'lastPaymentDate', label: 'Last Payment Date' },
+  { id: 'lastPaymentAmount', label: 'Last Payment Amount' },
+  { id: 'daysPastDue', label: 'Days Past Due' },
+  { id: 'totalPaidToDate', label: 'Total Paid to Date' },
+  { id: 'propertyAddress', label: 'Property Address' },
 ];
 
 const ROLE_FILTER_OPTIONS = ['Borrower (Primary)', 'Borrower', 'Co-Borrower', 'Additional Guarantor', 'Trustee', 'Co-Trustee', 'Managing Member', 'Authorized Signer', 'Lender', 'Broker'];
