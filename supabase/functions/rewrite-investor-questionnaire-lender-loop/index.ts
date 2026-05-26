@@ -164,7 +164,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    let body: { templateId?: string; force?: boolean } = {};
+    let body: { templateId?: string; force?: boolean; debug?: boolean } = {};
     try {
       body = await req.json();
     } catch (_) {
