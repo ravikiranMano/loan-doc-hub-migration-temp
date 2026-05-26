@@ -8060,6 +8060,24 @@ async function generateSingleDocument(
             if (!primaryTpl) return lenderBlock(labelN, displayName);
             const tpl = primaryTpl;
 
+            // ── Synth path ─────────────────────────────────────────────────
+            // Anchor paragraph supplies <w:pPr> + first-run <w:rPr> only; the
+            // visible text is rebuilt as "Lender N: <displayName>". Signature
+            // and Date paragraphs are cloned VERBATIM from the template so
+            // their literal underscore lines + BodyText formatting are kept.
+            if (tpl.synthLabel) {
+              const pPrMatch = tpl.labelXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+              const pPr = pPrMatch ? pPrMatch[0] : "";
+              const firstRunMatch = tpl.labelXml.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/);
+              const rPrMatch = firstRunMatch ? firstRunMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) : null;
+              const rPr = rPrMatch ? rPrMatch[0] : "";
+              const text = xmlEsc(`Lender ${labelN}: ${displayName}`);
+              const synthP =
+                `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+              return synthP + tpl.sigXmls.join("");
+            }
+
+
             // Helper: in a given paragraph XML, replace the first non-empty
             // <w:t> whose inner text does NOT match `Lender\s*:` with the new
             // displayName, and blank out any subsequent non-empty non-label
