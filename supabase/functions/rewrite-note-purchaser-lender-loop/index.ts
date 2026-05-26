@@ -67,10 +67,16 @@ function visibleText(xml: string): string {
  * for Lender 2..N and substitutes only the label run's text ("Lender: " ->
  * "Lender N: ") and the name <w:t>; the <w:br/> structure is preserved.
  */
-function buildPrimaryParagraph(sourcePXml: string): string {
-  const pPrMatch = sourcePXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+function buildPrimaryParagraph(
+  sourcePXml: string,
+  formattingAnchorPXml?: string,
+): string {
+  // Prefer the formatting anchor (the Signature paragraph, BodyText style)
+  // because the stale v1 paragraph this is replacing has no pPr/rPr at all.
+  const anchor = formattingAnchorPXml || sourcePXml;
+  const pPrMatch = anchor.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
   const pPr = pPrMatch ? pPrMatch[0] : "";
-  const firstRun = sourcePXml.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/);
+  const firstRun = anchor.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/);
   const rPrMatch = firstRun ? firstRun[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) : null;
   const rPr = rPrMatch ? rPrMatch[0] : "";
   return (
@@ -86,6 +92,7 @@ function buildPrimaryParagraph(sourcePXml: string): string {
     `</w:p>`
   );
 }
+
 
 function rewriteDocumentXml(
   xml: string,
