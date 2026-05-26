@@ -556,6 +556,27 @@ serve(async (req) => {
       errors.push(`${unmappedTags.length} tag(s) do not match any field_key in the Field Dictionary. Check spelling or add the field to the dictionary.`);
     }
 
+    // Multi-lender singular-vs-aggregate guardrail (warning only, never blocks save/generation).
+    // Singular ld_p_* keys render ONLY the primary lender by design. If a template uses one of
+    // these in a body/header/cover/table context, multi-lender deals will silently drop lenders 2..N.
+    // We flag every occurrence with a hint pointing at the aggregate key. Signature blocks that
+    // intentionally use the singular key are still rendered correctly by the append routine; this
+    // is informational so template authors can audit body usages.
+    const singularToAggregate: Record<string, string> = {
+      ld_p_lenderName: "ld_p_allInvestorNames",
+    };
+    for (const tag of foundMergeTags) {
+      const aggregate = singularToAggregate[tag.tagName];
+      if (aggregate) {
+        warnings.push(
+          `Template uses {{${tag.tagName}}} which renders only the primary lender. ` +
+          `If this field should display all lenders on multi-lender deals, use {{${aggregate}}} instead, ` +
+          `or use {{#each lenders}}{{this.displayName}}{{/each}} for a per-lender loop. ` +
+          `Leave {{${tag.tagName}}} in place only inside signature/acknowledgment blocks that the multi-lender append routine handles.`
+        );
+      }
+    }
+
     if (foundMergeTags.length === 0 && foundLabels.length === 0) {
       warnings.push("No merge tags found. Use {{field_key}} format where field_key matches entries in the Field Dictionary.");
     }
