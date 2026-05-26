@@ -37,7 +37,11 @@ const corsHeaders = {
 };
 
 const TEMPLATE_ID = "680299de-f1eb-4a63-9b31-4b7b70c66948";
-const MARKER = "<!-- note-purchaser-lender-loop:v1 -->";
+// Bumped to v2 after the signature-block appender regression was fixed in
+// supabase/functions/generate-document/index.ts (synth-path for templates
+// without a bare "Lender:" label paragraph). Future regressions in this
+// template's pipeline should bump again so output-version is distinguishable.
+const MARKER = "<!-- note-purchaser-lender-loop:v2 -->";
 const LOOP_LITERAL =
   "{{#each lenders}}{{this.displayName}}{{/each}}";
 
