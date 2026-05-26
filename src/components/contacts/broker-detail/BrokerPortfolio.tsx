@@ -225,12 +225,16 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           extractFieldValue(lt, FIELD_IDS.nextPaymentDate, 'value_text') || '';
 
         const daysLate = calcDaysLate(nextPaymentVal);
+        const lsField = extractFieldValue(lt, FIELD_IDS.loanStatus, 'value_text');
         let loanStatus = 'Active';
-        const lsRaw = lt['loan_status'] || lt['status'] || '';
-        if (typeof lsRaw === 'string') {
-          if (lsRaw.toLowerCase().includes('paid') || lsRaw.toLowerCase().includes('closed')) loanStatus = 'Paid Off';
-          if (lsRaw.toLowerCase().includes('default')) loanStatus = 'Default';
-          if (lsRaw.toLowerCase().includes('delinquent')) loanStatus = 'Delinquent';
+        const lsRaw = lsField || lt['loan_status'] || lt['status'] || '';
+        if (typeof lsRaw === 'string' && lsRaw) {
+          loanStatus = lsRaw;
+          const lsLow = lsRaw.toLowerCase();
+          if (lsLow.includes('paid') || lsLow.includes('closed')) loanStatus = 'Paid Off';
+          else if (lsLow.includes('default')) loanStatus = 'Default';
+          else if (lsLow.includes('delinquent')) loanStatus = 'Delinquent';
+          else if (lsLow.includes('active')) loanStatus = 'Active';
         }
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
@@ -248,8 +252,13 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           }
           return null;
         };
-        const accountNumberVal = findLT('account_number', 'loan_account');
-        const originationDateVal = findLT('origination_date', 'funding_date');
+        const accountNumberVal =
+          extractFieldValue(lt, FIELD_IDS.accountNumber, 'value_text') ||
+          findLT('account_number', 'loan_account');
+        const originationDateVal =
+          extractFieldValue(lt, FIELD_IDS.originationDate, 'value_date') ||
+          extractFieldValue(lt, FIELD_IDS.originationDate, 'value_text') ||
+          findLT('origination_date', 'funding_date');
         const closingDateVal = findLT('closing_date');
         const brokerFeeAmountVal = Number(findLT('broker_fee_amount', 'broker_fee') || 0);
         const feePctVal = Number(findLT('broker_fee_pct', 'fee_percent', 'fee_pct') || 0);
