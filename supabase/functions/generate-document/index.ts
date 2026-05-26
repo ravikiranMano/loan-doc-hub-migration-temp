@@ -7915,12 +7915,24 @@ async function generateSingleDocument(
           // ── Capture the PRIMARY (unnumbered) Lender block from the template ──
           // We deep-clone its raw XML to emit Lender 2..N so font/spacing/structure
           // match the template exactly (no hardcoded Arial/sz=22/table).
+          // ────────────────────────────────────────────────────────────────
+          // DO NOT regress: under no circumstances may the per-lender appender
+          // emit hardcoded <w:rFonts>, <w:sz>, <w:spacing>, or <w:tbl> wrappers
+          // for cloned signature blocks. Every paragraph in an appended lender
+          // block MUST be cloned (or synthesized using pPr/rPr) from the
+          // template's own primary lender region, so it inherits BodyText /
+          // Times New Roman / spacing exactly. This bug has now regressed
+          // twice — see chat transcript & previous "STANDARDIZED FORMAT"
+          // comment above (kept only as a safety fallback when no anchor at
+          // all can be located, e.g. truly malformed templates).
+          // ────────────────────────────────────────────────────────────────
           type PrimaryLenderTpl = {
-            labelXml: string;       // <w:p> containing "Lender:" label
-            labelText: string;      // exact original text inside the matched <w:t> (e.g. "Lender:  ")
-            nameXml: string;        // <w:p> containing the primary lender display name
+            labelXml: string;       // <w:p> anchor for label formatting
+            labelText: string;      // exact original text inside the matched <w:t>; "" => synth
+            nameXml: string;        // <w:p> containing the primary lender display name (or "")
             nameText: string;       // visible name text inside the matched <w:t>(s)
             sigXmls: string[];      // 1+ trailing blocks for Signature/Date (verbatim)
+            synthLabel?: boolean;   // when true, rebuild the label <w:p> from anchor pPr+rPr
           };
           let primaryTpl: PrimaryLenderTpl | null = null;
           try {
@@ -7983,6 +7995,56 @@ async function generateSingleDocument(
                 );
               }
             }
+
+            // ── Permissive fallback capture ────────────────────────────────
+            // Some templates (e.g. Note Purchaser Qualification Checklist)
+            // have NO bare "Lender:" label paragraph — only a "Lender Name:"
+            // body field and standalone "Signature: ___" / "Date: ___"
+            // paragraphs further down. In that case we still need to clone
+            // the Signature/Date paragraphs verbatim (preserving their
+            // BodyText pStyle / Times New Roman rPr) and SYNTHESIZE a
+            // matching "Lender N: <name>" label paragraph from an anchor
+            // paragraph's pPr + first-run rPr — NEVER from the hardcoded
+            // Arial/<w:tbl> fallback.
+            if (!primaryTpl) {
+              const sigIdx = docBlocks.findIndex((b) =>
+                /\bSignature\s*:/i.test(b.visible) && numberedLenderInBlock(b.visible) === 0,
+              );
+              let dateIdx = -1;
+              if (sigIdx !== -1) {
+                for (let j = sigIdx + 1; j < Math.min(docBlocks.length, sigIdx + 4); j++) {
+                  if (/\bDate\b/i.test(docBlocks[j].visible)) { dateIdx = j; break; }
+                }
+              }
+              if (sigIdx !== -1 && dateIdx !== -1) {
+                // Pick a formatting anchor: prefer a nearby paragraph that
+                // mentions "Lender" (e.g. "Lender Name:") so the synthesized
+                // label inherits the correct pStyle / rPr. Fall back to the
+                // Signature paragraph itself (same template region, same
+                // BodyText style in practice).
+                let anchorBlock = docBlocks[sigIdx];
+                for (let k = sigIdx - 1; k >= 0; k--) {
+                  const v = docBlocks[k].visible;
+                  if (
+                    /\bLender\b/i.test(v)
+                    && numberedLenderInBlock(v) === 0
+                    && !/\{\{/.test(v)
+                  ) { anchorBlock = docBlocks[k]; break; }
+                }
+                primaryTpl = {
+                  labelXml: anchorBlock.xml,
+                  labelText: "",          // signal: synth path
+                  nameXml: "",
+                  nameText: "",
+                  sigXmls: [docBlocks[sigIdx].xml, docBlocks[dateIdx].xml],
+                  synthLabel: true,
+                };
+                console.log(
+                  `[lender-sig] template=${tName} primaryBlock.captured=true (permissive synth) sigBlocks=2`,
+                );
+              }
+            }
+
             if (!primaryTpl) {
               console.log(`[lender-sig] template=${tName} primaryBlock.captured=false (using standardized fallback)`);
             }
