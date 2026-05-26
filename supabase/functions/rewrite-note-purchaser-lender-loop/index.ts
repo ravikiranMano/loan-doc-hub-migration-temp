@@ -254,8 +254,8 @@ async function rewriteTemplate(
   }
   const docXml = new TextDecoder().decode(unzipped[docPath]);
 
-  if (!force && docXml.includes(MARKER_V3)) {
-    return { templateId, name: row.name, skipped: "already at v3" };
+  if (!force && docXml.includes(MARKER_V4)) {
+    return { templateId, name: row.name, skipped: "already at v4" };
   }
 
   const { xml: nextXml, replaced, note } = rewriteDocumentXml(docXml);
