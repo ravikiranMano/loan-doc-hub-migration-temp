@@ -8087,7 +8087,7 @@ async function generateSingleDocument(
               const text = xmlEsc(`Lender ${labelN}: ${displayName}`);
               const synthP =
                 `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
-              return synthP + tpl.sigXmls.join("");
+              return stripJustifyBoth(synthP + tpl.sigXmls.join(""));
             }
 
 
