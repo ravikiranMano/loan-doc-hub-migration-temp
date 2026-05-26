@@ -65,35 +65,39 @@ interface PortfolioRow {
 }
 
 const DEFAULT_VISIBLE_LP = new Set([
-  'dealNumber', 'borrowerName', 'noteRate', 'lenderRate', 'regularPayment',
-  'outstandingBalance', 'nextPaymentDate', 'maturityDate', 'termLeft',
-  'daysLate', 'ownershipPct', 'propertyAddress',
+  'dealNumber', 'accountNumber', 'loanStatus',
+  'fundingAmount', 'currentBalance',
+  'ownershipPct',
+  'fundingDate', 'interestFromDate',
+  'noteRate', 'lenderRate', 'spreadPct',
+  'regularPayment', 'disbursements', 'netPayment',
+  'maturityDate', 'totalEarnedToDate',
 ]);
 
 const ALL_COLUMNS = [
-  { id: 'dealNumber', label: 'Loan Account' },
-  { id: 'borrowerName', label: 'Borrower Name' },
-  { id: 'noteRate', label: 'Note Rate' },
-  { id: 'lenderRate', label: 'Lender Rate' },
-  { id: 'regularPayment', label: 'Regular Payment' },
-  { id: 'outstandingBalance', label: 'Principal Balance' },
-  { id: 'nextPaymentDate', label: 'Next Payment' },
-  { id: 'maturityDate', label: 'Maturity Date' },
-  { id: 'termLeft', label: 'Term Left' },
-  { id: 'daysLate', label: 'Days Late' },
-  { id: 'ownershipPct', label: 'Pro Rata %' },
-  { id: 'propertyAddress', label: 'Property Description' },
-  // Spec additions (hidden by default)
+  { id: 'dealNumber', label: 'Loan ID' },
   { id: 'accountNumber', label: 'Account Number' },
   { id: 'loanStatus', label: 'Loan Status' },
   { id: 'fundingAmount', label: 'Funding Amount' },
   { id: 'currentBalance', label: 'Current Balance' },
+  { id: 'ownershipPct', label: 'Pro Rata %' },
   { id: 'fundingDate', label: 'Funding Date' },
   { id: 'interestFromDate', label: 'Interest From Date' },
+  { id: 'noteRate', label: 'Note Rate' },
+  { id: 'lenderRate', label: 'Lender Rate' },
   { id: 'spreadPct', label: 'Spread %' },
+  { id: 'regularPayment', label: 'Monthly Payment' },
   { id: 'disbursements', label: 'Disbursements' },
   { id: 'netPayment', label: 'Net Payment' },
+  { id: 'maturityDate', label: 'Maturity Date' },
   { id: 'totalEarnedToDate', label: 'Total Earned to Date' },
+  // Optional (hidden by default)
+  { id: 'borrowerName', label: 'Borrower Name' },
+  { id: 'outstandingBalance', label: 'Principal Balance' },
+  { id: 'nextPaymentDate', label: 'Next Payment' },
+  { id: 'termLeft', label: 'Term Left' },
+  { id: 'daysLate', label: 'Days Late' },
+  { id: 'propertyAddress', label: 'Property Description' },
 ];
 
 function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
