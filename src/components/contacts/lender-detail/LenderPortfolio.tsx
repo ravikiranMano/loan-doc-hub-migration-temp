@@ -345,6 +345,29 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
         // Auto-detect delinquent based on days late
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
 
+        // Spec column derivations from fundingRec / loan_terms
+        const findLT = (...frags: string[]): any => {
+          for (const [k, v] of Object.entries(lt)) {
+            const lk = k.toLowerCase();
+            if (frags.some(f => lk.includes(f))) {
+              if (v && typeof v === 'object') {
+                const o = v as Record<string, any>;
+                return o.value_number ?? o.value_date ?? o.value_text ?? null;
+              }
+              return v;
+            }
+          }
+          return null;
+        };
+        const accountNumberVal = fundingRec?.lenderAccount || fundingRec?.accountNumber
+          || findLT('account_number', 'loan_account') || '';
+        const fundingDateVal = fundingRec?.fundingDate || findLT('funding_date') || '';
+        const interestFromDateVal = fundingRec?.interestFromDate || findLT('interest_from') || '';
+        const spreadPctVal = (noteRateVal || 0) - (lenderRate || 0);
+        const disbursementsSum = disbSumLender;
+        const netPaymentVal = regularPayment - disbursementsSum;
+        const totalEarnedVal = Number(fundingRec?.totalEarned || fundingRec?.totalInterestEarned || 0);
+
         portfolioRows.push({
           id: `${dealId}-${lenderId}`,
           dealId,
@@ -369,6 +392,13 @@ const LenderPortfolio: React.FC<LenderPortfolioProps> = ({ lenderId, contactDbId
           termLeft: calcTermLeft(maturityDateVal),
           daysLate,
           regularPayment,
+          accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+          fundingDate: fundingDateVal ? String(fundingDateVal) : '',
+          interestFromDate: interestFromDateVal ? String(interestFromDateVal) : '',
+          spreadPct: spreadPctVal,
+          disbursements: disbursementsSum,
+          netPayment: netPaymentVal,
+          totalEarnedToDate: totalEarnedVal,
         });
       }
 
