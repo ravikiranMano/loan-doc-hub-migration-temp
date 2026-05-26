@@ -154,7 +154,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         // 3. Fetch deals
         const { data: deals, error: dErr } = await supabase
           .from('deals')
-          .select('id, deal_number, loan_amount, status')
+          .select('id, deal_number, loan_amount, status, property_address, product_type')
           .in('id', dealIds);
 
         if (dErr) throw dErr;
