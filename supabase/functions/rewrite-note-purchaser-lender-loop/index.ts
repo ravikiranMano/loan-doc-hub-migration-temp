@@ -1,30 +1,34 @@
-// One-shot admin function: rewrites the "Note Purchaser Qualification Checklist"
-// template so the body "Lender Name:" Handlebars block uses a {{#each lenders}}
-// repeater (this.displayName) instead of bare primary-only ld_p_* keys.
+// One-shot admin function: ensures the Note Purchaser Qualification Checklist
+// template's SIGNATURE-REGION lender block (the paragraph immediately above
+// "Signature: ___" / "Date: ___") renders the PRIMARY lender only, with the
+// expected two-line layout — "Lender: " then a <w:br/> then the primary
+// display name. The append loop in generate-document/index.ts produces
+// Lender 2..N blocks by cloning this paragraph; if the primary paragraph is
+// wrong, all cloned blocks inherit the bug.
 //
-// Per spec Step 1/Path A: collapse
-//   {{#if (eq ld_p_lenderType "Individual")}}
-//     {{ld_p_firstIfEntityUse}} {{ld_p_middle}} {{ld_p_last}}
-//   {{else}}
-//     {{ld_p_vesting}}
-//   {{/if}}
-// to:
-//   {{#each lenders}}{{this.displayName}}
-//   {{/each}}
+// History:
+//   v1 — replaced the {{#if (eq ld_p_lenderType ...)}} {{else}} {{/if}} block
+//        with a {{#each lenders}}{{this.displayName}}{{/each}} loop. WRONG:
+//        the body "Lender Name:" field at the top of the template was already
+//        a {{#each lenders}} block (paragraphs 2..8), so the per-lender body
+//        expansion was never broken. The {{#if}} block this function actually
+//        replaced was the *signature region's primary-name slot*, and turning
+//        it into a loop caused the primary signature line to render all four
+//        lender names stacked AND stripped the "Lender:" label + <w:br/>
+//        run structure that the append loop relies on as a clone template.
+//   v2 — bumped marker only; structural bug from v1 still in place.
+//   v3 — (this file) restores the signature-region paragraph to the correct
+//        single-primary-lender layout:
+//          <w:p>{originalPPr}
+//            <w:r>{rPr}<w:t xml:space="preserve">Lender: </w:t></w:r>
+//            <w:r>{rPr}<w:t/><w:br/><w:t>{{ ld_p_displayName }}</w:t>
+//                     <w:br/><w:t/></w:r>
+//          </w:p>
+//        Idempotent: re-runs on v1/v2/v3 by detecting either the marker or
+//        the stale loop literal and rewriting in place.
 //
-// Detection strategy:
-//   1. Stream <w:p> paragraphs in word/document.xml.
-//   2. Locate the first paragraph whose visible text contains either
-//      `ld_p_lenderType` and `Individual`, or `ld_p_firstIfEntityUse`, or
-//      `ld_p_vesting` together with `{{#if`/`{{else}}`/`{{/if}}` markers.
-//      Continue greedily into following paragraphs (within the same <w:tc>
-//      cell, if any) until a matching `{{/if}}` is found — Word frequently
-//      splits Handlebars blocks across paragraphs.
-//   3. Replace the captured paragraph range with a single paragraph holding
-//      a single run with the loop, preserving the original first paragraph's
-//      <w:pPr> (so indentation/font of the "Lender Name:" line is kept).
-//
-// Idempotent — skips if the loop literal already exists in the body.
+// Body "Lender Name:" field (paragraphs ~2..8) is left UNTOUCHED — it already
+// uses {{#each lenders}}{{#if ...}}{{this.firstName}}...{{else}}{{this.vesting}}{{/if}}{{/each}}.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -37,12 +41,11 @@ const corsHeaders = {
 };
 
 const TEMPLATE_ID = "680299de-f1eb-4a63-9b31-4b7b70c66948";
-// Bumped to v2 after the signature-block appender regression was fixed in
-// supabase/functions/generate-document/index.ts (synth-path for templates
-// without a bare "Lender:" label paragraph). Future regressions in this
-// template's pipeline should bump again so output-version is distinguishable.
-const MARKER = "<!-- note-purchaser-lender-loop:v2 -->";
-const LOOP_LITERAL =
+
+const MARKER_V1 = "<!-- note-purchaser-lender-loop:v1 -->";
+const MARKER_V2 = "<!-- note-purchaser-lender-loop:v2 -->";
+const MARKER_V3 = "<!-- note-purchaser-lender-loop:v3 -->";
+const STALE_LOOP_LITERAL =
   "{{#each lenders}}{{this.displayName}}{{/each}}";
 
 function visibleText(xml: string): string {
@@ -51,14 +54,44 @@ function visibleText(xml: string): string {
     .join("");
 }
 
+/**
+ * Build the corrected signature-region primary paragraph. Preserves the
+ * source paragraph's <w:pPr> and the first run's <w:rPr> so font, indent and
+ * spacing match the template exactly.
+ *
+ * Layout is two runs in one paragraph:
+ *   run 1: "Lender: " (literal, with xml:space="preserve")
+ *   run 2: <w:t/><w:br/><w:t>{{ ld_p_displayName }}</w:t><w:br/><w:t/>
+ *
+ * The generic appender in generate-document/index.ts clones this paragraph
+ * for Lender 2..N and substitutes only the label run's text ("Lender: " ->
+ * "Lender N: ") and the name <w:t>; the <w:br/> structure is preserved.
+ */
+function buildPrimaryParagraph(sourcePXml: string): string {
+  const pPrMatch = sourcePXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+  const pPr = pPrMatch ? pPrMatch[0] : "";
+  const firstRun = sourcePXml.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/);
+  const rPrMatch = firstRun ? firstRun[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) : null;
+  const rPr = rPrMatch ? rPrMatch[0] : "";
+  return (
+    `<w:p>${pPr}` +
+      `<w:r>${rPr}<w:t xml:space="preserve">Lender: </w:t></w:r>` +
+      `<w:r>${rPr}` +
+        `<w:t></w:t>` +
+        `<w:br/>` +
+        `<w:t xml:space="preserve">{{ ld_p_displayName }}</w:t>` +
+        `<w:br/>` +
+        `<w:t></w:t>` +
+      `</w:r>` +
+    `</w:p>`
+  );
+}
+
 function rewriteDocumentXml(
   xml: string,
 ): { xml: string; replaced: number; note: string } {
-  if (xml.includes(MARKER)) {
-    return { xml, replaced: 0, note: "already rewritten (marker found)" };
-  }
-  if (xml.includes(LOOP_LITERAL)) {
-    return { xml, replaced: 0, note: "loop literal already present" };
+  if (xml.includes(MARKER_V3)) {
+    return { xml, replaced: 0, note: "already at v3" };
   }
 
   // Collect all <w:p> spans with their visible text.
@@ -75,66 +108,84 @@ function rewriteDocumentXml(
     });
   }
 
-  // Find start paragraph: first one mentioning ld_p_lenderType OR
-  // ld_p_firstIfEntityUse OR ld_p_vesting AND containing a `{{#if`.
-  const startIdx = paras.findIndex((p) => {
-    const t = p.text;
-    if (!t.includes("{{#if")) return false;
-    return (
-      t.includes("ld_p_lenderType") ||
-      t.includes("ld_p_firstIfEntityUse") ||
-      t.includes("ld_p_vesting")
-    );
-  });
-  if (startIdx === -1) {
-    return { xml, replaced: 0, note: "no matching Handlebars block found" };
+  // Locate the SIGNATURE-REGION primary paragraph. Strategy: find the
+  // "Signature: ___" paragraph, then walk backwards a few paragraphs looking
+  // for either:
+  //   (a) the stale loop literal added by v1/v2 (single paragraph), OR
+  //   (b) the original {{#if (eq ld_p_lenderType ...)}} ... {{/if}} block
+  //       (possibly split across paragraphs), OR
+  //   (c) an existing v3-style "Lender: ... {{ld_p_displayName}}" paragraph
+  //       (idempotent re-application path).
+  const sigIdx = paras.findIndex((p) => /\bSignature\s*:/i.test(p.text));
+  if (sigIdx === -1) {
+    return { xml, replaced: 0, note: "Signature paragraph not found" };
   }
 
-  // Find end paragraph: the one (>= startIdx) whose accumulated visible text
-  // contains a balanced {{/if}}. Cap the search at 12 paragraphs to avoid
-  // unbounded growth on a malformed template.
+  // (a) Stale loop literal directly above Signature?
+  for (let i = sigIdx - 1; i >= Math.max(0, sigIdx - 4); i--) {
+    if (paras[i].text.includes(STALE_LOOP_LITERAL)) {
+      const replacement = buildPrimaryParagraph(paras[i].xml);
+      const before = xml.substring(0, paras[i].start);
+      const after = xml.substring(paras[i].end);
+      let out = before + replacement + after;
+      out = out.replace(MARKER_V1, "").replace(MARKER_V2, "");
+      out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+      return { xml: out, replaced: 1, note: `rewrote stale loop literal at paragraph ${i}` };
+    }
+  }
+
+  // (c) v3-style primary already present? (idempotent — just refresh marker.)
+  for (let i = sigIdx - 1; i >= Math.max(0, sigIdx - 4); i--) {
+    if (
+      /Lender\s*:/i.test(paras[i].text) &&
+      paras[i].text.includes("ld_p_displayName") &&
+      paras[i].xml.includes("<w:br/>")
+    ) {
+      let out = xml.replace(MARKER_V1, "").replace(MARKER_V2, "");
+      if (!out.includes(MARKER_V3)) {
+        out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
+      }
+      return { xml: out, replaced: 0, note: `v3 primary paragraph already present at ${i}; marker refreshed` };
+    }
+  }
+
+  // (b) Original {{#if (eq ld_p_lenderType ...)}} block (may span paragraphs).
+  let startIdx = -1;
   let endIdx = -1;
-  let acc = "";
-  for (let i = startIdx; i < Math.min(paras.length, startIdx + 12); i++) {
-    acc += paras[i].text;
-    const opens = (acc.match(/\{\{#if/g) || []).length;
-    const closes = (acc.match(/\{\{\/if\}\}/g) || []).length;
-    if (closes >= opens && closes > 0) {
-      endIdx = i;
+  for (let i = Math.max(0, sigIdx - 12); i < sigIdx; i++) {
+    if (
+      paras[i].text.includes("{{#if") &&
+      (paras[i].text.includes("ld_p_lenderType") ||
+        paras[i].text.includes("ld_p_firstIfEntityUse") ||
+        paras[i].text.includes("ld_p_vesting"))
+    ) {
+      startIdx = i;
       break;
     }
   }
-  if (endIdx === -1) {
+  if (startIdx !== -1) {
+    let acc = "";
+    for (let j = startIdx; j < Math.min(paras.length, startIdx + 12); j++) {
+      acc += paras[j].text;
+      const opens = (acc.match(/\{\{#if/g) || []).length;
+      const closes = (acc.match(/\{\{\/if\}\}/g) || []).length;
+      if (closes >= opens && closes > 0) { endIdx = j; break; }
+    }
+  }
+  if (startIdx !== -1 && endIdx !== -1) {
+    const replacement = buildPrimaryParagraph(paras[startIdx].xml);
+    const before = xml.substring(0, paras[startIdx].start);
+    const after = xml.substring(paras[endIdx].end);
+    let out = before + replacement + after;
+    out = out.replace(/<\/w:body>/, `${MARKER_V3}</w:body>`);
     return {
-      xml,
-      replaced: 0,
-      note: "could not locate balanced {{/if}} for the lender-name block",
+      xml: out,
+      replaced: endIdx - startIdx + 1,
+      note: `rewrote original {{#if}} block paragraphs ${startIdx}..${endIdx}`,
     };
   }
 
-  // Capture the original pPr from the start paragraph (preserve indent/font).
-  const startP = paras[startIdx].xml;
-  const pPrMatch = startP.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
-  const pPr = pPrMatch ? pPrMatch[0] : "";
-
-  // Build the replacement: a single paragraph containing one run with the
-  // loop literal. The engine expands {{#each}} into one rendered line per
-  // lender (see tag-parser.re870-investor-name.test.ts for analogous use).
-  const replacement =
-    `<w:p>${pPr}<w:r><w:t xml:space="preserve">${LOOP_LITERAL}</w:t></w:r></w:p>`;
-
-  const before = xml.substring(0, paras[startIdx].start);
-  const after = xml.substring(paras[endIdx].end);
-  const out = before + replacement + after;
-
-  // Inject marker comment just before </w:body> so re-runs are idempotent.
-  const withMarker = out.replace(/<\/w:body>/, `${MARKER}</w:body>`);
-
-  return {
-    xml: withMarker,
-    replaced: endIdx - startIdx + 1,
-    note: `replaced paragraphs ${startIdx}..${endIdx}`,
-  };
+  return { xml, replaced: 0, note: "no matching signature-region paragraph found" };
 }
 
 async function rewriteTemplate(
@@ -165,12 +216,12 @@ async function rewriteTemplate(
   }
   const docXml = new TextDecoder().decode(unzipped[docPath]);
 
-  if (!force && docXml.includes(MARKER)) {
-    return { templateId, name: row.name, skipped: "already marked" };
+  if (!force && docXml.includes(MARKER_V3)) {
+    return { templateId, name: row.name, skipped: "already at v3" };
   }
 
   const { xml: nextXml, replaced, note } = rewriteDocumentXml(docXml);
-  if (replaced === 0) {
+  if (replaced === 0 && nextXml === docXml) {
     return { templateId, name: row.name, replaced: 0, note };
   }
 
