@@ -1194,6 +1194,38 @@ async function generateSingleDocument(
         const setAlias = (key: string, value: string) => {
           fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
         };
+        // Parse loan_terms.funding_records for per-lender enrichment
+        // (shortName / proRata / fundingAmount / fundsDepositedDate) used by
+        // {{#each lenders}} table templates such as Lender Identification.
+        let fundingRecordsForLenders: any[] = [];
+        try {
+          const fr =
+            fieldValues.get("loan_terms.funding_records")?.rawValue ||
+            fieldValues.get("ln_p_fundingRecord")?.rawValue;
+          if (fr) {
+            const parsed = typeof fr === "string" ? JSON.parse(fr) : fr;
+            if (Array.isArray(parsed)) fundingRecordsForLenders = parsed;
+          }
+        } catch (_) { /* ignore */ }
+        const fmtCurrency = (v: any): string => {
+          if (v === undefined || v === null || v === "") return "";
+          const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+          if (!isFinite(num)) return String(v);
+          return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+        };
+        const fmtPct = (v: any): string => {
+          if (v === undefined || v === null || v === "") return "";
+          const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+          if (!isFinite(num)) return String(v);
+          const pct = num > 1 ? num : num * 100;
+          return `${pct.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}%`;
+        };
+        const fmtDate = (v: any): string => {
+          if (!v) return "";
+          const s = String(v);
+          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return m ? `${m[2]}/${m[3]}/${m[1]}` : s;
+        };
         let lenderCount = 0;
         let additionalIdx = 0;
         let primaryHelpersSet = false;
@@ -1254,6 +1286,25 @@ async function generateSingleDocument(
           setAlias(`lenders${n}.contactId`, contactId);
           setAlias(`lenders${n}.label`, label);
           setAlias(`lenders${n}.isPrimary`, isPrimary ? "true" : "false");
+
+          // Lender Identification table fields — shortName / proRata /
+          // fundingAmount / fundsDepositedDate, matched from funding_records
+          // by contact_id (lenderContactId / lenderAccount) or index fallback.
+          let frec: any = null;
+          if (fundingRecordsForLenders.length) {
+            frec = fundingRecordsForLenders.find((r: any) =>
+              (r?.lenderContactId && r.lenderContactId === lp?.contact_id) ||
+              (r?.lenderAccount && contactId && r.lenderAccount === contactId)
+            ) || fundingRecordsForLenders[idx] || null;
+          }
+          const proRataRaw = frec?.proRata ?? "";
+          const fundingAmtRaw = frec?.originalAmount ?? "";
+          const fundingDateRaw = frec?.fundingDate ?? frec?.fundsDepositedDate ?? "";
+          const shortName = displayName || vesting || [firstName, last].filter(Boolean).join(" ");
+          setAlias(`lenders${n}.shortName`, shortName);
+          setAlias(`lenders${n}.proRata`, fmtPct(proRataRaw));
+          setAlias(`lenders${n}.fundingAmount`, fmtCurrency(fundingAmtRaw));
+          setAlias(`lenders${n}.fundsDepositedDate`, fmtDate(fundingDateRaw));
 
           // {{#each additionalLenders}} feed — excludes primary (lender 1).
           if (!isPrimary) {
