@@ -1,22 +1,16 @@
-// One-shot admin function: collapses excessive whitespace bleed inside the
-// INVESTOR NAME and NAME OF PERSON COMPLETING THIS QUESTIONNAIRE cells of the
-// Investor Questionnaire template.
+// One-shot admin function: rebuilds the INVESTOR NAME and NAME OF PERSON
+// COMPLETING THIS QUESTIONNAIRE cells in the RE870 Investor Questionnaire
+// template so that:
 //
-// Symptom: each lender displayName ends up separated from the next by 4 blank
-// visual lines, because the template authored the {{#each lenders}} loop with
-// multiple soft line breaks ("for readability") between {{displayName}} and
-// {{/each}}. docx preserves every <w:br/> verbatim, so each iteration emits
-// the lender name followed by ~5 empty <w:br/><w:t/> pairs.
+//   1. The label ("INVESTOR NAME:" / "NAME OF PERSON ...") is in its own
+//      <w:p> paragraph.
+//   2. A blank <w:p> paragraph sits between the label and the value.
+//   3. The value paragraph contains the {{#each lenders}}...{{/each}} loop
+//      with a <w:br/> per iteration so each lender prints on its own line.
 //
-// Strategy: scope changes STRICTLY to the two target cells. Within each cell,
-// drop empty self-closing <w:t/> elements and collapse runs of consecutive
-// <w:br/> elements to a single <w:br/>. This leaves real label text + real
-// name text + exactly one break between iterations.
-//
-// WARNING (per project memory: do NOT inject hardcoded rFonts/sz/spacing/tbl
-// wrappers). This function only deletes empty markup; it never invents new
-// runs, paragraph properties, or fonts. Formatting is therefore inherited
-// verbatim from whatever the template author already set on the cell.
+// Scope is STRICTLY limited to those two cells. All other content - including
+// table structure, sibling cells, fonts, indentation, run properties, and
+// paragraph properties - is preserved verbatim from the template.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -28,13 +22,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const TEMPLATE_ID = "d25cc037-2657-4ae4-b6d3-65cd858d07f6";
-const MARKER_V1 = "<!-- investor-questionnaire-lender-loop:v1 -->";
+// Default to the RE870 template id (per templates table lookup).
+const TEMPLATE_ID = "c1bbc2ff-e2f4-433a-9e69-c4cf08217c61";
+const MARKER_V2 = "<!-- investor-questionnaire-lender-loop:v2 -->";
 
-const CELL_LABELS = [
-  /INVESTOR\s+NAME\s*:/i,
-  /NAME\s+OF\s+PERSON\s+COMPLETING\s+THIS\s+QUESTIONNAIRE/i,
-];
+const LENDER_LOOP_BODY =
+  "{{#each lenders}}{{#if isIndividual}}{{firstName}}{{#if middle}} {{middle}}{{/if}} {{last}}{{else}}{{vesting}}{{/if}}";
 
 function visibleText(xml: string): string {
   return (xml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
@@ -42,62 +35,112 @@ function visibleText(xml: string): string {
     .join("");
 }
 
-/**
- * Collapse whitespace bleed inside a single target cell's XML.
- *
- * The template authored the {{#each lenders}}...{{/each}} block with a
- * <w:br/> sitting inside almost every run that carries a Handlebars tag —
- * one before {{#if}}, one before {{firstName}}, one before {{else}}, one
- * before {{vesting}}, one before {{/if}}, one before {{/each}}. That's 5–6
- * soft line breaks per loop iteration, which is exactly why each rendered
- * lender name is separated by 4 blank visual lines.
- *
- * Fix: scope to runs that carry Handlebars syntax (text contains "{{").
- * Strip every <w:br/> from those runs. Then re-introduce exactly ONE
- * <w:br/> immediately before the {{/each}} run's text, so that each loop
- * iteration still emits a single line break between lender names.
- *
- * We do NOT touch the label run ("INVESTOR NAME:" / "NAME OF PERSON
- * COMPLETING THIS QUESTIONNAIRE") nor the single <w:br/> the template
- * author placed between the label and the loop — those carry no "{{".
- */
-function tidyCellXml(cellXml: string): { xml: string; changed: boolean } {
-  const before = cellXml;
+function extractPPr(pXml: string): string {
+  const m = pXml.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/);
+  return m ? m[0] : "";
+}
+
+function extractFirstRPr(runXml: string): string {
+  const m = runXml.match(/<w:rPr\b[\s\S]*?<\/w:rPr>/);
+  return m ? m[0] : "";
+}
+
+function findRunWithText(pXml: string, needle: string): string | null {
   const rRe = /<w:r\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:r>)/g;
-  let out = "";
-  let cursor = 0;
   let m: RegExpExecArray | null;
-  while ((m = rRe.exec(cellXml)) !== null) {
-    out += cellXml.substring(cursor, m.index);
-    cursor = m.index + m[0].length;
-    let runXml = m[0];
-    const text = (runXml.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
+  while ((m = rRe.exec(pXml)) !== null) {
+    const text = (m[0].match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) || [])
       .map((t) => t.replace(/<w:t(?:\s[^>]*)?>/, "").replace(/<\/w:t>/, ""))
       .join("");
-    if (text.includes("{{")) {
-      // Strip every <w:br/> inside this Handlebars-carrying run.
-      runXml = runXml.replace(/<w:br\s*\/>/g, "");
-      // If this run carries the {{/each}} closer, re-introduce ONE <w:br/>
-      // immediately before its first <w:t> so iteration N -> N+1 still
-      // produces a single visual line break.
-      if (/\{\{\s*\/each\s*\}\}/.test(text)) {
-        runXml = runXml.replace(
-          /(<w:t(?:\s[^>]*)?>)/,
-          "<w:br/>$1",
-        );
-      }
-    }
-    out += runXml;
+    if (text.includes(needle)) return m[0];
   }
-  out += cellXml.substring(cursor);
-  return { xml: out, changed: out !== before };
+  return null;
+}
+
+/**
+ * Rebuild the INVESTOR NAME cell. Returns updated cell XML, or null if the
+ * cell doesn't match the expected shape.
+ */
+function rebuildInvestorNameCell(cellXml: string): string | null {
+  // Find the (single) paragraph that carries both the label and the loop.
+  const pRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
+  let target: { match: string; start: number; end: number } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = pRe.exec(cellXml)) !== null) {
+    const txt = visibleText(m[0]);
+    if (/INVESTOR\s+NAME\s*:/i.test(txt) && txt.includes("{{#each lenders}}")) {
+      target = { match: m[0], start: m.index, end: m.index + m[0].length };
+      break;
+    }
+  }
+  if (!target) return null;
+
+  const pPr = extractPPr(target.match);
+  const labelRun = findRunWithText(target.match, "INVESTOR NAME");
+  const loopRun = findRunWithText(target.match, "{{#each lenders}}");
+  if (!labelRun || !loopRun) return null;
+
+  const labelRPr = extractFirstRPr(labelRun);
+  const loopRPr = extractFirstRPr(loopRun);
+
+  const labelPara =
+    `<w:p>${pPr}<w:r>${labelRPr}<w:t xml:space="preserve">INVESTOR NAME:</w:t></w:r></w:p>`;
+  const blankPara = `<w:p>${pPr}</w:p>`;
+  const loopPara =
+    `<w:p>${pPr}` +
+    `<w:r>${loopRPr}<w:t xml:space="preserve">${LENDER_LOOP_BODY}</w:t></w:r>` +
+    `<w:r>${loopRPr}<w:br/></w:r>` +
+    `<w:r>${loopRPr}<w:t xml:space="preserve">{{/each}}</w:t></w:r>` +
+    `</w:p>`;
+
+  const next =
+    cellXml.substring(0, target.start) +
+    labelPara + blankPara + loopPara +
+    cellXml.substring(target.end);
+  return next;
+}
+
+/**
+ * For the NAME OF PERSON COMPLETING THIS QUESTIONNAIRE cell: the template
+ * already keeps the label and value in separate paragraphs. We only need to
+ * insert one blank paragraph between them so the visual separation matches
+ * the INVESTOR NAME cell.
+ */
+function rebuildNameOfPersonCell(cellXml: string): string | null {
+  const pRe = /<w:p\b(?:[^>]*\/>|[^>]*>[\s\S]*?<\/w:p>)/g;
+  const paragraphs: Array<{ match: string; start: number; end: number; text: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = pRe.exec(cellXml)) !== null) {
+    paragraphs.push({
+      match: m[0],
+      start: m.index,
+      end: m.index + m[0].length,
+      text: visibleText(m[0]),
+    });
+  }
+  const labelIdx = paragraphs.findIndex((p) =>
+    /NAME\s+OF\s+PERSON\s+COMPLETING\s+THIS\s+QUESTIONNAIRE/i.test(p.text)
+  );
+  if (labelIdx < 0) return null;
+  const valueIdx = labelIdx + 1;
+  if (valueIdx >= paragraphs.length) return null;
+
+  // If a blank paragraph is already there, do nothing.
+  if (paragraphs[valueIdx].text.trim() === "" &&
+      !/NAME\s+OF\s+PERSON/i.test(paragraphs[valueIdx].text)) {
+    // Already has a blank paragraph; nothing to do.
+    return null;
+  }
+
+  const pPr = extractPPr(paragraphs[labelIdx].match);
+  const blankPara = `<w:p>${pPr}</w:p>`;
+  const insertAt = paragraphs[labelIdx].end;
+  return cellXml.substring(0, insertAt) + blankPara + cellXml.substring(insertAt);
 }
 
 function rewriteDocumentXml(
   xml: string,
-): { xml: string; replaced: number; note: string } {
-  // Walk every <w:tc> cell. If its visible text matches a target label, tidy
-  // it in-place. We do NOT touch any other cell.
+): { xml: string; replaced: number; notes: string[] } {
   const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
   let replaced = 0;
   const notes: string[] = [];
@@ -107,27 +150,30 @@ function rewriteDocumentXml(
   while ((m = tcRe.exec(xml)) !== null) {
     const cellXml = m[0];
     const text = visibleText(cellXml);
-    const matchedLabel = CELL_LABELS.find((re) => re.test(text));
     out += xml.substring(cursor, m.index);
-    if (matchedLabel) {
-      const { xml: nextCell, changed } = tidyCellXml(cellXml);
-      if (changed) {
+    let nextCell: string | null = null;
+    if (/INVESTOR\s+NAME\s*:/i.test(text) && text.includes("{{#each lenders}}")) {
+      nextCell = rebuildInvestorNameCell(cellXml);
+      if (nextCell) {
         replaced++;
-        notes.push(`tidied cell @${m.index} (${matchedLabel.source})`);
+        notes.push(`rebuilt INVESTOR NAME cell @${m.index}`);
       }
-      out += nextCell;
-    } else {
-      out += cellXml;
+    } else if (/NAME\s+OF\s+PERSON\s+COMPLETING\s+THIS\s+QUESTIONNAIRE/i.test(text)) {
+      nextCell = rebuildNameOfPersonCell(cellXml);
+      if (nextCell) {
+        replaced++;
+        notes.push(`inserted blank paragraph in NAME OF PERSON cell @${m.index}`);
+      }
     }
+    out += nextCell ?? cellXml;
     cursor = m.index + cellXml.length;
   }
   out += xml.substring(cursor);
 
-  if (replaced > 0 && !out.includes(MARKER_V1)) {
-    out = out.replace(/<\/w:body>/, `${MARKER_V1}</w:body>`);
+  if (replaced > 0 && !out.includes(MARKER_V2)) {
+    out = out.replace(/<\/w:body>/, `${MARKER_V2}</w:body>`);
   }
-
-  return { xml: out, replaced, note: notes.join("; ") || "no target cells changed" };
+  return { xml: out, replaced, notes };
 }
 
 async function rewriteTemplate(
@@ -158,13 +204,13 @@ async function rewriteTemplate(
   }
   const docXml = new TextDecoder().decode(unzipped[docPath]);
 
-  if (!force && docXml.includes(MARKER_V1)) {
-    return { templateId, name: row.name, skipped: "already at v1" };
+  if (!force && docXml.includes(MARKER_V2)) {
+    return { templateId, name: row.name, skipped: "already at v2" };
   }
 
-  const { xml: nextXml, replaced, note } = rewriteDocumentXml(docXml);
+  const { xml: nextXml, replaced, notes } = rewriteDocumentXml(docXml);
   if (replaced === 0 && nextXml === docXml) {
-    return { templateId, name: row.name, replaced: 0, note };
+    return { templateId, name: row.name, replaced: 0, notes };
   }
 
   unzipped[docPath] = new TextEncoder().encode(nextXml);
@@ -184,7 +230,7 @@ async function rewriteTemplate(
     name: row.name,
     file_path: row.file_path,
     replaced,
-    note,
+    notes,
   };
 }
 
@@ -199,11 +245,7 @@ serve(async (req) => {
     );
 
     let body: { templateId?: string; force?: boolean; debug?: boolean } = {};
-    try {
-      body = await req.json();
-    } catch (_) {
-      // empty body is fine
-    }
+    try { body = await req.json(); } catch (_) { /* empty body */ }
 
     const targets = body.templateId ? [body.templateId] : [TEMPLATE_ID];
     const force = body.force === true;
@@ -220,22 +262,16 @@ serve(async (req) => {
           const u = fflate.unzipSync(buf);
           const x = new TextDecoder().decode(u["word/document.xml"]);
           const tcRe = /<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g;
-          const cells: Array<{ idx: number; text: string; hasBr: number; hasEmptyT: number; xmlSnippet?: string }> = [];
+          const cells: Array<{ idx: number; text: string; xml: string }> = [];
           let mm: RegExpExecArray | null; let i = 0;
           while ((mm = tcRe.exec(x)) !== null) {
             const t = visibleText(mm[0]);
-            if (/INVESTOR|QUESTIONNAIRE|PERSON|COMPLETING|lender|each/i.test(t) || mm[0].includes("{{")) {
-              cells.push({
-                idx: i,
-                text: t.slice(0, 200),
-                hasBr: (mm[0].match(/<w:br\s*\/>/g) || []).length,
-                hasEmptyT: (mm[0].match(/<w:t(?:\s[^>]*)?\/>/g) || []).length,
-                xmlSnippet: mm[0].length < 4000 ? mm[0] : mm[0].slice(0, 4000),
-              });
+            if (/INVESTOR\s+NAME\s*:|NAME\s+OF\s+PERSON/i.test(t)) {
+              cells.push({ idx: i, text: t.slice(0, 300), xml: mm[0] });
             }
             i++;
           }
-          results.push({ id, totalCells: i, interesting: cells });
+          results.push({ id, hasV2: x.includes(MARKER_V2), cells });
         } else {
           results.push(await rewriteTemplate(supabase, id, force));
         }
@@ -250,10 +286,7 @@ serve(async (req) => {
   } catch (e) {
     return new Response(
       JSON.stringify({ ok: false, error: (e as Error).message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
