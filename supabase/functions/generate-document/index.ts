@@ -1787,8 +1787,21 @@ async function generateSingleDocument(
         const net = (inc * 12) - exp;
         fieldValues.set("oo_netAnnualIncome", { rawValue: net, dataType: "currency" });
         debugLog(`[generate-document] Computed oo_netAnnualIncome = ${inc}*12 - ${exp} = ${net}`);
+
+        // Backend-only alias: {{oo_totalIncomeAndExpenses}} =
+        //   origination_app.income.total_income + origination_app.income.rental
+        //   + all six expense components (credit_card, spousal_child_support, insurance,
+        //     automobile, mortgage, other)
+        {
+          const rentalFd = getFieldData("origination_app.income.rental", fieldValues);
+          const rental = rentalFd ? toNum(rentalFd.data.rawValue) : 0;
+          const sum = inc + rental + exp;
+          fieldValues.set("oo_totalIncomeAndExpenses", { rawValue: sum, dataType: "currency" });
+          debugLog(`[generate-document] Computed oo_totalIncomeAndExpenses = ${inc} + ${rental} + ${exp} = ${sum}`);
+        }
       }
     }
+
 
     // Auto-compute borrower.borrower_description if not already set
     const existingDesc = fieldValues.get("borrower.borrower_description");
