@@ -7831,7 +7831,34 @@ async function generateSingleDocument(
       const tName = (template && typeof template.name === "string") ? template.name : "(unknown)";
       console.log(`[lender-sig] template=${tName} lenders.received=${lenderCount}`);
 
-      if (lenderCount > 1) {
+      // ── EXPLICIT SINGLE-LENDER EXCLUSION LIST ──
+      // Templates listed here must NEVER have additional-lender signature
+      // blocks appended, regardless of lender_count. Only the primary lender
+      // (ld_p_*) mappings are rendered. Single lender section only.
+      const LENDER_APPEND_EXCLUDED: RegExp[] = [
+        /Agency\s+Disclosure.*CA\s+DRE/i,
+        /Assignment\s+of\s+Rents/i,
+        /Borrower.*Certification\s+of\s+Facts/i,
+        /Borrower\s+Certification\s+of\s+Loan\s+Purpose/i,
+        /Certification\s+of\s+Purpose/i,
+        /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
+        /Continuing\s+Authorization/i,
+        /Declaration\s+of\s+Oral/i,
+        /hazardous/i,
+        /Limited\s+Power\s+of\s+Attorney/i,
+        /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
+        /Personal\s+Guaranty/i,
+        /\b851a\b/i,
+        /\b851d\b/i,
+        /\b885\b/i,
+        /Servicing\s+Fee\s+Paid/i,
+      ];
+      const isLenderAppendExcluded = LENDER_APPEND_EXCLUDED.some((re) => re.test(tName));
+      if (isLenderAppendExcluded) {
+        console.log(
+          `[lender-sig] template=${tName} classification=EXCLUDED_BY_NAME skipping per-lender append (single lender section only)`,
+        );
+      } else if (lenderCount > 1) {
         const fflateMod = await import("https://esm.sh/fflate@0.8.2");
         const unz = fflateMod.unzipSync(processedDocx);
         const docBytes = unz["word/document.xml"];
