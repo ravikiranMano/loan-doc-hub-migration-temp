@@ -1194,6 +1194,38 @@ async function generateSingleDocument(
         const setAlias = (key: string, value: string) => {
           fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
         };
+        // Parse loan_terms.funding_records for per-lender enrichment
+        // (shortName / proRata / fundingAmount / fundsDepositedDate) used by
+        // {{#each lenders}} table templates such as Lender Identification.
+        let fundingRecordsForLenders: any[] = [];
+        try {
+          const fr =
+            fieldValues.get("loan_terms.funding_records")?.rawValue ||
+            fieldValues.get("ln_p_fundingRecord")?.rawValue;
+          if (fr) {
+            const parsed = typeof fr === "string" ? JSON.parse(fr) : fr;
+            if (Array.isArray(parsed)) fundingRecordsForLenders = parsed;
+          }
+        } catch (_) { /* ignore */ }
+        const fmtCurrency = (v: any): string => {
+          if (v === undefined || v === null || v === "") return "";
+          const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+          if (!isFinite(num)) return String(v);
+          return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+        };
+        const fmtPct = (v: any): string => {
+          if (v === undefined || v === null || v === "") return "";
+          const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+          if (!isFinite(num)) return String(v);
+          const pct = num > 1 ? num : num * 100;
+          return `${pct.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}%`;
+        };
+        const fmtDate = (v: any): string => {
+          if (!v) return "";
+          const s = String(v);
+          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return m ? `${m[2]}/${m[3]}/${m[1]}` : s;
+        };
         let lenderCount = 0;
         let additionalIdx = 0;
         let primaryHelpersSet = false;
