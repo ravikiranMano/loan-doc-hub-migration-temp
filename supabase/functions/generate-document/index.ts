@@ -52,9 +52,9 @@ const MULTI_LENDER_DISABLED_TEMPLATES: RegExp[] = [
   /Limited\s+Power\s+of\s+Attorney/i,
   /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
   /Personal\s+Guaranty/i,
-  /\b851a\b/i,
-  /\b851d\b/i,
-  /\b885\b/i,
+  /(?:^|[^a-z0-9])(?:re)?851a(?:$|[^a-z0-9])/i,
+  /(?:^|[^a-z0-9])(?:re)?851d(?:$|[^a-z0-9])/i,
+  /(?:^|[^a-z0-9])(?:re)?885(?:$|[^a-z0-9])/i,
   /Servicing\s+Fee\s+Paid/i,
 ];
 const isMultiLenderDisabled = (templateName: string | null | undefined): boolean => {
