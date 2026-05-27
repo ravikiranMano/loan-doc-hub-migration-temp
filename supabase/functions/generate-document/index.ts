@@ -1287,6 +1287,25 @@ async function generateSingleDocument(
           setAlias(`lenders${n}.label`, label);
           setAlias(`lenders${n}.isPrimary`, isPrimary ? "true" : "false");
 
+          // Lender Identification table fields — shortName / proRata /
+          // fundingAmount / fundsDepositedDate, matched from funding_records
+          // by contact_id (lenderContactId / lenderAccount) or index fallback.
+          let frec: any = null;
+          if (fundingRecordsForLenders.length) {
+            frec = fundingRecordsForLenders.find((r: any) =>
+              (r?.lenderContactId && r.lenderContactId === lp?.contact_id) ||
+              (r?.lenderAccount && contactId && r.lenderAccount === contactId)
+            ) || fundingRecordsForLenders[idx] || null;
+          }
+          const proRataRaw = frec?.proRata ?? "";
+          const fundingAmtRaw = frec?.originalAmount ?? "";
+          const fundingDateRaw = frec?.fundingDate ?? frec?.fundsDepositedDate ?? "";
+          const shortName = displayName || vesting || [firstName, last].filter(Boolean).join(" ");
+          setAlias(`lenders${n}.shortName`, shortName);
+          setAlias(`lenders${n}.proRata`, fmtPct(proRataRaw));
+          setAlias(`lenders${n}.fundingAmount`, fmtCurrency(fundingAmtRaw));
+          setAlias(`lenders${n}.fundsDepositedDate`, fmtDate(fundingDateRaw));
+
           // {{#each additionalLenders}} feed — excludes primary (lender 1).
           if (!isPrimary) {
             additionalIdx++;
