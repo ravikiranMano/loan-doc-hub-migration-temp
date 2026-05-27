@@ -1377,11 +1377,16 @@ async function generateSingleDocument(
 
           lenderCount++;
         });
-        setAlias("lender_count", String(lenderCount));
+        const effectiveLenderCount = multiLenderDisabled ? Math.min(1, lenderCount) : lenderCount;
+        setAlias("lender_count", String(effectiveLenderCount));
         setAlias("ld_p_allInvestorNames", investorNames.join("\n"));
-        setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
-        setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
-        debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+        setAlias("has_multiple_lenders", !multiLenderDisabled && lenderCount > 1 ? "true" : "false");
+        setAlias("additional_lender_count", String(multiLenderDisabled ? 0 : Math.max(0, lenderCount - 1)));
+        if (multiLenderDisabled) {
+          console.log(`[generate-document] template=${template?.name ?? "(unknown)"} MULTI_LENDER_DISABLED — published lender 1 only (${lenderCount} lender(s) suppressed to 1)`);
+        } else {
+          debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+        }
       }
 
 
