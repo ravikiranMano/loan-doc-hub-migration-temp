@@ -1263,6 +1263,8 @@ async function generateSingleDocument(
         const investorNames: string[] = [];
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
+          // Cap to primary lender only for templates flagged as multi-lender-disabled.
+          if (multiLenderDisabled && n > 1) return;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
           let email = "", phone = "", contactId = "";
           if (lp?.contact_id) {
