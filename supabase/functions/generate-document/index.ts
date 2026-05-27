@@ -34,6 +34,36 @@ const debugLog = (...args: unknown[]) => {
   }
 };
 
+// ── MULTI-LENDER DISABLED TEMPLATES ──
+// Templates listed here render Lender 1 only. No lender_N_* (N>1),
+// lendersN.* (N>1), additionalLenders*.*, has_multiple_lenders=true,
+// or per-lender signature appending. Single source of truth used by
+// both the lender alias publisher and the signature-append guard.
+const MULTI_LENDER_DISABLED_TEMPLATES: RegExp[] = [
+  /Agency\s+Disclosure.*CA\s+DRE/i,
+  /Assignment\s+of\s+Rents/i,
+  /Borrower.*Certification\s+of\s+Facts/i,
+  /Borrower\s+Certification\s+of\s+Loan\s+Purpose/i,
+  /Certification\s+of\s+Purpose/i,
+  /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
+  /Continuing\s+Authorization/i,
+  /Declaration\s+of\s+Oral/i,
+  /hazardous/i,
+  /Limited\s+Power\s+of\s+Attorney/i,
+  /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
+  /Personal\s+Guaranty/i,
+  /\b851a\b/i,
+  /\b851d\b/i,
+  /\b885\b/i,
+  /Servicing\s+Fee\s+Paid/i,
+];
+const isMultiLenderDisabled = (templateName: string | null | undefined): boolean => {
+  const n = (templateName ?? "").toString();
+  return MULTI_LENDER_DISABLED_TEMPLATES.some((re) => re.test(n));
+};
+
+
+
 const repairOoXmlTagBoundaries = (xml: string): { xml: string; repaired: number } => {
   let repaired = 0;
   const fixed = xml.replace(/<[^<>]*>/g, (tag) => {
@@ -1226,12 +1256,15 @@ async function generateSingleDocument(
           const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
           return m ? `${m[2]}/${m[3]}/${m[1]}` : s;
         };
+        const multiLenderDisabled = isMultiLenderDisabled(template?.name);
         let lenderCount = 0;
         let additionalIdx = 0;
         let primaryHelpersSet = false;
         const investorNames: string[] = [];
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
+          // Cap to primary lender only for templates flagged as multi-lender-disabled.
+          if (multiLenderDisabled && n > 1) return;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
           let email = "", phone = "", contactId = "";
           if (lp?.contact_id) {
@@ -1344,11 +1377,16 @@ async function generateSingleDocument(
 
           lenderCount++;
         });
-        setAlias("lender_count", String(lenderCount));
+        const effectiveLenderCount = multiLenderDisabled ? Math.min(1, lenderCount) : lenderCount;
+        setAlias("lender_count", String(effectiveLenderCount));
         setAlias("ld_p_allInvestorNames", investorNames.join("\n"));
-        setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
-        setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
-        debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+        setAlias("has_multiple_lenders", !multiLenderDisabled && lenderCount > 1 ? "true" : "false");
+        setAlias("additional_lender_count", String(multiLenderDisabled ? 0 : Math.max(0, lenderCount - 1)));
+        if (multiLenderDisabled) {
+          console.log(`[generate-document] template=${template?.name ?? "(unknown)"} MULTI_LENDER_DISABLED — published lender 1 only (${lenderCount} lender(s) suppressed to 1)`);
+        } else {
+          debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+        }
       }
 
 
@@ -7834,26 +7872,11 @@ async function generateSingleDocument(
       // ── EXPLICIT SINGLE-LENDER EXCLUSION LIST ──
       // Templates listed here must NEVER have additional-lender signature
       // blocks appended, regardless of lender_count. Only the primary lender
-      // (ld_p_*) mappings are rendered. Single lender section only.
-      const LENDER_APPEND_EXCLUDED: RegExp[] = [
-        /Agency\s+Disclosure.*CA\s+DRE/i,
-        /Assignment\s+of\s+Rents/i,
-        /Borrower.*Certification\s+of\s+Facts/i,
-        /Borrower\s+Certification\s+of\s+Loan\s+Purpose/i,
-        /Certification\s+of\s+Purpose/i,
-        /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
-        /Continuing\s+Authorization/i,
-        /Declaration\s+of\s+Oral/i,
-        /hazardous/i,
-        /Limited\s+Power\s+of\s+Attorney/i,
-        /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
-        /Personal\s+Guaranty/i,
-        /\b851a\b/i,
-        /\b851d\b/i,
-        /\b885\b/i,
-        /Servicing\s+Fee\s+Paid/i,
-      ];
-      const isLenderAppendExcluded = LENDER_APPEND_EXCLUDED.some((re) => re.test(tName));
+      // (ld_p_*) mappings are rendered. Uses module-level
+      // MULTI_LENDER_DISABLED_TEMPLATES as the single source of truth — see
+      // top of file. The lender alias publisher already caps lender_count
+      // to 1 for these templates; this guard is defense-in-depth.
+      const isLenderAppendExcluded = isMultiLenderDisabled(tName);
       if (isLenderAppendExcluded) {
         console.log(
           `[lender-sig] template=${tName} classification=EXCLUDED_BY_NAME skipping per-lender append (single lender section only)`,
