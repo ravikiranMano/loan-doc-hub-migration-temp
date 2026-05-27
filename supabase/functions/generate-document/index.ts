@@ -7872,26 +7872,11 @@ async function generateSingleDocument(
       // ── EXPLICIT SINGLE-LENDER EXCLUSION LIST ──
       // Templates listed here must NEVER have additional-lender signature
       // blocks appended, regardless of lender_count. Only the primary lender
-      // (ld_p_*) mappings are rendered. Single lender section only.
-      const LENDER_APPEND_EXCLUDED: RegExp[] = [
-        /Agency\s+Disclosure.*CA\s+DRE/i,
-        /Assignment\s+of\s+Rents/i,
-        /Borrower.*Certification\s+of\s+Facts/i,
-        /Borrower\s+Certification\s+of\s+Loan\s+Purpose/i,
-        /Certification\s+of\s+Purpose/i,
-        /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
-        /Continuing\s+Authorization/i,
-        /Declaration\s+of\s+Oral/i,
-        /hazardous/i,
-        /Limited\s+Power\s+of\s+Attorney/i,
-        /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
-        /Personal\s+Guaranty/i,
-        /\b851a\b/i,
-        /\b851d\b/i,
-        /\b885\b/i,
-        /Servicing\s+Fee\s+Paid/i,
-      ];
-      const isLenderAppendExcluded = LENDER_APPEND_EXCLUDED.some((re) => re.test(tName));
+      // (ld_p_*) mappings are rendered. Uses module-level
+      // MULTI_LENDER_DISABLED_TEMPLATES as the single source of truth — see
+      // top of file. The lender alias publisher already caps lender_count
+      // to 1 for these templates; this guard is defense-in-depth.
+      const isLenderAppendExcluded = isMultiLenderDisabled(tName);
       if (isLenderAppendExcluded) {
         console.log(
           `[lender-sig] template=${tName} classification=EXCLUDED_BY_NAME skipping per-lender append (single lender section only)`,
