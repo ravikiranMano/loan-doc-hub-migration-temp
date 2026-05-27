@@ -34,6 +34,36 @@ const debugLog = (...args: unknown[]) => {
   }
 };
 
+// ── MULTI-LENDER DISABLED TEMPLATES ──
+// Templates listed here render Lender 1 only. No lender_N_* (N>1),
+// lendersN.* (N>1), additionalLenders*.*, has_multiple_lenders=true,
+// or per-lender signature appending. Single source of truth used by
+// both the lender alias publisher and the signature-append guard.
+const MULTI_LENDER_DISABLED_TEMPLATES: RegExp[] = [
+  /Agency\s+Disclosure.*CA\s+DRE/i,
+  /Assignment\s+of\s+Rents/i,
+  /Borrower.*Certification\s+of\s+Facts/i,
+  /Borrower\s+Certification\s+of\s+Loan\s+Purpose/i,
+  /Certification\s+of\s+Purpose/i,
+  /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
+  /Continuing\s+Authorization/i,
+  /Declaration\s+of\s+Oral/i,
+  /hazardous/i,
+  /Limited\s+Power\s+of\s+Attorney/i,
+  /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
+  /Personal\s+Guaranty/i,
+  /\b851a\b/i,
+  /\b851d\b/i,
+  /\b885\b/i,
+  /Servicing\s+Fee\s+Paid/i,
+];
+const isMultiLenderDisabled = (templateName: string | null | undefined): boolean => {
+  const n = (templateName ?? "").toString();
+  return MULTI_LENDER_DISABLED_TEMPLATES.some((re) => re.test(n));
+};
+
+
+
 const repairOoXmlTagBoundaries = (xml: string): { xml: string; repaired: number } => {
   let repaired = 0;
   const fixed = xml.replace(/<[^<>]*>/g, (tag) => {
