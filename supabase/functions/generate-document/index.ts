@@ -206,7 +206,7 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "") || /Note\s+Purchaser\s+Qualification\s+Checklist/i.test(template.name || "")) {
+      if (isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "") || /Note\s+Purchaser\s+Qualification(?:\s+Checklist)?/i.test(template.name || "")) {
         throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
