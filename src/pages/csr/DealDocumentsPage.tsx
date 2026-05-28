@@ -72,6 +72,8 @@ import {
   Filter,
   Search,
   Info,
+  ExternalLink,
+  Printer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -500,6 +502,63 @@ export const DealDocumentsPage: React.FC = () => {
       });
     }
   };
+
+  const getSignedUrl = async (path: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('generated-docs')
+        .createSignedUrl(path, 3600);
+      if (error) throw error;
+      return data?.signedUrl ?? null;
+    } catch (error: any) {
+      toast({
+        title: 'Failed to open document',
+        description: error.message || 'Could not generate access URL',
+        variant: 'destructive',
+      });
+      return null;
+    }
+  };
+
+  const handleOpenInNewWindow = async (doc: GeneratedDocument) => {
+    const path = doc.output_pdf_path || doc.output_docx_path;
+    if (!path) return;
+    const url = await getSignedUrl(path);
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handlePrintDocument = async (doc: GeneratedDocument) => {
+    if (!doc.output_pdf_path) {
+      toast({
+        title: 'PDF not available',
+        description: 'A PDF version is required to print this document',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const url = await getSignedUrl(doc.output_pdf_path);
+    if (!url) return;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.src = url;
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    };
+    document.body.appendChild(iframe);
+  };
+
+
+
 
   const getLatestDocumentForTemplate = (templateId: string): GeneratedDocument | undefined => {
     return generatedDocuments.find(
@@ -1415,6 +1474,36 @@ export const DealDocumentsPage: React.FC = () => {
                           <TableCell className="text-right">
                             {doc.generation_status === 'success' && (
                               <div className="flex items-center justify-end gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handleOpenInNewWindow(doc)}
+                                      disabled={!doc.output_pdf_path && !doc.output_docx_path}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Open in new window</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handlePrintDocument(doc)}
+                                      disabled={!doc.output_pdf_path}
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {doc.output_pdf_path ? 'Print document' : 'PDF not available for printing'}
+                                  </TooltipContent>
+                                </Tooltip>
                                 <Button
                                   variant="outline"
                                   size="sm"
