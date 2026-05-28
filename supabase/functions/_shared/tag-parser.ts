@@ -576,10 +576,40 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
       }
     );
 
+    // Consolidate fragmented `{{#if (eq FIELD "LIT")}}` / `{{#unless (eq …)}}`
+    // (and `ne` variant) openers. Word's autocorrect routinely splits these
+    // across multiple <w:r>/<w:t> runs — especially around the parens and the
+    // straight or smart quotes around the literal — which prevents the
+    // downstream eqIfPattern matcher from firing. We tolerate `"`, `'`,
+    // `&quot;`, and smart quotes (U+2018/U+2019/U+201C/U+201D) and rewrite
+    // back to a single clean text token in canonical straight-double-quote form.
+    {
+      const Q = `(?:&quot;|"|'|[\\u201C\\u201D\\u2018\\u2019])`;
+      const eqIfFragmented = new RegExp(
+        "\\{\\{(?:<[^>]*>|\\s)*?#(if|unless)(?:<[^>]*>|\\s)+\\((?:<[^>]*>|\\s)*(eq|ne)(?:<[^>]*>|\\s)+" +
+          "([A-Za-z0-9_.]+)(?:<[^>]*>|\\s)+" +
+          Q + "([^<&\"'\\u201C\\u201D\\u2018\\u2019]*)" + Q +
+          "(?:<[^>]*>|\\s)*\\)(?:<[^>]*>|\\s)*\\}\\}",
+        "g"
+      );
+      p = p.replace(eqIfFragmented, (match, kind, op, field, lit) => {
+        // Leave already-clean tags untouched — only consolidate when Word XML
+        // fragmentation actually exists between the tokens.
+        if (!match.includes("<")) return match;
+        // Never cross paragraph boundaries.
+        if (/<\/w:p>|<w:p[\s>\/]/.test(match)) return match;
+        debugLog(
+          `[tag-parser] Consolidated fragmented {{#${kind} (${op} ${field} "${lit}")}}`
+        );
+        return `{{#${kind} (${op} ${field} "${lit}")}}`;
+      });
+    }
+
     // Handle fragmented conditional block tags
     // Also tolerate control tags that Word has split into separate <w:t> runs,
     // e.g. "{{#if" + " ln_p_balloonPayment" + "}}".
     const ifFragmented = /\{\{((?:<[^>]*>|\s)*?)#if\s*((?:<[^>]*>|\s)*?)([A-Za-z0-9_.]+)((?:<[^>]*>|\s)*?)\}\}/g;
+
     p = p.replace(ifFragmented, (_match, pre, mid, fieldName, post) => {
       if (pre.includes("<") || mid.includes("<") || post.includes("<")) {
         debugLog(`[tag-parser] Consolidated fragmented {{#if ${fieldName}}}`);
