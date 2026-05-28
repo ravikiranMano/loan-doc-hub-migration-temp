@@ -3605,6 +3605,29 @@ async function generateSingleDocument(
     fieldValues.set("oo_svc_servicingAgent", { rawValue: canonicalServicingAgent, dataType: "text" });
     debugLog(`[generate-document] Derived servicing-agent checkboxes from "${servicingAgentRaw}": lender=${isLenderServicing}, broker=${isBrokerServicing}, other=${isOtherServicing}, sv_p_servicingAgent="${canonicalServicingAgent}", oo_svc_servicingAgent="${canonicalServicingAgent}"`);
 
+    // Combined Servicing Agent Address ({{oo_sa_servicingAgentAddress}}):
+    // "Street, City, State ZIP" sourced from the active address block:
+    //   - Company    → origination_svc.company.*
+    //   - All others → origination_svc.third_party.*
+    // Falls back to any value already persisted under the canonical key.
+    {
+      const sa_src = (k: string) => (fieldValues.get(k)?.rawValue ?? "").toString().trim();
+      const useCompany = servicingAgentRaw === "company";
+      const sa_street = useCompany ? sa_src("origination_svc.company.street") : sa_src("origination_svc.third_party.street");
+      const sa_city   = useCompany ? sa_src("origination_svc.company.city")   : sa_src("origination_svc.third_party.city");
+      const sa_state  = useCompany ? sa_src("origination_svc.company.state")  : sa_src("origination_svc.third_party.state");
+      const sa_zip    = useCompany ? sa_src("origination_svc.company.zip")    : sa_src("origination_svc.third_party.zip");
+      const cityStateZip = [sa_city, [sa_state, sa_zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      const combinedAddr = [sa_street, cityStateZip].filter(Boolean).join(", ");
+      const persisted = sa_src("oo_sa_servicingAgentAddress");
+      const finalAddr = combinedAddr || persisted;
+      if (finalAddr) {
+        fieldValues.set("oo_sa_servicingAgentAddress", { rawValue: finalAddr, dataType: "text" });
+      }
+      debugLog(`[generate-document] Published oo_sa_servicingAgentAddress (useCompany=${useCompany}): "${finalAddr}"`);
+    }
+
+
     // Loan -> Servicing Details -> Payable (Monthly / Quarterly / Annually).
     // CSR persists the dropdown under loan_terms.servicing.payable (and the
     // legacy `origination_svc.payable`). The RE851A template references
