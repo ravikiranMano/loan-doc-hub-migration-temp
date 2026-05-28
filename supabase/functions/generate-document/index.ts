@@ -1887,9 +1887,15 @@ async function generateSingleDocument(
     // by other templates.
     {
       const prefix = "loan_terms.penalties.default_interest";
+      const di_toBool = (v: unknown): boolean => {
+        if (v === true) return true;
+        if (v === false || v === null || v === undefined) return false;
+        const s = String(v).trim().toLowerCase();
+        return s === "true" || s === "yes" || s === "y" || s === "1" || s === "checked" || s === "on";
+      };
       const pubBool = (src: string, dst: string) => {
         const raw = fieldValues.get(src)?.rawValue;
-        const v = toBool(raw);
+        const v = di_toBool(raw);
         fieldValues.set(dst, { rawValue: v ? "true" : "false", dataType: "boolean" });
       };
       const pubPass = (src: string, dst: string, dataType: string) => {
