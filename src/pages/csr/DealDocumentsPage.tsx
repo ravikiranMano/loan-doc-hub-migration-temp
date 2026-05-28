@@ -503,6 +503,60 @@ export const DealDocumentsPage: React.FC = () => {
     }
   };
 
+  const getSignedUrl = async (path: string): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('generated-docs')
+        .createSignedUrl(path, 3600);
+      if (error) throw error;
+      return data?.signedUrl ?? null;
+    } catch (error: any) {
+      toast({
+        title: 'Failed to open document',
+        description: error.message || 'Could not generate access URL',
+        variant: 'destructive',
+      });
+      return null;
+    }
+  };
+
+  const handleOpenInNewWindow = async (doc: GeneratedDocument) => {
+    const path = doc.output_pdf_path || doc.output_docx_path;
+    if (!path) return;
+    const url = await getSignedUrl(path);
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handlePrintDocument = async (doc: GeneratedDocument) => {
+    if (!doc.output_pdf_path) {
+      toast({
+        title: 'PDF not available',
+        description: 'A PDF version is required to print this document',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const url = await getSignedUrl(doc.output_pdf_path);
+    if (!url) return;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.src = url;
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (e) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    };
+    document.body.appendChild(iframe);
+
+
   const getLatestDocumentForTemplate = (templateId: string): GeneratedDocument | undefined => {
     return generatedDocuments.find(
       doc => doc.template_id === templateId && doc.generation_status === 'success'
