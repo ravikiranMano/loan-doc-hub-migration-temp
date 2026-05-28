@@ -8247,10 +8247,19 @@ async function generateSingleDocument(
               newLabel: string,
               newName: string,
             ): string => {
+              // The primary "Lender:" paragraph may also contain inline
+              // additional lines after a <w:br/> (e.g. "Signature: ____").
+              // Only rewrite text on the FIRST visual line so any trailing
+              // Signature/Date line is preserved verbatim for each cloned
+              // lender block — otherwise the Signature line disappears.
+              const brMatch = /<w:br\b[^/>]*\/>|<w:br\b[^>]*><\/w:br>/i.exec(paraXml);
+              const brIdx = brMatch ? brMatch.index : -1;
+              const head = brIdx === -1 ? paraXml : paraXml.slice(0, brIdx);
+              const tail = brIdx === -1 ? "" : paraXml.slice(brIdx);
               const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
               const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
               let mm: RegExpExecArray | null;
-              while ((mm = re.exec(paraXml)) !== null) {
+              while ((mm = re.exec(head)) !== null) {
                 toks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
               }
               if (!toks.length) return paraXml;
@@ -8264,14 +8273,14 @@ async function generateSingleDocument(
               let out = "";
               let cursor = 0;
               toks.forEach((t, i) => {
-                out += paraXml.slice(cursor, t.start);
+                out += head.slice(cursor, t.start);
                 const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
                 const inner = i === firstIdx ? xmlEsc(newText) : "";
                 out += `<w:t${a}>${inner}</w:t>`;
                 cursor = t.end;
               });
-              out += paraXml.slice(cursor);
-              return out;
+              out += head.slice(cursor);
+              return out + tail;
             };
 
             // Helper: replace the visible text of a separate name paragraph
