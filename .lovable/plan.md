@@ -1,33 +1,54 @@
-# Fix `pr_li_balanceAfterPaydown` to aggregate across all liens
+# Fix: `{{br_p_emailAddres}}` and `{{br_p_homePhone}}` not populating in "Borrower TCPA and E-Consent"
 
-## Problem
-In `supabase/functions/generate-document/index.ts` (lines ~4405–4481), the aggregated `pr_li_balanceAfterPaydown` field currently:
-- When 1 lien → emits that lien's `current_balance − existing_paydown_amount`.
-- When >1 liens → emits a **newline‑joined list** of per‑lien values (not a sum).
+## Findings
 
-The per‑lien indexed aliases `pr_li_balanceAfterPaydown_N` are correct and unchanged.
+- Template `Borrower TCPA and E-Consent.wbk` contains two clean merge tags inside single text runs:
+  - `{{br_p_emailAddres}}` → maps to field_dictionary `br_p_emailAddres` (label "Email Address", section `borrower`)
+  - `{{br_p_homePhone}}` → maps to field_dictionary `br_p_homePhone` (label "Home Phone", section `borrower`)
+- In `deal_section_values` the values are actually persisted under multi-borrower **composite keys** with an `indexed_key`:
+  - `borrower1::63f87fd8-…` → `indexed_key: "borrower1.email"`
+  - `borrower1::4a5935ca-…` → `indexed_key: "borrower1.phone.home"`
+- In `supabase/functions/generate-document/index.ts` (≈ lines 448-491) the loader sets `fieldValues["borrower1.email"]` / `"borrower1.phone.home"` (from `indexed_key`) and then the indexed→non-indexed bridge produces `"borrower.email"` / `"borrower.phone.home"` — but nothing publishes the canonical **field_dictionary** keys (`br_p_emailAddres`, `br_p_homePhone`) reliably for every deal, so the bare TCPA tags resolve to blank.
+- Other identical-pattern tags (e.g. `br_p_firstName`) are populated only because they have explicit publishers elsewhere; email / home phone have none (`rg` for `br_p_email|br_p_homePhone` in `supabase/functions` returns nothing).
 
-## Change (single, surgical)
-Replace the aggregated publisher so it always emits the **sum** of all per‑lien `(current_balance − existing_paydown_amount)` values:
+## Fix
 
-- Iterate every lien index found (existing `orderedIdx` loop already computes each per‑lien result).
-- Sum the numeric per‑lien results, skipping liens with no `current_balance` (treated as 0) and ignoring null/undefined/non‑numeric values (existing `toNum` already handles this).
-- Publish:
-  - `pr_li_balanceAfterPaydown` = `formatCurrency(total.toFixed(2))`, `dataType: "currency"`.
-  - Per‑lien aliases `pr_li_balanceAfterPaydown_N` unchanged.
-- If no liens → do not publish (matches existing "blank" behavior) — equivalent to existing standard for empty collections.
+Add a small alias publisher in `supabase/functions/generate-document/index.ts`, in the same block where other `br_p_*` bridges live (right after the indexed→non-indexed bridge near line 1491), that copies the resolved borrower value into the canonical field_dictionary keys when those keys are empty.
 
-## Acceptance
-- 1000 + 1500 + 500 → `$3,000.00`
-- 2000 → `$2,000.00`
-- 1000 + null + 500 → `$1,500.00`
-- Single‑lien deals remain backward compatible (sum of one = that value).
-- Per‑lien `_N` aliases still available for templates that need them.
+Pseudocode:
 
-## Scope guardrails (not changed)
-- No DB schema, no field_dictionary, no UI, no merge_tag_aliases, no other calc blocks.
-- `pr_li_totalLienBalance` and `li_bp_balanceAfter` blocks untouched.
-- Only the aggregated publisher inside the existing `// ── Calculated field: pr_li_balanceAfterPaydown` block is modified.
+```text
+publishBrAlias("br_p_emailAddres", [
+  "br_p_emailAddres",
+  "borrower1.email",
+  "borrower.email",
+]);
 
-## File
-- `supabase/functions/generate-document/index.ts` — lines ~4454–4480 (replace newline‑join with sum).
+publishBrAlias("br_p_homePhone", [
+  "br_p_homePhone",
+  "borrower1.phone.home",
+  "borrower.phone.home",
+]);
+
+// Optional safety net — same pattern, keeps existing behavior unchanged:
+publishBrAlias("br_p_workPhone", [
+  "br_p_workPhone",
+  "borrower1.phone.work",
+  "borrower.phone.work",
+]);
+```
+
+`publishBrAlias(target, sources)` walks the sources in order, takes the first non-empty `rawValue`, and writes it into `fieldValues` under the `target` key with `dataType: "text"` **only if `target` is currently empty**. This is the same defensive pattern already used for `ln_p_loanNumber` (≈ lines 1519-1546) and matches the project's existing minimal-change publisher convention.
+
+No template edits, no DB migration, no schema change. Backward compatible: existing `borrower.email` / `borrower1.email` consumers continue to resolve unchanged.
+
+## Verification
+
+1. Redeploy `generate-document`.
+2. Generate "Borrower TCPA and E-Consent" against a deal where `borrower1.email` and `borrower1.phone.home` are set (e.g. `7d77727b-e686-4f62-a9c4-d0ba01c55069` — values `sabir@yopmail.com` / `988125544`, or `d697d055-…` — `rajesh.kumar@example.com` / `214-555-7890`).
+3. Open the generated `.docx`, confirm the Email and Home Phone cells now show the borrower values.
+4. Regression-check one prior template that already used `borrower.email` / `borrower1.email` to confirm nothing else changed.
+
+## Files touched
+
+- `supabase/functions/generate-document/index.ts` — add the 3-key publisher block (~15 lines, single location).

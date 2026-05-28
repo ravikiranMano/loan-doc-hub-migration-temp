@@ -1490,6 +1490,34 @@ async function generateSingleDocument(
       }
     }
 
+    // ── Borrower contact alias publishers ──
+    // Bridge resolved borrower email / phone values into the canonical
+    // field_dictionary keys used by bare merge tags in templates such as
+    // "Borrower TCPA and E-Consent" (e.g. {{br_p_emailAddres}}, {{br_p_homePhone}}).
+    // Values are persisted as composite keys borrower1::<dict_id> with indexed_key
+    // borrower1.email / borrower1.phone.home, which alone do not always populate
+    // the bare dictionary-key tags. This publisher fills the canonical key when
+    // empty, matching the defensive pattern used by ln_p_loanNumber below.
+    {
+      const publishBrAlias = (target: string, sources: string[]) => {
+        const existing = fieldValues.get(target);
+        if (existing && existing.rawValue != null && String(existing.rawValue).trim() !== "") return;
+        for (const k of sources) {
+          const v = fieldValues.get(k);
+          if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+            fieldValues.set(target, { rawValue: String(v.rawValue), dataType: "text" });
+            debugLog(`[generate-document] Published ${target} from ${k} = "${v.rawValue}"`);
+            return;
+          }
+        }
+      };
+      publishBrAlias("br_p_emailAddres", ["borrower1.email", "borrower.email"]);
+      publishBrAlias("br_p_homePhone",   ["borrower1.phone.home", "borrower.phone.home"]);
+      publishBrAlias("br_p_workPhone",   ["borrower1.phone.work", "borrower.phone.work"]);
+    }
+
+
+
     // Force text dataType for identifier fields that should never be number-formatted
     for (const [key, val] of fieldValues.entries()) {
       const lk = key.toLowerCase();
