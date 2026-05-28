@@ -11,7 +11,7 @@ import { WorkspaceTabBar } from './WorkspaceTabBar';
 import { WorkspaceFileRenderer } from '@/components/workspace/WorkspaceFileRenderer';
 import { CloseConfirmationDialog } from '@/components/workspace/CloseConfirmationDialog';
 import { DealDataEntryInner } from '@/pages/csr/DealDataEntryPage';
-import { Loader2 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 
 
@@ -193,14 +193,7 @@ export const AppLayout: React.FC = () => {
   const { user, role, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 animate-fade-in">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   if (!user) {
@@ -208,15 +201,9 @@ export const AppLayout: React.FC = () => {
   }
 
   if (!role) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 animate-fade-in">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return null;
   }
+
 
   return (
     <FieldDictionaryCacheProvider>
