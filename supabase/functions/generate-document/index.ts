@@ -1514,8 +1514,62 @@ async function generateSingleDocument(
       publishBrAlias("br_p_emailAddres", ["borrower1.email", "borrower.email"]);
       publishBrAlias("br_p_homePhone",   ["borrower1.phone.home", "borrower.phone.home"]);
       publishBrAlias("br_p_workPhone",   ["borrower1.phone.work", "borrower.phone.work"]);
-      publishBrAlias("br_p_cellPhone",   ["borrower1.phone.mobile", "borrower.phone.mobile"]);
 
+      // For the Cell / Mobile merge tag, honor the borrower's "Preferred Phone"
+      // selection first. If Home is preferred, the mobile-number cell should
+      // render the home number. Fall back to any populated phone if no
+      // preferred flag is set.
+      const prefSources: Array<{ flag: string; phones: string[] }> = [
+        { flag: "borrower1.preferred.home",  phones: ["borrower1.phone.home",   "borrower.phone.home"] },
+        { flag: "borrower1.preferred.home2", phones: ["borrower1.phone.home2",  "borrower.phone.home2"] },
+        { flag: "borrower1.preferred.work",  phones: ["borrower1.phone.work",   "borrower.phone.work"] },
+        { flag: "borrower1.preferred.cell",  phones: ["borrower1.phone.cell",   "borrower.phone.cell", "borrower1.phone.mobile", "borrower.phone.mobile"] },
+      ];
+      const cellTargets = ["br_p_cellPhone", "br_p_mobilePhone", "br_p_mobileNumber"];
+      const cellAlreadySet = cellTargets.some((t) => {
+        const v = fieldValues.get(t);
+        return v && v.rawValue != null && String(v.rawValue).trim() !== "";
+      });
+      if (!cellAlreadySet) {
+        let publishedPhone: string | null = null;
+        for (const { flag, phones } of prefSources) {
+          const flagVal = fieldValues.get(flag);
+          const isPreferred = flagVal && String(flagVal.rawValue ?? "").toLowerCase() === "true";
+          if (!isPreferred) continue;
+          for (const k of phones) {
+            const v = fieldValues.get(k);
+            if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+              publishedPhone = String(v.rawValue);
+              debugLog(`[generate-document] br_p_cellPhone resolved from preferred ${flag} -> ${k} = "${publishedPhone}"`);
+              break;
+            }
+          }
+          if (publishedPhone) break;
+        }
+        if (!publishedPhone) {
+          // No preferred flag set — fall back to first populated phone.
+          const fallbackKeys = [
+            "borrower1.phone.cell", "borrower.phone.cell",
+            "borrower1.phone.mobile", "borrower.phone.mobile",
+            "borrower1.phone.home", "borrower.phone.home",
+            "borrower1.phone.home2", "borrower.phone.home2",
+            "borrower1.phone.work", "borrower.phone.work",
+          ];
+          for (const k of fallbackKeys) {
+            const v = fieldValues.get(k);
+            if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+              publishedPhone = String(v.rawValue);
+              debugLog(`[generate-document] br_p_cellPhone fallback from ${k} = "${publishedPhone}"`);
+              break;
+            }
+          }
+        }
+        if (publishedPhone) {
+          for (const t of cellTargets) {
+            fieldValues.set(t, { rawValue: publishedPhone, dataType: "text" });
+          }
+        }
+      }
     }
 
 
