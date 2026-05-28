@@ -4551,12 +4551,11 @@ async function generateSingleDocument(
         }
 
         if (orderedIdx.length > 0) {
-          const sumTotal = totals.reduce((s, n) => s + (Number.isFinite(n) ? n : 0), 0);
           fieldValues.set("pr_li_totalLienBalance", {
-            rawValue: sumTotal.toFixed(2),
-            dataType: "currency",
+            rawValue: orderedIdx.length > 1 ? lines.join("\n") : totals[0].toFixed(2),
+            dataType: orderedIdx.length > 1 ? "text" : "currency",
           });
-          debugLog(`[generate-document] Published pr_li_totalLienBalance = ${sumTotal.toFixed(2)} (SUM across ${orderedIdx.length} lien(s))`);
+          debugLog(`[generate-document] Published pr_li_totalLienBalance for ${orderedIdx.length} lien(s)`);
         }
       }
 
