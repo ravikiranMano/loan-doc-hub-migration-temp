@@ -1511,7 +1511,8 @@ async function generateSingleDocument(
           }
         }
       };
-      publishBrAlias("br_p_emailAddres", ["borrower1.email", "borrower.email"]);
+      publishBrAlias("br_p_emailAddres",  ["borrower1.email", "borrower.email"]);
+      publishBrAlias("br_p_emailAddress", ["borrower1.email", "borrower.email"]);
       publishBrAlias("br_p_homePhone",   ["borrower1.phone.home", "borrower.phone.home"]);
       publishBrAlias("br_p_workPhone",   ["borrower1.phone.work", "borrower.phone.work"]);
 
@@ -1525,7 +1526,7 @@ async function generateSingleDocument(
         { flag: "borrower1.preferred.work",  phones: ["borrower1.phone.work",   "borrower.phone.work"] },
         { flag: "borrower1.preferred.cell",  phones: ["borrower1.phone.cell",   "borrower.phone.cell", "borrower1.phone.mobile", "borrower.phone.mobile"] },
       ];
-      const cellTargets = ["br_p_cellPhone", "br_p_mobilePhone", "br_p_mobileNumber"];
+      const cellTargets = ["br_p_cellPhone", "br_p_mobilePhone", "br_p_mobileNumber", "br_p_preferredPhone"];
       const cellAlreadySet = cellTargets.some((t) => {
         const v = fieldValues.get(t);
         return v && v.rawValue != null && String(v.rawValue).trim() !== "";
