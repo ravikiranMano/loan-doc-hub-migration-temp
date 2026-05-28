@@ -8252,10 +8252,18 @@ async function generateSingleDocument(
               // Only rewrite text on the FIRST visual line so any trailing
               // Signature/Date line is preserved verbatim for each cloned
               // lender block — otherwise the Signature line disappears.
-              const brMatch = /<w:br\b[^/>]*\/>|<w:br\b[^>]*><\/w:br>/i.exec(paraXml);
+              const brRe = /<w:br\b[^/>]*\/>|<w:br\b[^>]*><\/w:br>/i;
+              const brMatch = brRe.exec(paraXml);
               const brIdx = brMatch ? brMatch.index : -1;
               const head = brIdx === -1 ? paraXml : paraXml.slice(0, brIdx);
-              const tail = brIdx === -1 ? "" : paraXml.slice(brIdx);
+              const rawTail = brIdx === -1 ? "" : paraXml.slice(brIdx);
+              const tail = (() => {
+                if (!rawTail) return "";
+                if (!/\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail))) return "";
+                const sigRun = /<w:t(?:\s[^>]*)?>[^<]*(?:Signature|Date)\s*:/i.exec(rawTail);
+                if (!sigRun || sigRun.index === 0) return rawTail;
+                return `<w:br/>${rawTail.slice(sigRun.index)}`;
+              })();
               const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
               const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
               let mm: RegExpExecArray | null;
