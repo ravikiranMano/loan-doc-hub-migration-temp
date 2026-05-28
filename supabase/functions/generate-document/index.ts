@@ -8257,12 +8257,13 @@ async function generateSingleDocument(
               const brIdx = brMatch ? brMatch.index : -1;
               const head = brIdx === -1 ? paraXml : paraXml.slice(0, brIdx);
               const rawTail = brIdx === -1 ? "" : paraXml.slice(brIdx);
+              // Preserve the tail verbatim whenever it contains Signature/Date
+              // text — slicing mid-run would drop <w:r> boundary tags and
+              // corrupt the DOCX (Word would refuse to open it).
               const tail = (() => {
                 if (!rawTail) return "";
                 if (!/\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail))) return "";
-                const sigRun = /<w:t(?:\s[^>]*)?>[^<]*(?:Signature|Date)\s*:/i.exec(rawTail);
-                if (!sigRun || sigRun.index === 0) return rawTail;
-                return `<w:br/>${rawTail.slice(sigRun.index)}`;
+                return rawTail;
               })();
               const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
               const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
