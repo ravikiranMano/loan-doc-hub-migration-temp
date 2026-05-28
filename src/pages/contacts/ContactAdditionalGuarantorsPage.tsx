@@ -156,6 +156,18 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
     //     keys so the Additional Guarantors grid populates after save.
     const hydrated = hydratePrefixedFromCanonical(contactData, 'borrower.guarantor.');
     const mirrored = mirrorPrefixedToCanonical(hydrated, 'borrower.guarantor.');
+    // Catch-all: ensure EVERY borrower.guarantor.* key is also mirrored to
+    // its canonical (unprefixed) key so all grid columns populate after save
+    // (covers borrower_type, send_pref.*, delivery_*, ford.*, etc. not in
+    // the curated suffix list).
+    Object.entries(mirrored).forEach(([k, v]) => {
+      if (k.startsWith('borrower.guarantor.')) {
+        const canon = k.slice('borrower.guarantor.'.length);
+        if (canon && (mirrored[canon] === undefined || mirrored[canon] === '')) {
+          mirrored[canon] = v;
+        }
+      }
+    });
     return await crud.updateContact(id, mirrored);
   }, [crud, isReadOnly]);
 
