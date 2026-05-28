@@ -40,22 +40,22 @@ const debugLog = (...args: unknown[]) => {
 // or per-lender signature appending. Single source of truth used by
 // both the lender alias publisher and the signature-append guard.
 const MULTI_LENDER_DISABLED_TEMPLATES: RegExp[] = [
-  /Agency\s+Disclosure.*CA\s+DRE/i,
-  /Assignment\s+of\s+Rents/i,
-  /Borrower.*Certification\s+of\s+Facts/i,
-  /Borrower\s+Certification\s+of\s+Loan\s+Purpose/i,
-  /Certification\s+of\s+Purpose/i,
+  /Agency[_\s-]+Disclosure.*CA[_\s-]+DRE/i,
+  /Assignment[_\s-]+of[_\s-]+Rents/i,
+  /Borrower.*Certification[_\s-]+of[_\s-]+Facts/i,
+  /Borrower[_\s-]+Certification[_\s-]+of[_\s-]+Loan[_\s-]+Purpose/i,
+  /Certification[_\s-]+of[_\s-]+Purpose/i,
   /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
-  /Continuing\s+Authorization/i,
-  /Declaration\s+of\s+Oral/i,
+  /Continuing[_\s-]+Authorization/i,
+  /Declaration[_\s-]+of[_\s-]+Oral/i,
   /hazardous/i,
-  /Limited\s+Power\s+of\s+Attorney/i,
+  /Limited[_\s-]+Power[_\s-]+of[_\s-]+Attorney/i,
   /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
-  /Personal\s+Guaranty/i,
+  /Personal[_\s-]+Guaranty/i,
   /(?:^|[^a-z0-9])(?:re)?851a(?:$|[^a-z0-9])/i,
   /(?:^|[^a-z0-9])(?:re)?851d(?:$|[^a-z0-9])/i,
   /(?:^|[^a-z0-9])(?:re)?885(?:$|[^a-z0-9])/i,
-  /Servicing\s+Fee\s+Paid/i,
+  /Servicing[_\s-]+Fee[_\s-]+Paid/i,
 ];
 const isMultiLenderDisabled = (templateName: string | null | undefined): boolean => {
   const n = (templateName ?? "").toString();
