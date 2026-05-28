@@ -1523,6 +1523,42 @@ export const DealDocumentsPage: React.FC = () => {
                                     <Button
                                       variant="outline"
                                       size="sm"
+                                      className="gap-1 h-7 text-xs"
+                                      onClick={() => handleDownload(
+                                        doc.output_docx_path,
+                                        `${templateName}_v${doc.version_number}.docx`
+                                      )}
+                                    >
+                                      <Download className="h-3 w-3" />
+                                      DOCX
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Download</TooltipContent>
+                                </Tooltip>
+                                {doc.output_pdf_path && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1 h-7 text-xs"
+                                        onClick={() => handleDownload(
+                                          doc.output_pdf_path!,
+                                          `${templateName}_v${doc.version_number}.pdf`
+                                        )}
+                                      >
+                                        <Download className="h-3 w-3" />
+                                        PDF
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Download</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
                                       className="h-7 w-7 p-0"
                                       onClick={() => handlePrintDocument(doc)}
                                       disabled={!doc.output_pdf_path && !doc.output_docx_path}
@@ -1530,36 +1566,8 @@ export const DealDocumentsPage: React.FC = () => {
                                       <Printer className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>
-                                    Print
-                                  </TooltipContent>
+                                  <TooltipContent>Print</TooltipContent>
                                 </Tooltip>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="gap-1 h-7 text-xs"
-                                  onClick={() => handleDownload(
-                                    doc.output_docx_path,
-                                    `${templateName}_v${doc.version_number}.docx`
-                                  )}
-                                >
-                                  <Download className="h-3 w-3" />
-                                  DOCX
-                                </Button>
-                                {doc.output_pdf_path && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="gap-1 h-7 text-xs"
-                                    onClick={() => handleDownload(
-                                      doc.output_pdf_path!,
-                                      `${templateName}_v${doc.version_number}.pdf`
-                                    )}
-                                  >
-                                    <Download className="h-3 w-3" />
-                                    PDF
-                                  </Button>
-                                )}
                               </div>
                             )}
                           </TableCell>
