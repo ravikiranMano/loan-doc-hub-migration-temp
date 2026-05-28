@@ -57,12 +57,12 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   // Details
   { id: `${AP}details`, label: 'Details', visible: false },
   // FORD
-  { id: `${AP}ford_1`, label: 'FORD 1', visible: false },
-  { id: `${AP}ford_2`, label: 'FORD 2', visible: false },
-  { id: `${AP}ford_3`, label: 'FORD 3', visible: false },
-  { id: `${AP}ford_4`, label: 'FORD 4', visible: false },
-  { id: `${AP}ford_5`, label: 'FORD 5', visible: false },
-  { id: `${AP}ford_6`, label: 'FORD 6', visible: false },
+  { id: `${AP}ford.1`, label: 'FORD 1', visible: false },
+  { id: `${AP}ford.2`, label: 'FORD 2', visible: false },
+  { id: `${AP}ford.3`, label: 'FORD 3', visible: false },
+  { id: `${AP}ford.4`, label: 'FORD 4', visible: false },
+  { id: `${AP}ford.5`, label: 'FORD 5', visible: false },
+  { id: `${AP}ford.6`, label: 'FORD 6', visible: false },
 ];
 
 const BOOLEAN_COLUMNS = new Set<string>([
@@ -220,7 +220,10 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     }
 
     if (BOOLEAN_COLUMNS.has(columnId)) {
-      const val = cd[columnId];
+      // Fall back to canonical (unprefixed) key for contacts created via
+      // the canonical-only path (e.g. CreateContactModal).
+      const canon = columnId.startsWith(AP) ? columnId.slice(AP.length) : columnId;
+      const val = cd[columnId] || cd[canon];
       return val === 'true' ? '✓' : '';
     }
 
@@ -238,6 +241,16 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     if (columnId in topLevel) {
       const val = topLevel[columnId] || '';
       if (columnId === 'full_name') return <span className="font-medium">{val || '-'}</span>;
+      return val || '-';
+    }
+    // For AP-prefixed columns, also check the canonical (unprefixed) key so
+    // data saved via the create-contact modal (which writes only canonical
+    // keys like `capacity`, `address.city`, `phone.home`) still populates.
+    if (columnId.startsWith(AP)) {
+      const canon = columnId.slice(AP.length);
+      const val = cd[columnId] || cd[canon];
+      // Phone.cell <-> phone.mobile cross-fallback
+      if (!val && canon === 'phone.cell') return cd['phone.mobile'] || '-';
       return val || '-';
     }
     return cd[columnId] || '-';
