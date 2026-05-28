@@ -8213,70 +8213,86 @@ async function generateSingleDocument(
             }
 
 
-            // Helper: in a given paragraph XML, replace the first non-empty
-            // <w:t> whose inner text does NOT match `Lender\s*:` with the new
-            // displayName, and blank out any subsequent non-empty non-label
-            // <w:t>s. <w:br/> markers and run properties are preserved.
-            const swapNameInParagraph = (paraXml: string, newName: string): string => {
-              let replaced = false;
-              return paraXml.replace(
-                /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi,
-                (full, attrs, inner) => {
-                  if (!inner || !inner.trim()) return full;
-                  if (/Lender\s*:/i.test(inner)) return full; // skip the label run
-                  if (!replaced) {
-                    replaced = true;
-                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                    return `<w:t${a}>${xmlEsc(newName)}</w:t>`;
-                  }
-                  return `<w:t${attrs || ""}></w:t>`;
-                },
-              );
+            // Helper: rewrite a paragraph whose visible text contains
+            // "Lender:" so it reads "<newLabel> <newName>". Operates on the
+            // CONCATENATED text of every <w:t> in the paragraph so it works
+            // even when Word has split the label across multiple runs (e.g.
+            // `<w:t>L</w:t><w:t>ender: </w:t><w:t>Vesting123</w:t>`, which
+            // Note Purchaser produces due to spell-check / proofing markup).
+            // The rewritten text is placed into the FIRST non-empty <w:t>
+            // (preserving its rPr/xml:space) and every other <w:t> is blanked
+            // so run properties — and therefore font/size/bold — are kept.
+            const swapLabelAndNameInParagraph = (
+              paraXml: string,
+              newLabel: string,
+              newName: string,
+            ): string => {
+              const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
+              const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
+              let mm: RegExpExecArray | null;
+              while ((mm = re.exec(paraXml)) !== null) {
+                toks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
+              }
+              if (!toks.length) return paraXml;
+              const concat = toks.map((t) => t.inner).join("");
+              const lm = /Lender\s*:/i.exec(concat);
+              if (!lm) return paraXml;
+              const before = concat.slice(0, lm.index).replace(/\s+$/, "");
+              const newText = `${before}${before ? " " : ""}${newLabel}${newName ? ` ${newName}` : ""}`;
+              let firstIdx = toks.findIndex((t) => t.inner.length > 0);
+              if (firstIdx === -1) firstIdx = 0;
+              let out = "";
+              let cursor = 0;
+              toks.forEach((t, i) => {
+                out += paraXml.slice(cursor, t.start);
+                const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
+                const inner = i === firstIdx ? xmlEsc(newText) : "";
+                out += `<w:t${a}>${inner}</w:t>`;
+                cursor = t.end;
+              });
+              out += paraXml.slice(cursor);
+              return out;
             };
 
-            // ORDER MATTERS for the inline-name case (label and name in the
-            // same <w:p>): do the NAME swap FIRST while the label run still
-            // reads "Lender:" so swapNameInParagraph correctly skips it.
-            // Swapping the label first would leave "Lender N:" in the label
-            // run, which `/Lender\s*:/i` does NOT match (digit between
-            // "Lender" and ":"), so the name pass would clobber the label
-            // and blank out the real name run — leaving the appended block
-            // with no label and no name.
-            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
-            let labelOut = tpl.labelXml;
-            if (inlineName) {
-              labelOut = swapNameInParagraph(labelOut, displayName);
-            }
-            // Now swap the label run: "Lender:" → "Lender N:" (preserve
-            // original trailing whitespace and xml:space="preserve").
-            const newLabel = `Lender ${labelN}:` + tpl.labelText.replace(/^.*?Lender\s*:/i, "");
-            labelOut = labelOut.replace(
-              /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
-              (full, attrs, inner) => {
-                if (!/Lender\s*:/i.test(inner)) return full;
-                const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                return `<w:t${a}>${xmlEsc(newLabel)}</w:t>`;
-              },
-            );
-
-
-            // 2) Separate name paragraph (when present): replace first non-empty
-            //    <w:t> with displayName, blank subsequent ones.
-            let nameOut = "";
-            if (!inlineName && tpl.nameXml) {
-              nameOut = swapNameInParagraph(tpl.nameXml, displayName);
-              if (nameOut === tpl.nameXml) {
-                // Primary had only empty <w:t>s — inject displayName into the first one.
-                nameOut = tpl.nameXml.replace(
-                  /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
-                  (_full, attrs) => {
-                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                    return `<w:t${a}>${xmlEsc(displayName)}</w:t>`;
-                  },
-                );
+            // Helper: replace the visible text of a separate name paragraph
+            // with `newName`, again operating across split runs.
+            const swapNameOnlyInParagraph = (paraXml: string, newName: string): string => {
+              const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
+              const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
+              let mm: RegExpExecArray | null;
+              while ((mm = re.exec(paraXml)) !== null) {
+                toks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
               }
-            }
+              if (!toks.length) return paraXml;
+              let firstIdx = toks.findIndex((t) => t.inner.length > 0);
+              if (firstIdx === -1) firstIdx = 0;
+              let out = "";
+              let cursor = 0;
+              toks.forEach((t, i) => {
+                out += paraXml.slice(cursor, t.start);
+                const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
+                const inner = i === firstIdx ? xmlEsc(newName) : "";
+                out += `<w:t${a}>${inner}</w:t>`;
+                cursor = t.end;
+              });
+              out += paraXml.slice(cursor);
+              return out;
+            };
+
+            // Compose the per-lender label, preserving the original trailing
+            // whitespace that followed "Lender:" in the captured labelText.
+            const trailing = tpl.labelText.replace(/^.*?Lender\s*:/i, "");
+            const newLabelText = `Lender ${labelN}:${trailing}`.replace(/\s+$/, "");
+
+            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
+            const labelOut = swapLabelAndNameInParagraph(
+              tpl.labelXml,
+              newLabelText,
+              inlineName ? displayName : "",
+            );
+            const nameOut = !inlineName && tpl.nameXml ? swapNameOnlyInParagraph(tpl.nameXml, displayName) : "";
             return stripJustifyBoth(labelOut + nameOut + tpl.sigXmls.join(""));
+
           };
 
           for (let a = 1; a <= lenderCount - 1; a++) {
