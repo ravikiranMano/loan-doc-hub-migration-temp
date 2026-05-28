@@ -320,7 +320,20 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
               />
             </div>
           </DirtyFieldWrapper>
+          <DirtyFieldWrapper fieldKey={FK.servicing_agent_address}>
+            <div className="flex items-center gap-2 md:col-span-2">
+              <Label className="w-[160px] text-sm shrink-0">Servicing Agent Address</Label>
+              <Input
+                value={combinedAddress}
+                readOnly
+                disabled
+                placeholder="Auto-filled from Street, City, State, ZIP"
+                className="h-7 text-sm bg-muted"
+              />
+            </div>
+          </DirtyFieldWrapper>
         </div>
+
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-8 gap-y-6">
