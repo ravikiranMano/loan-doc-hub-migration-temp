@@ -30,6 +30,15 @@ const CAPACITY_OPTIONS = [
   'Accountant / CPA', 'Family', 'Bankruptcy Trustee', 'Other',
 ];
 
+// Same FORD dropdown options as Borrower (BorrowerPrimaryForm)
+const FORD_DROPDOWN_OPTIONS = [
+  'Spouse, Kids, Grandkids', 'Big Dream', 'Sports Teams', 'Hobbies / Collections',
+  'Goals / Achievements', 'Favorite Restaurant, Food, Drinks', 'Pet(s)', 'Vacation Spot',
+  'Job / Occupation', 'Music / Bands', 'College', 'Hometown / Childhood',
+  'TV / Movies / Books', 'Anniversary', 'Challenges / Frustrations',
+  'Charity / Personal Causes', 'Upcoming Event - What / When', 'Celebration - What / When',
+];
+
 const sanitizeName = (v: string) => v.replace(/[^a-zA-Z\s'\-]/g, '').slice(0, 100);
 
 interface BorrowerAuthorizedPartyFormProps {
