@@ -284,7 +284,7 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
         onCreateNew={() => setModalOpen(true)}
         onDeleteSelected={isReadOnly ? undefined : handleDeleteSelected}
         defaultColumns={DEFAULT_COLUMNS}
-        tableConfigKey="contact_additional_guarantors_v1"
+        tableConfigKey="contact_additional_guarantors_v2"
         addButtonLabel="Add Additional Guarantor"
         breadcrumbLabel="Additional Guarantors"
         filterOptions={FILTER_OPTIONS}
