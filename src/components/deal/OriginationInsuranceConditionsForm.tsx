@@ -146,29 +146,13 @@ export const OriginationInsuranceConditionsForm: React.FC<OriginationInsuranceCo
               <Label className="text-xs shrink-0">Minimum Carrier Rating:</Label>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
+              <Label className="text-xs">A-</Label>
+              <Label className="text-xs">A</Label>
+              <Label className="text-xs">A+</Label>
               <DirtyFieldWrapper fieldKey={FK.carrier_a_minus}>
                 <div className="flex items-center gap-1">
-                  <Checkbox checked={bv(FK.carrier_a_minus)} onCheckedChange={(c) => sbv(FK.carrier_a_minus, !!c)} disabled={disabled} />
-                  <Label className="text-xs cursor-pointer">A-</Label>
-                </div>
-              </DirtyFieldWrapper>
-              <DirtyFieldWrapper fieldKey={FK.carrier_a}>
-                <div className="flex items-center gap-1">
-                  <Checkbox checked={bv(FK.carrier_a)} onCheckedChange={(c) => sbv(FK.carrier_a, !!c)} disabled={disabled} />
-                  <Label className="text-xs cursor-pointer">A</Label>
-                </div>
-              </DirtyFieldWrapper>
-              <DirtyFieldWrapper fieldKey={FK.carrier_a_plus}>
-                <div className="flex items-center gap-1">
-                  <Checkbox checked={bv(FK.carrier_a_plus)} onCheckedChange={(c) => sbv(FK.carrier_a_plus, !!c)} disabled={disabled} />
-                  <Label className="text-xs cursor-pointer">A+</Label>
-                </div>
-              </DirtyFieldWrapper>
-              <DirtyFieldWrapper fieldKey={FK.carrier_other}>
-                <div className="flex items-center gap-1">
-                  <Checkbox checked={bv(FK.carrier_other)} onCheckedChange={(c) => sbv(FK.carrier_other, !!c)} disabled={disabled} />
                   <Label className="text-xs">Other:</Label>
-                  <Input value={v(FK.carrier_other_text)} onChange={(e) => sv(FK.carrier_other_text, e.target.value)}
+                  <Input value={v(FK.carrier_a_minus)} onChange={(e) => sv(FK.carrier_a_minus, e.target.value)}
                     disabled={disabled} className="h-6 text-xs w-[70px]" />
                 </div>
               </DirtyFieldWrapper>
