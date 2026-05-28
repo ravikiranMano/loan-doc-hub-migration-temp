@@ -4005,16 +4005,23 @@ async function generateSingleDocument(
         }
       }
 
-      // RE851A override: the bare (non-indexed) Current Balance aliases must render
-      // ONLY the 1st lien's current_balance value, never the aggregated newline-joined
-      // multi-lien string. Per-lien table cells use _N indexed keys instead.
+      // Bare (non-indexed) Current Balance aliases render the SUM of all liens'
+      // current_balance values (ignoring null/blank/non-numeric). Per-lien table
+      // cells continue to use _N indexed keys instead.
       {
         const cbEntries = lienFieldCollector["current_balance"];
         if (cbEntries && cbEntries.length > 0) {
-          const sorted = [...cbEntries].sort((a, b) => a.index - b.index);
-          const firstVal = sorted[0].value;
-          const firstNum = parseFloat(String(firstVal).replace(/[^0-9.-]/g, ""));
-          const rawCurrency = Number.isFinite(firstNum) ? firstNum.toFixed(2) : firstVal;
+          let sum = 0;
+          let contributing = 0;
+          for (const e of cbEntries) {
+            if (e.value === null || e.value === undefined || String(e.value).trim() === "") continue;
+            const n = parseFloat(String(e.value).replace(/[^0-9.-]/g, ""));
+            if (Number.isFinite(n)) {
+              sum += n;
+              contributing++;
+            }
+          }
+          const rawCurrency = sum.toFixed(2);
           const formatted = formatCurrency(rawCurrency);
           const aliases = [
             "pr_li_lienCurrenBalanc",
@@ -4025,7 +4032,7 @@ async function generateSingleDocument(
           for (const alias of aliases) {
             fieldValues.set(alias, { rawValue: rawCurrency, dataType: "currency" });
           }
-          debugLog(`[generate-document] Forced 1st-lien-only current_balance for aliases [${aliases.join(", ")}]: ${formatted} (raw=${firstVal})`);
+          debugLog(`[generate-document] Aggregated current_balance SUM across ${contributing}/${cbEntries.length} lien(s) for aliases [${aliases.join(", ")}]: ${formatted}`);
         }
       }
 
