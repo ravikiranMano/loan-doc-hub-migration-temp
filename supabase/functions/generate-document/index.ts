@@ -1514,6 +1514,8 @@ async function generateSingleDocument(
       publishBrAlias("br_p_emailAddres", ["borrower1.email", "borrower.email"]);
       publishBrAlias("br_p_homePhone",   ["borrower1.phone.home", "borrower.phone.home"]);
       publishBrAlias("br_p_workPhone",   ["borrower1.phone.work", "borrower.phone.work"]);
+      publishBrAlias("br_p_cellPhone",   ["borrower1.phone.mobile", "borrower.phone.mobile"]);
+
     }
 
 
