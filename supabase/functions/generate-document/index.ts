@@ -8255,22 +8255,20 @@ async function generateSingleDocument(
               const brRe = /<w:br\b[^/>]*\/>|<w:br\b[^>]*><\/w:br>/i;
               const brMatch = brRe.exec(paraXml);
               const brIdx = brMatch ? brMatch.index : -1;
-              const head = brIdx === -1 ? paraXml : paraXml.slice(0, brIdx);
               const rawTail = brIdx === -1 ? "" : paraXml.slice(brIdx);
-              // Preserve the tail verbatim whenever it contains Signature/Date
-              // text — slicing mid-run would drop <w:r> boundary tags and
-              // corrupt the DOCX (Word would refuse to open it).
-              const tail = (() => {
-                if (!rawTail) return "";
-                if (!/\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail))) return "";
-                return rawTail;
-              })();
+              const tailContainsSignatureOrDate = !!rawTail && /\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail));
               const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
-              const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
+              const allToks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
               let mm: RegExpExecArray | null;
-              while ((mm = re.exec(head)) !== null) {
-                toks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
+              while ((mm = re.exec(paraXml)) !== null) {
+                allToks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
               }
+              const firstLineToks = tailContainsSignatureOrDate && brIdx !== -1
+                ? allToks.filter((t) => t.start < brIdx)
+                : [];
+              const toks = firstLineToks.map((t) => t.inner).join("").match(/Lender\s*:/i)
+                ? firstLineToks
+                : allToks;
               if (!toks.length) return paraXml;
               const concat = toks.map((t) => t.inner).join("");
               const lm = /Lender\s*:/i.exec(concat);
@@ -8279,17 +8277,24 @@ async function generateSingleDocument(
               const newText = `${before}${before ? " " : ""}${newLabel}${newName ? ` ${newName}` : ""}`;
               let firstIdx = toks.findIndex((t) => t.inner.length > 0);
               if (firstIdx === -1) firstIdx = 0;
+              const rewriteStarts = new Set(toks.map((t) => t.start));
+              const firstRewriteStart = toks[firstIdx]?.start;
               let out = "";
               let cursor = 0;
-              toks.forEach((t, i) => {
-                out += head.slice(cursor, t.start);
+              allToks.forEach((t) => {
+                out += paraXml.slice(cursor, t.start);
+                if (!rewriteStarts.has(t.start)) {
+                  out += paraXml.slice(t.start, t.end);
+                  cursor = t.end;
+                  return;
+                }
                 const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
-                const inner = i === firstIdx ? xmlEsc(newText) : "";
+                const inner = t.start === firstRewriteStart ? xmlEsc(newText) : "";
                 out += `<w:t${a}>${inner}</w:t>`;
                 cursor = t.end;
               });
-              out += head.slice(cursor);
-              return out + tail;
+              out += paraXml.slice(cursor);
+              return out;
             };
 
             // Helper: replace the visible text of a separate name paragraph
@@ -8402,6 +8407,7 @@ async function generateSingleDocument(
           }
 
           if (docXmlChanged) {
+            validateContentXmlPart("word/document.xml", docXml);
             unz["word/document.xml"] = encoder.encode(docXml);
             processedDocx = fflateMod.zipSync(unz, { level: 0 });
           }
@@ -8414,9 +8420,15 @@ async function generateSingleDocument(
 
       }
     } catch (appendErr) {
+      const appendMessage = appendErr instanceof Error ? appendErr.message : String(appendErr);
+      if (appendMessage.startsWith("DOCX_INTEGRITY")) {
+        console.error(`[lender-sig] generated DOCX failed integrity after lender signature pass: ${appendMessage}`);
+        result.error = `Generated document failed integrity check (${appendMessage.replace(/^DOCX_INTEGRITY:\s*/, "")}). Please regenerate after the template is corrected.`;
+        return result;
+      }
       console.warn(
         "[lender-sig] universal lender signature pass failed:",
-        appendErr instanceof Error ? appendErr.message : String(appendErr),
+        appendMessage,
       );
     }
 
