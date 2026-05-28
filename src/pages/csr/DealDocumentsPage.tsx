@@ -547,43 +547,45 @@ export const DealDocumentsPage: React.FC = () => {
   };
 
   const handlePrintDocument = async (doc: GeneratedDocument) => {
-    // Prefer PDF for in-browser print; otherwise fall back to the Office viewer
-    // (DOCX cannot be printed directly by the browser).
-    if (doc.output_pdf_path) {
-      const url = await getSignedUrl(doc.output_pdf_path, buildFileName(doc, 'pdf'));
-      if (!url) return;
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      iframe.src = url;
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch {
-          window.open(url, '_blank', 'noopener,noreferrer');
-        }
-      };
-      document.body.appendChild(iframe);
+    // Open the document in a new window and trigger the native browser print
+    // dialog. Cross-origin signed URLs can block iframe.print(), so a real
+    // window is the most reliable way to surface print settings.
+    const path = doc.output_pdf_path || doc.output_docx_path;
+    if (!path) return;
+    const isPdf = !!doc.output_pdf_path;
+    const fileUrl = await getSignedUrl(
+      path,
+      buildFileName(doc, isPdf ? 'pdf' : 'docx'),
+    );
+    if (!fileUrl) return;
+    const target = isPdf
+      ? fileUrl
+      : `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
+    const win = window.open(target, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      toast({
+        title: 'Popup blocked',
+        description: 'Please allow popups to print this document.',
+        variant: 'destructive',
+      });
       return;
     }
-    if (doc.output_docx_path) {
-      const url = await getSignedUrl(doc.output_docx_path, buildFileName(doc, 'docx'));
-      if (!url) return;
-      const viewer = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
-      const win = window.open(viewer, '_blank', 'noopener,noreferrer');
-      if (win) {
-        toast({
-          title: 'Opened in viewer',
-          description: 'Use the viewer\'s print option to print this document.',
-        });
-      }
+    if (isPdf) {
+      // Wait for the PDF to render, then invoke the browser's print dialog.
+      const tryPrint = () => {
+        try {
+          win.focus();
+          win.print();
+        } catch {
+          // Cross-origin restrictions — user can still use Ctrl/Cmd+P.
+        }
+      };
+      win.addEventListener('load', tryPrint);
+      // Safety fallback if 'load' never fires for the embedded PDF viewer.
+      setTimeout(tryPrint, 1500);
     }
   };
+
 
 
 
