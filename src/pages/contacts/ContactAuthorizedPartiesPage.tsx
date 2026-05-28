@@ -220,7 +220,10 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     }
 
     if (BOOLEAN_COLUMNS.has(columnId)) {
-      const val = cd[columnId];
+      // Fall back to canonical (unprefixed) key for contacts created via
+      // the canonical-only path (e.g. CreateContactModal).
+      const canon = columnId.startsWith(AP) ? columnId.slice(AP.length) : columnId;
+      const val = cd[columnId] || cd[canon];
       return val === 'true' ? '✓' : '';
     }
 
@@ -238,6 +241,16 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     if (columnId in topLevel) {
       const val = topLevel[columnId] || '';
       if (columnId === 'full_name') return <span className="font-medium">{val || '-'}</span>;
+      return val || '-';
+    }
+    // For AP-prefixed columns, also check the canonical (unprefixed) key so
+    // data saved via the create-contact modal (which writes only canonical
+    // keys like `capacity`, `address.city`, `phone.home`) still populates.
+    if (columnId.startsWith(AP)) {
+      const canon = columnId.slice(AP.length);
+      const val = cd[columnId] || cd[canon];
+      // Phone.cell <-> phone.mobile cross-fallback
+      if (!val && canon === 'phone.cell') return cd['phone.mobile'] || '-';
       return val || '-';
     }
     return cd[columnId] || '-';
