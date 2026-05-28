@@ -218,6 +218,24 @@ export const OriginationServicingForm: React.FC<OriginationServicingFormProps> =
       values[FK.tp_name], values[FK.tp_street], values[FK.tp_city], values[FK.tp_state], values[FK.tp_zip], values[FK.tp_phone], values[FK.tp_email],
       values[FK.cp_name], values[FK.cp_street], values[FK.cp_city], values[FK.cp_state], values[FK.cp_zip], values[FK.cp_phone], values[FK.cp_email]]);
 
+  // Combined Servicing Agent Address: "Street, City, State ZIP"
+  // Sources from the active block (Company when agent = Company, else 3rd Party).
+  const addrStreet = isCompanyAgent ? v(FK.cp_street) : v(FK.tp_street);
+  const addrCity   = isCompanyAgent ? v(FK.cp_city)   : v(FK.tp_city);
+  const addrState  = isCompanyAgent ? v(FK.cp_state)  : v(FK.tp_state);
+  const addrZip    = isCompanyAgent ? v(FK.cp_zip)    : v(FK.tp_zip);
+  const combinedAddress = [
+    addrStreet.trim(),
+    [addrCity.trim(), [addrState.trim(), addrZip.trim()].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', '),
+  ].filter(Boolean).join(', ');
+  useEffect(() => {
+    if (v(FK.servicing_agent_address) !== combinedAddress) {
+      sv(FK.servicing_agent_address, combinedAddress);
+    }
+  }, [combinedAddress]);
+
+
   const renderTextField = (label: string, key: string, extraDisabled = false) => (
     <DirtyFieldWrapper fieldKey={key}>
       <div className="flex items-center gap-2">
