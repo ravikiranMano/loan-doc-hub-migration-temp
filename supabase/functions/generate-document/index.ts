@@ -8184,7 +8184,7 @@ async function generateSingleDocument(
           // the column. Labels/names are short fixed strings, not flowing
           // prose, so left alignment is always correct here. Applied to ALL
           // cloned paragraphs in an appended lender block (label, Signature,
-          // Date) for visual consistency. See note-purchaser-lender-loop:v4.
+          // Date) for visual consistency. See note-purchaser-lender-loop:v8.
           const stripJustifyBoth = (xml: string): string => {
             return xml.replace(
               /<w:jc\b[^>]*\bw:val="both"[^>]*\/>/g,
