@@ -291,22 +291,34 @@ export const BorrowerAuthorizedPartyForm: React.FC<BorrowerAuthorizedPartyFormPr
           </DirtyFieldWrapper>
         </div>
 
-        {/* FORD */}
+        {/* FORD - dropdowns use same values as Borrower */}
         <div className="space-y-2">
           <h4 className="font-semibold text-sm text-foreground pb-1">FORD</h4>
-          <div className="grid grid-cols-2 gap-2">
-            {[1, 2, 3, 4, 5, 6].map((n) => {
-              const fieldKey = `borrower.authorized_party.ford_${n}`;
+          <div className="space-y-1">
+            {([[1, 2], [3, 4], [5, 6]] as const).map(([dropdownN, inputN]) => {
+              const dropdownKey = `borrower.authorized_party.ford_${dropdownN}`;
+              const inputKey = `borrower.authorized_party.ford_${inputN}`;
               return (
-                <DirtyFieldWrapper key={fieldKey} fieldKey={fieldKey}>
-                  <Input
-                    value={values[fieldKey] || ''}
-                    onChange={(e) => onValueChange(fieldKey, e.target.value)}
-                    disabled={disabled}
-                    maxLength={200}
-                    className="h-7 text-sm"
-                  />
-                </DirtyFieldWrapper>
+                <div key={dropdownN} className="grid grid-cols-2 gap-1">
+                  <DirtyFieldWrapper fieldKey={dropdownKey}>
+                    <SearchableSelect
+                      value={values[dropdownKey] || ''}
+                      onValueChange={(v) => onValueChange(dropdownKey, v)}
+                      options={FORD_DROPDOWN_OPTIONS}
+                      searchPlaceholder="Search FORD..."
+                      disabled={disabled}
+                    />
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={inputKey}>
+                    <Input
+                      value={values[inputKey] || ''}
+                      onChange={(e) => onValueChange(inputKey, e.target.value)}
+                      disabled={disabled}
+                      maxLength={200}
+                      className="h-7 text-sm"
+                    />
+                  </DirtyFieldWrapper>
+                </div>
               );
             })}
           </div>
