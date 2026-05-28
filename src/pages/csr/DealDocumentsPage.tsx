@@ -555,6 +555,9 @@ export const DealDocumentsPage: React.FC = () => {
       }
     };
     document.body.appendChild(iframe);
+  };
+
+
 
 
   const getLatestDocumentForTemplate = (templateId: string): GeneratedDocument | undefined => {
