@@ -2285,13 +2285,23 @@ async function generateSingleDocument(
           fieldValues.set(`pr_pt_delinquentAmount_${idx}`, { rawValue: amountStr, dataType: "currency" });
           debugLog(`[RE851D] pr_pt_delinquent idx=${idx} taxIdx=${taxIdx ?? "legacy"} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
         }
-        // Delinquent payment count
+        // Delinquent payment count.
+        // UI (PropertySectionContent / OriginationPropertyForm) persists this
+        // under `<prefix>.delinquencies_how_many` (see fieldKeyMap.delinquenciesHowMany);
+        // legacy/canonical aliases are also accepted.
         const delinqV =
+          fieldValues.get(`${prefix}.delinquencies_how_many`) ||
+          fieldValues.get(`${prefix}.delinquenciesHowMany`) ||
           fieldValues.get(`${prefix}.delinquent_how_many`) ||
           fieldValues.get(`${prefix}.delinqHowMany`) ||
           fieldValues.get(`${prefix}.pr_p_delinquHowMany`);
-        if (delinqV?.rawValue) {
+        if (delinqV?.rawValue !== undefined && delinqV?.rawValue !== null && String(delinqV.rawValue) !== "") {
           fieldValues.set(`pr_p_delinquHowMany_${idx}`, { rawValue: delinqV.rawValue, dataType: delinqV.dataType || "number" });
+          // Publish bare (unindexed) alias from Property #1 so templates using
+          // `{{pr_p_delinquHowMany}}` resolve without an explicit _N suffix.
+          if (idx === 1 && !fieldValues.has("pr_p_delinquHowMany")) {
+            fieldValues.set("pr_p_delinquHowMany", { rawValue: delinqV.rawValue, dataType: delinqV.dataType || "number" });
+          }
         }
         // Per-property appraise value & owner (handle alternate canonical keys)
         // UI saves under `propertyN.appraised_value` (PropertyDetailsForm/fieldKeyMap.appraisedValue)
