@@ -547,37 +547,32 @@ export const DealDocumentsPage: React.FC = () => {
   };
 
   const handlePrintDocument = async (doc: GeneratedDocument) => {
-    // To reliably show the browser's native print dialog, fetch the PDF as a
-    // same-origin blob and load it into a hidden iframe — cross-origin signed
-    // URLs would otherwise block iframe.contentWindow.print().
+    // Open the PDF in a new window as a same-origin blob, then trigger the
+    // browser's native print dialog once the PDF viewer has loaded.
     if (doc.output_pdf_path) {
       const url = await getSignedUrl(doc.output_pdf_path, buildFileName(doc, 'pdf'));
       if (!url) return;
+      const win = window.open('', '_blank');
+      if (!win) {
+        toast({
+          title: 'Popup blocked',
+          description: 'Please allow popups for this site to print documents.',
+          variant: 'destructive',
+        });
+        return;
+      }
       try {
         const res = await fetch(url);
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        iframe.src = blobUrl;
-        iframe.onload = () => {
-          setTimeout(() => {
-            try {
-              iframe.contentWindow?.focus();
-              iframe.contentWindow?.print();
-            } catch {
-              window.open(blobUrl, '_blank', 'noopener,noreferrer');
-            }
-          }, 300);
-        };
-        document.body.appendChild(iframe);
+        // Write a wrapper HTML that embeds the PDF and calls window.print()
+        // after the embed loads. This reliably shows the native print dialog
+        // with all standard print options (destination, copies, layout, etc.).
+        win.document.open();
+        win.document.write(`<!doctype html><html><head><title>${buildFileName(doc, 'pdf')}</title><style>html,body{margin:0;padding:0;height:100%;}embed{width:100%;height:100%;border:0;}</style></head><body><embed id="p" type="application/pdf" src="${blobUrl}"/><script>(function(){var d=0;function go(){if(d)return;d=1;try{window.focus();window.print();}catch(e){}}window.addEventListener('load',function(){setTimeout(go,500);});setTimeout(go,1500);})();</script></body></html>`);
+        win.document.close();
       } catch {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        win.location.href = url;
       }
       return;
     }
