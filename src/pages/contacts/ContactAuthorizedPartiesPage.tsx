@@ -57,12 +57,12 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   // Details
   { id: `${AP}details`, label: 'Details', visible: false },
   // FORD
-  { id: `${AP}ford_1`, label: 'FORD 1', visible: false },
-  { id: `${AP}ford_2`, label: 'FORD 2', visible: false },
-  { id: `${AP}ford_3`, label: 'FORD 3', visible: false },
-  { id: `${AP}ford_4`, label: 'FORD 4', visible: false },
-  { id: `${AP}ford_5`, label: 'FORD 5', visible: false },
-  { id: `${AP}ford_6`, label: 'FORD 6', visible: false },
+  { id: `${AP}ford.1`, label: 'FORD 1', visible: false },
+  { id: `${AP}ford.2`, label: 'FORD 2', visible: false },
+  { id: `${AP}ford.3`, label: 'FORD 3', visible: false },
+  { id: `${AP}ford.4`, label: 'FORD 4', visible: false },
+  { id: `${AP}ford.5`, label: 'FORD 5', visible: false },
+  { id: `${AP}ford.6`, label: 'FORD 6', visible: false },
 ];
 
 const BOOLEAN_COLUMNS = new Set<string>([
