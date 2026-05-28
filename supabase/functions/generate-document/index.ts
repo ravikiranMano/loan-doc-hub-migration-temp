@@ -8255,16 +8255,15 @@ async function generateSingleDocument(
               const brRe = /<w:br\b[^/>]*\/>|<w:br\b[^>]*><\/w:br>/i;
               const brMatch = brRe.exec(paraXml);
               const brIdx = brMatch ? brMatch.index : -1;
-              const head = brIdx === -1 ? paraXml : paraXml.slice(0, brIdx);
               const rawTail = brIdx === -1 ? "" : paraXml.slice(brIdx);
-              // Preserve the tail verbatim whenever it contains Signature/Date
-              // text — slicing mid-run would drop <w:r> boundary tags and
-              // corrupt the DOCX (Word would refuse to open it).
-              const tail = (() => {
-                if (!rawTail) return "";
-                if (!/\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail))) return "";
-                return rawTail;
-              })();
+              const tailContainsSignatureOrDate = !!rawTail && /\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail));
+              // Only split the paragraph when the content after <w:br/> is
+              // an actual Signature/Date line that must be preserved verbatim.
+              // If the break only separates "Lender:" from the lender name,
+              // process the full paragraph; otherwise dropping that tail also
+              // drops the run/paragraph closing tags and corrupts the DOCX.
+              const head = tailContainsSignatureOrDate ? paraXml.slice(0, brIdx) : paraXml;
+              const tail = tailContainsSignatureOrDate ? rawTail : "";
               const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
               const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
               let mm: RegExpExecArray | null;
@@ -8402,6 +8401,7 @@ async function generateSingleDocument(
           }
 
           if (docXmlChanged) {
+            validateContentXmlPart("word/document.xml", docXml);
             unz["word/document.xml"] = encoder.encode(docXml);
             processedDocx = fflateMod.zipSync(unz, { level: 0 });
           }
@@ -8414,9 +8414,15 @@ async function generateSingleDocument(
 
       }
     } catch (appendErr) {
+      const appendMessage = appendErr instanceof Error ? appendErr.message : String(appendErr);
+      if (appendMessage.startsWith("DOCX_INTEGRITY")) {
+        console.error(`[lender-sig] generated DOCX failed integrity after lender signature pass: ${appendMessage}`);
+        result.error = `Generated document failed integrity check (${appendMessage.replace(/^DOCX_INTEGRITY:\s*/, "")}). Please regenerate after the template is corrected.`;
+        return result;
+      }
       console.warn(
         "[lender-sig] universal lender signature pass failed:",
-        appendErr instanceof Error ? appendErr.message : String(appendErr),
+        appendMessage,
       );
     }
 
