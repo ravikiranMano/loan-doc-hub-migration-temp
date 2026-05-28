@@ -4451,18 +4451,19 @@ async function generateSingleDocument(
         const orderedIdx = (hasIdx ? allIdx.filter((i) => i !== "0") : allIdx)
           .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
 
-        const lines: string[] = [];
+        let total = 0;
+        let contributingLiens = 0;
         for (const i of orderedIdx) {
           const cbRaw = perLien[i]?.cb;
           const pdRaw = perLien[i]?.pd;
           const hasCb = cbRaw !== undefined && cbRaw !== null && String(cbRaw).trim() !== "";
           if (!hasCb) {
-            lines.push("");
+            // Skip liens without current_balance; do not publish per-lien alias.
             continue;
           }
           const result = toNum(cbRaw) - toNum(pdRaw);
-          const formatted = formatCurrency(result.toFixed(2));
-          lines.push(formatted);
+          total += result;
+          contributingLiens++;
           // Per-lien indexed alias (1-based)
           const nIdx = i === "0" ? "1" : i;
           fieldValues.set(`pr_li_balanceAfterPaydown_${nIdx}`, {
@@ -4473,10 +4474,10 @@ async function generateSingleDocument(
 
         if (orderedIdx.length > 0) {
           fieldValues.set("pr_li_balanceAfterPaydown", {
-            rawValue: orderedIdx.length > 1 ? lines.join("\n") : (toNum(perLien[orderedIdx[0]]?.cb) - toNum(perLien[orderedIdx[0]]?.pd)).toFixed(2),
-            dataType: orderedIdx.length > 1 ? "text" : "currency",
+            rawValue: total.toFixed(2),
+            dataType: "currency",
           });
-          debugLog(`[generate-document] Published pr_li_balanceAfterPaydown for ${orderedIdx.length} lien(s)`);
+          debugLog(`[generate-document] Published pr_li_balanceAfterPaydown=${total.toFixed(2)} (SUM across ${contributingLiens}/${orderedIdx.length} lien(s))`);
         }
       }
 
