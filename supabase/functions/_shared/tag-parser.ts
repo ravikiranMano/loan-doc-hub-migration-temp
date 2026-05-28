@@ -1636,8 +1636,17 @@ function getConditionalAliasCandidates(fieldKey: string): string[] {
     ];
   }
 
+  // Borrower type — `{{#if (eq br_p_borrowerType "Individual")}}…{{else}}…`
+  // conditional. Canonical key is published by the indexed→canonical bridge,
+  // but multi-borrower / legacy deals may only carry the indexed key, so we
+  // fall back to it for the eq comparison.
+  if (lower === "br_p_borrowertype") {
+    return [normalized, "borrower1.borrower_type", "borrower.borrower_type"];
+  }
+
   return [normalized];
 }
+
 
 /**
  * Resolve the raw, normalized field value for use in `(eq ...)` comparisons.
