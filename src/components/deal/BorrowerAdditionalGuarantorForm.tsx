@@ -306,15 +306,23 @@ export const BorrowerAdditionalGuarantorForm: React.FC<BorrowerAdditionalGuarant
 
           <div className="pt-2">
             <h4 className="font-semibold text-sm text-foreground pb-1">FORD</h4>
-            <div className="grid grid-cols-2 gap-2">
-              <SearchableSelect
-                value={getValue('ford1')}
-                onValueChange={(v) => handleChange('ford1', v)}
-                options={FORD_DROPDOWN_OPTIONS}
-                searchPlaceholder="Search FORD..."
-                disabled={disabled}
-              />
-              <Input value={getValue('ford2')} onChange={(e) => handleChange('ford2', e.target.value)} disabled={disabled} className="h-7 text-sm" />
+            <div className="space-y-1">
+              {([['ford1', 'ford2'], ['ford3', 'ford4'], ['ford5', 'ford6'], ['ford7', 'ford8']] as const).map(([dropdownKey, inputKey], idx) => (
+                <div key={idx} className="grid grid-cols-2 gap-1">
+                  <DirtyFieldWrapper fieldKey={FIELD_KEYS[dropdownKey]}>
+                    <SearchableSelect
+                      value={getValue(dropdownKey)}
+                      onValueChange={(v) => handleChange(dropdownKey, v)}
+                      options={FORD_DROPDOWN_OPTIONS}
+                      searchPlaceholder="Search FORD..."
+                      disabled={disabled}
+                    />
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={FIELD_KEYS[inputKey]}>
+                    <Input value={getValue(inputKey)} onChange={(e) => handleChange(inputKey, e.target.value)} disabled={disabled} className="h-7 text-sm" />
+                  </DirtyFieldWrapper>
+                </div>
+              ))}
             </div>
           </div>
         </div>
