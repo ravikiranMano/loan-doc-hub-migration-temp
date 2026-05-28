@@ -1,70 +1,64 @@
 
-## Problem
+## Root cause
 
-In `Borrower_TCPA_and_E-Consent_v5.docx`:
-- The **Mobile Number** cell is empty — no merge tag at all.
-- The **Email Address** cell contains hardcoded `michael.carter@blueridgecap.com`.
+In `supabase/functions/generate-document/index.ts` (lines 4102–4131), the bare `pr_li_lienCurrenBalanc` alias is computed as the SUM of `current_balance` across **every** entry in `lienFieldCollector["current_balance"]`.
 
-The cell needs to render whichever phone the borrower has flagged as **Preferred** (Home / Home2 / Work / Cell).
-
-## Good news
-
-The edge function `supabase/functions/generate-document/index.ts` (lines 1518–1572) **already** publishes a "preferred-phone-aware" value to `br_p_cellPhone`, `br_p_mobilePhone`, and `br_p_mobileNumber`:
-
-1. Checks `borrower1.preferred.home` → `home2` → `work` → `cell` flags.
-2. Returns the phone for the flagged type.
-3. Falls back to cell → mobile → home → home2 → work if nothing is flagged.
-
-So the only fix needed is on the **template** + a new alias the user explicitly asked for.
-
-## Changes
-
-### 1. Patch the v5 template
-
-Re-open `Borrower_TCPA_and_E-Consent_v5.docx` (uploaded), and:
-
-- In the **Mobile Number** cell, insert `{{br_p_preferredPhone}}`.
-- In the **Email Address** cell, replace the hardcoded `michael.carter@blueridgecap.com` with `{{br_p_emailAddres}}` (the existing canonical alias already published by the edge function at line 1514).
-
-Upload the patched file to the `templates` storage bucket, overwriting the current TCPA template path used by the deal's packet.
-
-### 2. Add `br_p_preferredPhone` alias (edge function)
-
-In `supabase/functions/generate-document/index.ts`, immediately after the existing preferred-phone resolution block (line ~1572), publish the same resolved value to a new canonical key so the template tag `{{br_p_preferredPhone}}` works without depending on the legacy `cellPhone`/`mobileNumber` names:
+The collector contains both the **legacy `lien.*` mirror (index 0)** and the **indexed `lien1.*`, `lien2.*`, …** entries. The per-lien cell publisher right above (line 4060) explicitly dedupes by dropping index‑0 whenever any indexed lien exists:
 
 ```ts
-if (publishedPhone) {
-  for (const t of [...cellTargets, "br_p_preferredPhone"]) {
-    fieldValues.set(t, { rawValue: publishedPhone, dataType: "text" });
+const hasIndexed = entries.some(e => e.index >= 1);
+const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
+```
+
+…but the SUM block on lines 4106–4117 uses `cbEntries` **without** that dedup, so the legacy mirror is added on top of the indexed lien — producing $50,000 from a single $25,000 lien on DL‑2026‑0266.
+
+The same bug affects all aliases the block publishes:
+- `pr_li_lienCurrenBalanc`
+- `pr_p_currentBalanc`
+- `li_p_currentBalance`
+- `li_lt_currentBalance`
+
+## Fix
+
+Apply the identical dedup rule to the SUM block. Change lines 4106–4117 so the loop iterates over `dedupedCbEntries` instead of `cbEntries`:
+
+```ts
+const cbEntries = lienFieldCollector["current_balance"];
+if (cbEntries && cbEntries.length > 0) {
+  // Match the per-lien dedup above: drop legacy lien.* (index 0) when any
+  // indexed lien (lien1.*, lien2.*, …) is present, so the mirror isn't
+  // double-counted into the aggregated SUM aliases.
+  const hasIndexed = cbEntries.some(e => e.index >= 1);
+  const dedupedCbEntries = hasIndexed ? cbEntries.filter(e => e.index >= 1) : cbEntries;
+
+  let sum = 0;
+  let contributing = 0;
+  for (const e of dedupedCbEntries) {
+    if (e.value === null || e.value === undefined || String(e.value).trim() === "") continue;
+    const n = parseFloat(String(e.value).replace(/[^0-9.-]/g, ""));
+    if (Number.isFinite(n)) { sum += n; contributing++; }
   }
+  // …rest unchanged (aliases, fieldValues.set, debugLog)
+  debugLog(`[generate-document] Aggregated current_balance SUM across ${contributing}/${dedupedCbEntries.length} lien(s) (deduped from ${cbEntries.length}) for aliases […]: ${formatted}`);
 }
 ```
 
-No new resolution logic — same `publishedPhone` already computed.
+No change to data type, formatting, alias list, or any other field.
 
-### 3. Add `br_p_emailAddress` alias (typo-tolerant)
+## Verification
 
-Right after line 1514 publish the same value under the correctly-spelled key as well, so either tag works:
+After deploy, regenerate RE851a for DL‑2026‑0266 and confirm:
 
-```ts
-publishBrAlias("br_p_emailAddres",  ["borrower1.email", "borrower.email"]);
-publishBrAlias("br_p_emailAddress", ["borrower1.email", "borrower.email"]);
-```
+| Tag | Before | After |
+|---|---|---|
+| `{{pr_li_lienCurrenBalanc}}` | $50,000.00 | **$25,000.00** |
+| `{{pr_p_currentBalanc}}` | $50,000.00 | **$25,000.00** |
+| `{{pr_netPropertyValue}}` (depends on this) | 450,000 | **475,000** (500,000 − 0 − 25,000 − 25,000 anticipated) |
 
-### 4. Deploy
+Also spot-check a multi-lien deal (e.g. 2 indexed liens of $10k + $15k) to confirm the SUM still returns $25,000 — dedup only fires when index‑0 coexists with indexed entries.
 
-Redeploy `generate-document`. No DB migration, no field_dictionary changes (the edge function publishes these as ad-hoc aliases the same way `br_p_homePhone` is published today).
+## Scope
 
-## Expected output for B-00053 (Preferred = Home)
-
-```
-Mobile Number: (213) 555-1827      ← from borrower1.phone.home (preferred=home)
-Email Address: operations@sunsetequityllc.com
-```
-
-If the user later switches Preferred to Cell, the same cell automatically renders the Cell number — no template change needed.
-
-## Out of scope
-
-- No changes to UI, schema, field_dictionary, or any other template.
-- No changes to other phone/email logic in the doc generator.
+- Single file: `supabase/functions/generate-document/index.ts` (~lines 4102–4131).
+- Redeploy `generate-document`.
+- No DB migration, no schema change, no template change.
