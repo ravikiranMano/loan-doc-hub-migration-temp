@@ -1523,13 +1523,13 @@ export const DealDocumentsPage: React.FC = () => {
                                       size="sm"
                                       className="h-7 w-7 p-0"
                                       onClick={() => handlePrintDocument(doc)}
-                                      disabled={!doc.output_pdf_path}
+                                      disabled={!doc.output_pdf_path && !doc.output_docx_path}
                                     >
                                       <Printer className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    {doc.output_pdf_path ? 'Print document' : 'PDF not available for printing'}
+                                    {doc.output_pdf_path ? 'Print document' : 'Open in viewer to print'}
                                   </TooltipContent>
                                 </Tooltip>
                                 <Button
