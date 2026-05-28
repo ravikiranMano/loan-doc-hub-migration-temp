@@ -1514,7 +1514,7 @@ export const DealDocumentsPage: React.FC = () => {
                                       <ExternalLink className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Open in new window</TooltipContent>
+                                  <TooltipContent>Open</TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -1529,7 +1529,7 @@ export const DealDocumentsPage: React.FC = () => {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    {doc.output_pdf_path ? 'Print document' : 'Open in viewer to print'}
+                                    Print
                                   </TooltipContent>
                                 </Tooltip>
                                 <Button
