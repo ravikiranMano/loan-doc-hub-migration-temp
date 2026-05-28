@@ -169,6 +169,18 @@ const ContactAuthorizedPartiesPage: React.FC = () => {
     //     keys so the Authorized Parties grid populates after save.
     const hydrated = hydratePrefixedFromCanonical(contactData, 'borrower.authorized_party.');
     const mirrored = mirrorPrefixedToCanonical(hydrated, 'borrower.authorized_party.');
+    // Catch-all: ensure EVERY borrower.authorized_party.* key is also
+    // mirrored to its canonical (unprefixed) key so all grid columns
+    // populate after save (covers send_pref.*, delivery.*, ford.*, etc.
+    // not in the curated suffix list).
+    Object.entries(mirrored).forEach(([k, v]) => {
+      if (k.startsWith('borrower.authorized_party.')) {
+        const canon = k.slice('borrower.authorized_party.'.length);
+        if (canon && (mirrored[canon] === undefined || mirrored[canon] === '')) {
+          mirrored[canon] = v;
+        }
+      }
+    });
     return await crud.updateContact(id, mirrored);
   }, [crud, isReadOnly]);
 
