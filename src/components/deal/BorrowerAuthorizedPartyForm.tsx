@@ -296,8 +296,8 @@ export const BorrowerAuthorizedPartyForm: React.FC<BorrowerAuthorizedPartyFormPr
           <h4 className="font-semibold text-sm text-foreground pb-1">FORD</h4>
           <div className="space-y-1">
             {([[1, 2], [3, 4], [5, 6]] as const).map(([dropdownN, inputN]) => {
-              const dropdownKey = `borrower.authorized_party.ford_${dropdownN}`;
-              const inputKey = `borrower.authorized_party.ford_${inputN}`;
+              const dropdownKey = `borrower.authorized_party.ford.${dropdownN}`;
+              const inputKey = `borrower.authorized_party.ford.${inputN}`;
               return (
                 <div key={dropdownN} className="grid grid-cols-2 gap-1">
                   <DirtyFieldWrapper fieldKey={dropdownKey}>
