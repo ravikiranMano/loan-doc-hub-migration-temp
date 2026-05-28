@@ -558,7 +558,7 @@ export const DealDocumentsPage: React.FC = () => {
     }
 
     win.document.open();
-    win.document.write('<!doctype html><html><head><title>Preparing print</title></head><body style="font-family:sans-serif;padding:24px;">Preparing document for print...</body></html>');
+    win.document.write('<!doctype html><html><head><title>Preparing print</title></head><body style="font-family:sans-serif;padding:24px;color:#333;">Preparing document for print...</body></html>');
     win.document.close();
 
     if (doc.output_pdf_path) {
@@ -566,13 +566,27 @@ export const DealDocumentsPage: React.FC = () => {
         const { data, error } = await supabase.storage
           .from('generated-docs')
           .download(doc.output_pdf_path);
-
         if (error) throw error;
 
         const fileName = buildFileName(doc, 'pdf');
-        const blobUrl = URL.createObjectURL(data);
+        const pdfBlob = data.type === 'application/pdf' ? data : new Blob([data], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(pdfBlob);
+
+        const html = `<!doctype html><html><head><title>${fileName}</title><style>
+html,body{margin:0;height:100%;background:#525659;}
+#bar{position:fixed;top:0;left:0;right:0;height:44px;background:#323639;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-family:sans-serif;font-size:14px;z-index:10;}
+#bar button{background:#1a73e8;color:#fff;border:0;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:14px;}
+#bar button:hover{background:#1666d0;}
+iframe{position:absolute;top:44px;left:0;width:100%;height:calc(100% - 44px);border:0;}
+</style></head><body>
+<div id="bar"><span>${fileName}</span><button onclick="doPrint()">🖨 Print</button></div>
+<iframe id="f" src="${blobUrl}" type="application/pdf"></iframe>
+<script>
+function doPrint(){var f=document.getElementById('f');try{f.contentWindow.focus();f.contentWindow.print();}catch(e){window.print();}}
+document.getElementById('f').addEventListener('load',function(){setTimeout(doPrint,800);});
+</script></body></html>`;
         win.document.open();
-        win.document.write(`<!doctype html><html><head><title>${fileName}</title><style>html,body{margin:0;height:100%;overflow:hidden;}iframe{width:100%;height:100%;border:0;}button{position:fixed;top:12px;right:12px;z-index:10;padding:8px 14px;border:1px solid #999;background:#fff;border-radius:4px;cursor:pointer;}</style></head><body><button onclick="printDocument()">Print</button><iframe id="pdfFrame" src="${blobUrl}"></iframe><script>function printDocument(){var frame=document.getElementById('pdfFrame');try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){window.print();}}document.getElementById('pdfFrame').addEventListener('load',function(){setTimeout(printDocument,600);});setTimeout(printDocument,1800);</script></body></html>`);
+        win.document.write(html);
         win.document.close();
       } catch (error: any) {
         win.close();
@@ -586,16 +600,43 @@ export const DealDocumentsPage: React.FC = () => {
     }
 
     if (doc.output_docx_path) {
-      const url = await getSignedUrl(doc.output_docx_path, buildFileName(doc, 'docx'));
-      if (!url) {
+      // No PDF available — fetch DOCX, convert to HTML in-browser, then print.
+      try {
+        const { data, error } = await supabase.storage
+          .from('generated-docs')
+          .download(doc.output_docx_path);
+        if (error) throw error;
+
+        const mammoth = await import('mammoth/mammoth.browser');
+        const arrayBuffer = await data.arrayBuffer();
+        const result = await (mammoth as any).convertToHtml({ arrayBuffer });
+        const fileName = buildFileName(doc, 'docx');
+
+        const html = `<!doctype html><html><head><title>${fileName}</title><style>
+@media print{#bar{display:none;}body{margin:0;}}
+body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
+#bar{position:sticky;top:0;background:#323639;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;font-family:sans-serif;font-size:14px;z-index:10;}
+#bar button{background:#1a73e8;color:#fff;border:0;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:14px;}
+#content{max-width:8.5in;margin:24px auto;padding:1in;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.15);}
+#content p{margin:0 0 0.5em;}
+#content table{border-collapse:collapse;}
+#content table td,#content table th{border:1px solid #999;padding:4px 8px;}
+</style></head><body>
+<div id="bar"><span>${fileName}</span><button onclick="window.print()">🖨 Print</button></div>
+<div id="content">${result.value}</div>
+<script>setTimeout(function(){window.print();},600);</script>
+</body></html>`;
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+      } catch (error: any) {
         win.close();
-        return;
+        toast({
+          title: 'Print Failed',
+          description: error.message || 'Failed to prepare document for printing',
+          variant: 'destructive',
+        });
       }
-      win.location.href = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
-      toast({
-        title: 'Opened in viewer',
-        description: "Use the viewer's print option to print this document.",
-      });
     }
   };
 
