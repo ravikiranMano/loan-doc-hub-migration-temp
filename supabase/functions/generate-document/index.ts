@@ -1879,6 +1879,38 @@ async function generateSingleDocument(
       debugLog(`[generate-document] RE885 interest guarantee checkbox: enabled=${isIG} (raw="${igRaw}")`);
     }
 
+    // Default Interest publisher aliases (Addendum to Note - Event of Default).
+    // The Loan → Penalties → Default Interest UI persists values under
+    // `loan_terms.penalties.default_interest.*`. Re-publish each one under the
+    // new `ln_p_defaultInterest*` field keys consumed by the Addendum to Note
+    // template's {{#if}} conditional, without touching the legacy mappings used
+    // by other templates.
+    {
+      const prefix = "loan_terms.penalties.default_interest";
+      const pubBool = (src: string, dst: string) => {
+        const raw = fieldValues.get(src)?.rawValue;
+        const v = toBool(raw);
+        fieldValues.set(dst, { rawValue: v ? "true" : "false", dataType: "boolean" });
+      };
+      const pubPass = (src: string, dst: string, dataType: string) => {
+        const v = fieldValues.get(src);
+        if (v && v.rawValue !== null && v.rawValue !== undefined && v.rawValue !== "") {
+          fieldValues.set(dst, { rawValue: v.rawValue, dataType });
+        }
+      };
+      pubBool(`${prefix}.enabled`,              "ln_p_defaultInterest");
+      pubPass(`${prefix}.triggered_by`,         "ln_p_defaultInterestTriggeredBy", "dropdown");
+      pubPass(`${prefix}.grace_period`,         "ln_p_defaultInterestGracePeriod", "number");
+      pubBool(`${prefix}.flat_rate_enabled`,    "ln_p_defaultInterestFlatRateEnabled");
+      pubPass(`${prefix}.flat_rate`,            "ln_p_defaultInterestFlatRate", "decimal");
+      pubBool(`${prefix}.modifier_enabled`,     "ln_p_defaultInterestModifierEnabled");
+      pubPass(`${prefix}.modifier`,             "ln_p_defaultInterestModifier", "decimal");
+      pubPass(`${prefix}.active_until`,         "ln_p_defaultInterestActiveUntil", "date");
+      pubPass(`${prefix}.additional_daily_charge`, "ln_p_defaultInterestDailyCharge", "currency");
+      debugLog("[generate-document] Default Interest publisher aliases set");
+    }
+
+
     // Inject systemDate so only templates using {{systemDate}} get the current date
     const systemDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     fieldValues.set("systemDate", { rawValue: systemDate, dataType: "date" });
