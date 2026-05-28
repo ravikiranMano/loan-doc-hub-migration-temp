@@ -1474,6 +1474,36 @@ export const DealDocumentsPage: React.FC = () => {
                           <TableCell className="text-right">
                             {doc.generation_status === 'success' && (
                               <div className="flex items-center justify-end gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handleOpenInNewWindow(doc)}
+                                      disabled={!doc.output_pdf_path && !doc.output_docx_path}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Open in new window</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handlePrintDocument(doc)}
+                                      disabled={!doc.output_pdf_path}
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {doc.output_pdf_path ? 'Print document' : 'PDF not available for printing'}
+                                  </TooltipContent>
+                                </Tooltip>
                                 <Button
                                   variant="outline"
                                   size="sm"
