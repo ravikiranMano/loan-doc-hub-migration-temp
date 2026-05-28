@@ -4106,9 +4106,16 @@ async function generateSingleDocument(
       {
         const cbEntries = lienFieldCollector["current_balance"];
         if (cbEntries && cbEntries.length > 0) {
+          // Match the per-lien dedup above (line ~4060): drop legacy `lien.*`
+          // (index 0) when any indexed lien (lien1.*, lien2.*, …) is present,
+          // so the mirror isn't double-counted into the SUM aliases.
+          const hasIndexed = cbEntries.some(e => e.index >= 1);
+          const dedupedCbEntries = hasIndexed
+            ? cbEntries.filter(e => e.index >= 1)
+            : cbEntries;
           let sum = 0;
           let contributing = 0;
-          for (const e of cbEntries) {
+          for (const e of dedupedCbEntries) {
             if (e.value === null || e.value === undefined || String(e.value).trim() === "") continue;
             const n = parseFloat(String(e.value).replace(/[^0-9.-]/g, ""));
             if (Number.isFinite(n)) {
@@ -4127,7 +4134,7 @@ async function generateSingleDocument(
           for (const alias of aliases) {
             fieldValues.set(alias, { rawValue: rawCurrency, dataType: "currency" });
           }
-          debugLog(`[generate-document] Aggregated current_balance SUM across ${contributing}/${cbEntries.length} lien(s) for aliases [${aliases.join(", ")}]: ${formatted}`);
+          debugLog(`[generate-document] Aggregated current_balance SUM across ${contributing}/${dedupedCbEntries.length} lien(s) (deduped from ${cbEntries.length}) for aliases [${aliases.join(", ")}]: ${formatted}`);
         }
       }
 
