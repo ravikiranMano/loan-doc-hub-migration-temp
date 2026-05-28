@@ -7897,7 +7897,24 @@ async function generateSingleDocument(
           const decoder = new TextDecoder("utf-8");
           const encoder = new TextEncoder();
           let docXml = decoder.decode(docBytes);
-          const visibleText = docXml.replace(/<[^>]+>/g, " ");
+          const xmlText = (s: string) => s
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'");
+          const visibleFromWordXml = (xml: string): string => {
+            const pieces: string[] = [];
+            const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:(?:tab|br)\b[^>]*\/>|<\/w:(?:p|tbl|tr)>/gi;
+            let sawContent = false;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(xml)) !== null) {
+              sawContent = true;
+              pieces.push(m[1] !== undefined ? xmlText(m[1]) : " ");
+            }
+            return (sawContent ? pieces.join("") : xml.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+          };
+          const visibleText = visibleFromWordXml(docXml);
 
           // ── TEMPLATE CLASSIFICATION (LENDER_SPECIFIC vs COMMON_TEMPLATE) ──
           // Append per-lender signature blocks ONLY when the template is
@@ -8025,7 +8042,7 @@ async function generateSingleDocument(
               start: bm.index,
               end: bm.index + bm[0].length,
               xml: bm[0],
-              visible: bm[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+              visible: visibleFromWordXml(bm[0]),
             });
           }
           const replacements: Array<{ start: number; end: number; replacement: string; labelN: number }> = [];
@@ -8070,6 +8087,9 @@ async function generateSingleDocument(
               let labelText = "";
               while ((mt = tTextRe.exec(labelBlock.xml)) !== null) {
                 if (/Lender\s*:/i.test(mt[1])) { labelText = mt[1]; break; }
+              }
+              if (!labelText) {
+                labelText = (visibleFromWordXml(labelBlock.xml).match(/Lender\s*:\s*/i)?.[0]) || "";
               }
               // Name block = the next non-empty block before Signature/Date,
               // or the same paragraph if name lives inline. Default: next block.
