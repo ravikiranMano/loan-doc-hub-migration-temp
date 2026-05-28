@@ -11,7 +11,7 @@ import { WorkspaceTabBar } from './WorkspaceTabBar';
 import { WorkspaceFileRenderer } from '@/components/workspace/WorkspaceFileRenderer';
 import { CloseConfirmationDialog } from '@/components/workspace/CloseConfirmationDialog';
 import { DealDataEntryInner } from '@/pages/csr/DealDataEntryPage';
-import { Loader2 } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 
 
