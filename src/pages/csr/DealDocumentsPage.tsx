@@ -547,46 +547,55 @@ export const DealDocumentsPage: React.FC = () => {
   };
 
   const handlePrintDocument = async (doc: GeneratedDocument) => {
-    // Open the PDF in a new window as a same-origin blob, then trigger the
-    // browser's native print dialog once the PDF viewer has loaded.
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast({
+        title: 'Popup blocked',
+        description: 'Please allow popups for this site to print documents.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    win.document.open();
+    win.document.write('<!doctype html><html><head><title>Preparing print</title></head><body style="font-family:sans-serif;padding:24px;">Preparing document for print...</body></html>');
+    win.document.close();
+
     if (doc.output_pdf_path) {
-      const url = await getSignedUrl(doc.output_pdf_path, buildFileName(doc, 'pdf'));
-      if (!url) return;
-      const win = window.open('', '_blank');
-      if (!win) {
+      try {
+        const { data, error } = await supabase.storage
+          .from('generated-docs')
+          .download(doc.output_pdf_path);
+
+        if (error) throw error;
+
+        const fileName = buildFileName(doc, 'pdf');
+        const blobUrl = URL.createObjectURL(data);
+        win.document.open();
+        win.document.write(`<!doctype html><html><head><title>${fileName}</title><style>html,body{margin:0;height:100%;overflow:hidden;}iframe{width:100%;height:100%;border:0;}button{position:fixed;top:12px;right:12px;z-index:10;padding:8px 14px;border:1px solid #999;background:#fff;border-radius:4px;cursor:pointer;}</style></head><body><button onclick="printDocument()">Print</button><iframe id="pdfFrame" src="${blobUrl}"></iframe><script>function printDocument(){var frame=document.getElementById('pdfFrame');try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){window.print();}}document.getElementById('pdfFrame').addEventListener('load',function(){setTimeout(printDocument,600);});setTimeout(printDocument,1800);</script></body></html>`);
+        win.document.close();
+      } catch (error: any) {
+        win.close();
         toast({
-          title: 'Popup blocked',
-          description: 'Please allow popups for this site to print documents.',
+          title: 'Print Failed',
+          description: error.message || 'Failed to prepare document for printing',
           variant: 'destructive',
         });
-        return;
-      }
-      try {
-        const res = await fetch(url);
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        // Write a wrapper HTML that embeds the PDF and calls window.print()
-        // after the embed loads. This reliably shows the native print dialog
-        // with all standard print options (destination, copies, layout, etc.).
-        win.document.open();
-        win.document.write(`<!doctype html><html><head><title>${buildFileName(doc, 'pdf')}</title><style>html,body{margin:0;padding:0;height:100%;}embed{width:100%;height:100%;border:0;}</style></head><body><embed id="p" type="application/pdf" src="${blobUrl}"/><script>(function(){var d=0;function go(){if(d)return;d=1;try{window.focus();window.print();}catch(e){}}window.addEventListener('load',function(){setTimeout(go,500);});setTimeout(go,1500);})();</script></body></html>`);
-        win.document.close();
-      } catch {
-        win.location.href = url;
       }
       return;
     }
+
     if (doc.output_docx_path) {
       const url = await getSignedUrl(doc.output_docx_path, buildFileName(doc, 'docx'));
-      if (!url) return;
-      const viewer = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
-      const win = window.open(viewer, '_blank', 'noopener,noreferrer');
-      if (win) {
-        toast({
-          title: 'Opened in viewer',
-          description: "Use the viewer's print option to print this document.",
-        });
+      if (!url) {
+        win.close();
+        return;
       }
+      win.location.href = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+      toast({
+        title: 'Opened in viewer',
+        description: "Use the viewer's print option to print this document.",
+      });
     }
   };
 
