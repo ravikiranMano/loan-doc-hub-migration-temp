@@ -503,11 +503,14 @@ export const DealDocumentsPage: React.FC = () => {
     }
   };
 
-  const getSignedUrl = async (path: string): Promise<string | null> => {
+  const getSignedUrl = async (
+    path: string,
+    downloadName?: string,
+  ): Promise<string | null> => {
     try {
       const { data, error } = await supabase.storage
         .from('generated-docs')
-        .createSignedUrl(path, 3600);
+        .createSignedUrl(path, 3600, downloadName ? { download: downloadName } : undefined);
       if (error) throw error;
       return data?.signedUrl ?? null;
     } catch (error: any) {
@@ -520,41 +523,66 @@ export const DealDocumentsPage: React.FC = () => {
     }
   };
 
+  const buildFileName = (doc: GeneratedDocument, ext: 'pdf' | 'docx'): string => {
+    const base = (doc.template_name || 'document')
+      .replace(/[^\w\-. ]+/g, '_')
+      .trim() || 'document';
+    return `${base}_v${doc.version_number}.${ext}`;
+  };
+
   const handleOpenInNewWindow = async (doc: GeneratedDocument) => {
-    const path = doc.output_pdf_path || doc.output_docx_path;
-    if (!path) return;
-    const url = await getSignedUrl(path);
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    // PDFs render inline in the browser; DOCX needs Office Online viewer so it
+    // opens in a real window instead of downloading as "Untitled".
+    if (doc.output_pdf_path) {
+      const url = await getSignedUrl(doc.output_pdf_path, buildFileName(doc, 'pdf'));
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (doc.output_docx_path) {
+      const url = await getSignedUrl(doc.output_docx_path, buildFileName(doc, 'docx'));
+      if (!url) return;
+      const viewer = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+      window.open(viewer, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handlePrintDocument = async (doc: GeneratedDocument) => {
-    if (!doc.output_pdf_path) {
-      toast({
-        title: 'PDF not available',
-        description: 'A PDF version is required to print this document',
-        variant: 'destructive',
-      });
+    // Prefer PDF for in-browser print; otherwise fall back to the Office viewer
+    // (DOCX cannot be printed directly by the browser).
+    if (doc.output_pdf_path) {
+      const url = await getSignedUrl(doc.output_pdf_path, buildFileName(doc, 'pdf'));
+      if (!url) return;
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = url;
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
+      };
+      document.body.appendChild(iframe);
       return;
     }
-    const url = await getSignedUrl(doc.output_pdf_path);
-    if (!url) return;
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.src = url;
-    iframe.onload = () => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        window.open(url, '_blank', 'noopener,noreferrer');
+    if (doc.output_docx_path) {
+      const url = await getSignedUrl(doc.output_docx_path, buildFileName(doc, 'docx'));
+      if (!url) return;
+      const viewer = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+      const win = window.open(viewer, '_blank', 'noopener,noreferrer');
+      if (win) {
+        toast({
+          title: 'Opened in viewer',
+          description: 'Use the viewer\'s print option to print this document.',
+        });
       }
-    };
-    document.body.appendChild(iframe);
+    }
   };
 
 
@@ -1495,13 +1523,13 @@ export const DealDocumentsPage: React.FC = () => {
                                       size="sm"
                                       className="h-7 w-7 p-0"
                                       onClick={() => handlePrintDocument(doc)}
-                                      disabled={!doc.output_pdf_path}
+                                      disabled={!doc.output_pdf_path && !doc.output_docx_path}
                                     >
                                       <Printer className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    {doc.output_pdf_path ? 'Print document' : 'PDF not available for printing'}
+                                    {doc.output_pdf_path ? 'Print document' : 'Open in viewer to print'}
                                   </TooltipContent>
                                 </Tooltip>
                                 <Button
