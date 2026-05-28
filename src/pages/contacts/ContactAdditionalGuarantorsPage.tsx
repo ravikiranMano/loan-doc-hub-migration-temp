@@ -149,25 +149,30 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
 
   const handleSave = useCallback(async (id: string, contactData: Record<string, string>) => {
     if (isReadOnly) return false;
-    // Bidirectional sync so AG detail values persist + display correctly:
-    //  1) Hydrate prefixed AG keys from any canonical values present
-    //     (covers the case where existing data was saved canonically only).
-    //  2) Mirror prefixed AG values back into canonical top-level/contact_data
-    //     keys so the Additional Guarantors grid populates after save.
     const hydrated = hydratePrefixedFromCanonical(contactData, 'borrower.guarantor.');
     const mirrored = mirrorPrefixedToCanonical(hydrated, 'borrower.guarantor.');
-    // Catch-all: ensure EVERY borrower.guarantor.* key is also mirrored to
-    // its canonical (unprefixed) key so all grid columns populate after save
-    // (covers borrower_type, send_pref.*, delivery_*, ford.*, etc. not in
-    // the curated suffix list).
+    // Catch-all: ensure EVERY borrower.guarantor.* key is mirrored to its
+    // canonical (unprefixed) key. AG detail form is the source of truth, so
+    // OVERWRITE the canonical value (previously stale top-level values could
+    // shadow new AG-form edits for Borrower Type, City, State, Phone, etc.).
     Object.entries(mirrored).forEach(([k, v]) => {
       if (k.startsWith('borrower.guarantor.')) {
         const canon = k.slice('borrower.guarantor.'.length);
-        if (canon && (mirrored[canon] === undefined || mirrored[canon] === '')) {
+        if (canon && typeof v === 'string' && v !== '') {
           mirrored[canon] = v;
         }
       }
     });
+    // Explicit top-level mirrors so updateContact's `contacts` row columns
+    // (full_name/first_name/last_name/phone/city/state) reliably populate.
+    const ag = (k: string) => mirrored[`borrower.guarantor.${k}`];
+    if (ag('full_name')) mirrored.full_name = ag('full_name');
+    if (ag('first_name')) mirrored.first_name = ag('first_name');
+    if (ag('last_name')) mirrored.last_name = ag('last_name');
+    if (ag('address.city')) mirrored.city = ag('address.city');
+    if (ag('address.state') || ag('state')) mirrored.state = ag('address.state') || ag('state');
+    const agPhone = ag('phone.cell') || ag('phone.mobile') || ag('phone.home') || ag('phone.work');
+    if (agPhone) mirrored.phone = agPhone;
     return await crud.updateContact(id, mirrored);
   }, [crud, isReadOnly]);
 
