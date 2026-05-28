@@ -8195,6 +8195,20 @@ async function generateSingleDocument(
             if (!primaryTpl) return stripJustifyBoth(lenderBlock(labelN, displayName));
             const tpl = primaryTpl;
 
+            // ── note-purchaser-lender-loop:v8 ──────────────────────────────
+            // For APPENDED lenders (labelN >= 2) do NOT clone the primary's
+            // label/name paragraph here. The separate "Lender N: <name>"
+            // label emitter ("Path A") owns that paragraph; cloning it here
+            // was producing a duplicate "Lender: <primary name>" line under
+            // every appended lender (visible symptom: "Lender: Vesting123"
+            // repeating below each Lender 2/3/4/5 block). We still clone the
+            // Signature and Date paragraphs verbatim so each appended lender
+            // keeps its own signing block. For the primary (labelN == 1)
+            // nothing changes — the full original block emits as before.
+            if (labelN >= 2) {
+              return stripJustifyBoth(tpl.sigXmls.join(""));
+            }
+
             // ── Synth path ─────────────────────────────────────────────────
             // Anchor paragraph supplies <w:pPr> + first-run <w:rPr> only; the
             // visible text is rebuilt as "Lender N: <displayName>". Signature
