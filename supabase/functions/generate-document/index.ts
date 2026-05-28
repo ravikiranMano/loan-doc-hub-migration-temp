@@ -8257,19 +8257,18 @@ async function generateSingleDocument(
               const brIdx = brMatch ? brMatch.index : -1;
               const rawTail = brIdx === -1 ? "" : paraXml.slice(brIdx);
               const tailContainsSignatureOrDate = !!rawTail && /\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail));
-              // Only split the paragraph when the content after <w:br/> is
-              // an actual Signature/Date line that must be preserved verbatim.
-              // If the break only separates "Lender:" from the lender name,
-              // process the full paragraph; otherwise dropping that tail also
-              // drops the run/paragraph closing tags and corrupts the DOCX.
-              const head = tailContainsSignatureOrDate ? paraXml.slice(0, brIdx) : paraXml;
-              const tail = tailContainsSignatureOrDate ? rawTail : "";
               const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
-              const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
+              const allToks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
               let mm: RegExpExecArray | null;
-              while ((mm = re.exec(head)) !== null) {
-                toks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
+              while ((mm = re.exec(paraXml)) !== null) {
+                allToks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
               }
+              const firstLineToks = tailContainsSignatureOrDate && brIdx !== -1
+                ? allToks.filter((t) => t.start < brIdx)
+                : [];
+              const toks = firstLineToks.map((t) => t.inner).join("").match(/Lender\s*:/i)
+                ? firstLineToks
+                : allToks;
               if (!toks.length) return paraXml;
               const concat = toks.map((t) => t.inner).join("");
               const lm = /Lender\s*:/i.exec(concat);
@@ -8278,17 +8277,24 @@ async function generateSingleDocument(
               const newText = `${before}${before ? " " : ""}${newLabel}${newName ? ` ${newName}` : ""}`;
               let firstIdx = toks.findIndex((t) => t.inner.length > 0);
               if (firstIdx === -1) firstIdx = 0;
+              const rewriteStarts = new Set(toks.map((t) => t.start));
+              const firstRewriteStart = toks[firstIdx]?.start;
               let out = "";
               let cursor = 0;
-              toks.forEach((t, i) => {
-                out += head.slice(cursor, t.start);
+              allToks.forEach((t) => {
+                out += paraXml.slice(cursor, t.start);
+                if (!rewriteStarts.has(t.start)) {
+                  out += paraXml.slice(t.start, t.end);
+                  cursor = t.end;
+                  return;
+                }
                 const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
-                const inner = i === firstIdx ? xmlEsc(newText) : "";
+                const inner = t.start === firstRewriteStart ? xmlEsc(newText) : "";
                 out += `<w:t${a}>${inner}</w:t>`;
                 cursor = t.end;
               });
-              out += head.slice(cursor);
-              return out + tail;
+              out += paraXml.slice(cursor);
+              return out;
             };
 
             // Helper: replace the visible text of a separate name paragraph
