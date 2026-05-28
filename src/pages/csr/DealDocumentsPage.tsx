@@ -607,7 +607,7 @@ document.getElementById('f').addEventListener('load',function(){setTimeout(doPri
           .download(doc.output_docx_path);
         if (error) throw error;
 
-        const mammoth = await import('mammoth/mammoth.browser');
+        const mammoth = await import('mammoth');
         const arrayBuffer = await data.arrayBuffer();
         const result = await (mammoth as any).convertToHtml({ arrayBuffer });
         const fileName = buildFileName(doc, 'docx');
