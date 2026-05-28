@@ -192,6 +192,12 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
 
   const renderCellValue = useCallback((contact: ContactRecord, columnId: string): React.ReactNode => {
     const cd = (contact.contact_data || {}) as Record<string, string>;
+    const ag = (key: string) => cd[`${AG_PREFIX}${key}`] || '';
+    const firstValue = (...values: Array<string | null | undefined>) => values.find((v) => typeof v === 'string' && v !== '') || '';
+
+    if (columnId === 'borrower_type') {
+      return firstValue(ag('borrower_type'), cd.borrower_type) || '-';
+    }
 
     if (columnId === 'preferred_phone') {
       if (cd['preferred.home'] === 'true') return 'Home';
@@ -202,8 +208,13 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
       return '-';
     }
 
+    if (columnId === 'phone.home') {
+      const val = firstValue(ag('phone.home'), cd['phone.home']);
+      return val || '-';
+    }
+
     if (columnId === 'phone.cell') {
-      const val = cd['phone.cell'] || cd['phone.mobile'] || '';
+      const val = firstValue(ag('phone.cell'), ag('phone.mobile'), cd['phone.cell'], cd['phone.mobile'], contact.phone);
       return val || '-';
     }
 
@@ -229,11 +240,17 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
       company: contact.company,
     };
     if (columnId in topLevel) {
-      const val = topLevel[columnId] || '';
+      let val = firstValue(topLevel[columnId], cd[columnId], ag(columnId));
+      if (columnId === 'full_name') val = firstValue(ag('full_name'), cd.full_name, contact.full_name, `${firstValue(ag('first_name'), cd.first_name, contact.first_name)} ${firstValue(ag('last_name'), cd.last_name, contact.last_name)}`.trim());
+      if (columnId === 'first_name') val = firstValue(ag('first_name'), cd.first_name, contact.first_name);
+      if (columnId === 'last_name') val = firstValue(ag('last_name'), cd.last_name, contact.last_name);
+      if (columnId === 'phone') val = firstValue(ag('phone.cell'), ag('phone.mobile'), ag('phone.home'), ag('phone.work'), contact.phone, cd.phone, cd['phone.cell'], cd['phone.mobile'], cd['phone.home'], cd['phone.work']);
+      if (columnId === 'city') val = firstValue(ag('address.city'), ag('city'), contact.city, cd.city, cd['address.city']);
+      if (columnId === 'state') val = firstValue(ag('state'), ag('address.state'), contact.state, cd.state, cd['address.state']);
       if (columnId === 'full_name') return <span className="font-medium">{val || '-'}</span>;
       return val || '-';
     }
-    return cd[columnId] || '-';
+    return firstValue(cd[columnId], ag(columnId)) || '-';
   }, []);
 
   if (selectedContact) {
