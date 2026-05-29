@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, differenceInMonths, differenceInDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { formatRatio } from '@/lib/precisionFormat';
 
 const FIELD_IDS = {
   loanAmount: '163cd0b4-7cc0-4975-bcfb-43aa4be9c5c8',

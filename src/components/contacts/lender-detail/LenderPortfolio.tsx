@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, differenceInMonths, differenceInDays } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { formatRatio } from '@/lib/precisionFormat';
 
 const FIELD_IDS = {
   loanAmount: '163cd0b4-7cc0-4975-bcfb-43aa4be9c5c8',

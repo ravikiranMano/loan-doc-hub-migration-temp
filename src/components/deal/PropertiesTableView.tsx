@@ -13,6 +13,7 @@ import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { SortableTableHead } from './SortableTableHead';
 import { useGridSortFilter } from '@/hooks/useGridSortFilter';
 import { useGridSelection } from '@/hooks/useGridSelection';
+import { formatRatio } from '@/lib/precisionFormat';
 
 export interface PropertyData {
   id: string;

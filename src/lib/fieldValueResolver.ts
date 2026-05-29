@@ -7,6 +7,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { formatRate, formatProRata } from '@/lib/precisionFormat';
 import {
   formatCurrency,
   formatCurrencyInWords,
