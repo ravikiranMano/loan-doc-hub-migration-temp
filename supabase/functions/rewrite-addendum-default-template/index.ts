@@ -80,7 +80,7 @@ serve(async (req) => {
     const { error: updErr } = await supabase
       .from("templates")
       .update({ file_path: newPath })
-      .eq("id", TEMPLATE_ID);
+      .eq("id", tpl.id);
     if (updErr) throw new Error(`template row update failed: ${updErr.message}`);
 
     return new Response(
