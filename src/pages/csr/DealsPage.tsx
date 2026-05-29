@@ -88,6 +88,64 @@ const modeLabels: Record<string, string> = {
 const PAGE_SIZE = 10;
 const DEALS_CACHE_KEY = 'deals_page_cache';
 
+const FUNDING_OPERATIONAL_FIELD_KEYS = [
+  'loan_terms.funding_history',
+  'ln_p_fundingHistor',
+  'loan_terms.funding_adjustments',
+];
+
+const CLEAN_FUNDING_HISTORY_KEYS = new Set([
+  'loan_terms.funding_history',
+  'ln_p_fundingHistor',
+  'loan_terms.funding_adjustments',
+]);
+
+const CONTACT_OPERATIONAL_KEYWORDS = [
+  'history',
+  'conversation',
+  'attachment',
+  'event_journal',
+  'events_journal',
+  'audit',
+  'activity',
+  'workflow',
+  'task_history',
+  'status_history',
+  'communication',
+  'internal_notes',
+  'chat',
+  'sms',
+];
+
+const isOperationalContactDataKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  return normalized.startsWith('_') && CONTACT_OPERATIONAL_KEYWORDS.some((token) => normalized.includes(token));
+};
+
+const sanitizeContactDataForCopy = (contactData: unknown) => {
+  const source = contactData && typeof contactData === 'object'
+    ? contactData as Record<string, unknown>
+    : {};
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => !isOperationalContactDataKey(key))
+  );
+};
+
+const isOperationalCloneFieldKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  if (normalized.includes('funding_history') || normalized.includes('fundinghistor') || normalized.includes('funding_adjustments')) {
+    return true;
+  }
+
+  const isContactScoped = /^(borrower|coborrower|co_borrower|broker|lender|authorized_party|additional_guarantor|other|contact|participant|notes_entry)[._]/.test(normalized);
+  return isContactScoped && CONTACT_OPERATIONAL_KEYWORDS.some((token) => normalized.includes(token));
+};
+
+const getCanonicalFundingHistoryKey = (fieldKey: string) => {
+  if (fieldKey === 'ln_p_fundingHistor') return 'loan_terms.funding_history';
+  return fieldKey;
+};
+
 interface DealsPageCache {
   deals: Deal[];
   totalCount: number;
@@ -360,11 +418,23 @@ export const DealsPage: React.FC = () => {
       const { data: excludeDictRows } = await supabase
         .from('field_dictionary')
         .select('id, field_key')
-        .in('field_key', [
-          'loan_terms.funding_history',
-          'loan_terms.funding_adjustments',
-        ]);
-      const excludedDictIds = new Set<string>((excludeDictRows || []).map((r: any) => r.id));
+        .or(
+          FUNDING_OPERATIONAL_FIELD_KEYS
+            .map((key) => `field_key.eq.${key}`)
+            .concat(CONTACT_OPERATIONAL_KEYWORDS.map((token) => `field_key.ilike.%${token}%`))
+            .join(',')
+        );
+      const excludedDictIds = new Set<string>();
+      const excludedDbKeys = new Set<string>();
+      const emptyFundingHistoryDictRow = (excludeDictRows || []).find((r: any) =>
+        getCanonicalFundingHistoryKey(r.field_key) === 'loan_terms.funding_history'
+      ) as any | undefined;
+      (excludeDictRows || []).forEach((r: any) => {
+        if (isOperationalCloneFieldKey(r.field_key) || CLEAN_FUNDING_HISTORY_KEYS.has(getCanonicalFundingHistoryKey(r.field_key))) {
+          excludedDictIds.add(r.id);
+          excludedDbKeys.add(r.field_key);
+        }
+      });
 
       // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
       //    property, contacts prefixes, funding setup, custom fields, etc.)
@@ -385,7 +455,21 @@ export const DealsPage: React.FC = () => {
           for (const [k, v] of Object.entries(fv)) {
             const tail = k.includes('::') ? k.split('::').pop()! : k;
             if (excludedDictIds.has(tail)) continue;
+            if (excludedDbKeys.has(tail) || isOperationalCloneFieldKey(k)) continue;
+            if (v && typeof v === 'object') {
+              const fieldData = v as Record<string, any>;
+              const indexedKey = String(fieldData.indexed_key || fieldData.indexed_db_key || '');
+              if (indexedKey && isOperationalCloneFieldKey(indexedKey)) continue;
+            }
             cleaned[k] = v;
+          }
+          if (r.section === 'loan_terms' && emptyFundingHistoryDictRow?.id) {
+            cleaned[emptyFundingHistoryDictRow.id] = {
+              value_text: '[]',
+              indexed_key: 'loan_terms.funding_history',
+              indexed_db_key: emptyFundingHistoryDictRow.field_key,
+              updated_at: new Date().toISOString(),
+            };
           }
           return {
             deal_id: newDealId,
@@ -423,18 +507,56 @@ export const DealsPage: React.FC = () => {
         }
       }
 
-      // 6. Copy deal_participants as NEW relationship mappings — reuse the
-      //    same master contact_id but reset participant lifecycle state so
-      //    edits to the copy do not affect the original participant rows.
+      // 6. Copy deal_participants as NEW relationship mappings and clone the
+      //    linked contact setup into clean contact rows. This prevents any
+      //    original contact history/conversation/attachment/event data from
+      //    reloading through a reused contact_id.
       const { data: partRows, error: partErr } = await supabase
         .from('deal_participants')
         .select('contact_id, role, name, email, phone, sequence_order, access_method')
         .eq('deal_id', source.id);
       if (partErr) throw partErr;
       if (partRows && partRows.length > 0) {
+        const sourceContactIds = Array.from(new Set(partRows.map((p: any) => p.contact_id).filter(Boolean)));
+        const clonedContactIds = new Map<string, string>();
+
+        if (sourceContactIds.length > 0) {
+          const { data: contacts, error: contactsErr } = await supabase
+            .from('contacts')
+            .select('id, contact_id, contact_type, full_name, first_name, last_name, email, phone, city, state, company, contact_data')
+            .in('id', sourceContactIds);
+          if (contactsErr) throw contactsErr;
+
+          for (const contact of (contacts || []) as any[]) {
+            const { data: generatedContactId, error: contactIdErr } = await supabase.rpc('generate_contact_id', { p_type: contact.contact_type });
+            if (contactIdErr) throw contactIdErr;
+
+            const { data: clonedContact, error: cloneContactErr } = await supabase
+              .from('contacts')
+              .insert({
+                contact_type: contact.contact_type,
+                contact_id: generatedContactId as string,
+                created_by: user?.id,
+                full_name: contact.full_name || '',
+                first_name: contact.first_name || '',
+                last_name: contact.last_name || '',
+                email: contact.email || '',
+                phone: contact.phone || '',
+                city: contact.city || '',
+                state: contact.state || '',
+                company: contact.company || '',
+                contact_data: sanitizeContactDataForCopy(contact.contact_data) as any,
+              })
+              .select('id')
+              .single();
+            if (cloneContactErr) throw cloneContactErr;
+            clonedContactIds.set(contact.id, clonedContact.id);
+          }
+        }
+
         const payload = partRows.map((p: any) => ({
           deal_id: newDealId,
-          contact_id: p.contact_id,
+          contact_id: p.contact_id ? (clonedContactIds.get(p.contact_id) ?? null) : null,
           role: p.role,
           name: p.name,
           email: p.email,
@@ -446,6 +568,30 @@ export const DealsPage: React.FC = () => {
         }));
         const { error } = await supabase.from('deal_participants').insert(payload);
         if (error) throw error;
+
+        if (clonedContactIds.size > 0) {
+          const { data: participantSection } = await supabase
+            .from('deal_section_values')
+            .select('id, field_values')
+            .eq('deal_id', newDealId)
+            .eq('section', 'participants')
+            .maybeSingle();
+
+          if (participantSection?.field_values) {
+            const remappedValues: Record<string, any> = {};
+            Object.entries(participantSection.field_values as Record<string, any>).forEach(([key, value]) => {
+              let remappedKey = key;
+              clonedContactIds.forEach((newContactId, oldContactId) => {
+                remappedKey = remappedKey.replace(oldContactId, newContactId);
+              });
+              remappedValues[remappedKey] = value;
+            });
+            await supabase
+              .from('deal_section_values')
+              .update({ field_values: remappedValues, updated_at: new Date().toISOString() })
+              .eq('id', participantSection.id);
+          }
+        }
       }
 
       // 7. Explicitly DO NOT copy: generated_documents, event_journal,
@@ -454,14 +600,6 @@ export const DealsPage: React.FC = () => {
       //    deal_section_values (Conversation Log). These rows are tied by
       //    deal_id to the original file and the new file starts with an
       //    empty history and a clean communication record.
-
-      await logDealCreated(newDealId, {
-        dealNumber,
-        state: newDeal.state,
-        productType: newDeal.product_type,
-        mode: newDeal.mode,
-        copiedFrom: source.deal_number,
-      } as any);
 
       toast({
         title: 'File copied',
