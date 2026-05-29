@@ -717,12 +717,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     // Validation: Σ disbursements may not exceed the lender's Payment
     // (Pro Rata × Borrower Regular P&I). Single source of truth shared with
     // the Funding grid's Net Payment column.
+    // Funding math always uses Original (Funding) Amount — never Current/Principal Balance.
     const principalNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
-    const cbNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''))
-      || parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const originalAmtNum = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
     const lenderPayment = principalNum > 0
-      ? new Decimal(cbNum).div(principalNum).mul(regPI)
+      ? new Decimal(originalAmtNum).div(principalNum).mul(regPI)
           .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toNumber()
       : 0;
     const incoming = parseFloat(String(data.calculatedAmount || data.plusAmount || data.debitThroughAmount || '0').replace(/[$,]/g, '')) || 0;
