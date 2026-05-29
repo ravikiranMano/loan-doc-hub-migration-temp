@@ -1069,6 +1069,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
               const pct = principalBalanceNum > 0 ? (remaining / principalBalanceNum) * 100 : 0;
               const isFull = remaining <= FUNDING_TOLERANCE;
+              // Hide Available Capacity entirely when the loan is fully funded.
+              if (isFull) return null;
               return (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold">Available Capacity</span>
