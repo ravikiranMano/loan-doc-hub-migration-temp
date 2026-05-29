@@ -1,70 +1,80 @@
-# Re-apply Addendum to Note Event of Default fixes
 
-## Diagnosis (why the previous fix didn't take effect)
+## Root cause analysis
 
-Inspecting the source `.docx` confirms the root cause:
+Looking at the latest edge-function logs for `generate-document`:
 
-- In the template XML, **Option 1**, **Option 2**, and the red helper note (`(this is conditional based on…)`) are **all inside one single paragraph** — the big "Remedies Upon Event of Default…" paragraph — not as separate paragraphs.
-- The previous `rewrite-addendum-default-template` edge function assumed they were three separate paragraphs. Its `isOption1Like` branch did match this combined paragraph, but it then called `rewriteParagraphText(..., FULL_SENTENCE)`, which **replaces every run in the entire paragraph with just the conditional sentence**, wiping the legal opening ("Remedies Upon Event of Default. Upon the occurrence of an Event of Default… interest rate applicable to the outstanding principal balance shall increase") and the trailing legal text ("No delay or omission by Lender in exercising any right or remedy…").
-- A `_v3.docx` was uploaded and `templates.file_path` was updated, but either (a) the rewrite produced a paragraph missing the legal opening and trailing text, or (b) the regex matched a different paragraph and the Option 1/2/red-helper text was left untouched. The user-visible output ("Option 1: … 0 percent 0 … Option 2: … to a flat rate of …") matches case (b).
+```
+[generate-document] Cache HIT for deal=a4eefafb… template=dbd0d674… (cached at 2026-05-29T14:00:44…); skipped full regeneration
+```
 
-Field publishing (`ln_p_defaultInterestModifierEnabled`, `ln_p_defaultInterestFlatRateEnabled`, `ln_p_defaultInterestModifier`, `ln_p_defaultInterestFlatRate`) is already correct in `supabase/functions/generate-document/index.ts` (lines 1911–1917) — no changes needed there.
+The DOCX the user is downloading is being **served from the 5-minute generation cache** (in `supabase/functions/generate-document/index.ts` lines 199–310). That cache only invalidates when `deal_section_values` or related contacts are updated — **it does not invalidate when the underlying template `file_path` changes**.
 
-## What needs to change
+So even though:
+- `rewrite-addendum-default-template` already published `…_v4.docx` with the `{{#if ln_p_defaultInterestModifierEnabled}} … {{else if ln_p_defaultInterestFlatRateEnabled}} … {{/if}}` block, and
+- the publisher at lines 1911–1917 already emits `ln_p_defaultInterestModifierEnabled` / `ln_p_defaultInterestFlatRateEnabled` as `"true"`/`"false"` and `ln_p_defaultInterestFlatRate` as a passthrough decimal,
 
-Rewrite the one-shot edge function so it does a **surgical segment replacement inside the single paragraph**, instead of a whole-paragraph replace.
+…the user keeps seeing the **pre-v4 cached output** ("Option 1 + Option 2 both rendered, flat-rate value blank, modifier visible at 0%"). That single issue accounts for Bugs 1–3.
 
-### Target paragraph (current text)
+Bug 4 (borrower name) is a separate, real resolver bug: the UI field labeled **"Entity Name"** (`BorrowerPrimaryForm.tsx` line 216) writes to `borrower.full_name` → legacy `br_p_fullName`. But the auto-compute block at `generate-document/index.ts` 3712–3738 *only* runs when `br_p_fullName` is empty, and the fall-through chain happily concatenates `first_name + middle + last_name` ("Blue" + "James" + "Ridge") when those exist — silently dropping the LLC entity suffix "Capital LLC" that lives in the Entity Name field. For LLC/Corp/Trust borrowers, the Entity Name must win over the first/middle/last concatenation.
 
-> …interest rate applicable to the outstanding principal balance shall increase **Option 1: to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time. Option 2: to a flat rate of {{ln_p_defaultInterestFlatRate}} (the "Default Rate"). (this is conditional based on the selection made in "Default Interest" on the "Penalties" Tab in "Loan")** No delay or omission by Lender in exercising any right or remedy…
+No template, schema, UI, or other field needs to change.
 
-### Target paragraph (after rewrite)
+## Plan
 
-> …interest rate applicable to the outstanding principal balance shall increase **{{#if ln_p_defaultInterestModifierEnabled}}to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time.{{else if ln_p_defaultInterestFlatRateEnabled}}to a flat rate of {{ln_p_defaultInterestFlatRate}}%{{/if}} (the "Default Rate").** No delay or omission by Lender in exercising any right or remedy…
+### 1. Add `ADDENDUM TO NOTE EVENT OF DEFAULT` to the cache-bypass list
 
-- "Option 1:" / "Option 2:" labels removed.
-- Red helper sentence `(this is conditional based on … "Loan")` removed.
-- Conditional now uses `ln_p_defaultInterestModifierEnabled` / `ln_p_defaultInterestFlatRateEnabled`, falling back to nothing when neither is checked.
-- `(the "Default Rate").` placed outside the `{{/if}}` so it always renders.
-- `%` suffix on Flat Rate restored (Bug 2).
-- All other legal text and the rest of the document untouched.
+In `supabase/functions/generate-document/index.ts` around line 209 the cache is already bypassed for `RE851D`, `RE851A`, `RE870`, Guaranty, and Note Purchaser templates. Extend that same condition to also bypass the Addendum-Event-of-Default template so every generation actually re-runs the publisher + the v4 template and never reuses a stale DOCX:
 
-## Technical approach (Technical Details section)
+```ts
+if (
+  isTemplate851D || isTemplate870 ||
+  /851a/i.test(template.name || "") ||
+  /guaranty/i.test(template.name || "") ||
+  /Note\s+Purchaser\s+Qualification(?:\s+Checklist)?/i.test(template.name || "") ||
+  /ADDENDUM\s+TO\s+NOTE.*DEFAULT/i.test(template.name || "")
+) {
+  throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
+}
+```
 
-Rewrite `supabase/functions/rewrite-addendum-default-template/index.ts`:
+This alone resolves Bugs 1, 2, and 3 — the existing publisher (1911–1917) already emits the correct booleans and the v4 template already has the `{{#if}}/{{else if}}/{{/if}}` block.
 
-1. Locate the paragraph whose concatenated `<w:t>` text contains the literal markers `Option 1:` AND `Option 2:` AND `defaultInterestFlatRate` AND `Default Rate`.
-2. Build an ordered list of `{ runXml, runRPr, text }` from every `<w:r>` in that paragraph.
-3. Concatenate the run texts into one flat string and locate the **start index of "Option 1:"** and the **end index of the helper sentence** (`… in "Loan")`).  Be tolerant of curly vs straight quotes.
-4. Compute the prefix string (up to and including the space before "Option 1:") and the suffix string (everything after the helper sentence, starting with " No delay…").
-5. Rebuild the paragraph as:
-   - Preserve original `<w:pPr>`.
-   - One run carrying `prefix` with the first run's `<w:rPr>` for consistent formatting.
-   - One run carrying the new conditional segment (uses the first run's `<w:rPr>` so it is NOT red/bold).
-   - One run carrying `suffix` with the first run's `<w:rPr>`.
-   - Use `xml:space="preserve"` on every `<w:t>`.
-6. Idempotency: if the paragraph already contains `{{#if ln_p_defaultInterestModifierEnabled}}` and does not contain `Option 1:` / `Option 2:` / `(this is conditional`, skip and report no change.
-7. Bump version: `_v3.docx` → `_v4.docx`, upload to `templates` storage bucket, update `templates.file_path` for the row where `name = 'ADDENDUM TO NOTE EVENT OF DEFAULT'`.
-8. Add a `?verify=1` JSON branch that downloads the new file and returns whether the rewritten paragraph contains the expected markers and no longer contains `Option 1:` / `Option 2:` / `this is conditional`.
+### 2. Re-run the v4 rewriter in verify mode, as a safety net
 
-After deployment:
-- Invoke the function once via curl to perform the rewrite.
-- Invoke with `?verify=1` to confirm the new `.docx` actually contains `{{#if ln_p_defaultInterestModifierEnabled}}` and no longer contains the removed strings.
-- Report the verified state back.
+Call `rewrite-addendum-default-template?verify=1` once after the cache fix to confirm the live `_v4.docx` still contains:
+- `{{#if ln_p_defaultInterestModifierEnabled}}`
+- `{{else if ln_p_defaultInterestFlatRateEnabled}}`
+- no surviving `Option 1:` / `Option 2:` / red helper text
 
-## Out of scope (do not change)
+If verification fails for any reason, re-execute the rewriter (no template key changes, no legal text changes).
 
-- Field key names (`br_p_fullName`, `ln_p_loanNumber`, `ln_p_defaultInterestModifier`, `ln_p_defaultInterestFlatRate`).
-- Field publishing in `generate-document/index.ts` — already correct.
-- Borrower signature line, date line, page numbering, and all other static legal text.
-- Tag-parser handling of split runs (already works via `curlyFragmentedPattern`).
-- Any UI, schema, or other templates.
+### 3. Fix `br_p_fullName` resolution for LLC / Corp / Trust borrowers
 
-## Success criteria
+In `supabase/functions/generate-document/index.ts`, replace the existing block at lines 3712–3738 with logic that:
 
-- Template `ADDENDUM TO NOTE EVENT OF DEFAULT` storage file is at `_v4.docx`, `templates.file_path` updated.
-- Verification call confirms: paragraph contains `{{#if ln_p_defaultInterestModifierEnabled}}`, contains `{{else if ln_p_defaultInterestFlatRateEnabled}}`, ends with `(the "Default Rate").`, and does NOT contain `Option 1:`, `Option 2:`, or `this is conditional`.
-- Legal text before "increase" and after `(the "Default Rate").` is preserved unchanged.
-- With Modifier checked + value entered: document renders "to a rate equal to N percent (N%) above the Note rate at that time. (the 'Default Rate')."
-- With Flat Rate checked + value entered (and Modifier unchecked): document renders "to a flat rate of N% (the 'Default Rate')."
-- With neither checked: document renders " (the 'Default Rate').".
+1. Reads `borrower.borrower_type` (legacy `br_p_borrowerType`) and normalizes to lowercase.
+2. If borrower type is `llc`, `corp`, `corporation`, `trust`, `partnership`, `s-corp`, `c-corp` (entity types), **always prefer the Entity Name field** (`borrower.full_name` / `borrower1.full_name` / existing `br_p_fullName` if non-empty) over any first+middle+last concatenation, even when first/middle/last are populated.
+3. If borrower type is `individual` (or empty/unknown), keep the existing behavior: existing `br_p_fullName` → `borrower1.full_name` → `borrower.full_name` → first+middle+last → `loan_terms.details_borrower_name`.
+4. Continue to mirror the resolved value back into `borrower.full_name` and `borrower1.full_name` (lines 3739–3748) so downstream tags stay consistent.
+
+No new field keys are introduced; only the priority order changes, and only for entity-type borrowers. `br_p_fullName` itself is unchanged.
+
+### 4. Deploy and verify end-to-end
+
+1. Deploy `generate-document` and `rewrite-addendum-default-template`.
+2. Hit `…/rewrite-addendum-default-template?verify=1` and confirm `success: true`.
+3. Regenerate the Addendum doc for the current deal (`a4eefafb-cd04-4bf5-adb8-f432d79e0e65`) and confirm in logs:
+   - No `Cache HIT` line for this template.
+   - Publisher emits `ln_p_defaultInterestFlatRateEnabled=true`, `ln_p_defaultInterestFlatRate=18`, `ln_p_defaultInterestModifierEnabled=false`.
+4. Open the new DOCX and confirm:
+   - Single sentence: *"…shall increase to a flat rate of 18% (the "Default Rate")."*
+   - No Option 1 / Option 2 lines, no red helper text.
+   - Borrower line: `Borrower: Blue James Ridge Capital LLC`.
+
+## Out of scope (explicitly unchanged)
+
+- Field key names (`br_p_fullName`, `ln_p_loanNumber`, `ln_p_defaultInterestModifier`, `ln_p_defaultInterestFlatRate`, `ln_p_defaultInterestModifierEnabled`, `ln_p_defaultInterestFlatRateEnabled`).
+- Any static legal text, the signature line, the date line, or page numbering in the template.
+- The Loan → Penalties Default Interest UI, schema, or storage keys.
+- Caching behavior for any template other than the Addendum.
+- Borrower name resolution for non-entity (Individual) borrowers.
