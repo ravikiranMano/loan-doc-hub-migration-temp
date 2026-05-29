@@ -1191,7 +1191,11 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
 
             {/* Event Journal */}
             <TabsContent value="event_journal" forceMount className={cn("animate-fade-in", activeTab !== "event_journal" && "hidden")}>
-              <EventJournalViewer dealId={id || ""} disabled={isSectionDisabledByFormPerm("event_journal")} />
+              <EventJournalViewer
+                dealId={id || ""}
+                disabled={isSectionDisabledByFormPerm("event_journal")}
+                active={activeTab === "event_journal"}
+              />
             </TabsContent>
 
             {/* Origination Fees - Custom UI Tab Content */}

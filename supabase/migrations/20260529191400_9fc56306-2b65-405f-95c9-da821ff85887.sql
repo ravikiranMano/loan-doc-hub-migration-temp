@@ -1,0 +1,1 @@
+UPDATE public.templates SET file_path = '1780061351770_ADDENDUM_TO_NOTE_EVENT_OF_DEFAULT_v1_1.docx', updated_at = now() WHERE id = 'dbd0d674-6f62-437f-9b78-4f261d5eff07';

@@ -6,6 +6,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -27,6 +28,15 @@ const CAPACITY_OPTIONS = [
   'Authorized Party',
   'Corporate Officer', 'Attorney', 'Power of Attorney',
   'Accountant / CPA', 'Family', 'Bankruptcy Trustee', 'Other',
+];
+
+// Same FORD dropdown options as Borrower (BorrowerPrimaryForm)
+const FORD_DROPDOWN_OPTIONS = [
+  'Spouse, Kids, Grandkids', 'Big Dream', 'Sports Teams', 'Hobbies / Collections',
+  'Goals / Achievements', 'Favorite Restaurant, Food, Drinks', 'Pet(s)', 'Vacation Spot',
+  'Job / Occupation', 'Music / Bands', 'College', 'Hometown / Childhood',
+  'TV / Movies / Books', 'Anniversary', 'Challenges / Frustrations',
+  'Charity / Personal Causes', 'Upcoming Event - What / When', 'Celebration - What / When',
 ];
 
 const sanitizeName = (v: string) => v.replace(/[^a-zA-Z\s'\-]/g, '').slice(0, 100);
@@ -281,22 +291,34 @@ export const BorrowerAuthorizedPartyForm: React.FC<BorrowerAuthorizedPartyFormPr
           </DirtyFieldWrapper>
         </div>
 
-        {/* FORD */}
+        {/* FORD - dropdowns use same values as Borrower */}
         <div className="space-y-2">
           <h4 className="font-semibold text-sm text-foreground pb-1">FORD</h4>
-          <div className="grid grid-cols-2 gap-2">
-            {[1, 2, 3, 4, 5, 6].map((n) => {
-              const fieldKey = `borrower.authorized_party.ford_${n}`;
+          <div className="space-y-1">
+            {([[1, 2], [3, 4], [5, 6]] as const).map(([dropdownN, inputN]) => {
+              const dropdownKey = `borrower.authorized_party.ford.${dropdownN}`;
+              const inputKey = `borrower.authorized_party.ford.${inputN}`;
               return (
-                <DirtyFieldWrapper key={fieldKey} fieldKey={fieldKey}>
-                  <Input
-                    value={values[fieldKey] || ''}
-                    onChange={(e) => onValueChange(fieldKey, e.target.value)}
-                    disabled={disabled}
-                    maxLength={200}
-                    className="h-7 text-sm"
-                  />
-                </DirtyFieldWrapper>
+                <div key={dropdownN} className="grid grid-cols-2 gap-1">
+                  <DirtyFieldWrapper fieldKey={dropdownKey}>
+                    <SearchableSelect
+                      value={values[dropdownKey] || ''}
+                      onValueChange={(v) => onValueChange(dropdownKey, v)}
+                      options={FORD_DROPDOWN_OPTIONS}
+                      searchPlaceholder="Search FORD..."
+                      disabled={disabled}
+                    />
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={inputKey}>
+                    <Input
+                      value={values[inputKey] || ''}
+                      onChange={(e) => onValueChange(inputKey, e.target.value)}
+                      disabled={disabled}
+                      maxLength={200}
+                      className="h-7 text-sm"
+                    />
+                  </DirtyFieldWrapper>
+                </div>
               );
             })}
           </div>

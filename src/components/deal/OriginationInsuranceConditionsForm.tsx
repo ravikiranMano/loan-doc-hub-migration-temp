@@ -107,6 +107,11 @@ export const OriginationInsuranceConditionsForm: React.FC<OriginationInsuranceCo
   const sv = (key: string, val: string) => onValueChange(key, val);
   const bv = (key: string) => values[key] === 'true';
   const sbv = (key: string, val: boolean) => onValueChange(key, String(val));
+  const setCarrierRating = (key: string, checked: boolean) => {
+    [FK.carrier_a_minus, FK.carrier_a, FK.carrier_a_plus, FK.carrier_other].forEach((ratingKey) => {
+      onValueChange(ratingKey, String(checked && ratingKey === key));
+    });
+  };
 
   const renderCheckbox = (label: string, key: string) => (
     <DirtyFieldWrapper fieldKey={key}>
@@ -147,16 +152,26 @@ export const OriginationInsuranceConditionsForm: React.FC<OriginationInsuranceCo
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <DirtyFieldWrapper fieldKey={FK.carrier_a_minus}>
-                <Label className="text-xs cursor-pointer">A-</Label>
+                <div className="flex items-center gap-1">
+                  <Checkbox checked={bv(FK.carrier_a_minus)} onCheckedChange={(c) => setCarrierRating(FK.carrier_a_minus, !!c)} disabled={disabled} />
+                  <Label className="text-xs">A-</Label>
+                </div>
               </DirtyFieldWrapper>
               <DirtyFieldWrapper fieldKey={FK.carrier_a}>
-                <Label className="text-xs cursor-pointer">A</Label>
+                <div className="flex items-center gap-1">
+                  <Checkbox checked={bv(FK.carrier_a)} onCheckedChange={(c) => setCarrierRating(FK.carrier_a, !!c)} disabled={disabled} />
+                  <Label className="text-xs">A</Label>
+                </div>
               </DirtyFieldWrapper>
               <DirtyFieldWrapper fieldKey={FK.carrier_a_plus}>
-                <Label className="text-xs cursor-pointer">A+</Label>
-              </DirtyFieldWrapper>
-              <DirtyFieldWrapper fieldKey={FK.carrier_other}>
                 <div className="flex items-center gap-1">
+                  <Checkbox checked={bv(FK.carrier_a_plus)} onCheckedChange={(c) => setCarrierRating(FK.carrier_a_plus, !!c)} disabled={disabled} />
+                  <Label className="text-xs">A+</Label>
+                </div>
+              </DirtyFieldWrapper>
+              <DirtyFieldWrapper fieldKey={FK.carrier_a_minus}>
+                <div className="flex items-center gap-1">
+                  <Checkbox checked={bv(FK.carrier_other)} onCheckedChange={(c) => setCarrierRating(FK.carrier_other, !!c)} disabled={disabled} />
                   <Label className="text-xs">Other:</Label>
                   <Input value={v(FK.carrier_other_text)} onChange={(e) => sv(FK.carrier_other_text, e.target.value)}
                     disabled={disabled} className="h-6 text-xs w-[70px]" />

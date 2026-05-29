@@ -409,10 +409,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   React.useEffect(() => {
     if (open) {
+      // Fresh open for a NEW lender (no editingRecordId): drop any stale
+      // sessionStorage draft left over from a prior aborted Add session so the
+      // form initialises clean instead of restoring a deleted lender's amount.
+      if (!editingRecordId && !editData) {
+        try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ }
+      }
       const data = getInitialFormData();
       setFormData(data);
+      // Reset the "user touched Current Balance" sentinel on every open so the
+      // Original Amount → Current Balance auto-fill always runs for new rows.
+      currentBalanceTouchedRef.current = !!editData?.currentBalance;
+      prevCurrentBalanceRef.current = data.currentBalance;
     }
-  }, [open, editData, draftKey]);
+  }, [open, editData, draftKey, editingRecordId]);
 
   // Note Rate, Sold Rate, and Lender Rate are dynamically linked.
   // Source of truth: Sold Rate (falls back to Note Rate when Sold is empty).
@@ -510,27 +520,37 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   }, [formData.lenderRate, formData.rateLenderValue]);
 
   // Auto-compute Lender Pro Rata (Percent Owned):
-  //   Pro Rata = Lender Current Balance ÷ Loan Principal Balance × 100
+  //   Pro Rata = Lender Original (Funding) Amount ÷ Loan Principal Balance × 100
   // Stored at 6 decimal places (display layer rounds to 4dp + %).
+  // Original Amount is the single source of truth for funding math — Current
+  // Balance and Principal Balance are never used as a Pro Rata numerator.
   React.useEffect(() => {
     const principal = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
-    const cb = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
-    if (principal > 0 && !isNaN(cb) && cb > 0) {
-      const computed = new Decimal(cb).div(principal).mul(100)
+    const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, ''));
+    if (principal > 0 && !isNaN(fa) && fa > 0) {
+      const computed = new Decimal(fa).div(principal).mul(100)
         .toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
-    } else if ((isNaN(cb) || cb <= 0) && formData.percentOwned !== '') {
+    } else if ((isNaN(fa) || fa <= 0) && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.currentBalance, loanPrincipalBalance]);
+  }, [formData.fundingAmount, loanPrincipalBalance]);
 
 
 
-  // Auto-default Current Balance = Original Funding − Base Fee (only when not manually edited)
+  // Auto-sync Current Balance = Original Funding − Base Fee.
+  // Any edit to Original Funding re-syncs Current Balance, even if the user
+  // previously typed a custom value (per spec: Current Balance must follow
+  // Original Funding while editing).
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);
+  const prevFundingAmountRef = React.useRef<string>(formData.fundingAmount || '');
   React.useEffect(() => {
+    if (prevFundingAmountRef.current !== formData.fundingAmount) {
+      currentBalanceTouchedRef.current = false;
+      prevFundingAmountRef.current = formData.fundingAmount;
+    }
     if (currentBalanceTouchedRef.current) return;
     const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const bf = parseFloat((formData.baseFee || '').replace(/[$,]/g, '')) || 0;
@@ -546,6 +566,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       setFormData(prev => ({ ...prev, currentBalance: formatted }));
     }
   }, [formData.fundingAmount, formData.baseFee]);
+
 
   // Mark Current Balance as manually touched when user edits it
   const prevCurrentBalanceRef = React.useRef<string | undefined>(formData.currentBalance);
@@ -705,12 +726,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     // Validation: Σ disbursements may not exceed the lender's Payment
     // (Pro Rata × Borrower Regular P&I). Single source of truth shared with
     // the Funding grid's Net Payment column.
+    // Funding math always uses Original (Funding) Amount — never Current/Principal Balance.
     const principalNum = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
-    const cbNum = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''))
-      || parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const originalAmtNum = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
     const lenderPayment = principalNum > 0
-      ? new Decimal(cbNum).div(principalNum).mul(regPI)
+      ? new Decimal(originalAmtNum).div(principalNum).mul(regPI)
           .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toNumber()
       : 0;
     const incoming = parseFloat(String(data.calculatedAmount || data.plusAmount || data.debitThroughAmount || '0').replace(/[$,]/g, '')) || 0;
@@ -786,9 +807,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   // Lender share values for disbursement calculation
   const paymentShareNum = parseFloat((formData.regularPayment || '').replace(/[$,]/g, '')) || 0;
-  const principalBalNum = parseFloat((formData.principalBalance || '').replace(/[$,]/g, '')) || 0;
+  // Interest share is derived from the lender's Original (Funding) Amount —
+  // not Principal/Current Balance — so funding-side math stays consistent.
+  const originalAmtForInterest = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
   const lenderRateNum = parseFloat(formData.lenderRate || '0') || 0;
-  const interestShareNum = principalBalNum > 0 && lenderRateNum > 0 ? (principalBalNum * lenderRateNum) / 12 / 100 : 0;
+  const interestShareNum = originalAmtForInterest > 0 && lenderRateNum > 0 ? (originalAmtForInterest * lenderRateNum) / 12 / 100 : 0;
   const principalShareNum = Math.max(paymentShareNum - interestShareNum, 0);
 
   const handleDeleteDisbursement = (index: number) => {
@@ -826,6 +849,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Required-field gating: surface inline red errors under each empty field
+    // (Lender ID, Lender Rate, Funding Date, Original Funding, Current Balance,
+    // Interest From) and abort without firing the cross-field rules below.
+    if (Object.values(requiredErrors).some(Boolean)) {
+      setSubmitAttempted(true);
+      return;
+    }
+    setSubmitAttempted(false);
     // Rule: when this lender already owns 100% Pro Rata AND its Funding
     // Amount and Current Balance both equal the loan's Principal Balance,
     // the record is fully allocated to this single lender. Inputs remain
@@ -844,17 +875,16 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         Math.abs(thisLenderCurrentBalance - origCB) > FUNDING_TOLERANCE;
       if (wasFullyAllocatedToThisLender && changedFundingOrCB) {
         toast.error(
-          'Cannot save: this lender already holds 100% Pro Rata with Funding Amount and Current Balance equal to the Principal Balance. Use the Funding Adjustment workflow to reallocate.'
+          'Cannot save: this lender already holds 100% Pro Rata with Funding Amount and Current Balance equal to the Original Amount. Use the Funding Adjustment workflow to reallocate.'
         );
         return;
       }
     }
-    // Fully-funded soft lock (Rules 1, 2, 5): reject any save that mutates
-    // Funding Amount or Current Balance on a locked row. Allocation changes
-    // must go through the Funding Adjustment workflow.
+    // Fully-funded soft lock (Rules 1, 2, 5): previously blocked saves on a
+    // locked row. Per product change, allow the modification through but warn
+    // the user that funding is already fully allocated.
     if (lockedFieldsModified) {
-      toast.error('Modification not allowed. Loan funding is already fully allocated.');
-      return;
+      toast.warning('Loan funding is already fully allocated. Saving your changes anyway.');
     }
     // Rule 3: when fully funded, Current Balance must equal Funding Amount.
     if (fullyFundedCBMismatch) {
@@ -964,7 +994,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const fundingDate = parseDateOnly(formData.fundingDate);
   const interestFromDate = parseDateOnly(formData.interestFrom);
 
-  const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false) => (
+  const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false, invalid = false) => (
     <div className="relative flex-1">
       <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
       <Input
@@ -974,7 +1004,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         onPaste={(e) => numericPaste(e, (val) => handleChange(field, val))}
         onBlur={() => { const raw = formData[field] as string; if (raw) handleChange(field, formatCurrencyDisplay(raw)); }}
         onFocus={() => { const raw = formData[field] as string; if (raw) handleChange(field, unformatCurrencyDisplay(raw)); }}
-        className="h-6 text-xs pl-4"
+        className={cn("h-6 text-xs pl-4", invalid && "border-destructive focus-visible:ring-destructive")}
         inputMode="decimal"
         placeholder={placeholder}
         disabled={disabled}
@@ -1005,10 +1035,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     );
   };
 
-  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void) => (
+  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void, invalid = false) => (
     <Popover open={isOpen} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground')}>
+        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground', invalid && 'border-destructive focus-visible:ring-destructive')}>
           {value && !isNaN(value.getTime()) ? formatDateOnly(value, 'MM/dd/yyyy') : 'Date'}
           <CalendarIcon className="ml-auto h-3 w-3" />
         </Button>
@@ -1019,6 +1049,27 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     </Popover>
   );
 
+  // Required-field gating. Errors are computed from current formData and only
+  // surfaced after the user clicks Update Funding (submitAttempted) so the
+  // modal does not paint red on first open.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const effectiveLenderRateForValidation = formData.lenderRateOverride
+    ? (formData.lenderRateOverrideValue || '')
+    : (formData.lenderRate || formData.rateLenderValue || '');
+  const requiredErrors = {
+    lenderId: !((formData.lenderId || '').trim()),
+    lenderRate: !(String(effectiveLenderRateForValidation || '').trim()),
+    fundingDate: !((formData.fundingDate || '').trim()),
+    fundingAmount: !((formData.fundingAmount || '').replace(/[$,\s]/g, '').trim()),
+    currentBalance: !((formData.currentBalance || '').replace(/[$,\s]/g, '').trim()),
+    interestFrom: !((formData.interestFrom || '').trim()),
+  };
+  const showError = (k: keyof typeof requiredErrors) => submitAttempted && requiredErrors[k];
+  const fieldErrorMsg = (label: string) => (
+    <p className="text-[10px] text-destructive pl-[79px] mt-0.5">{label} is required</p>
+  );
+
+
   return (
     <>
     <Dialog open={open && !fundingHidden} onOpenChange={onOpenChange}>
@@ -1028,14 +1079,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
           <span className="text-xs font-bold">Add / Edit Lender Funding</span>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold">Principal Balance</span>
+              <span className="text-xs font-bold">Original Amount</span>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                    Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
+                    Original loan amount. All lender funding totals and pro rata calculations must reconcile to this amount.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1057,6 +1108,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
               const pct = principalBalanceNum > 0 ? (remaining / principalBalanceNum) * 100 : 0;
               const isFull = remaining <= FUNDING_TOLERANCE;
+              // Hide Available Capacity entirely when the loan is fully funded.
+              if (isFull || isFullyFunded) return null;
               return (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold">Available Capacity</span>
@@ -1066,7 +1119,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                        Principal balance minus the sum of all other lenders' current balances. Funding amount cannot exceed this value.
+                        Original loan amount minus the sum of all other lenders' current balances. Funding amount cannot exceed this value.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1109,9 +1162,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                       } : {}),
                     }));
                   }}
-                  className="h-6 text-xs"
+                  className={cn("h-6 text-xs", showError('lenderId') && "border-destructive focus-visible:ring-destructive")}
                 />
               </div>
+              {showError('lenderId') && fieldErrorMsg('Lender ID')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Name</Label>
                 <Input value={formData.lenderFullName} readOnly className="h-6 text-xs bg-muted/30" />
@@ -1175,7 +1229,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         }}
                         onKeyDown={numericKeyDown}
                         disabled={hasLenderRate}
-                        className={cn("h-6 text-xs pr-4", hasLenderRate && "opacity-60 bg-muted cursor-not-allowed")}
+                        className={cn("h-6 text-xs pr-4", hasLenderRate && "opacity-60 bg-muted cursor-not-allowed", showError('lenderRate') && "border-destructive focus-visible:ring-destructive")}
                         inputMode="decimal"
                         placeholder="%"
                       />
@@ -1184,6 +1238,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   );
                 })()}
               </div>
+              {showError('lenderRate') && fieldErrorMsg('Lender Rate')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0 flex items-center gap-1">
                   <span>Override</span>
@@ -1256,25 +1311,29 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Funding Date</Label>
-                {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen)}
+                {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen, showError('fundingDate'))}
               </div>
+              {showError('fundingDate') && fieldErrorMsg('Funding Date')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Original Funding</Label>
-                {renderCurrencyInput('fundingAmount', '0.00', false)}
+                {renderCurrencyInput('fundingAmount', '0.00', false, showError('fundingAmount'))}
               </div>
+              {showError('fundingAmount') && fieldErrorMsg('Original Funding')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Base Fee</Label>
                 {renderCurrencyInput('baseFee', 'Enter amount')}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Current Balance</Label>
-                {renderCurrencyInput('currentBalance', '0.00', false)}
+                {renderCurrencyInput('currentBalance', '0.00', false, showError('currentBalance'))}
               </div>
+              {showError('currentBalance') && fieldErrorMsg('Current Balance')}
 
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Interest From</Label>
-                {renderDateField(interestFromDate, (d) => handleChange('interestFrom', formatDateOnly(d)), interestFromOpen, setInterestFromOpen)}
+                {renderDateField(interestFromDate, (d) => handleChange('interestFrom', formatDateOnly(d)), interestFromOpen, setInterestFromOpen, showError('interestFrom'))}
               </div>
+              {showError('interestFrom') && fieldErrorMsg('Interest From')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Pro Rata</Label>
                 <div className="relative flex-1">
@@ -1406,7 +1465,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
             <p className="text-xs text-destructive font-medium">Percent Owned cannot exceed 100%</p>
           )}
           {totalPercentError && !percentOwnedError && (
-            <p className="text-xs text-destructive font-medium">Funding exceeds loan principal balance.</p>
+            <p className="text-xs text-destructive font-medium">Funding exceeds loan original amount.</p>
           )}
 
           {/* Checkboxes row */}

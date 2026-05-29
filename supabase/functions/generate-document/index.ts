@@ -34,6 +34,36 @@ const debugLog = (...args: unknown[]) => {
   }
 };
 
+// ── MULTI-LENDER DISABLED TEMPLATES ──
+// Templates listed here render Lender 1 only. No lender_N_* (N>1),
+// lendersN.* (N>1), additionalLenders*.*, has_multiple_lenders=true,
+// or per-lender signature appending. Single source of truth used by
+// both the lender alias publisher and the signature-append guard.
+const MULTI_LENDER_DISABLED_TEMPLATES: RegExp[] = [
+  /Agency[_\s-]+Disclosure.*CA[_\s-]+DRE/i,
+  /Assignment[_\s-]+of[_\s-]+Rents/i,
+  /Borrower.*Certification[_\s-]+of[_\s-]+Facts/i,
+  /Borrower[_\s-]+Certification[_\s-]+of[_\s-]+Loan[_\s-]+Purpose/i,
+  /Certification[_\s-]+of[_\s-]+Purpose/i,
+  /Purpose[_\s-]*Occupancy[_\s-]*Material/i,
+  /Continuing[_\s-]+Authorization/i,
+  /Declaration[_\s-]+of[_\s-]+Oral/i,
+  /hazardous/i,
+  /Limited[_\s-]+Power[_\s-]+of[_\s-]+Attorney/i,
+  /Mortgage[_\s-]*Broker[_\s-]*Agency[_\s-]*Disclosure/i,
+  /Personal[_\s-]+Guaranty/i,
+  /(?:^|[^a-z0-9])(?:re)?851a(?:$|[^a-z0-9])/i,
+  /(?:^|[^a-z0-9])(?:re)?851d(?:$|[^a-z0-9])/i,
+  /(?:^|[^a-z0-9])(?:re)?885(?:$|[^a-z0-9])/i,
+  /Servicing[_\s-]+Fee[_\s-]+Paid/i,
+];
+const isMultiLenderDisabled = (templateName: string | null | undefined): boolean => {
+  const n = (templateName ?? "").toString();
+  return MULTI_LENDER_DISABLED_TEMPLATES.some((re) => re.test(n));
+};
+
+
+
 const repairOoXmlTagBoundaries = (xml: string): { xml: string; repaired: number } => {
   let repaired = 0;
   const fixed = xml.replace(/<[^<>]*>/g, (tag) => {
@@ -176,7 +206,7 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "")) {
+      if (isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "") || /Note\s+Purchaser\s+Qualification(?:\s+Checklist)?/i.test(template.name || "") || /ADDENDUM\s+TO\s+NOTE.*DEFAULT/i.test(template.name || "")) {
         throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
@@ -845,7 +875,11 @@ async function generateSingleDocument(
       if (coBorrower?.contact_id && coBorrower.contact_id !== primaryBorrower?.contact_id) {
         const cbc = contactRowsByUuid.get(coBorrower.contact_id);
         if (cbc) {
-          injectContact(cbc, ["co_borrower1", "coborrower", "co_borrower"], undefined);
+          // Also publish `br2_p_*` short-prefix aliases so templates can reference
+          // the second borrower directly (e.g., {{br2_p_fullName}}). Only emitted
+          // when a distinct second borrower exists; otherwise the keys remain
+          // unset and render blank per existing application standards.
+          injectContact(cbc, ["co_borrower1", "coborrower", "co_borrower", "borrower2"], "br2_p");
           debugLog(`[generate-document] Injected co-borrower contact fields from participant (contact ${cbc.contact_id})`);
         }
       }
@@ -1103,6 +1137,7 @@ async function generateSingleDocument(
             // {{authorized_signer.primary_residence_address}} → Lender → Authorized Party → Address
             forceSet("authorized_signer.primary_residence_address", apFullAddress);
             forceSet("ld_ap_primaryResidenceAddress", apFullAddress);
+            forceSet("ld_ap_primaryResidenceAddr", apFullAddress); // template-compatible short form
             forceSet("lender.authorized_party.address.full", apFullAddress);
             if (apStreet) forceSet("lender.authorized_party.address.street", apStreet);
             if (apCity) forceSet("lender.authorized_party.address.city", apCity);
@@ -1194,12 +1229,47 @@ async function generateSingleDocument(
         const setAlias = (key: string, value: string) => {
           fieldValues.set(key, { rawValue: value ?? "", dataType: "text" });
         };
+        // Parse loan_terms.funding_records for per-lender enrichment
+        // (shortName / proRata / fundingAmount / fundsDepositedDate) used by
+        // {{#each lenders}} table templates such as Lender Identification.
+        let fundingRecordsForLenders: any[] = [];
+        try {
+          const fr =
+            fieldValues.get("loan_terms.funding_records")?.rawValue ||
+            fieldValues.get("ln_p_fundingRecord")?.rawValue;
+          if (fr) {
+            const parsed = typeof fr === "string" ? JSON.parse(fr) : fr;
+            if (Array.isArray(parsed)) fundingRecordsForLenders = parsed;
+          }
+        } catch (_) { /* ignore */ }
+        const fmtCurrency = (v: any): string => {
+          if (v === undefined || v === null || v === "") return "";
+          const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+          if (!isFinite(num)) return String(v);
+          return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+        };
+        const fmtPct = (v: any): string => {
+          if (v === undefined || v === null || v === "") return "";
+          const num = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+          if (!isFinite(num)) return String(v);
+          const pct = num > 1 ? num : num * 100;
+          return `${pct.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}%`;
+        };
+        const fmtDate = (v: any): string => {
+          if (!v) return "";
+          const s = String(v);
+          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return m ? `${m[2]}/${m[3]}/${m[1]}` : s;
+        };
+        const multiLenderDisabled = isMultiLenderDisabled(template?.name);
         let lenderCount = 0;
         let additionalIdx = 0;
         let primaryHelpersSet = false;
         const investorNames: string[] = [];
         orderedLenderParticipants.forEach((lp: any, idx: number) => {
           const n = idx + 1;
+          // Cap to primary lender only for templates flagged as multi-lender-disabled.
+          if (multiLenderDisabled && n > 1) return;
           let type = "", vesting = "", firstName = "", middle = "", last = "";
           let email = "", phone = "", contactId = "";
           if (lp?.contact_id) {
@@ -1255,6 +1325,25 @@ async function generateSingleDocument(
           setAlias(`lenders${n}.label`, label);
           setAlias(`lenders${n}.isPrimary`, isPrimary ? "true" : "false");
 
+          // Lender Identification table fields — shortName / proRata /
+          // fundingAmount / fundsDepositedDate, matched from funding_records
+          // by contact_id (lenderContactId / lenderAccount) or index fallback.
+          let frec: any = null;
+          if (fundingRecordsForLenders.length) {
+            frec = fundingRecordsForLenders.find((r: any) =>
+              (r?.lenderContactId && r.lenderContactId === lp?.contact_id) ||
+              (r?.lenderAccount && contactId && r.lenderAccount === contactId)
+            ) || fundingRecordsForLenders[idx] || null;
+          }
+          const proRataRaw = frec?.proRata ?? "";
+          const fundingAmtRaw = frec?.originalAmount ?? "";
+          const fundingDateRaw = frec?.fundingDate ?? frec?.fundsDepositedDate ?? "";
+          const shortName = displayName || vesting || [firstName, last].filter(Boolean).join(" ");
+          setAlias(`lenders${n}.shortName`, shortName);
+          setAlias(`lenders${n}.proRata`, fmtPct(proRataRaw));
+          setAlias(`lenders${n}.fundingAmount`, fmtCurrency(fundingAmtRaw));
+          setAlias(`lenders${n}.fundsDepositedDate`, fmtDate(fundingDateRaw));
+
           // {{#each additionalLenders}} feed — excludes primary (lender 1).
           if (!isPrimary) {
             additionalIdx++;
@@ -1293,11 +1382,16 @@ async function generateSingleDocument(
 
           lenderCount++;
         });
-        setAlias("lender_count", String(lenderCount));
+        const effectiveLenderCount = multiLenderDisabled ? Math.min(1, lenderCount) : lenderCount;
+        setAlias("lender_count", String(effectiveLenderCount));
         setAlias("ld_p_allInvestorNames", investorNames.join("\n"));
-        setAlias("has_multiple_lenders", lenderCount > 1 ? "true" : "false");
-        setAlias("additional_lender_count", String(Math.max(0, lenderCount - 1)));
-        debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+        setAlias("has_multiple_lenders", !multiLenderDisabled && lenderCount > 1 ? "true" : "false");
+        setAlias("additional_lender_count", String(multiLenderDisabled ? 0 : Math.max(0, lenderCount - 1)));
+        if (multiLenderDisabled) {
+          console.log(`[generate-document] template=${template?.name ?? "(unknown)"} MULTI_LENDER_DISABLED — published lender 1 only (${lenderCount} lender(s) suppressed to 1)`);
+        } else {
+          debugLog(`[generate-document] Published indexed lender_N_* aliases + lendersN.* + additionalLendersN.* repeater keys for ${lenderCount} lender(s)`);
+        }
       }
 
 
@@ -1400,6 +1494,91 @@ async function generateSingleDocument(
         }
       }
     }
+
+    // ── Borrower contact alias publishers ──
+    // Bridge resolved borrower email / phone values into the canonical
+    // field_dictionary keys used by bare merge tags in templates such as
+    // "Borrower TCPA and E-Consent" (e.g. {{br_p_emailAddres}}, {{br_p_homePhone}}).
+    // Values are persisted as composite keys borrower1::<dict_id> with indexed_key
+    // borrower1.email / borrower1.phone.home, which alone do not always populate
+    // the bare dictionary-key tags. This publisher fills the canonical key when
+    // empty, matching the defensive pattern used by ln_p_loanNumber below.
+    {
+      const publishBrAlias = (target: string, sources: string[]) => {
+        const existing = fieldValues.get(target);
+        if (existing && existing.rawValue != null && String(existing.rawValue).trim() !== "") return;
+        for (const k of sources) {
+          const v = fieldValues.get(k);
+          if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+            fieldValues.set(target, { rawValue: String(v.rawValue), dataType: "text" });
+            debugLog(`[generate-document] Published ${target} from ${k} = "${v.rawValue}"`);
+            return;
+          }
+        }
+      };
+      publishBrAlias("br_p_emailAddres",  ["borrower1.email", "borrower.email"]);
+      publishBrAlias("br_p_emailAddress", ["borrower1.email", "borrower.email"]);
+      publishBrAlias("br_p_homePhone",   ["borrower1.phone.home", "borrower.phone.home"]);
+      publishBrAlias("br_p_workPhone",   ["borrower1.phone.work", "borrower.phone.work"]);
+
+      // For the Cell / Mobile merge tag, honor the borrower's "Preferred Phone"
+      // selection first. If Home is preferred, the mobile-number cell should
+      // render the home number. Fall back to any populated phone if no
+      // preferred flag is set.
+      const prefSources: Array<{ flag: string; phones: string[] }> = [
+        { flag: "borrower1.preferred.home",  phones: ["borrower1.phone.home",   "borrower.phone.home"] },
+        { flag: "borrower1.preferred.home2", phones: ["borrower1.phone.home2",  "borrower.phone.home2"] },
+        { flag: "borrower1.preferred.work",  phones: ["borrower1.phone.work",   "borrower.phone.work"] },
+        { flag: "borrower1.preferred.cell",  phones: ["borrower1.phone.cell",   "borrower.phone.cell", "borrower1.phone.mobile", "borrower.phone.mobile"] },
+      ];
+      const cellTargets = ["br_p_cellPhone", "br_p_mobilePhone", "br_p_mobileNumber", "br_p_preferredPhone"];
+      const cellAlreadySet = cellTargets.some((t) => {
+        const v = fieldValues.get(t);
+        return v && v.rawValue != null && String(v.rawValue).trim() !== "";
+      });
+      if (!cellAlreadySet) {
+        let publishedPhone: string | null = null;
+        for (const { flag, phones } of prefSources) {
+          const flagVal = fieldValues.get(flag);
+          const isPreferred = flagVal && String(flagVal.rawValue ?? "").toLowerCase() === "true";
+          if (!isPreferred) continue;
+          for (const k of phones) {
+            const v = fieldValues.get(k);
+            if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+              publishedPhone = String(v.rawValue);
+              debugLog(`[generate-document] br_p_cellPhone resolved from preferred ${flag} -> ${k} = "${publishedPhone}"`);
+              break;
+            }
+          }
+          if (publishedPhone) break;
+        }
+        if (!publishedPhone) {
+          // No preferred flag set — fall back to first populated phone.
+          const fallbackKeys = [
+            "borrower1.phone.cell", "borrower.phone.cell",
+            "borrower1.phone.mobile", "borrower.phone.mobile",
+            "borrower1.phone.home", "borrower.phone.home",
+            "borrower1.phone.home2", "borrower.phone.home2",
+            "borrower1.phone.work", "borrower.phone.work",
+          ];
+          for (const k of fallbackKeys) {
+            const v = fieldValues.get(k);
+            if (v && v.rawValue != null && String(v.rawValue).trim() !== "") {
+              publishedPhone = String(v.rawValue);
+              debugLog(`[generate-document] br_p_cellPhone fallback from ${k} = "${publishedPhone}"`);
+              break;
+            }
+          }
+        }
+        if (publishedPhone) {
+          for (const t of cellTargets) {
+            fieldValues.set(t, { rawValue: publishedPhone, dataType: "text" });
+          }
+        }
+      }
+    }
+
+
 
     // Force text dataType for identifier fields that should never be number-formatted
     for (const [key, val] of fieldValues.entries()) {
@@ -1705,6 +1884,44 @@ async function generateSingleDocument(
       debugLog(`[generate-document] RE885 interest guarantee checkbox: enabled=${isIG} (raw="${igRaw}")`);
     }
 
+    // Default Interest publisher aliases (Addendum to Note - Event of Default).
+    // The Loan → Penalties → Default Interest UI persists values under
+    // `loan_terms.penalties.default_interest.*`. Re-publish each one under the
+    // new `ln_p_defaultInterest*` field keys consumed by the Addendum to Note
+    // template's {{#if}} conditional, without touching the legacy mappings used
+    // by other templates.
+    {
+      const prefix = "loan_terms.penalties.default_interest";
+      const di_toBool = (v: unknown): boolean => {
+        if (v === true) return true;
+        if (v === false || v === null || v === undefined) return false;
+        const s = String(v).trim().toLowerCase();
+        return s === "true" || s === "yes" || s === "y" || s === "1" || s === "checked" || s === "on";
+      };
+      const pubBool = (src: string, dst: string) => {
+        const raw = fieldValues.get(src)?.rawValue;
+        const v = di_toBool(raw);
+        fieldValues.set(dst, { rawValue: v ? "true" : "false", dataType: "boolean" });
+      };
+      const pubPass = (src: string, dst: string, dataType: string) => {
+        const v = fieldValues.get(src);
+        if (v && v.rawValue !== null && v.rawValue !== undefined && v.rawValue !== "") {
+          fieldValues.set(dst, { rawValue: v.rawValue, dataType });
+        }
+      };
+      pubBool(`${prefix}.enabled`,              "ln_p_defaultInterest");
+      pubPass(`${prefix}.triggered_by`,         "ln_p_defaultInterestTriggeredBy", "dropdown");
+      pubPass(`${prefix}.grace_period`,         "ln_p_defaultInterestGracePeriod", "number");
+      pubBool(`${prefix}.flat_rate_enabled`,    "ln_p_defaultInterestFlatRateEnabled");
+      pubPass(`${prefix}.flat_rate`,            "ln_p_defaultInterestFlatRate", "decimal");
+      pubBool(`${prefix}.modifier_enabled`,     "ln_p_defaultInterestModifierEnabled");
+      pubPass(`${prefix}.modifier`,             "ln_p_defaultInterestModifier", "decimal");
+      pubPass(`${prefix}.active_until`,         "ln_p_defaultInterestActiveUntil", "date");
+      pubPass(`${prefix}.additional_daily_charge`, "ln_p_defaultInterestDailyCharge", "currency");
+      debugLog("[generate-document] Default Interest publisher aliases set");
+    }
+
+
     // Inject systemDate so only templates using {{systemDate}} get the current date
     const systemDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     fieldValues.set("systemDate", { rawValue: systemDate, dataType: "date" });
@@ -1787,8 +2004,21 @@ async function generateSingleDocument(
         const net = (inc * 12) - exp;
         fieldValues.set("oo_netAnnualIncome", { rawValue: net, dataType: "currency" });
         debugLog(`[generate-document] Computed oo_netAnnualIncome = ${inc}*12 - ${exp} = ${net}`);
+
+        // Backend-only alias: {{oo_totalIncomeAndExpenses}} =
+        //   origination_app.income.total_income + origination_app.income.rental
+        //   + all six expense components (credit_card, spousal_child_support, insurance,
+        //     automobile, mortgage, other)
+        {
+          const rentalFd = getFieldData("origination_app.income.rental", fieldValues);
+          const rental = rentalFd ? toNum(rentalFd.data.rawValue) : 0;
+          const sum = inc + rental + exp;
+          fieldValues.set("oo_totalIncomeAndExpenses", { rawValue: sum, dataType: "currency" });
+          debugLog(`[generate-document] Computed oo_totalIncomeAndExpenses = ${inc} + ${rental} + ${exp} = ${sum}`);
+        }
       }
     }
+
 
     // Auto-compute borrower.borrower_description if not already set
     const existingDesc = fieldValues.get("borrower.borrower_description");
@@ -2183,13 +2413,23 @@ async function generateSingleDocument(
           fieldValues.set(`pr_pt_delinquentAmount_${idx}`, { rawValue: amountStr, dataType: "currency" });
           debugLog(`[RE851D] pr_pt_delinquent idx=${idx} taxIdx=${taxIdx ?? "legacy"} raw=${delinqRaw ?? ""} → isDelinq=${isDelinq} amount=${amountStr}`);
         }
-        // Delinquent payment count
+        // Delinquent payment count.
+        // UI (PropertySectionContent / OriginationPropertyForm) persists this
+        // under `<prefix>.delinquencies_how_many` (see fieldKeyMap.delinquenciesHowMany);
+        // legacy/canonical aliases are also accepted.
         const delinqV =
+          fieldValues.get(`${prefix}.delinquencies_how_many`) ||
+          fieldValues.get(`${prefix}.delinquenciesHowMany`) ||
           fieldValues.get(`${prefix}.delinquent_how_many`) ||
           fieldValues.get(`${prefix}.delinqHowMany`) ||
           fieldValues.get(`${prefix}.pr_p_delinquHowMany`);
-        if (delinqV?.rawValue) {
+        if (delinqV?.rawValue !== undefined && delinqV?.rawValue !== null && String(delinqV.rawValue) !== "") {
           fieldValues.set(`pr_p_delinquHowMany_${idx}`, { rawValue: delinqV.rawValue, dataType: delinqV.dataType || "number" });
+          // Publish bare (unindexed) alias from Property #1 so templates using
+          // `{{pr_p_delinquHowMany}}` resolve without an explicit _N suffix.
+          if (idx === 1 && !fieldValues.has("pr_p_delinquHowMany")) {
+            fieldValues.set("pr_p_delinquHowMany", { rawValue: delinqV.rawValue, dataType: delinqV.dataType || "number" });
+          }
         }
         // Per-property appraise value & owner (handle alternate canonical keys)
         // UI saves under `propertyN.appraised_value` (PropertyDetailsForm/fieldKeyMap.appraisedValue)
@@ -3370,6 +3610,29 @@ async function generateSingleDocument(
     fieldValues.set("oo_svc_servicingAgent", { rawValue: canonicalServicingAgent, dataType: "text" });
     debugLog(`[generate-document] Derived servicing-agent checkboxes from "${servicingAgentRaw}": lender=${isLenderServicing}, broker=${isBrokerServicing}, other=${isOtherServicing}, sv_p_servicingAgent="${canonicalServicingAgent}", oo_svc_servicingAgent="${canonicalServicingAgent}"`);
 
+    // Combined Servicing Agent Address ({{oo_sa_servicingAgentAddress}}):
+    // "Street, City, State ZIP" sourced from the active address block:
+    //   - Company    → origination_svc.company.*
+    //   - All others → origination_svc.third_party.*
+    // Falls back to any value already persisted under the canonical key.
+    {
+      const sa_src = (k: string) => (fieldValues.get(k)?.rawValue ?? "").toString().trim();
+      const useCompany = servicingAgentRaw === "company";
+      const sa_street = useCompany ? sa_src("origination_svc.company.street") : sa_src("origination_svc.third_party.street");
+      const sa_city   = useCompany ? sa_src("origination_svc.company.city")   : sa_src("origination_svc.third_party.city");
+      const sa_state  = useCompany ? sa_src("origination_svc.company.state")  : sa_src("origination_svc.third_party.state");
+      const sa_zip    = useCompany ? sa_src("origination_svc.company.zip")    : sa_src("origination_svc.third_party.zip");
+      const cityStateZip = [sa_city, [sa_state, sa_zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+      const combinedAddr = [sa_street, cityStateZip].filter(Boolean).join(", ");
+      const persisted = sa_src("oo_sa_servicingAgentAddress");
+      const finalAddr = combinedAddr || persisted;
+      if (finalAddr) {
+        fieldValues.set("oo_sa_servicingAgentAddress", { rawValue: finalAddr, dataType: "text" });
+      }
+      debugLog(`[generate-document] Published oo_sa_servicingAgentAddress (useCompany=${useCompany}): "${finalAddr}"`);
+    }
+
+
     // Loan -> Servicing Details -> Payable (Monthly / Quarterly / Annually).
     // CSR persists the dropdown under loan_terms.servicing.payable (and the
     // legacy `origination_svc.payable`). The RE851A template references
@@ -3438,38 +3701,84 @@ async function generateSingleDocument(
         fieldValues.set("all_properties_list", { rawValue: allPropertiesText, dataType: "text" });
         debugLog(`[generate-document] Built all_properties_list with ${propertyLines.length} properties`);
       }
-      // NOTE: Do NOT overwrite pr_p_address / property1.address / Property1.Address with the
-      // joined multi-line string when multiple properties exist. RE851D and similar multi-block
-      // templates rely on per-index aliases (pr_p_address_1, pr_p_address_2, ...) so each
-      // property block populates with its own data. Concatenating all addresses into
-      // pr_p_address caused every property block to display the same combined list.
-      // Templates that need the combined list can use {{all_properties_list}}.
+      // Multi-property pr_p_address: when more than one property exists, the
+      // bare {{pr_p_address}} merge tag (used outside per-property blocks,
+      // e.g. on cover pages and Assignment-of-Rents headers) should render
+      // every property's full address on its own line. With exactly one
+      // property we leave pr_p_address untouched so single-property templates
+      // continue to render a single-line address.
+      // NOTE: property1.address / Property1.Address and the per-index aliases
+      // (pr_p_address_1, pr_p_address_2, ...) are intentionally NOT overwritten
+      // here — RE851D and similar multi-block templates need them to remain
+      // per-property so each PROPERTY block renders its own address.
+      if (propertyLines.length > 1) {
+        // Borrower Certification of Loan Purpose template expects a single
+        // continuous flowing string (Word wraps naturally); all other
+        // templates keep the legacy newline-separated stacked layout.
+        const separator = isTemplateCertOfPurpose ? " " : "\n";
+        const multiAddrText = propertyLines.join(separator);
+        fieldValues.set("pr_p_address", { rawValue: multiAddrText, dataType: "text" });
+        debugLog(`[generate-document] Overrode bare pr_p_address with ${propertyLines.length} properties (separator=${JSON.stringify(separator)}, certOfPurpose=${isTemplateCertOfPurpose})`);
+      }
           }
 
 
-    const existingBrPFullName = fieldValues.get("br_p_fullName");
-    if (!existingBrPFullName || !existingBrPFullName.rawValue) {
-      // Check indexed borrower keys first
-      const b1FullName = fieldValues.get("borrower1.full_name") || fieldValues.get("borrower.full_name");
-      if (b1FullName && b1FullName.rawValue) {
-        fieldValues.set("br_p_fullName", { rawValue: b1FullName.rawValue, dataType: "text" });
-        debugLog(`[generate-document] Auto-computed br_p_fullName = "${b1FullName.rawValue}"`);
+    {
+      // Determine if the primary borrower is an entity (LLC/Corp/Trust/etc.).
+      // For entity borrowers, the "Entity Name" field (stored as
+      // borrower.full_name / br_p_fullName) must win over any first+middle+last
+      // concatenation, otherwise the entity suffix (e.g. "Capital LLC") is
+      // silently dropped when first/middle/last are also populated.
+      const rawBorrowerType =
+        fieldValues.get("borrower.borrower_type")?.rawValue ??
+        fieldValues.get("borrower1.borrower_type")?.rawValue ??
+        fieldValues.get("br_p_borrowerType")?.rawValue ??
+        "";
+      const borrowerTypeNorm = String(rawBorrowerType ?? "").trim().toLowerCase();
+      const ENTITY_TYPES = new Set([
+        "llc", "l.l.c.", "l.l.c",
+        "corp", "corporation", "s-corp", "s corp", "c-corp", "c corp",
+        "trust", "partnership", "lp", "llp", "limited partnership",
+        "company", "inc", "inc.",
+      ]);
+      const isEntityBorrower = ENTITY_TYPES.has(borrowerTypeNorm) ||
+        /\b(llc|l\.l\.c|corp|inc|trust|partnership|company)\b/i.test(borrowerTypeNorm);
+
+      const entityName =
+        fieldValues.get("br_p_fullName")?.rawValue ||
+        fieldValues.get("borrower1.full_name")?.rawValue ||
+        fieldValues.get("borrower.full_name")?.rawValue ||
+        "";
+
+      if (isEntityBorrower && entityName) {
+        fieldValues.set("br_p_fullName", { rawValue: entityName, dataType: "text" });
+        debugLog(`[generate-document] Borrower is entity type "${rawBorrowerType}" — using Entity Name "${entityName}" for br_p_fullName`);
       } else {
-        // Try assembling from borrower name components
-        const bFirstName = fieldValues.get("borrower1.first_name")?.rawValue || fieldValues.get("borrower.first_name")?.rawValue || fieldValues.get("br_p_firstName")?.rawValue;
-        const bMiddleName = fieldValues.get("borrower1.middle_initial")?.rawValue || fieldValues.get("borrower.middle_initial")?.rawValue || fieldValues.get("br_p_middleInitia")?.rawValue;
-        const bLastName = fieldValues.get("borrower1.last_name")?.rawValue || fieldValues.get("borrower.last_name")?.rawValue || fieldValues.get("br_p_lastName")?.rawValue;
-        const bNameParts = [bFirstName, bMiddleName, bLastName].filter(Boolean).map(String);
-        if (bNameParts.length > 0) {
-          const fullName = bNameParts.join(" ");
-          fieldValues.set("br_p_fullName", { rawValue: fullName, dataType: "text" });
-          debugLog(`[generate-document] Auto-computed br_p_fullName from components = "${fullName}"`);
-        } else {
-          // Final fallback: check Loan Details borrower name field
-          const loanDetailsBorrowerName = fieldValues.get("loan_terms.details_borrower_name");
-          if (loanDetailsBorrowerName?.rawValue) {
-            fieldValues.set("br_p_fullName", { rawValue: loanDetailsBorrowerName.rawValue, dataType: "text" });
-            debugLog(`[generate-document] Auto-computed br_p_fullName from loan_terms.details_borrower_name = "${loanDetailsBorrowerName.rawValue}"`);
+        const existingBrPFullName = fieldValues.get("br_p_fullName");
+        if (!existingBrPFullName || !existingBrPFullName.rawValue) {
+          // Check indexed borrower keys first
+          const b1FullName = fieldValues.get("borrower1.full_name") || fieldValues.get("borrower.full_name");
+          if (b1FullName && b1FullName.rawValue) {
+            fieldValues.set("br_p_fullName", { rawValue: b1FullName.rawValue, dataType: "text" });
+            debugLog(`[generate-document] Auto-computed br_p_fullName = "${b1FullName.rawValue}"`);
+          } else {
+            // Try assembling from borrower name components
+            const bFirstName = fieldValues.get("borrower1.first_name")?.rawValue || fieldValues.get("borrower.first_name")?.rawValue || fieldValues.get("br_p_firstName")?.rawValue;
+            const bMiddleName = fieldValues.get("borrower1.middle_initial")?.rawValue || fieldValues.get("borrower.middle_initial")?.rawValue || fieldValues.get("br_p_middleInitia")?.rawValue;
+            const bLastName = fieldValues.get("borrower1.last_name")?.rawValue || fieldValues.get("borrower.last_name")?.rawValue || fieldValues.get("br_p_lastName")?.rawValue;
+            const bNameParts = [bFirstName, bMiddleName, bLastName].filter(Boolean).map(String);
+            if (bNameParts.length > 0) {
+              const fullName = bNameParts.join(" ");
+              fieldValues.set("br_p_fullName", { rawValue: fullName, dataType: "text" });
+              debugLog(`[generate-document] Auto-computed br_p_fullName from components = "${fullName}"`);
+            } else {
+              // Final fallback: check Loan Details borrower name field
+              const loanDetailsBorrowerName = fieldValues.get("loan_terms.details_borrower_name");
+              if (loanDetailsBorrowerName?.rawValue) {
+                fieldValues.set("br_p_fullName", { rawValue: loanDetailsBorrowerName.rawValue, dataType: "text" });
+                debugLog(`[generate-document] Auto-computed br_p_fullName from loan_terms.details_borrower_name = "${loanDetailsBorrowerName.rawValue}"`);
+              }
+            }
           }
         }
       }
@@ -3903,16 +4212,30 @@ async function generateSingleDocument(
         }
       }
 
-      // RE851A override: the bare (non-indexed) Current Balance aliases must render
-      // ONLY the 1st lien's current_balance value, never the aggregated newline-joined
-      // multi-lien string. Per-lien table cells use _N indexed keys instead.
+      // Bare (non-indexed) Current Balance aliases render the SUM of all liens'
+      // current_balance values (ignoring null/blank/non-numeric). Per-lien table
+      // cells continue to use _N indexed keys instead.
       {
         const cbEntries = lienFieldCollector["current_balance"];
         if (cbEntries && cbEntries.length > 0) {
-          const sorted = [...cbEntries].sort((a, b) => a.index - b.index);
-          const firstVal = sorted[0].value;
-          const firstNum = parseFloat(String(firstVal).replace(/[^0-9.-]/g, ""));
-          const rawCurrency = Number.isFinite(firstNum) ? firstNum.toFixed(2) : firstVal;
+          // Match the per-lien dedup above (line ~4060): drop legacy `lien.*`
+          // (index 0) when any indexed lien (lien1.*, lien2.*, …) is present,
+          // so the mirror isn't double-counted into the SUM aliases.
+          const hasIndexed = cbEntries.some(e => e.index >= 1);
+          const dedupedCbEntries = hasIndexed
+            ? cbEntries.filter(e => e.index >= 1)
+            : cbEntries;
+          let sum = 0;
+          let contributing = 0;
+          for (const e of dedupedCbEntries) {
+            if (e.value === null || e.value === undefined || String(e.value).trim() === "") continue;
+            const n = parseFloat(String(e.value).replace(/[^0-9.-]/g, ""));
+            if (Number.isFinite(n)) {
+              sum += n;
+              contributing++;
+            }
+          }
+          const rawCurrency = sum.toFixed(2);
           const formatted = formatCurrency(rawCurrency);
           const aliases = [
             "pr_li_lienCurrenBalanc",
@@ -3923,7 +4246,7 @@ async function generateSingleDocument(
           for (const alias of aliases) {
             fieldValues.set(alias, { rawValue: rawCurrency, dataType: "currency" });
           }
-          debugLog(`[generate-document] Forced 1st-lien-only current_balance for aliases [${aliases.join(", ")}]: ${formatted} (raw=${firstVal})`);
+          debugLog(`[generate-document] Aggregated current_balance SUM across ${contributing}/${dedupedCbEntries.length} lien(s) (deduped from ${cbEntries.length}) for aliases [${aliases.join(", ")}]: ${formatted}`);
         }
       }
 
@@ -4165,6 +4488,8 @@ async function generateSingleDocument(
         if (isTemplateFormalRequestInfo) {
           type Cand = { idx: number; rawIdx: string; priority: string; holder: string };
           const candidates: Cand[] = [];
+          // Collect every lien index that has either a holder or a priority value.
+          const seenIdx = new Set<string>();
           for (const [key, val] of fieldValues.entries()) {
             const m = key.match(/^lien(\d*)\.(.+)$/);
             if (!m) continue;
@@ -4172,10 +4497,19 @@ async function generateSingleDocument(
             if (
               field !== "lien_priority_now" &&
               field !== "priority" &&
-              field !== "lien_priority"
+              field !== "lien_priority" &&
+              field !== "holder" &&
+              field !== "lienHolder"
             ) continue;
             const rawIdx = m[1] || "";
-            const prio = String(val?.rawValue ?? "").trim().toLowerCase();
+            if (seenIdx.has(rawIdx)) continue;
+            seenIdx.add(rawIdx);
+            const prio = String(
+              fieldValues.get(`lien${rawIdx}.priority`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lien_priority_now`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lien_priority`)?.rawValue ??
+              val?.rawValue ?? ""
+            ).trim().toLowerCase();
             const holderVal =
               fieldValues.get(`lien${rawIdx}.holder`)?.rawValue ??
               fieldValues.get(`lien${rawIdx}.lienHolder`)?.rawValue ??
@@ -4188,20 +4522,53 @@ async function generateSingleDocument(
             });
           }
           const isFirst = (p: string) => p === "1st" || p === "1" || p === "first";
-          const winner = candidates
+          // Precedence:
+          //   1. lien with priority 1st AND non-empty holder (lowest index wins)
+          //   2. first non-empty holder by ascending index (fallback)
+          //   3. direct lien1.holder / lien.holder lookup (last-ditch fallback)
+          let winnerHolder = "";
+          let winnerLabel = "";
+          const priorityWinner = candidates
             .filter((c) => isFirst(c.priority) && c.holder !== "")
             .sort((a, b) => a.idx - b.idx)[0];
-          if (winner) {
-            fieldValues.set("pr_li_lienHolder", {
-              rawValue: winner.holder,
-              dataType: "text",
-            });
+          if (priorityWinner) {
+            winnerHolder = priorityWinner.holder;
+            winnerLabel = `1st-priority lien${priorityWinner.rawIdx}`;
+          } else {
+            const fallbackWinner = candidates
+              .filter((c) => c.holder !== "")
+              .sort((a, b) => a.idx - b.idx)[0];
+            if (fallbackWinner) {
+              winnerHolder = fallbackWinner.holder;
+              winnerLabel = `first non-empty lien${fallbackWinner.rawIdx} (no lien marked 1st)`;
+            } else {
+              const direct =
+                fieldValues.get("lien1.holder")?.rawValue ??
+                fieldValues.get("lien1.lienHolder")?.rawValue ??
+                fieldValues.get("lien.holder")?.rawValue ??
+                fieldValues.get("lien.lienHolder")?.rawValue ??
+                "";
+              const directStr = String(direct).trim();
+              if (directStr) {
+                winnerHolder = directStr;
+                winnerLabel = "direct lien1/lien.holder lookup";
+              }
+            }
+          }
+          if (winnerHolder) {
+            const payload = { rawValue: winnerHolder, dataType: "text" as const };
+            fieldValues.set("pr_li_lienHolder", payload);
+            // Also publish canonical aliases so any downstream resolver path
+            // that prefers a different key still gets the same value.
+            if (!fieldValues.get("property1.lien_holder")?.rawValue) {
+              fieldValues.set("property1.lien_holder", payload);
+            }
             debugLog(
-              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder restricted to 1st-priority lien (lien${winner.rawIdx} holder="${winner.holder}")`
+              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder = "${winnerHolder}" (${winnerLabel}; candidates=${candidates.length})`
             );
           } else {
             debugLog(
-              `[generate-document] Formal_Request_for_Information: no lien with priority "1st" found; leaving aggregated pr_li_lienHolder unchanged (candidates=${candidates.length})`
+              `[generate-document] Formal_Request_for_Information: no lien holder resolved (candidates=${candidates.length})`
             );
           }
         }
@@ -4349,18 +4716,19 @@ async function generateSingleDocument(
         const orderedIdx = (hasIdx ? allIdx.filter((i) => i !== "0") : allIdx)
           .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
 
-        const lines: string[] = [];
+        let total = 0;
+        let contributingLiens = 0;
         for (const i of orderedIdx) {
           const cbRaw = perLien[i]?.cb;
           const pdRaw = perLien[i]?.pd;
           const hasCb = cbRaw !== undefined && cbRaw !== null && String(cbRaw).trim() !== "";
           if (!hasCb) {
-            lines.push("");
+            // Skip liens without current_balance; do not publish per-lien alias.
             continue;
           }
           const result = toNum(cbRaw) - toNum(pdRaw);
-          const formatted = formatCurrency(result.toFixed(2));
-          lines.push(formatted);
+          total += result;
+          contributingLiens++;
           // Per-lien indexed alias (1-based)
           const nIdx = i === "0" ? "1" : i;
           fieldValues.set(`pr_li_balanceAfterPaydown_${nIdx}`, {
@@ -4371,10 +4739,10 @@ async function generateSingleDocument(
 
         if (orderedIdx.length > 0) {
           fieldValues.set("pr_li_balanceAfterPaydown", {
-            rawValue: orderedIdx.length > 1 ? lines.join("\n") : (toNum(perLien[orderedIdx[0]]?.cb) - toNum(perLien[orderedIdx[0]]?.pd)).toFixed(2),
-            dataType: orderedIdx.length > 1 ? "text" : "currency",
+            rawValue: total.toFixed(2),
+            dataType: "currency",
           });
-          debugLog(`[generate-document] Published pr_li_balanceAfterPaydown for ${orderedIdx.length} lien(s)`);
+          debugLog(`[generate-document] Published pr_li_balanceAfterPaydown=${total.toFixed(2)} (SUM across ${contributingLiens}/${orderedIdx.length} lien(s))`);
         }
       }
 
@@ -7730,6 +8098,104 @@ async function generateSingleDocument(
       }
     }
 
+    // ── Formal_Request_for_Information ONLY: stitch fragmented {{pr_li_lienHolder}} ──
+    // Word authored this template with the field name split across two <w:r> runs
+    // (the opening "{{" sits in one run, "pr_li_lienHolder}}" sits in the next run
+    // which carries a different <w:rPr>, including a <w:highlight w:val="white"/>).
+    // The generic run-consolidation passes occasionally fail to stitch this exact
+    // shape, leaving the merge-tag resolver with no contiguous `{{pr_li_lienHolder}}`
+    // token — so the placeholder renders as blank (or as raw text). Run a narrow,
+    // idempotent paragraph rewrite over document.xml + headers + footers that joins
+    // every <w:t> in any paragraph containing `pr_li_lienHolder` into the first run,
+    // preserving its rPr but stripping the orphan white-highlight.
+    if (isTemplateFormalRequestInfo) {
+      try {
+        const fr_decompressed = fflate.unzipSync(templateBuffer);
+        const fr_decoder = new TextDecoder();
+        const fr_encoder = new TextEncoder();
+        const fr_PARTS = Object.keys(fr_decompressed).filter((f) =>
+          f === "word/document.xml" ||
+          f.startsWith("word/header") ||
+          f.startsWith("word/footer")
+        );
+        let fr_touched = false;
+        const stitchPara = (para: string): string => {
+          if (!para.includes("pr_li_lienHolder")) return para;
+          // Gather <w:t> text contents in order.
+          const tTexts: string[] = [];
+          para.replace(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g, (_m, t) => {
+            tTexts.push(t);
+            return "";
+          });
+          if (tTexts.length < 2) return para;
+          const joined = tTexts.join("");
+          if (!joined.includes("{{pr_li_lienHolder}}")) return para;
+          // If the tag is already contiguous in a single <w:t>, no-op.
+          if (tTexts.some((t) => t.includes("{{pr_li_lienHolder}}"))) return para;
+          fr_touched = true;
+          // Consolidate: put the full joined text into the first <w:t>, empty the rest.
+          let isFirst = true;
+          let out = para.replace(
+            /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/g,
+            (_m, attrs: string | undefined) => {
+              if (isFirst) {
+                isFirst = false;
+                return `<w:t xml:space="preserve">${joined}</w:t>`;
+              }
+              return `<w:t${attrs || ""}></w:t>`;
+            }
+          );
+          // Drop the orphan white-highlight run-property that survived from the
+          // split run — it was only applied to the fragment, not to the rest of
+          // the paragraph, so keeping it would visibly highlight nothing useful.
+          out = out.replace(
+            /<w:highlight\s+w:val="white"\s*\/>/g,
+            ""
+          );
+          return out;
+        };
+        for (const part of fr_PARTS) {
+          const bytes = fr_decompressed[part];
+          if (!bytes) continue;
+          const xml = fr_decoder.decode(bytes);
+          if (!xml.includes("pr_li_lienHolder")) continue;
+          // Walk paragraphs.
+          let out = "";
+          let pos = 0;
+          let partTouched = false;
+          while (pos < xml.length) {
+            const pStart = xml.indexOf("<w:p", pos);
+            if (pStart === -1) {
+              out += xml.substring(pos);
+              break;
+            }
+            const pClose = xml.indexOf("</w:p>", pStart);
+            if (pClose === -1) {
+              out += xml.substring(pos);
+              break;
+            }
+            const pEnd = pClose + "</w:p>".length;
+            out += xml.substring(pos, pStart);
+            const para = xml.substring(pStart, pEnd);
+            const stitched = stitchPara(para);
+            if (stitched !== para) partTouched = true;
+            out += stitched;
+            pos = pEnd;
+          }
+          if (partTouched) {
+            fr_decompressed[part] = fr_encoder.encode(out);
+            debugLog(`[generate-document] Formal_Request_for_Information: stitched fragmented {{pr_li_lienHolder}} in ${part}`);
+          }
+        }
+        if (fr_touched) {
+          templateBuffer = fflate.zipSync(fr_decompressed);
+        }
+      } catch (frErr) {
+        const msg = frErr instanceof Error ? frErr.message : String(frErr);
+        console.error(`[generate-document] Formal_Request_for_Information stitch pass failed (continuing with original buffer): ${msg}`);
+      }
+    }
+
     let processedDocx: Uint8Array;
     const tRenderStart = performance.now();
     try {
@@ -7767,7 +8233,19 @@ async function generateSingleDocument(
       const tName = (template && typeof template.name === "string") ? template.name : "(unknown)";
       console.log(`[lender-sig] template=${tName} lenders.received=${lenderCount}`);
 
-      if (lenderCount > 1) {
+      // ── EXPLICIT SINGLE-LENDER EXCLUSION LIST ──
+      // Templates listed here must NEVER have additional-lender signature
+      // blocks appended, regardless of lender_count. Only the primary lender
+      // (ld_p_*) mappings are rendered. Uses module-level
+      // MULTI_LENDER_DISABLED_TEMPLATES as the single source of truth — see
+      // top of file. The lender alias publisher already caps lender_count
+      // to 1 for these templates; this guard is defense-in-depth.
+      const isLenderAppendExcluded = isMultiLenderDisabled(tName);
+      if (isLenderAppendExcluded) {
+        console.log(
+          `[lender-sig] template=${tName} classification=EXCLUDED_BY_NAME skipping per-lender append (single lender section only)`,
+        );
+      } else if (lenderCount > 1) {
         const fflateMod = await import("https://esm.sh/fflate@0.8.2");
         const unz = fflateMod.unzipSync(processedDocx);
         const docBytes = unz["word/document.xml"];
@@ -7775,7 +8253,24 @@ async function generateSingleDocument(
           const decoder = new TextDecoder("utf-8");
           const encoder = new TextEncoder();
           let docXml = decoder.decode(docBytes);
-          const visibleText = docXml.replace(/<[^>]+>/g, " ");
+          const xmlText = (s: string) => s
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&apos;/g, "'");
+          const visibleFromWordXml = (xml: string): string => {
+            const pieces: string[] = [];
+            const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:(?:tab|br)\b[^>]*\/>|<\/w:(?:p|tbl|tr)>/gi;
+            let sawContent = false;
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(xml)) !== null) {
+              sawContent = true;
+              pieces.push(m[1] !== undefined ? xmlText(m[1]) : " ");
+            }
+            return (sawContent ? pieces.join("") : xml.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+          };
+          const visibleText = visibleFromWordXml(docXml);
 
           // ── TEMPLATE CLASSIFICATION (LENDER_SPECIFIC vs COMMON_TEMPLATE) ──
           // Append per-lender signature blocks ONLY when the template is
@@ -7903,7 +8398,7 @@ async function generateSingleDocument(
               start: bm.index,
               end: bm.index + bm[0].length,
               xml: bm[0],
-              visible: bm[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+              visible: visibleFromWordXml(bm[0]),
             });
           }
           const replacements: Array<{ start: number; end: number; replacement: string; labelN: number }> = [];
@@ -7949,6 +8444,9 @@ async function generateSingleDocument(
               while ((mt = tTextRe.exec(labelBlock.xml)) !== null) {
                 if (/Lender\s*:/i.test(mt[1])) { labelText = mt[1]; break; }
               }
+              if (!labelText) {
+                labelText = (visibleFromWordXml(labelBlock.xml).match(/Lender\s*:\s*/i)?.[0]) || "";
+              }
               // Name block = the next non-empty block before Signature/Date,
               // or the same paragraph if name lives inline. Default: next block.
               let nameIdx = primaryIdx + 1;
@@ -7983,15 +8481,27 @@ async function generateSingleDocument(
                 if (sigXmls.length >= 3) break;
               }
               if (labelText && sawDate) {
+                // Keep only Signature/Date paragraphs in the per-lender clone.
+                // Some templates (e.g. "Addendum to LPDS") have a
+                // "Broker's Representative: <name>" paragraph sandwiched
+                // between the primary lender's name and its Signature/Date
+                // line — that line belongs to the Broker section and must
+                // not be cloned into every Lender 2..N block.
+                const sigOnly = sigXmls.filter((x) => {
+                  const v = visibleFromWordXml(x);
+                  if (/Broker/i.test(v)) return false;
+                  if (/\{\{/.test(v)) return false;
+                  return /\b(Signature|Date)\s*:/i.test(v) || /_{4,}/.test(v);
+                });
                 primaryTpl = {
                   labelXml: labelBlock.xml,
                   labelText,
                   nameXml,
                   nameText,
-                  sigXmls,
+                  sigXmls: sigOnly.length ? sigOnly : sigXmls,
                 };
                 console.log(
-                  `[lender-sig] template=${tName} primaryBlock.captured=true labelText="${labelText}" nameSep=${nameIdx !== primaryIdx} sigBlocks=${sigXmls.length}`,
+                  `[lender-sig] template=${tName} primaryBlock.captured=true labelText="${labelText}" nameSep=${nameIdx !== primaryIdx} sigBlocks=${sigXmls.length} sigBlocksFiltered=${sigOnly.length}`,
                 );
               }
             }
@@ -8091,70 +8601,109 @@ async function generateSingleDocument(
             }
 
 
-            // Helper: in a given paragraph XML, replace the first non-empty
-            // <w:t> whose inner text does NOT match `Lender\s*:` with the new
-            // displayName, and blank out any subsequent non-empty non-label
-            // <w:t>s. <w:br/> markers and run properties are preserved.
-            const swapNameInParagraph = (paraXml: string, newName: string): string => {
-              let replaced = false;
-              return paraXml.replace(
-                /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi,
-                (full, attrs, inner) => {
-                  if (!inner || !inner.trim()) return full;
-                  if (/Lender\s*:/i.test(inner)) return full; // skip the label run
-                  if (!replaced) {
-                    replaced = true;
-                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                    return `<w:t${a}>${xmlEsc(newName)}</w:t>`;
-                  }
-                  return `<w:t${attrs || ""}></w:t>`;
-                },
-              );
+            // Helper: rewrite a paragraph whose visible text contains
+            // "Lender:" so it reads "<newLabel> <newName>". Operates on the
+            // CONCATENATED text of every <w:t> in the paragraph so it works
+            // even when Word has split the label across multiple runs (e.g.
+            // `<w:t>L</w:t><w:t>ender: </w:t><w:t>Vesting123</w:t>`, which
+            // Note Purchaser produces due to spell-check / proofing markup).
+            // The rewritten text is placed into the FIRST non-empty <w:t>
+            // (preserving its rPr/xml:space) and every other <w:t> is blanked
+            // so run properties — and therefore font/size/bold — are kept.
+            const swapLabelAndNameInParagraph = (
+              paraXml: string,
+              newLabel: string,
+              newName: string,
+            ): string => {
+              // The primary "Lender:" paragraph may also contain inline
+              // additional lines after a <w:br/> (e.g. "Signature: ____").
+              // Only rewrite text on the FIRST visual line so any trailing
+              // Signature/Date line is preserved verbatim for each cloned
+              // lender block — otherwise the Signature line disappears.
+              const brRe = /<w:br\b[^/>]*\/>|<w:br\b[^>]*><\/w:br>/i;
+              const brMatch = brRe.exec(paraXml);
+              const brIdx = brMatch ? brMatch.index : -1;
+              const rawTail = brIdx === -1 ? "" : paraXml.slice(brIdx);
+              const tailContainsSignatureOrDate = !!rawTail && /\b(Signature|Date)\s*:/i.test(visibleFromWordXml(rawTail));
+              const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
+              const allToks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
+              let mm: RegExpExecArray | null;
+              while ((mm = re.exec(paraXml)) !== null) {
+                allToks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
+              }
+              const firstLineToks = tailContainsSignatureOrDate && brIdx !== -1
+                ? allToks.filter((t) => t.start < brIdx)
+                : [];
+              const toks = firstLineToks.map((t) => t.inner).join("").match(/Lender\s*:/i)
+                ? firstLineToks
+                : allToks;
+              if (!toks.length) return paraXml;
+              const concat = toks.map((t) => t.inner).join("");
+              const lm = /Lender\s*:/i.exec(concat);
+              if (!lm) return paraXml;
+              const before = concat.slice(0, lm.index).replace(/\s+$/, "");
+              const newText = `${before}${before ? " " : ""}${newLabel}${newName ? ` ${newName}` : ""}`;
+              let firstIdx = toks.findIndex((t) => t.inner.length > 0);
+              if (firstIdx === -1) firstIdx = 0;
+              const rewriteStarts = new Set(toks.map((t) => t.start));
+              const firstRewriteStart = toks[firstIdx]?.start;
+              let out = "";
+              let cursor = 0;
+              allToks.forEach((t) => {
+                out += paraXml.slice(cursor, t.start);
+                if (!rewriteStarts.has(t.start)) {
+                  out += paraXml.slice(t.start, t.end);
+                  cursor = t.end;
+                  return;
+                }
+                const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
+                const inner = t.start === firstRewriteStart ? xmlEsc(newText) : "";
+                out += `<w:t${a}>${inner}</w:t>`;
+                cursor = t.end;
+              });
+              out += paraXml.slice(cursor);
+              return out;
             };
 
-            // ORDER MATTERS for the inline-name case (label and name in the
-            // same <w:p>): do the NAME swap FIRST while the label run still
-            // reads "Lender:" so swapNameInParagraph correctly skips it.
-            // Swapping the label first would leave "Lender N:" in the label
-            // run, which `/Lender\s*:/i` does NOT match (digit between
-            // "Lender" and ":"), so the name pass would clobber the label
-            // and blank out the real name run — leaving the appended block
-            // with no label and no name.
-            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
-            let labelOut = tpl.labelXml;
-            if (inlineName) {
-              labelOut = swapNameInParagraph(labelOut, displayName);
-            }
-            // Now swap the label run: "Lender:" → "Lender N:" (preserve
-            // original trailing whitespace and xml:space="preserve").
-            const newLabel = `Lender ${labelN}:` + tpl.labelText.replace(/^.*?Lender\s*:/i, "");
-            labelOut = labelOut.replace(
-              /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
-              (full, attrs, inner) => {
-                if (!/Lender\s*:/i.test(inner)) return full;
-                const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                return `<w:t${a}>${xmlEsc(newLabel)}</w:t>`;
-              },
-            );
-
-
-            // 2) Separate name paragraph (when present): replace first non-empty
-            //    <w:t> with displayName, blank subsequent ones.
-            let nameOut = "";
-            if (!inlineName && tpl.nameXml) {
-              nameOut = swapNameInParagraph(tpl.nameXml, displayName);
-              if (nameOut === tpl.nameXml) {
-                // Primary had only empty <w:t>s — inject displayName into the first one.
-                nameOut = tpl.nameXml.replace(
-                  /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/i,
-                  (_full, attrs) => {
-                    const a = attrs && /xml:space=/.test(attrs) ? attrs : `${attrs || ""} xml:space="preserve"`;
-                    return `<w:t${a}>${xmlEsc(displayName)}</w:t>`;
-                  },
-                );
+            // Helper: replace the visible text of a separate name paragraph
+            // with `newName`, again operating across split runs.
+            const swapNameOnlyInParagraph = (paraXml: string, newName: string): string => {
+              const re = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/gi;
+              const toks: Array<{ start: number; end: number; attrs: string; inner: string }> = [];
+              let mm: RegExpExecArray | null;
+              while ((mm = re.exec(paraXml)) !== null) {
+                toks.push({ start: mm.index, end: mm.index + mm[0].length, attrs: mm[1] || "", inner: mm[2] });
               }
-            }
+              if (!toks.length) return paraXml;
+              let firstIdx = toks.findIndex((t) => t.inner.length > 0);
+              if (firstIdx === -1) firstIdx = 0;
+              let out = "";
+              let cursor = 0;
+              toks.forEach((t, i) => {
+                out += paraXml.slice(cursor, t.start);
+                const a = t.attrs && /xml:space=/.test(t.attrs) ? t.attrs : `${t.attrs || ""} xml:space="preserve"`;
+                const inner = i === firstIdx ? xmlEsc(newName) : "";
+                out += `<w:t${a}>${inner}</w:t>`;
+                cursor = t.end;
+              });
+              out += paraXml.slice(cursor);
+              return out;
+            };
+
+            // Compose the per-lender label, preserving the original trailing
+            // whitespace that followed "Lender:" in the captured labelText.
+            const trailing = tpl.labelText.replace(/^.*?Lender\s*:/i, "");
+            const newLabelText = `Lender ${labelN}:${trailing}`.replace(/\s+$/, "");
+
+            const inlineName = !tpl.nameXml || tpl.nameXml === tpl.labelXml;
+            const labelOut = swapLabelAndNameInParagraph(
+              tpl.labelXml,
+              newLabelText,
+              inlineName ? displayName : "",
+            );
+            const nameOut = !inlineName && tpl.nameXml ? swapNameOnlyInParagraph(tpl.nameXml, displayName) : "";
             return stripJustifyBoth(labelOut + nameOut + tpl.sigXmls.join(""));
+
           };
 
           for (let a = 1; a <= lenderCount - 1; a++) {
@@ -8226,6 +8775,7 @@ async function generateSingleDocument(
           }
 
           if (docXmlChanged) {
+            validateContentXmlPart("word/document.xml", docXml);
             unz["word/document.xml"] = encoder.encode(docXml);
             processedDocx = fflateMod.zipSync(unz, { level: 0 });
           }
@@ -8238,9 +8788,15 @@ async function generateSingleDocument(
 
       }
     } catch (appendErr) {
+      const appendMessage = appendErr instanceof Error ? appendErr.message : String(appendErr);
+      if (appendMessage.startsWith("DOCX_INTEGRITY")) {
+        console.error(`[lender-sig] generated DOCX failed integrity after lender signature pass: ${appendMessage}`);
+        result.error = `Generated document failed integrity check (${appendMessage.replace(/^DOCX_INTEGRITY:\s*/, "")}). Please regenerate after the template is corrected.`;
+        return result;
+      }
       console.warn(
         "[lender-sig] universal lender signature pass failed:",
-        appendErr instanceof Error ? appendErr.message : String(appendErr),
+        appendMessage,
       );
     }
 

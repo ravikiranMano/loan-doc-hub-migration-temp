@@ -218,7 +218,14 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const soldRate = values['loan_terms.sold_rate_enabled'] ? (values['loan_terms.sold_rate_company'] || values['loan_terms.sold_rate'] || '') : '';
   const totalPayment = values['loan_terms.regular_payment'] || values['loan_terms.total_payment'] || '';
   const loanAmount = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || '';
-  const loanPrincipalBalance = values['loan_terms.principal'] || '';
+  // Funding is anchored to Loan → Terms & Balances → Original Amount.
+  // All funding math (Pro Rata, Current Balance fill, over-funding guard) flows
+  // from this single source; falls back to loan_terms.principal only if Original
+  // Amount has not been entered yet so legacy deals keep working.
+  const loanPrincipalBalance =
+    values['loan_terms.original_amount'] ||
+    values['loan_terms.principal'] ||
+    '';
   const remainingPayments = parseFloat(values['ln_p_termMonths'] || '') || 0;
 
   // Parse funding records from stored JSON value
@@ -352,11 +359,11 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       };
     };
 
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (storedValue) {
       return parsed.map(enrich);
     }
 
-    // Derive from funding records as a fallback (no DB writes here)
+    // Derive from funding records as a fallback only when no history field exists (no DB writes here)
     if (!recs.length) return [];
     return recs.map((r) => ({
       id: `history-${r.id || r.lenderAccount || Math.random()}`,
@@ -659,6 +666,20 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
     onValueChange(FIELD_KEYS.fundingRecords, JSON.stringify(updatedRecords));
 
+    // Clear any sessionStorage drafts associated with this loan so that
+    // re-opening the Add Funding modal — for a brand-new lender or for the
+    // just-deleted lender's id — never restores stale funding amounts.
+    try {
+      const prefix = 'addFundingDraft:';
+      const keysToClear: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(prefix)) keysToClear.push(k);
+      }
+      keysToClear.forEach((k) => sessionStorage.removeItem(k));
+    } catch { /* ignore */ }
+
+    // Mirror deletion into Funding History so the history grid auto-updates
     const historyValue = values[FIELD_KEYS.fundingHistory];
     let history: any[] = [];
     try {

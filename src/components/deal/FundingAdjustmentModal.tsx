@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2, X } from 'lucide-react';
-import { formatPercentDisplay } from '@/lib/precisionFormat';
+import { formatPercentDisplay, allocateDollarsByPercentsWithReconciliation } from '@/lib/precisionFormat';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
@@ -130,13 +130,14 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
       setDescriptionType('');
 
       // Pre-populate lender rows from existing funding records.
-      // Pro Rata is recomputed locally as principalBalance / SUM(principalBalance)
-      // so it always reflects funded totals, not the original loan amount. The
-      // funding record flagged with `roundingAdjustment` absorbs the fractional
-      // residual so the column totals 100.0000%.
+      // Pro Rata is recomputed locally as originalAmount / SUM(originalAmount)
+      // so it always reflects each lender's original funding share — never
+      // outstanding/principal balance, which would drift as the loan is paid
+      // down. The funding record flagged with `roundingAdjustment` absorbs
+      // the fractional residual so the column totals 100.0000%.
       if (fundingRecords.length > 0) {
         const totalFunded = fundingRecords.reduce(
-          (s, r) => s + (Number(r.principalBalance) || 0), 0
+          (s, r) => s + (Number(r.originalAmount) || 0), 0
         );
         const adjIdx = fundingRecords.findIndex(r => (r as any).roundingAdjustment);
         const proRataMap = new Map<string, number>();
@@ -144,7 +145,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
           let sumOthers = 0;
           fundingRecords.forEach((r, i) => {
             if (i === adjIdx) return;
-            const pct = parseFloat(((Number(r.principalBalance) || 0) / totalFunded * 100).toFixed(4));
+            const pct = parseFloat(((Number(r.originalAmount) || 0) / totalFunded * 100).toFixed(4));
             proRataMap.set(r.id, pct);
             sumOthers += pct;
           });
@@ -192,19 +193,30 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [open, adjustmentAmount, asOfDate, distributeByProRata, description, descriptionType, lenders]);
 
-  // Distribute by Pro Rata
+  // Distribute by Pro Rata — penny-safe reconciliation.
+  // Calculate every lender's share at full Decimal precision, round to 2dp,
+  // then assign the residual penny delta to the largest allocation so the
+  // sum of rounded shares reconciles EXACTLY to the input adjustment total.
+  // Never round per-row in isolation — that's what produces $0.01 drift on
+  // splits like $100 / 3 lenders or 27.2727 / 36.3636 / 36.3637 %.
   useEffect(() => {
     if (!distributeByProRata || !adjustmentAmount) return;
     const totalAdj = safeParseFloat(adjustmentAmount);
     if (totalAdj === 0) return;
 
-    setLenders((prev) =>
-      prev.map((l) => {
-        const proRata = parseFloat(l.proRata) || 0;
-        const share = (totalAdj * proRata) / 100;
-        return { ...l, adjustment: formatCurrencyDisplay(share.toFixed(2)) };
-      })
-    );
+    setLenders((prev) => {
+      const pcts = prev.map((l) => l.proRata);
+      const shares = allocateDollarsByPercentsWithReconciliation(totalAdj, pcts);
+      if (shares.length !== prev.length) {
+        // Fallback: invalid percent input — leave rows untouched rather than
+        // corrupting allocations.
+        return prev;
+      }
+      return prev.map((l, i) => ({
+        ...l,
+        adjustment: formatCurrencyDisplay(shares[i]),
+      }));
+    });
   }, [distributeByProRata, adjustmentAmount]);
 
   const handleAddLender = () => {
@@ -234,19 +246,20 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
   };
 
   const handleLenderSelect = (id: string, lenderId: string, lenderName: string) => {
-    // Auto-fill from funding records. Pro Rata uses the sum-of-funding
-    // denominator so it matches the grid display.
+    // Auto-fill from funding records. Pro Rata uses Original Amount as the
+    // authoritative calculation basis (never Current/Principal Balance) so
+    // it matches the funding grid display.
     const fundingMatch = fundingRecords.find(
       (r) => r.lenderAccount === lenderId || r.lenderName === lenderName
     );
     let matchProRata: number | undefined;
     if (fundingMatch) {
       const totalFunded = fundingRecords.reduce(
-        (s, r) => s + (Number(r.principalBalance) || 0), 0
+        (s, r) => s + (Number(r.originalAmount) || 0), 0
       );
       if (totalFunded > 0) {
         matchProRata = parseFloat(
-          ((Number(fundingMatch.principalBalance) || 0) / totalFunded * 100).toFixed(4)
+          ((Number(fundingMatch.originalAmount) || 0) / totalFunded * 100).toFixed(4)
         );
       }
     }

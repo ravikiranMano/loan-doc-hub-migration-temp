@@ -149,13 +149,30 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
 
   const handleSave = useCallback(async (id: string, contactData: Record<string, string>) => {
     if (isReadOnly) return false;
-    // Bidirectional sync so AG detail values persist + display correctly:
-    //  1) Hydrate prefixed AG keys from any canonical values present
-    //     (covers the case where existing data was saved canonically only).
-    //  2) Mirror prefixed AG values back into canonical top-level/contact_data
-    //     keys so the Additional Guarantors grid populates after save.
     const hydrated = hydratePrefixedFromCanonical(contactData, 'borrower.guarantor.');
     const mirrored = mirrorPrefixedToCanonical(hydrated, 'borrower.guarantor.');
+    // Catch-all: ensure EVERY borrower.guarantor.* key is mirrored to its
+    // canonical (unprefixed) key. AG detail form is the source of truth, so
+    // OVERWRITE the canonical value (previously stale top-level values could
+    // shadow new AG-form edits for Borrower Type, City, State, Phone, etc.).
+    Object.entries(mirrored).forEach(([k, v]) => {
+      if (k.startsWith('borrower.guarantor.')) {
+        const canon = k.slice('borrower.guarantor.'.length);
+        if (canon && typeof v === 'string' && v !== '') {
+          mirrored[canon] = v;
+        }
+      }
+    });
+    // Explicit top-level mirrors so updateContact's `contacts` row columns
+    // (full_name/first_name/last_name/phone/city/state) reliably populate.
+    const ag = (k: string) => mirrored[`borrower.guarantor.${k}`];
+    if (ag('full_name')) mirrored.full_name = ag('full_name');
+    if (ag('first_name')) mirrored.first_name = ag('first_name');
+    if (ag('last_name')) mirrored.last_name = ag('last_name');
+    if (ag('address.city')) mirrored.city = ag('address.city');
+    if (ag('address.state') || ag('state')) mirrored.state = ag('address.state') || ag('state');
+    const agPhone = ag('phone.cell') || ag('phone.mobile') || ag('phone.home') || ag('phone.work');
+    if (agPhone) mirrored.phone = agPhone;
     return await crud.updateContact(id, mirrored);
   }, [crud, isReadOnly]);
 
@@ -175,6 +192,12 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
 
   const renderCellValue = useCallback((contact: ContactRecord, columnId: string): React.ReactNode => {
     const cd = (contact.contact_data || {}) as Record<string, string>;
+    const ag = (key: string) => cd[`${AG_PREFIX}${key}`] || '';
+    const firstValue = (...values: Array<string | null | undefined>) => values.find((v) => typeof v === 'string' && v !== '') || '';
+
+    if (columnId === 'borrower_type') {
+      return firstValue(ag('borrower_type'), cd.borrower_type) || '-';
+    }
 
     if (columnId === 'preferred_phone') {
       if (cd['preferred.home'] === 'true') return 'Home';
@@ -185,8 +208,13 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
       return '-';
     }
 
+    if (columnId === 'phone.home') {
+      const val = firstValue(ag('phone.home'), cd['phone.home']);
+      return val || '-';
+    }
+
     if (columnId === 'phone.cell') {
-      const val = cd['phone.cell'] || cd['phone.mobile'] || '';
+      const val = firstValue(ag('phone.cell'), ag('phone.mobile'), cd['phone.cell'], cd['phone.mobile'], contact.phone);
       return val || '-';
     }
 
@@ -212,11 +240,17 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
       company: contact.company,
     };
     if (columnId in topLevel) {
-      const val = topLevel[columnId] || '';
+      let val = firstValue(topLevel[columnId], cd[columnId], ag(columnId));
+      if (columnId === 'full_name') val = firstValue(ag('full_name'), cd.full_name, contact.full_name, `${firstValue(ag('first_name'), cd.first_name, contact.first_name)} ${firstValue(ag('last_name'), cd.last_name, contact.last_name)}`.trim());
+      if (columnId === 'first_name') val = firstValue(ag('first_name'), cd.first_name, contact.first_name);
+      if (columnId === 'last_name') val = firstValue(ag('last_name'), cd.last_name, contact.last_name);
+      if (columnId === 'phone') val = firstValue(ag('phone.cell'), ag('phone.mobile'), ag('phone.home'), ag('phone.work'), contact.phone, cd.phone, cd['phone.cell'], cd['phone.mobile'], cd['phone.home'], cd['phone.work']);
+      if (columnId === 'city') val = firstValue(ag('address.city'), ag('city'), contact.city, cd.city, cd['address.city']);
+      if (columnId === 'state') val = firstValue(ag('state'), ag('address.state'), contact.state, cd.state, cd['address.state']);
       if (columnId === 'full_name') return <span className="font-medium">{val || '-'}</span>;
       return val || '-';
     }
-    return cd[columnId] || '-';
+    return firstValue(cd[columnId], ag(columnId)) || '-';
   }, []);
 
   if (selectedContact) {
@@ -250,7 +284,7 @@ const ContactAdditionalGuarantorsPage: React.FC = () => {
         onCreateNew={() => setModalOpen(true)}
         onDeleteSelected={isReadOnly ? undefined : handleDeleteSelected}
         defaultColumns={DEFAULT_COLUMNS}
-        tableConfigKey="contact_additional_guarantors_v1"
+        tableConfigKey="contact_additional_guarantors_v2"
         addButtonLabel="Add Additional Guarantor"
         breadcrumbLabel="Additional Guarantors"
         filterOptions={FILTER_OPTIONS}

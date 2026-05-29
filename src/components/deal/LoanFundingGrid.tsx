@@ -309,18 +309,19 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // Effective loan principal balance (LOAN-LEVEL): single source of truth.
   // Bound directly to loan_terms.principal (Loan → Balances → Principal).
   // Fallback: when principal is not yet entered, derive from the sum of
-  // lender Current Balances (or Funding Amounts) so Pro Rata still resolves
-  // for the user — otherwise denominator = 0 and every row shows 0.00%.
+  // lender Original (Funding) Amounts so Pro Rata still resolves for the user
+  // — otherwise denominator = 0 and every row shows 0.00%.
+  // NOTE: Funding calculations always use Original Amount, never Current
+  // Balance or Principal Balance, so the same field powers numerator + fallback
+  // denominator and the math stays consistent across lender add/edit/delete.
   const effectiveLoanPrincipal = React.useMemo(() => {
     const parsed = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, ''));
     if (!isNaN(parsed) && parsed > 0) return parsed;
-    const sumCurrent = fundingRecords.reduce((s, r) => {
-      const cb = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
-        ? r.currentBalance
-        : (r.originalAmount || 0);
-      return s + (cb || 0);
-    }, 0);
-    return sumCurrent > 0 ? sumCurrent : 0;
+    const sumOriginal = fundingRecords.reduce(
+      (s, r) => s + (r.originalAmount || 0),
+      0,
+    );
+    return sumOriginal > 0 ? sumOriginal : 0;
   }, [loanPrincipalBalance, fundingRecords]);
 
   // Strict tolerance: only floating-point rounding noise ($0.01) is allowed.
@@ -333,16 +334,12 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return new Decimal(parseFloat(String(totalPayment || '').replace(/[$,]/g, '')) || 0);
   }, [totalPayment]);
 
-  // Helper: per-record current balance (preferred) or fallback to original
-  // minus disbursements. Used as the canonical numerator for Pro Rata.
+  // Canonical numerator for every funding calculation (Pro Rata, Payment
+  // split, totals, funded/unfunded status). Always the lender's Original
+  // Amount — never Current Balance or Principal Balance. Kept as
+  // `computeCurrentBalance` to avoid touching the many existing call sites.
   const computeCurrentBalance = (record: FundingRecord): number => {
-    if (record.currentBalance !== undefined && record.currentBalance !== null && !isNaN(record.currentBalance)) {
-      return record.currentBalance;
-    }
-    const disbSum = (record.disbursements || []).reduce(
-      (s, d) => s + (parseFloat(String(d.amount || '').replace(/[$,]/g, '')) || 0), 0
-    );
-    return Math.max(0, (record.originalAmount || 0) - disbSum);
+    return record.originalAmount || 0;
   };
 
   // Pro Rata: lender CURRENT BALANCE / loan PRINCIPAL × 100. Stored at 6dp,
@@ -448,11 +445,12 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   const totalNetPaymentSum = fundingRecords.reduce((sum, r) => sum + getNetPayment(r), 0);
   const totalFundingAmount = fundingRecords.reduce((sum, r) => sum + r.originalAmount, 0);
 
-  // Funding status compares the larger of Funding Amount total and Current
-  // Balance total vs loan principal. Neither total may exceed Balance.
-  // Over-funding is blocked at edit time (see AddFundingModal) — this branch
-  // remains as a defensive surface to flag any legacy bad data.
-  const fundedAmount = Math.max(totalCurrentBalance, totalFundingAmount);
+  // Funding status compares total Original (Funding) Amount vs loan principal.
+  // Original Amount is the single source of truth for funding completeness —
+  // Current Balance and Principal Balance never participate in funded/unfunded
+  // math. Over-funding is blocked at edit time (see AddFundingModal); this
+  // branch remains as a defensive surface to flag any legacy bad data.
+  const fundedAmount = totalFundingAmount;
   const unfundedAmount = Math.max(0, effectiveLoanPrincipal - fundedAmount);
   const overAmount = Math.max(0, fundedAmount - effectiveLoanPrincipal);
   const fundedPct = effectiveLoanPrincipal > 0
@@ -628,35 +626,30 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
         return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
       case 'lenderRate': {
+        // Mirror Add/Edit Lender Funding modal's Lender Rate resolution so the
+        // grid stays in sync with what the modal would show for this lender:
+        //   1. Manual Override on (valid value) → override value
+        //   2. Live Sold Rate (from Loan Terms) if valid
+        //   3. Live Note Rate (from Loan Terms) if valid
+        //   4. Stored record.lenderRate (last saved)
+        //   5. Stored rateSoldValue / rateNoteValue snapshots
+        const overrideOn = !!record.lenderRateOverride;
+        const overrideVal = (record.lenderRateOverrideValue || '').toString().trim();
+        const overrideNum = parseFloat(overrideVal.replace(/[%,]/g, '')) || 0;
+        if (overrideOn && overrideNum > 0) {
+          return <span>{formatPercentage(overrideNum, 3)}</span>;
+        }
+        const liveSold = (soldRate || record.rateSoldValue || '').toString().trim();
+        const liveSoldNum = parseFloat(liveSold.replace(/[%,]/g, '')) || 0;
+        const liveNote = (noteRate || record.rateNoteValue || record.noteRateDisplay || '').toString().trim();
+        const liveNoteNum = parseFloat(liveNote.replace(/[%,]/g, '')) || 0;
+        const syncedNum = liveSoldNum > 0 ? liveSoldNum : liveNoteNum;
+        if (syncedNum > 0) {
+          return <span>{formatPercentage(syncedNum, 3)}</span>;
+        }
+
         if (hasLenderRate(record)) {
           return <span>{formatPercentage(record.lenderRate, 3)}</span>;
-        }
-        // Auto-fill display: when no explicit Lender Rate is stored, fall back
-        // to Sold Rate (if valid) else Note Rate so the cell never appears
-        // blank. Manual overrides are already persisted into record.lenderRate
-        // on save, so the hasLenderRate branch above handles them.
-        const recSold = (record.rateSoldValue || soldRate || '').trim();
-        const hasValidSold = recSold !== '' && !isNaN(parseFloat(recSold)) && parseFloat(recSold) > 0;
-        const fallbackRaw = hasValidSold
-          ? recSold
-          : (noteRate || record.rateNoteValue || record.noteRateDisplay || '').toString().trim();
-        const fallbackNum = parseFloat(fallbackRaw.replace(/[%,]/g, '')) || 0;
-        if (fallbackNum > 0) {
-          return (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1">
-                    <span>{formatPercentage(fallbackNum, 3)}</span>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">auto</span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  Auto-filled from {hasValidSold ? 'Sold Rate' : 'Note Rate'}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          );
         }
         return (
           <TooltipProvider delayDuration={200}>
@@ -838,7 +831,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             />
           </div>
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-foreground font-medium shrink-0">Balance</Label>
+            <Label className="text-xs text-foreground font-medium shrink-0">Original Amount</Label>
             <div className="relative">
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
               <Input
@@ -961,28 +954,13 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
 
       {fundingStatus === 'over' && (
         <p className="text-sm text-destructive font-medium">
-          ⚠ Funding exceeds loan principal balance by {formatCurrency(overAmount)}.
+          ⚠ Funding exceeds loan original amount by {formatCurrency(overAmount)}.
         </p>
       )}
 
       {fundingRecords.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
-            {fundingStatus === 'full' && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600 text-white">
-                      Fully Funded
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs max-w-[280px]">
-                    Funding Amount and Current Balance are locked because loan is fully funded.
-                    Use Funding Adjustment to modify allocations.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
 
             {effectiveLoanPrincipal > 0 ? (
               fundingStatus === 'full' ? null : (

@@ -31,10 +31,21 @@ import {
   Eye,
   Edit,
   Trash2,
+  Copy,
   ChevronLeft,
   ChevronRight,
   RefreshCw
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,6 +94,64 @@ const modeLabels: Record<string, string> = {
 const PAGE_SIZE = 10;
 const DEALS_CACHE_KEY = 'deals_page_cache';
 
+const FUNDING_OPERATIONAL_FIELD_KEYS = [
+  'loan_terms.funding_history',
+  'ln_p_fundingHistor',
+  'loan_terms.funding_adjustments',
+];
+
+const CLEAN_FUNDING_HISTORY_KEYS = new Set([
+  'loan_terms.funding_history',
+  'ln_p_fundingHistor',
+  'loan_terms.funding_adjustments',
+]);
+
+const CONTACT_OPERATIONAL_KEYWORDS = [
+  'history',
+  'conversation',
+  'attachment',
+  'event_journal',
+  'events_journal',
+  'audit',
+  'activity',
+  'workflow',
+  'task_history',
+  'status_history',
+  'communication',
+  'internal_notes',
+  'chat',
+  'sms',
+];
+
+const isOperationalContactDataKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  return normalized.startsWith('_') && CONTACT_OPERATIONAL_KEYWORDS.some((token) => normalized.includes(token));
+};
+
+const sanitizeContactDataForCopy = (contactData: unknown) => {
+  const source = contactData && typeof contactData === 'object'
+    ? contactData as Record<string, unknown>
+    : {};
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => !isOperationalContactDataKey(key))
+  );
+};
+
+const isOperationalCloneFieldKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  if (normalized.includes('funding_history') || normalized.includes('fundinghistor') || normalized.includes('funding_adjustments')) {
+    return true;
+  }
+
+  const isContactScoped = /^(borrower|coborrower|co_borrower|broker|lender|authorized_party|additional_guarantor|other|contact|participant|notes_entry)[._]/.test(normalized);
+  return isContactScoped && CONTACT_OPERATIONAL_KEYWORDS.some((token) => normalized.includes(token));
+};
+
+const getCanonicalFundingHistoryKey = (fieldKey: string) => {
+  if (fieldKey === 'ln_p_fundingHistor') return 'loan_terms.funding_history';
+  return fieldKey;
+};
+
 interface DealsPageCache {
   deals: Deal[];
   totalCount: number;
@@ -107,6 +176,10 @@ export const DealsPage: React.FC = () => {
   const workspace = useWorkspaceOptional();
   const { user } = useAuth();
   const [creating, setCreating] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<Deal | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Deal | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [deals, setDeals] = useState<Deal[]>(cachedState?.deals || []);
   const [loading, setLoading] = useState(!cachedState);
   const [searchQuery, setSearchQuery] = useState('');
@@ -252,11 +325,11 @@ export const DealsPage: React.FC = () => {
     }
   };
   const handleDelete = async (deal: Deal) => {
-    if (!confirm(`Delete file ${deal.deal_number}?`)) return;
-
+    setDeleting(true);
     try {
       await deleteDeal(deal.id);
-      toast({ title: 'File deleted' });
+      toast({ title: 'File deleted', description: `File ${deal.deal_number} has been deleted.` });
+      setDeleteTarget(null);
       fetchDeals(currentPage);
     } catch (error: any) {
       toast({
@@ -264,8 +337,265 @@ export const DealsPage: React.FC = () => {
         description: error.message || 'Failed to delete file',
         variant: 'destructive',
       });
+    } finally {
+      setDeleting(false);
     }
   };
+
+  // Create Copy / Clone Loan — duplicates business setup into a brand-new
+  // independent file. Explicitly whitelists the rows we copy (deals row,
+  // deal_section_values, deal_field_values, deal_participants) and skips
+  // everything else (generated_documents, event_journal, activity_log,
+  // messages, loan_history*) so no historical/system-generated data leaks
+  // into the copy. Uses existing insert APIs only — no new tables/schema.
+  const handleCopyDeal = async (source: Deal) => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      // 1. Generate new unique file number
+      const { data: dealNumber, error: numErr } = await supabase.rpc('generate_deal_number');
+      if (numErr) throw numErr;
+
+      // 2. Re-fetch full source deal (the grid row omits notes/packet_id)
+      const { data: src, error: srcErr } = await supabase
+        .from('deals')
+        .select('*')
+        .eq('id', source.id)
+        .single();
+      if (srcErr) throw srcErr;
+
+      // 3. Insert new deal — copy business setup, reset system metadata
+      const { data: newDeal, error: insErr } = await supabase
+        .from('deals')
+        .insert({
+          deal_number: dealNumber,
+          state: src.state || 'TBD',
+          product_type: src.product_type || 'TBD',
+          mode: src.mode || 'doc_prep',
+          status: 'draft', // always start fresh
+          packet_id: src.packet_id ?? null,
+          loan_amount: src.loan_amount ?? null,
+          property_address: src.property_address ?? null,
+          borrower_name: src.borrower_name ?? null,
+          notes: src.notes ?? null,
+          created_by: user?.id,
+        })
+        .select()
+        .single();
+      if (insErr) throw insErr;
+
+      const newDealId = newDeal.id as string;
+
+      // 3a. Resolve field_dictionary IDs for operational/history fields that
+      //     must NOT be cloned (funding history + funding override history).
+      //     Stored both as composite keys inside deal_section_values.loan_terms
+      //     and as typed rows in deal_field_values.
+      const { data: excludeDictRows } = await supabase
+        .from('field_dictionary')
+        .select('id, field_key')
+        .or(
+          FUNDING_OPERATIONAL_FIELD_KEYS
+            .map((key) => `field_key.eq.${key}`)
+            .concat(CONTACT_OPERATIONAL_KEYWORDS.map((token) => `field_key.ilike.%${token}%`))
+            .join(',')
+        );
+      const excludedDictIds = new Set<string>();
+      const excludedDbKeys = new Set<string>();
+      const emptyFundingHistoryDictRow = (excludeDictRows || []).find((r: any) =>
+        getCanonicalFundingHistoryKey(r.field_key) === 'loan_terms.funding_history'
+      ) as any | undefined;
+      (excludeDictRows || []).forEach((r: any) => {
+        if (isOperationalCloneFieldKey(r.field_key) || CLEAN_FUNDING_HISTORY_KEYS.has(getCanonicalFundingHistoryKey(r.field_key))) {
+          excludedDictIds.add(r.id);
+          excludedDbKeys.add(r.field_key);
+        }
+      });
+
+      // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
+      //    property, contacts prefixes, funding setup, custom fields, etc.)
+      //    EXCLUDES the 'notes' section so the copied loan starts with a
+      //    completely clean Conversation Log, and strips any composite keys
+      //    that reference funding history / funding override history so the
+      //    copied loan has zero funding event records.
+      const { data: sectionRows, error: secErr } = await supabase
+        .from('deal_section_values')
+        .select('section, field_values, version')
+        .eq('deal_id', source.id)
+        .neq('section', 'notes');
+      if (secErr) throw secErr;
+      if (sectionRows && sectionRows.length > 0) {
+        const payload = sectionRows.map((r: any) => {
+          const cleaned: Record<string, any> = {};
+          const fv = (r.field_values && typeof r.field_values === 'object') ? r.field_values : {};
+          for (const [k, v] of Object.entries(fv)) {
+            const tail = k.includes('::') ? k.split('::').pop()! : k;
+            if (excludedDictIds.has(tail)) continue;
+            if (excludedDbKeys.has(tail) || isOperationalCloneFieldKey(k)) continue;
+            if (v && typeof v === 'object') {
+              const fieldData = v as Record<string, any>;
+              const indexedKey = String(fieldData.indexed_key || fieldData.indexed_db_key || '');
+              if (indexedKey && isOperationalCloneFieldKey(indexedKey)) continue;
+            }
+            cleaned[k] = v;
+          }
+          if (r.section === 'loan_terms' && emptyFundingHistoryDictRow?.id) {
+            cleaned[emptyFundingHistoryDictRow.id] = {
+              value_text: '[]',
+              indexed_key: 'loan_terms.funding_history',
+              indexed_db_key: emptyFundingHistoryDictRow.field_key,
+              updated_at: new Date().toISOString(),
+            };
+          }
+          return {
+            deal_id: newDealId,
+            section: r.section,
+            field_values: cleaned,
+            version: r.version ?? 1,
+          };
+        });
+        const { error } = await supabase.from('deal_section_values').insert(payload);
+        if (error) throw error;
+      }
+
+      // 5. Copy deal_field_values (typed per-field values referenced by the
+      //    field_dictionary). Same field_dictionary_id, new deal_id.
+      //    EXCLUDES funding history / funding override history rows.
+      const { data: fieldRows, error: fldErr } = await supabase
+        .from('deal_field_values')
+        .select('field_dictionary_id, value_text, value_number, value_date, value_json')
+        .eq('deal_id', source.id);
+      if (fldErr) throw fldErr;
+      if (fieldRows && fieldRows.length > 0) {
+        const filtered = fieldRows.filter((r: any) => !excludedDictIds.has(r.field_dictionary_id));
+        if (filtered.length > 0) {
+          const payload = filtered.map((r: any) => ({
+            deal_id: newDealId,
+            field_dictionary_id: r.field_dictionary_id,
+            value_text: r.value_text,
+            value_number: r.value_number,
+            value_date: r.value_date,
+            value_json: r.value_json,
+            updated_by: user?.id,
+          }));
+          const { error } = await supabase.from('deal_field_values').insert(payload);
+          if (error) throw error;
+        }
+      }
+
+      // 6. Copy deal_participants as NEW relationship mappings and clone the
+      //    linked contact setup into clean contact rows. This prevents any
+      //    original contact history/conversation/attachment/event data from
+      //    reloading through a reused contact_id.
+      const { data: partRows, error: partErr } = await supabase
+        .from('deal_participants')
+        .select('contact_id, role, name, email, phone, sequence_order, access_method')
+        .eq('deal_id', source.id);
+      if (partErr) throw partErr;
+      if (partRows && partRows.length > 0) {
+        const sourceContactIds = Array.from(new Set(partRows.map((p: any) => p.contact_id).filter(Boolean)));
+        const clonedContactIds = new Map<string, string>();
+
+        if (sourceContactIds.length > 0) {
+          const { data: contacts, error: contactsErr } = await supabase
+            .from('contacts')
+            .select('id, contact_id, contact_type, full_name, first_name, last_name, email, phone, city, state, company, contact_data')
+            .in('id', sourceContactIds);
+          if (contactsErr) throw contactsErr;
+
+          for (const contact of (contacts || []) as any[]) {
+            const { data: generatedContactId, error: contactIdErr } = await supabase.rpc('generate_contact_id', { p_type: contact.contact_type });
+            if (contactIdErr) throw contactIdErr;
+
+            const { data: clonedContact, error: cloneContactErr } = await supabase
+              .from('contacts')
+              .insert({
+                contact_type: contact.contact_type,
+                contact_id: generatedContactId as string,
+                created_by: user?.id,
+                full_name: contact.full_name || '',
+                first_name: contact.first_name || '',
+                last_name: contact.last_name || '',
+                email: contact.email || '',
+                phone: contact.phone || '',
+                city: contact.city || '',
+                state: contact.state || '',
+                company: contact.company || '',
+                contact_data: sanitizeContactDataForCopy(contact.contact_data) as any,
+              })
+              .select('id')
+              .single();
+            if (cloneContactErr) throw cloneContactErr;
+            clonedContactIds.set(contact.id, clonedContact.id);
+          }
+        }
+
+        const payload = partRows.map((p: any) => ({
+          deal_id: newDealId,
+          contact_id: p.contact_id ? (clonedContactIds.get(p.contact_id) ?? null) : null,
+          role: p.role,
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          sequence_order: p.sequence_order,
+          access_method: p.access_method ?? 'login',
+          status: 'invited' as const, // reset workflow status
+          // user_id, completed_at, revoked_at intentionally left NULL
+        }));
+        const { error } = await supabase.from('deal_participants').insert(payload);
+        if (error) throw error;
+
+        if (clonedContactIds.size > 0) {
+          const { data: participantSection } = await supabase
+            .from('deal_section_values')
+            .select('id, field_values')
+            .eq('deal_id', newDealId)
+            .eq('section', 'participants')
+            .maybeSingle();
+
+          if (participantSection?.field_values) {
+            const remappedValues: Record<string, any> = {};
+            Object.entries(participantSection.field_values as Record<string, any>).forEach(([key, value]) => {
+              let remappedKey = key;
+              clonedContactIds.forEach((newContactId, oldContactId) => {
+                remappedKey = remappedKey.replace(oldContactId, newContactId);
+              });
+              remappedValues[remappedKey] = value;
+            });
+            await supabase
+              .from('deal_section_values')
+              .update({ field_values: remappedValues, updated_at: new Date().toISOString() })
+              .eq('id', participantSection.id);
+          }
+        }
+      }
+
+      // 7. Explicitly DO NOT copy: generated_documents, event_journal,
+      //    activity_log, messages, loan_history, loan_history_lenders,
+      //    magic_links, generation_jobs, and the 'notes' section of
+      //    deal_section_values (Conversation Log). These rows are tied by
+      //    deal_id to the original file and the new file starts with an
+      //    empty history and a clean communication record.
+
+      toast({
+        title: 'File copied',
+        description: `New file ${dealNumber} created from ${source.deal_number}.`,
+      });
+      setCopyTarget(null);
+      // Open the new loan in edit mode
+      navigate(`/deals/${newDealId}/edit`, { state: { resetToLoanTerms: true } });
+    } catch (error: any) {
+      console.error('Error copying deal:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to copy file',
+        variant: 'destructive',
+      });
+    } finally {
+      setCopying(false);
+    }
+  };
+
+
 
   const formatCurrency = (amount: number | null) => {
     if (!amount) return '—';
@@ -480,12 +810,17 @@ export const DealsPage: React.FC = () => {
                             <Edit className="h-4 w-4 mr-2" />
                             Enter Data
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
+                            setCopyTarget(deal);
+                          }}>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Create Copy
+                          </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(deal);
-                            }}
-                            className="text-destructive"
+                            disabled
+                            onSelect={(e) => e.preventDefault()}
+                            className="text-destructive opacity-50 cursor-not-allowed"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Delete
@@ -556,6 +891,62 @@ export const DealsPage: React.FC = () => {
           )}
         </div>
       )}
+
+      <AlertDialog open={!!copyTarget} onOpenChange={(open) => { if (!open && !copying) setCopyTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create a copy of this loan/file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The new loan will copy setup and entered data from{' '}
+              <span className="font-medium text-foreground">{copyTarget?.deal_number}</span>{' '}
+              but will <span className="font-medium">NOT</span> copy generated documents,
+              communication history, event logs, or transaction history. A new unique file
+              number will be assigned.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={copying}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={copying}
+              onClick={(e) => {
+                e.preventDefault();
+                if (copyTarget) handleCopyDeal(copyTarget);
+              }}
+            >
+              {copying ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Copy className="h-4 w-4 mr-2" />}
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete file no.{' '}
+              <span className="font-medium text-foreground">{deleteTarget?.deal_number}</span>?
+              This action cannot be undone and will permanently remove all data associated
+              with this file.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) handleDelete(deleteTarget);
+              }}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MaxFilesDialog
         open={showMaxFilesDialog}

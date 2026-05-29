@@ -18,6 +18,8 @@ import { useQueryClient } from '@tanstack/react-query';
 interface EventJournalViewerProps {
   dealId: string;
   disabled?: boolean;
+  /** When true, refetch journal entries (e.g. tab became visible). */
+  active?: boolean;
 }
 
 function formatDetailsPreview(details: FieldChange[]): string {
@@ -71,7 +73,7 @@ const EXPORT_COLUMNS: ExportColumn[] = [
 
 const PAGE_SIZE = 10;
 
-export const EventJournalViewer: React.FC<EventJournalViewerProps> = ({ dealId, disabled = false }) => {
+export const EventJournalViewer: React.FC<EventJournalViewerProps> = ({ dealId, disabled = false, active = true }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const { data: paginatedResult, isLoading } = usePaginatedEventJournalEntries(dealId, currentPage, PAGE_SIZE);
   // Keep the full query for export only
@@ -93,6 +95,13 @@ export const EventJournalViewer: React.FC<EventJournalViewerProps> = ({ dealId, 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, activeFilters]);
+
+  // Refetch when the tab becomes visible (forceMount keeps the component mounted while hidden).
+  useEffect(() => {
+    if (!active || !dealId) return;
+    queryClient.invalidateQueries({ queryKey: ['event-journal-paginated', dealId] });
+    queryClient.invalidateQueries({ queryKey: ['event-journal', dealId] });
+  }, [active, dealId, queryClient]);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['event-journal-paginated', dealId] });
@@ -135,6 +144,7 @@ export const EventJournalViewer: React.FC<EventJournalViewerProps> = ({ dealId, 
         onClearFilters={clearFilters}
         activeFilterCount={activeFilterCount}
         disabled={disabled}
+        onRefresh={handleRefresh}
         onExport={() => setExportOpen(true)}
       />
 

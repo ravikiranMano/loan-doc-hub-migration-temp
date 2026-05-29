@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { updateDeal } from '@/services/deals/deals.service';
 import {
@@ -726,6 +727,8 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
             oldValue: `${deletedFields.length} field(s)`,
             newValue: '(deleted)',
           }], user.id);
+          queryClient.invalidateQueries({ queryKey: ['event-journal-paginated', dealId] });
+          queryClient.invalidateQueries({ queryKey: ['event-journal', dealId] });
         }
       } catch (err) {
         console.error('Error logging deletion to event journal:', err);
@@ -1146,12 +1149,19 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
           });
         }
 
+        let loggedAny = false;
         if (user?.id) {
           for (const [section, changes] of Object.entries(changedBySection)) {
             if (changes.length > 0) {
               await logFieldChanges(dealId, section, changes, user.id);
+              loggedAny = true;
             }
           }
+        }
+
+        if (loggedAny) {
+          queryClient.invalidateQueries({ queryKey: ['event-journal-paginated', dealId] });
+          queryClient.invalidateQueries({ queryKey: ['event-journal', dealId] });
         }
 
         // Update snapshot

@@ -14,7 +14,7 @@ export async function listEventJournal(dealId: string) {
     .from('event_journal')
     .select('*')
     .eq('deal_id', dealId)
-    .order('created_at', { ascending: false });
+    .order('event_number', { ascending: false });
   if (error) throw error;
   return (data || []) as EventJournalRow[];
 }

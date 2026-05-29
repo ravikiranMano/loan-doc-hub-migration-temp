@@ -69,6 +69,7 @@ import {
   listPacketTemplatesWithJoin,
 } from '@/services/documents/packets.service';
 import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
+import { getSignedUrl as getStorageSignedUrl, STORAGE_BUCKETS } from '@/services/supabase/storage';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   ArrowLeft, 
@@ -95,6 +96,8 @@ import {
   Filter,
   Search,
   Info,
+  ExternalLink,
+  Printer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -562,6 +565,141 @@ export const DealDocumentsPage: React.FC = () => {
       });
     }
   };
+
+  const getSignedUrl = async (path: string): Promise<string | null> => {
+    try {
+      return await getStorageSignedUrl(STORAGE_BUCKETS.generatedDocs, path, 3600);
+    } catch (error: unknown) {
+      if (error instanceof SessionExpiredError) return null;
+      const message = error instanceof Error ? error.message : 'Could not generate access URL';
+      toast({
+        title: 'Failed to open document',
+        description: message,
+        variant: 'destructive',
+      });
+      return null;
+    }
+  };
+
+  const buildFileName = (doc: GeneratedDocument, ext: 'pdf' | 'docx'): string => {
+    const base = (doc.template_name || 'document')
+      .replace(/[^\w\-. ]+/g, '_')
+      .trim() || 'document';
+    return `${base}_v${doc.version_number}.${ext}`;
+  };
+
+  const handleOpenInNewWindow = async (doc: GeneratedDocument) => {
+    // PDFs render inline in the browser; DOCX needs Office Online viewer so it
+    // opens in a real window instead of downloading as "Untitled".
+    if (doc.output_pdf_path) {
+      const url = await getSignedUrl(doc.output_pdf_path);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (doc.output_docx_path) {
+      const url = await getSignedUrl(doc.output_docx_path);
+      if (!url) return;
+      const viewer = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
+      window.open(viewer, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handlePrintDocument = async (doc: GeneratedDocument) => {
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast({
+        title: 'Popup blocked',
+        description: 'Please allow popups for this site to print documents.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    win.document.open();
+    win.document.write('<!doctype html><html><head><title>Preparing print</title></head><body style="font-family:sans-serif;padding:24px;color:#333;">Preparing document for print...</body></html>');
+    win.document.close();
+
+    if (doc.output_pdf_path) {
+      try {
+        const data = await downloadGeneratedDoc(doc.output_pdf_path);
+
+        const fileName = buildFileName(doc, 'pdf');
+        const pdfBlob = data.type === 'application/pdf' ? data : new Blob([data], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(pdfBlob);
+
+        const html = `<!doctype html><html><head><title>${fileName}</title><style>
+html,body{margin:0;height:100%;background:#525659;}
+#bar{position:fixed;top:0;left:0;right:0;height:44px;background:#323639;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-family:sans-serif;font-size:14px;z-index:10;}
+#bar button{background:#1a73e8;color:#fff;border:0;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:14px;}
+#bar button:hover{background:#1666d0;}
+iframe{position:absolute;top:44px;left:0;width:100%;height:calc(100% - 44px);border:0;}
+</style></head><body>
+<div id="bar"><span>${fileName}</span><button onclick="doPrint()">🖨 Print</button></div>
+<iframe id="f" src="${blobUrl}" type="application/pdf"></iframe>
+<script>
+function doPrint(){var f=document.getElementById('f');try{f.contentWindow.focus();f.contentWindow.print();}catch(e){window.print();}}
+document.getElementById('f').addEventListener('load',function(){setTimeout(doPrint,800);});
+</script></body></html>`;
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+      } catch (error: unknown) {
+        win.close();
+        if (error instanceof SessionExpiredError) return;
+        const message = error instanceof Error ? error.message : 'Failed to prepare document for printing';
+        toast({
+          title: 'Print Failed',
+          description: message,
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
+    if (doc.output_docx_path) {
+      // No PDF available — fetch DOCX, convert to HTML in-browser, then print.
+      try {
+        const data = await downloadGeneratedDoc(doc.output_docx_path);
+
+        const mammoth = await import('mammoth');
+        const arrayBuffer = await data.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const fileName = buildFileName(doc, 'docx');
+
+        const html = `<!doctype html><html><head><title>${fileName}</title><style>
+@media print{#bar{display:none;}body{margin:0;}}
+body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
+#bar{position:sticky;top:0;background:#323639;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;font-family:sans-serif;font-size:14px;z-index:10;}
+#bar button{background:#1a73e8;color:#fff;border:0;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:14px;}
+#content{max-width:8.5in;margin:24px auto;padding:1in;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.15);}
+#content p{margin:0 0 0.5em;}
+#content table{border-collapse:collapse;}
+#content table td,#content table th{border:1px solid #999;padding:4px 8px;}
+</style></head><body>
+<div id="bar"><span>${fileName}</span><button onclick="window.print()">🖨 Print</button></div>
+<div id="content">${result.value}</div>
+<script>setTimeout(function(){window.print();},600);</script>
+</body></html>`;
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+      } catch (error: unknown) {
+        win.close();
+        if (error instanceof SessionExpiredError) return;
+        const message = error instanceof Error ? error.message : 'Failed to prepare document for printing';
+        toast({
+          title: 'Print Failed',
+          description: message,
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+
+
+
+
 
   const getLatestDocumentForTemplate = (templateId: string): GeneratedDocument | undefined => {
     return generatedDocuments.find(
@@ -1544,32 +1682,70 @@ export const DealDocumentsPage: React.FC = () => {
                           <TableCell className="text-right">
                             {doc.generation_status === 'success' && (
                               <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="gap-1 h-7 text-xs"
-                                  onClick={() => handleDownload(
-                                    doc.output_docx_path,
-                                    `${templateName}_v${doc.version_number}.docx`
-                                  )}
-                                >
-                                  <Download className="h-3 w-3" />
-                                  DOCX
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handleOpenInNewWindow(doc)}
+                                      disabled={!doc.output_pdf_path && !doc.output_docx_path}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Open</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="gap-1 h-7 text-xs"
+                                      onClick={() => handleDownload(
+                                        doc.output_docx_path,
+                                        `${templateName}_v${doc.version_number}.docx`
+                                      )}
+                                    >
+                                      <Download className="h-3 w-3" />
+                                      DOCX
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Download</TooltipContent>
+                                </Tooltip>
                                 {doc.output_pdf_path && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="gap-1 h-7 text-xs"
-                                    onClick={() => handleDownload(
-                                      doc.output_pdf_path!,
-                                      `${templateName}_v${doc.version_number}.pdf`
-                                    )}
-                                  >
-                                    <Download className="h-3 w-3" />
-                                    PDF
-                                  </Button>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-1 h-7 text-xs"
+                                        onClick={() => handleDownload(
+                                          doc.output_pdf_path!,
+                                          `${templateName}_v${doc.version_number}.pdf`
+                                        )}
+                                      >
+                                        <Download className="h-3 w-3" />
+                                        PDF
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Download</TooltipContent>
+                                  </Tooltip>
                                 )}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handlePrintDocument(doc)}
+                                      disabled={!doc.output_pdf_path && !doc.output_docx_path}
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Print</TooltipContent>
+                                </Tooltip>
                               </div>
                             )}
                           </TableCell>

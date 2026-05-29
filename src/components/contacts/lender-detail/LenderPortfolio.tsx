@@ -23,6 +23,7 @@ import {
   extractSectionFieldValue,
   PORTFOLIO_FIELD_IDS,
 } from '@/lib/sectionFieldValues';
+import { formatRatio } from '@/lib/precisionFormat';
 
 const FIELD_IDS = {
   ...PORTFOLIO_FIELD_IDS,
@@ -137,7 +138,7 @@ function parseFundingRecords(fv: Record<string, any>): any[] {
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
 
-const fmtPct = (v: number) => (v != null && !isNaN(v) ? `${v.toFixed(2)}%` : '-');
+const fmtPct = (v: number) => (v != null && !isNaN(v) ? (formatRatio(v) || '-') : '-');
 
 const fmtDate = (v: string) => {
   if (!v) return '-';

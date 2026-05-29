@@ -16,6 +16,7 @@ import {
   fetchFieldMapsByTemplateIds,
   listTemplateFieldMaps,
 } from '@/services/documents/template-field-maps.service';
+import { formatRate, formatProRata } from '@/lib/precisionFormat';
 import {
   formatCurrency,
   formatCurrencyInWords,
@@ -345,7 +346,7 @@ export async function resolveFieldValues(
 
             const rateStr = rateNum > 0
 
-              ? `${rateNum.toFixed(4).replace(/\.?0+$/, '')}%`
+              ? formatRate(rateNum)
 
               : '';
 
@@ -403,7 +404,7 @@ export async function resolveFieldValues(
 
               [`lender_${n}_pct_owned`]:     pct > 0
 
-                ? `${pct.toFixed(4).replace(/\.?0+$/, '')}%`
+                ? formatProRata(pct)
 
                 : '',
 
@@ -505,6 +506,13 @@ export async function resolveFieldValuesForTemplate(
   }
 
   if (!fieldDictEntries) {
+    return {
+      values: {},
+      details: {},
+      emptyFields: [],
+      errors: ['Failed to fetch field dictionary: No data'],
+    };
+  }
 
   // Create lookup map for field dictionary
   const fieldDictMap = new Map<string, string>();

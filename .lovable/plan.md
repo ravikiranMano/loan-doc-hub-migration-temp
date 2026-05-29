@@ -1,75 +1,63 @@
-# Fix: Multi-Lender Append — Clone Primary Lender's Formatting
+
+## Problem
+
+In the **Formal Request for Information V7** template, the tag `{{pr_li_lienHolder}}` renders blank (or as the literal `{{pr_li_lienHolder}}`) instead of the lien holder name.
 
 ## Root cause
 
-In `supabase/functions/generate-document/index.ts` (~lines 7822–7894), the per-lender append routine deliberately uses a **"STANDARDIZED FORMAT"** that hardcodes XML:
+In `word/document.xml` the merge tag is split across three runs because Word applied `<w:highlight w:val="white"/>` to part of the text:
 
-- `STD_FONT = "Arial"` and `STD_SIZE = "22"` (11pt)
-- `rPrStd()` emits `<w:rFonts w:ascii="Arial" .../>` + `<w:sz w:val="22"/>`
-- `pPrPlain()` emits `<w:spacing w:before="0" w:after=".../>` + `<w:ind w:left="0" w:firstLine="0"/>` + `<w:jc w:val="left"/>`
-- `paraSigRow()` wraps Signature/Date in a `<w:tbl>` with three `<w:gridCol>`s and a `lineBorder` underline
+```
+<w:r>...<w:t>To: </w:t></w:r>
+<w:r>...<w:t>{{</w:t></w:r>
+<w:r><w:rPr><w:highlight w:val="white"/>...</w:rPr><w:t>pr_li_lienHolder}}</w:t></w:r>
+```
 
-This is then used by both the **normalize** pass (rewrites existing `Lender N:` blocks in place) and the **append** pass (inserts missing `Lender N:` blocks before `</w:body>`). The primary Lender block from the template uses Times New Roman, `<w:pStyle w:val="NoSpacing"/>`, and plain `<w:p>` paragraphs with literal underscore lines — so the appended/normalized blocks visually diverge from Lender 1.
+The opening `{{` lives in one run; the field name and closing `}}` live in a separate run that carries a different `<w:rPr>` (highlight + minimal properties — no font/size). The generic run-consolidation pass occasionally fails to stitch this exact shape because the two runs have non-matching `<w:rPr>` blocks, so the downstream merge-tag resolver never sees a complete `{{pr_li_lienHolder}}` token and the placeholder is left as-is (or eaten when downstream "leftover handlebars" cleanup runs).
 
-## Approach
+Separately, the existing Formal-Request-specific publisher (`supabase/functions/generate-document/index.ts` ~line 4488) only overwrites `pr_li_lienHolder` when it finds a lien whose `priority` field equals exactly `1st`/`1`/`first`. If no such lien exists, the aggregated newline-joined list is left in place — which is also wrong for this single-cell tag.
 
-Replace the standardized emitters with a **template-cloning** strategy. On the first call per template, scan `docXml` for the primary `Lender:` paragraph block (the one **without** a trailing number — Lender 1), capture the contiguous paragraph fragments verbatim, and reuse them to emit Lender 2..N by substituting only the user-visible text of the label run and the display-name run.
+## Fix
 
-The existing block-scan (`blockRe` over `<w:p>…</w:p>` / `<w:tbl>…</w:tbl>`) and the normalize-vs-append control flow (`normalizedExisting`, `replacements`, append-before-`</w:body>`) stay unchanged. Only the XML emitted per lender changes.
+Single-file change in **`supabase/functions/generate-document/index.ts`**.
 
-## Changes
+### 1. Strengthen the Formal-Request-only `pr_li_lienHolder` publisher (around lines 4488–4530)
 
-**File:** `supabase/functions/generate-document/index.ts` — only the `LENDER_SPECIFIC` branch (~lines 7803–7990).
+- Resolve the holder value with this precedence:
+  1. Lien (by ascending index) whose `priority` is `1st`/`1`/`first` AND whose `holder` is non-empty.
+  2. Lien (by ascending index) whose `holder` is non-empty (fallback when no priority is marked `1st`).
+  3. `lien1.holder` / `lien.holder` direct lookup.
+- Publish the resolved holder under all of: `pr_li_lienHolder`, `property1.lien_holder`, and the canonical-key alias used by the field-dictionary id `3157074f-b561-45f8-b358-01fb264bc06b`, so any downstream resolver path that reads a different key still gets the same value.
+- Add a `debugLog` line that reports the chosen lien + holder for diagnosis.
 
-### 1. Locate the primary Lender template block
+### 2. Add a Formal-Request-only XML safety pass
 
-Right after `docBlocks` is built (~line 7908), add a helper:
+Run once per `document.xml` (and headers/footers) when `isTemplateFormalRequestInfo === true`, after the existing `normalizeWordXml` pass and before merge-tag resolution:
 
-- Walk `docBlocks` and find the first block whose visible text matches `/\bLender\s*:/i` **and does not** match `/Lender\s+\d+\s*:/i` (i.e. the unnumbered primary label).
-- From that index, capture up to the next 4 blocks until and including the first block whose visible text contains `\bDate\b` (or hit the next numbered `Lender N:` first, whichever comes first).
-- Store the captured fragments as `{ labelBlockXml, nameBlockXml, sigBlockXml, dateBlockXml? }`. If signature and date live in a single `<w:tbl>` or single `<w:p>`, store that one combined fragment as `sigDateBlockXml`.
-- Also extract from the label block: the exact label text run (so trailing whitespace and `xml:space="preserve"` are preserved when swapping `Lender:` → `Lender N:`).
-- Extract from the name block: a list of `<w:t>…</w:t>` text-content ranges so we can replace only the visible text, preserving wrapping `<w:r>`/`<w:rPr>` and intra-run `<w:br/>` markers.
+- Scan paragraphs that contain `pr_li_lienHolder`.
+- Extract the concatenated text of all `<w:t>` elements in the paragraph; if the concatenation contains `{{pr_li_lienHolder}}` but no single `<w:t>` does, rewrite the paragraph so the first run containing `{{` carries the full `{{pr_li_lienHolder}}` text and the following runs that contributed only the split remainder (`pr_li_lienHolder}}` and the orphan `{{`) are emptied. Preserve the `<w:rPr>` of the run that originally held `{{` so font/size/color stay Times New Roman 12pt black to match the surrounding `To: ` text. Drop the `<w:highlight w:val="white"/>` carried only by the orphan run.
+- Idempotent: if the tag is already contiguous in a single `<w:t>` the pass is a no-op.
 
-If no primary block is found (e.g. template anchors lender on a different label, or the block is missing), **fall back to the existing standardized emitter** — preserves single-lender / non-conforming templates byte-identically.
+This mirrors the pattern already used in this file (`consolidateAppraiserConditional`, the LPDS Lender 1 rewriter) for one specific tag in one specific template — no impact on other templates.
 
-### 2. Build cloned blocks per lender
+### 3. No template change, no schema change
 
-Add `lenderBlockFromTemplate(labelN, displayName)`:
-
-- Deep-clone the captured fragments as raw XML strings (they're already valid `<w:p>`/`<w:tbl>` XML).
-- In the label fragment: replace only the inner text of the matched label `<w:t>` (regex anchored on the captured text) with `Lender ${labelN}:` plus the original trailing whitespace; do **not** touch its `<w:rPr>` / `<w:pPr>`.
-- In the name fragment: walk the captured `<w:t>` ranges and either (a) concatenate the existing texts to detect the primary's display name and replace it whole, or (b) replace the first non-empty `<w:t>` with `displayName` and zero out subsequent non-empty `<w:t>`s. `<w:br/>` runs in between are kept as-is so the line-break pattern around the name is preserved.
-- The signature/date fragment(s) are appended **verbatim** (underscore lines and all).
-
-XML escape only the substituted text (`displayName`, label string) — reuse the existing `xmlEsc`.
-
-### 3. Use the cloner in both passes
-
-- **Normalize pass** (~line 7929): `replacement: lenderBlockFromTemplate(labelN, displayName)` instead of `lenderBlock(labelN, displayName)`.
-- **Append pass** (~line 7958): same swap.
-- Keep the standardized `lenderBlock` available only as the fallback when the primary block could not be located.
-
-### 4. No other changes
-
-- `COMMON_TEMPLATE` skip path (~7798) untouched.
-- `renderedIndexes` / numbered-label regex untouched.
-- Append insertion point (before `<w:sectPr>` / `</w:body>`) untouched.
-- Lender ordering, merge-key families, tag-parser orphan pass, `ld_p_*` bare keys — all untouched.
+- Do not modify the uploaded `Formal_Request_for_Information V7.docx`.
+- Do not touch `field_dictionary`, RLS, or any other module.
+- Do not change behavior for any template whose name does not match the existing `isTemplateFormalRequestInfo` regex.
 
 ## Verification
 
-1. Inspect the `LENDER_SPECIFIC` branch console logs to confirm `[lender-sig] template=… primaryBlock.captured=true` (new debug line).
-2. Generate `Waiver_of_Appraisal` with 1, 2, and 4 lenders. Unzip and diff `word/document.xml`:
-   - 1-lender output is byte-identical to pre-change.
-   - 2/4-lender outputs contain **no** `<w:rFonts w:ascii="Arial"`, **no** `w:sz w:val="22"`, **no** `<w:tbl>` wrapping Signature/Date in the appended blocks.
-   - Each Lender N's `<w:rPr>` matches Lender 1's `<w:rPr>` character-for-character.
-3. Single-lender templates: confirm append path is skipped (`lenderCount === 1`) — unchanged.
-4. Fallback path: temporarily run against a template lacking a `Lender:` anchor and confirm the legacy standardized emitter still fires (regression safety).
+1. Regenerate Formal Request for Information for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65`.
+2. Open the resulting `.docx`; the `To:` line must read `To: First National Commercial Bank` (the 1st-priority lien holder for this deal — confirmed in `deal_section_values` section=`liens`, key `lien1::3157074f-…` = "First National Commercial Bank", priority `lien1.priority` = "1st"). Font/size/color must match the rest of the paragraph (Times New Roman 12pt black, no white highlight artifact).
+3. Re-run on a deal with no liens at priority "1st" — confirm fallback to the first non-empty lien holder.
+4. Re-run on a deal with no lien data — confirm the tag renders empty (no literal `{{pr_li_lienHolder}}` remains).
+5. Sanity-check at least one unrelated template (e.g. RE885, LPDS Addendum) regenerates with no regressions in lien-holder cells.
 
-## Out of scope
+## Files touched
 
-- Field-resolver / merge-key publication
-- `tag-parser.ts` orphan stripping
-- Bare `ld_p_*` aggregation behavior
-- Lender ordering / primary determination
+- `supabase/functions/generate-document/index.ts` — edits in the Formal-Request section (~lines 4482–4530) and one new safety-pass helper invoked from the same template branch.
+
+## Deploy
+
+Redeploy the `generate-document` edge function after the edit.
