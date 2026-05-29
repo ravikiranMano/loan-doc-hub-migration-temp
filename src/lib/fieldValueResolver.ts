@@ -338,7 +338,7 @@ export async function resolveFieldValues(
 
             const rateStr = rateNum > 0
 
-              ? `${rateNum.toFixed(4).replace(/\.?0+$/, '')}%`
+              ? formatRate(rateNum)
 
               : '';
 
@@ -396,7 +396,7 @@ export async function resolveFieldValues(
 
               [`lender_${n}_pct_owned`]:     pct > 0
 
-                ? `${pct.toFixed(4).replace(/\.?0+$/, '')}%`
+                ? formatProRata(pct)
 
                 : '',
 

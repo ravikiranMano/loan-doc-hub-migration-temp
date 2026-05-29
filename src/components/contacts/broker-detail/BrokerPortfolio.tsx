@@ -94,7 +94,7 @@ function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
 
-const fmtPct = (v: number) => (v != null && !isNaN(v) ? `${v.toFixed(2)}%` : '-');
+const fmtPct = (v: number) => (v != null && !isNaN(v) ? (formatRatio(v) || '-') : '-');
 
 const fmtDate = (v: string) => {
   if (!v) return '-';
