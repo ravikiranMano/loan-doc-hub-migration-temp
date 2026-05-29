@@ -601,14 +601,6 @@ export const DealsPage: React.FC = () => {
       //    deal_id to the original file and the new file starts with an
       //    empty history and a clean communication record.
 
-      await logDealCreated(newDealId, {
-        dealNumber,
-        state: newDeal.state,
-        productType: newDeal.product_type,
-        mode: newDeal.mode,
-        copiedFrom: source.deal_number,
-      } as any);
-
       toast({
         title: 'File copied',
         description: `New file ${dealNumber} created from ${source.deal_number}.`,
