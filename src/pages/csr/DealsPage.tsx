@@ -282,12 +282,18 @@ export const DealsPage: React.FC = () => {
     }
   };
   const handleDelete = async (deal: Deal) => {
-    if (!confirm(`Delete file ${deal.deal_number}?`)) return;
-
+    setDeleting(true);
     try {
+      // Clean up dependent rows first to avoid FK constraint failures
+      await Promise.all([
+        supabase.from('deal_section_values').delete().eq('deal_id', deal.id),
+        supabase.from('deal_field_values').delete().eq('deal_id', deal.id),
+        supabase.from('deal_participants').delete().eq('deal_id', deal.id),
+      ]);
       const { error } = await supabase.from('deals').delete().eq('id', deal.id);
       if (error) throw error;
-      toast({ title: 'File deleted' });
+      toast({ title: 'File deleted', description: `File ${deal.deal_number} has been deleted.` });
+      setDeleteTarget(null);
       fetchDeals(currentPage);
     } catch (error: any) {
       toast({
@@ -295,6 +301,8 @@ export const DealsPage: React.FC = () => {
         description: error.message || 'Failed to delete file',
         variant: 'destructive',
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
