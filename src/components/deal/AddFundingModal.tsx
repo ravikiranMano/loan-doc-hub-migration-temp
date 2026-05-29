@@ -1213,7 +1213,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         }}
                         onKeyDown={numericKeyDown}
                         disabled={hasLenderRate}
-                        className={cn("h-6 text-xs pr-4", hasLenderRate && "opacity-60 bg-muted cursor-not-allowed")}
+                        className={cn("h-6 text-xs pr-4", hasLenderRate && "opacity-60 bg-muted cursor-not-allowed", showError('lenderRate') && "border-destructive focus-visible:ring-destructive")}
                         inputMode="decimal"
                         placeholder="%"
                       />
@@ -1222,6 +1222,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   );
                 })()}
               </div>
+              {showError('lenderRate') && fieldErrorMsg('Lender Rate')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0 flex items-center gap-1">
                   <span>Override</span>
