@@ -130,13 +130,14 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
       setDescriptionType('');
 
       // Pre-populate lender rows from existing funding records.
-      // Pro Rata is recomputed locally as principalBalance / SUM(principalBalance)
-      // so it always reflects funded totals, not the original loan amount. The
-      // funding record flagged with `roundingAdjustment` absorbs the fractional
-      // residual so the column totals 100.0000%.
+      // Pro Rata is recomputed locally as originalAmount / SUM(originalAmount)
+      // so it always reflects each lender's original funding share — never
+      // outstanding/principal balance, which would drift as the loan is paid
+      // down. The funding record flagged with `roundingAdjustment` absorbs
+      // the fractional residual so the column totals 100.0000%.
       if (fundingRecords.length > 0) {
         const totalFunded = fundingRecords.reduce(
-          (s, r) => s + (Number(r.principalBalance) || 0), 0
+          (s, r) => s + (Number(r.originalAmount) || 0), 0
         );
         const adjIdx = fundingRecords.findIndex(r => (r as any).roundingAdjustment);
         const proRataMap = new Map<string, number>();
@@ -144,7 +145,7 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
           let sumOthers = 0;
           fundingRecords.forEach((r, i) => {
             if (i === adjIdx) return;
-            const pct = parseFloat(((Number(r.principalBalance) || 0) / totalFunded * 100).toFixed(4));
+            const pct = parseFloat(((Number(r.originalAmount) || 0) / totalFunded * 100).toFixed(4));
             proRataMap.set(r.id, pct);
             sumOthers += pct;
           });
@@ -234,19 +235,20 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
   };
 
   const handleLenderSelect = (id: string, lenderId: string, lenderName: string) => {
-    // Auto-fill from funding records. Pro Rata uses the sum-of-funding
-    // denominator so it matches the grid display.
+    // Auto-fill from funding records. Pro Rata uses Original Amount as the
+    // authoritative calculation basis (never Current/Principal Balance) so
+    // it matches the funding grid display.
     const fundingMatch = fundingRecords.find(
       (r) => r.lenderAccount === lenderId || r.lenderName === lenderName
     );
     let matchProRata: number | undefined;
     if (fundingMatch) {
       const totalFunded = fundingRecords.reduce(
-        (s, r) => s + (Number(r.principalBalance) || 0), 0
+        (s, r) => s + (Number(r.originalAmount) || 0), 0
       );
       if (totalFunded > 0) {
         matchProRata = parseFloat(
-          ((Number(fundingMatch.principalBalance) || 0) / totalFunded * 100).toFixed(4)
+          ((Number(fundingMatch.originalAmount) || 0) / totalFunded * 100).toFixed(4)
         );
       }
     }

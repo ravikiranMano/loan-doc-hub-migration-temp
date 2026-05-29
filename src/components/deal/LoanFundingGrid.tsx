@@ -959,7 +959,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
 
       {fundingStatus === 'over' && (
         <p className="text-sm text-destructive font-medium">
-          ⚠ Funding exceeds loan principal balance by {formatCurrency(overAmount)}.
+          ⚠ Funding exceeds loan original amount by {formatCurrency(overAmount)}.
         </p>
       )}
 
