@@ -926,14 +926,6 @@ async function generateSingleDocument(
             phone = (cd["phone.cell"] || cd["phone.work"] || cd["phone.home"] || bc?.phone || "").toString().trim();
             const assembled = [firstName, middle, lastName].filter(Boolean).join(" ").trim();
             fullName = (assembled || cd.full_name || bc?.full_name || bp.name || "").toString().trim();
-
-            // Publish `brN_p_*` short-prefix aliases for every borrower index ≥ 2
-            // so templates can reference {{br2_p_fullName}}, {{br3_p_fullName}}, …
-            // independent of capacity (co-borrower, additional guarantor, etc.).
-            // Index 1 (primary) is already handled by the br_p injection above.
-            if (n >= 2 && bc) {
-              injectContact(bc, [], `br${n}_p`);
-            }
           } else if (bp?.name) {
             fullName = String(bp.name).trim();
           }
@@ -950,7 +942,6 @@ async function generateSingleDocument(
           setBAlias(`borrowers${n}.isPrimary`, n === 1 ? "true" : "false");
           publishedBorrowers++;
         });
-
 
         setBAlias("borrowers_count", publishedBorrowers > 0 ? String(publishedBorrowers) : "");
         setBAlias("borrowers_hasMultiple", publishedBorrowers > 1 ? "true" : "false");
