@@ -193,19 +193,30 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [open, adjustmentAmount, asOfDate, distributeByProRata, description, descriptionType, lenders]);
 
-  // Distribute by Pro Rata
+  // Distribute by Pro Rata — penny-safe reconciliation.
+  // Calculate every lender's share at full Decimal precision, round to 2dp,
+  // then assign the residual penny delta to the largest allocation so the
+  // sum of rounded shares reconciles EXACTLY to the input adjustment total.
+  // Never round per-row in isolation — that's what produces $0.01 drift on
+  // splits like $100 / 3 lenders or 27.2727 / 36.3636 / 36.3637 %.
   useEffect(() => {
     if (!distributeByProRata || !adjustmentAmount) return;
     const totalAdj = safeParseFloat(adjustmentAmount);
     if (totalAdj === 0) return;
 
-    setLenders((prev) =>
-      prev.map((l) => {
-        const proRata = parseFloat(l.proRata) || 0;
-        const share = (totalAdj * proRata) / 100;
-        return { ...l, adjustment: formatCurrencyDisplay(share.toFixed(2)) };
-      })
-    );
+    setLenders((prev) => {
+      const pcts = prev.map((l) => l.proRata);
+      const shares = allocateDollarsByPercentsWithReconciliation(totalAdj, pcts);
+      if (shares.length !== prev.length) {
+        // Fallback: invalid percent input — leave rows untouched rather than
+        // corrupting allocations.
+        return prev;
+      }
+      return prev.map((l, i) => ({
+        ...l,
+        adjustment: formatCurrencyDisplay(shares[i]),
+      }));
+    });
   }, [distributeByProRata, adjustmentAmount]);
 
   const handleAddLender = () => {
