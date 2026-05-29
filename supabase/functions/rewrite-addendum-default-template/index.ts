@@ -15,7 +15,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const TEMPLATE_ID = "a678600f-c1f9-44fc-ba89-24513fef507d";
+const TEMPLATE_NAME = "ADDENDUM TO NOTE EVENT OF DEFAULT";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -26,12 +26,14 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 1. Load template row.
+    // 1. Load template row by name (the active row id can change over time).
     const { data: tpl, error: tplErr } = await supabase
       .from("templates")
       .select("id, name, file_path")
-      .eq("id", TEMPLATE_ID)
-      .single();
+      .eq("name", TEMPLATE_NAME)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (tplErr || !tpl) throw new Error(`template lookup failed: ${tplErr?.message}`);
     if (!tpl.file_path) throw new Error("template has no file_path");
 
