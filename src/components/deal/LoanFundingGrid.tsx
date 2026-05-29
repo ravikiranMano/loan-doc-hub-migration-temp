@@ -19,7 +19,6 @@ import { FilterOption } from './GridToolbar';
 import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
 import { formatPercentDisplay, Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
-import { calculateProRataWithRounding } from '@/lib/proRataRounding';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -394,35 +393,23 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // Per-lender Payment (GROSS): Pro Rata × Regular P&I. Calculated independently
   // for every lender via .map (no shared scope, no early break). Banker's
   // rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
-  // Per-lender Payment split with automatic penny-level rounding adjustment.
-  // All math runs in cents via calculateProRataWithRounding(). Largest
-  // fractional remainder receives a penny first; ties resolve to the
-  // lowest input index. The recipient flag drives the Rounding column ✓
-  // — there is no separate manual adjustment field anymore.
-  const proRataDistribution = React.useMemo(() => {
-    if (!fundingRecords.length) {
-      return [] as ReturnType<typeof calculateProRataWithRounding>;
+  const computedPaymentsArr = React.useMemo(() => {
+    if (!fundingRecords.length) return [] as number[];
+    const exact = fundingRecords.map((_, i) => {
+      const pct = computedPctOwnedArr[i] ?? 0;
+      return new Decimal(pct).div(100).mul(regularPIDec);
+    });
+    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
+    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
+      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
+    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
+    const diff = sumExact.minus(sumRounded);
+    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
+    if (adjIdx >= 0 && !diff.isZero()) {
+      rounded[adjIdx] = rounded[adjIdx].plus(diff);
     }
-    const total = regularPIDec.toNumber();
-    return calculateProRataWithRounding(
-      total,
-      fundingRecords.map((r, i) => ({
-        id: r.id || String(i),
-        originalAmount: r.originalAmount || 0,
-      })),
-    );
-  }, [fundingRecords, regularPIDec]);
-
-  const computedPaymentsArr = React.useMemo(
-    () => proRataDistribution.map((d) => d.proRataAmount),
-    [proRataDistribution],
-  );
-
-  const roundingRecipientArr = React.useMemo(
-    () => proRataDistribution.map((d) => d.isRoundingRecipient),
-    [proRataDistribution],
-  );
-
+    return rounded.map(d => d.toNumber());
+  }, [fundingRecords, computedPctOwnedArr, regularPIDec]);
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const i = recordIndexMap.get(record);
@@ -691,16 +678,14 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         return <span>{formatCurrency(getDisbursementsTotal(record))}</span>;
       case 'netPayment':
         return <span>{formatCurrency(getNetPayment(record))}</span>;
-      case 'roundingError': {
-        const i = recordIndexMap.get(record);
-        const isRecipient = i !== undefined && !!roundingRecipientArr[i];
+      case 'roundingError':
         return (
           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex items-center justify-center h-5 w-5">
-                    {isRecipient ? (
+                    {record.roundingAdjustment ? (
                       <Check className="h-4 w-4 text-primary" aria-label="Receives rounding adjustment" />
                     ) : (
                       <span className="text-muted-foreground/40">—</span>
@@ -708,13 +693,12 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  Automatically receives the rounding penny ($0.01) — assigned to the lender with the largest fractional remainder.
+                  This lender will receive any rounding difference (e.g., $0.01)
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
         );
-      }
       default:
         return '-';
     }
