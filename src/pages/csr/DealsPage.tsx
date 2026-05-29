@@ -424,8 +424,10 @@ export const DealsPage: React.FC = () => {
 
       // 7. Explicitly DO NOT copy: generated_documents, event_journal,
       //    activity_log, messages, loan_history, loan_history_lenders,
-      //    magic_links, generation_jobs. These rows are tied by deal_id to
-      //    the original file and the new file starts with an empty history.
+      //    magic_links, generation_jobs, and the 'notes' section of
+      //    deal_section_values (Conversation Log). These rows are tied by
+      //    deal_id to the original file and the new file starts with an
+      //    empty history and a clean communication record.
 
       await logDealCreated(newDealId, {
         dealNumber,
