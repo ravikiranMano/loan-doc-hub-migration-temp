@@ -380,7 +380,7 @@ export const DealsPage: React.FC = () => {
       if (secErr) throw secErr;
       if (sectionRows && sectionRows.length > 0) {
         const payload = sectionRows.map((r: any) => {
-          const cleaned: Record<string, unknown> = {};
+          const cleaned: Record<string, any> = {};
           const fv = (r.field_values && typeof r.field_values === 'object') ? r.field_values : {};
           for (const [k, v] of Object.entries(fv)) {
             const tail = k.includes('::') ? k.split('::').pop()! : k;
