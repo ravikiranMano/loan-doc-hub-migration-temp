@@ -3709,29 +3709,62 @@ async function generateSingleDocument(
           }
 
 
-    const existingBrPFullName = fieldValues.get("br_p_fullName");
-    if (!existingBrPFullName || !existingBrPFullName.rawValue) {
-      // Check indexed borrower keys first
-      const b1FullName = fieldValues.get("borrower1.full_name") || fieldValues.get("borrower.full_name");
-      if (b1FullName && b1FullName.rawValue) {
-        fieldValues.set("br_p_fullName", { rawValue: b1FullName.rawValue, dataType: "text" });
-        debugLog(`[generate-document] Auto-computed br_p_fullName = "${b1FullName.rawValue}"`);
+    {
+      // Determine if the primary borrower is an entity (LLC/Corp/Trust/etc.).
+      // For entity borrowers, the "Entity Name" field (stored as
+      // borrower.full_name / br_p_fullName) must win over any first+middle+last
+      // concatenation, otherwise the entity suffix (e.g. "Capital LLC") is
+      // silently dropped when first/middle/last are also populated.
+      const rawBorrowerType =
+        fieldValues.get("borrower.borrower_type")?.rawValue ??
+        fieldValues.get("borrower1.borrower_type")?.rawValue ??
+        fieldValues.get("br_p_borrowerType")?.rawValue ??
+        "";
+      const borrowerTypeNorm = String(rawBorrowerType ?? "").trim().toLowerCase();
+      const ENTITY_TYPES = new Set([
+        "llc", "l.l.c.", "l.l.c",
+        "corp", "corporation", "s-corp", "s corp", "c-corp", "c corp",
+        "trust", "partnership", "lp", "llp", "limited partnership",
+        "company", "inc", "inc.",
+      ]);
+      const isEntityBorrower = ENTITY_TYPES.has(borrowerTypeNorm) ||
+        /\b(llc|l\.l\.c|corp|inc|trust|partnership|company)\b/i.test(borrowerTypeNorm);
+
+      const entityName =
+        fieldValues.get("br_p_fullName")?.rawValue ||
+        fieldValues.get("borrower1.full_name")?.rawValue ||
+        fieldValues.get("borrower.full_name")?.rawValue ||
+        "";
+
+      if (isEntityBorrower && entityName) {
+        fieldValues.set("br_p_fullName", { rawValue: entityName, dataType: "text" });
+        debugLog(`[generate-document] Borrower is entity type "${rawBorrowerType}" — using Entity Name "${entityName}" for br_p_fullName`);
       } else {
-        // Try assembling from borrower name components
-        const bFirstName = fieldValues.get("borrower1.first_name")?.rawValue || fieldValues.get("borrower.first_name")?.rawValue || fieldValues.get("br_p_firstName")?.rawValue;
-        const bMiddleName = fieldValues.get("borrower1.middle_initial")?.rawValue || fieldValues.get("borrower.middle_initial")?.rawValue || fieldValues.get("br_p_middleInitia")?.rawValue;
-        const bLastName = fieldValues.get("borrower1.last_name")?.rawValue || fieldValues.get("borrower.last_name")?.rawValue || fieldValues.get("br_p_lastName")?.rawValue;
-        const bNameParts = [bFirstName, bMiddleName, bLastName].filter(Boolean).map(String);
-        if (bNameParts.length > 0) {
-          const fullName = bNameParts.join(" ");
-          fieldValues.set("br_p_fullName", { rawValue: fullName, dataType: "text" });
-          debugLog(`[generate-document] Auto-computed br_p_fullName from components = "${fullName}"`);
-        } else {
-          // Final fallback: check Loan Details borrower name field
-          const loanDetailsBorrowerName = fieldValues.get("loan_terms.details_borrower_name");
-          if (loanDetailsBorrowerName?.rawValue) {
-            fieldValues.set("br_p_fullName", { rawValue: loanDetailsBorrowerName.rawValue, dataType: "text" });
-            debugLog(`[generate-document] Auto-computed br_p_fullName from loan_terms.details_borrower_name = "${loanDetailsBorrowerName.rawValue}"`);
+        const existingBrPFullName = fieldValues.get("br_p_fullName");
+        if (!existingBrPFullName || !existingBrPFullName.rawValue) {
+          // Check indexed borrower keys first
+          const b1FullName = fieldValues.get("borrower1.full_name") || fieldValues.get("borrower.full_name");
+          if (b1FullName && b1FullName.rawValue) {
+            fieldValues.set("br_p_fullName", { rawValue: b1FullName.rawValue, dataType: "text" });
+            debugLog(`[generate-document] Auto-computed br_p_fullName = "${b1FullName.rawValue}"`);
+          } else {
+            // Try assembling from borrower name components
+            const bFirstName = fieldValues.get("borrower1.first_name")?.rawValue || fieldValues.get("borrower.first_name")?.rawValue || fieldValues.get("br_p_firstName")?.rawValue;
+            const bMiddleName = fieldValues.get("borrower1.middle_initial")?.rawValue || fieldValues.get("borrower.middle_initial")?.rawValue || fieldValues.get("br_p_middleInitia")?.rawValue;
+            const bLastName = fieldValues.get("borrower1.last_name")?.rawValue || fieldValues.get("borrower.last_name")?.rawValue || fieldValues.get("br_p_lastName")?.rawValue;
+            const bNameParts = [bFirstName, bMiddleName, bLastName].filter(Boolean).map(String);
+            if (bNameParts.length > 0) {
+              const fullName = bNameParts.join(" ");
+              fieldValues.set("br_p_fullName", { rawValue: fullName, dataType: "text" });
+              debugLog(`[generate-document] Auto-computed br_p_fullName from components = "${fullName}"`);
+            } else {
+              // Final fallback: check Loan Details borrower name field
+              const loanDetailsBorrowerName = fieldValues.get("loan_terms.details_borrower_name");
+              if (loanDetailsBorrowerName?.rawValue) {
+                fieldValues.set("br_p_fullName", { rawValue: loanDetailsBorrowerName.rawValue, dataType: "text" });
+                debugLog(`[generate-document] Auto-computed br_p_fullName from loan_terms.details_borrower_name = "${loanDetailsBorrowerName.rawValue}"`);
+              }
+            }
           }
         }
       }
