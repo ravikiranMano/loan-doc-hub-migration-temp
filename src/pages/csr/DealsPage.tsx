@@ -426,6 +426,9 @@ export const DealsPage: React.FC = () => {
         );
       const excludedDictIds = new Set<string>();
       const excludedDbKeys = new Set<string>();
+      const emptyFundingHistoryDictRow = (excludeDictRows || []).find((r: any) =>
+        getCanonicalFundingHistoryKey(r.field_key) === 'loan_terms.funding_history'
+      ) as any | undefined;
       (excludeDictRows || []).forEach((r: any) => {
         if (isOperationalCloneFieldKey(r.field_key) || CLEAN_FUNDING_HISTORY_KEYS.has(getCanonicalFundingHistoryKey(r.field_key))) {
           excludedDictIds.add(r.id);
@@ -459,6 +462,14 @@ export const DealsPage: React.FC = () => {
               if (indexedKey && isOperationalCloneFieldKey(indexedKey)) continue;
             }
             cleaned[k] = v;
+          }
+          if (r.section === 'loan_terms' && emptyFundingHistoryDictRow?.id) {
+            cleaned[emptyFundingHistoryDictRow.id] = {
+              value_text: '[]',
+              indexed_key: 'loan_terms.funding_history',
+              indexed_db_key: emptyFundingHistoryDictRow.field_key,
+              updated_at: new Date().toISOString(),
+            };
           }
           return {
             deal_id: newDealId,
