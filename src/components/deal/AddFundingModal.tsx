@@ -840,6 +840,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Required-field gating: surface inline red errors under each empty field
+    // (Lender ID, Lender Rate, Funding Date, Original Funding, Current Balance,
+    // Interest From) and abort without firing the cross-field rules below.
+    if (Object.values(requiredErrors).some(Boolean)) {
+      setSubmitAttempted(true);
+      return;
+    }
+    setSubmitAttempted(false);
     // Rule: when this lender already owns 100% Pro Rata AND its Funding
     // Amount and Current Balance both equal the loan's Principal Balance,
     // the record is fully allocated to this single lender. Inputs remain
