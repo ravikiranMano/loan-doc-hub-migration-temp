@@ -355,10 +355,15 @@ export const DealsPage: React.FC = () => {
 
       // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
       //    property, contacts prefixes, funding setup, custom fields, etc.)
+      //    EXCLUDES the 'notes' section so the copied loan starts with a
+      //    completely clean Conversation Log (no chat history, internal
+      //    comments, email threads, SMS history, or communication audit
+      //    records carry over to the new independent file).
       const { data: sectionRows, error: secErr } = await supabase
         .from('deal_section_values')
         .select('section, field_values, version')
-        .eq('deal_id', source.id);
+        .eq('deal_id', source.id)
+        .neq('section', 'notes');
       if (secErr) throw secErr;
       if (sectionRows && sectionRows.length > 0) {
         const payload = sectionRows.map((r: any) => ({
@@ -419,8 +424,10 @@ export const DealsPage: React.FC = () => {
 
       // 7. Explicitly DO NOT copy: generated_documents, event_journal,
       //    activity_log, messages, loan_history, loan_history_lenders,
-      //    magic_links, generation_jobs. These rows are tied by deal_id to
-      //    the original file and the new file starts with an empty history.
+      //    magic_links, generation_jobs, and the 'notes' section of
+      //    deal_section_values (Conversation Log). These rows are tied by
+      //    deal_id to the original file and the new file starts with an
+      //    empty history and a clean communication record.
 
       await logDealCreated(newDealId, {
         dealNumber,
