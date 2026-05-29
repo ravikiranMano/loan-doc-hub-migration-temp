@@ -190,9 +190,9 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(loanAmountNum - currentPrincipalNum));
     }
 
-    // Down Payment = Purchase Price − Loan Amount (auto-calculated, persisted)
+    // Down Payment = Original Amount − Purchase Price (auto-calculated, persisted)
     if (Number.isFinite(purchasePriceNum) && purchasePriceNum >= 0 && Number.isFinite(loanAmountNum) && loanAmountNum >= 0) {
-      const dp = Math.max(0, purchasePriceNum - loanAmountNum);
+      const dp = loanAmountNum - purchasePriceNum;
       writeIfChanged(FIELD_KEYS.downPayment, roundDollarForStorage(dp));
     }
   }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, purchasePriceRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
