@@ -568,6 +568,30 @@ export const DealsPage: React.FC = () => {
         }));
         const { error } = await supabase.from('deal_participants').insert(payload);
         if (error) throw error;
+
+        if (clonedContactIds.size > 0) {
+          const { data: participantSection } = await supabase
+            .from('deal_section_values')
+            .select('id, field_values')
+            .eq('deal_id', newDealId)
+            .eq('section', 'participants')
+            .maybeSingle();
+
+          if (participantSection?.field_values) {
+            const remappedValues: Record<string, any> = {};
+            Object.entries(participantSection.field_values as Record<string, any>).forEach(([key, value]) => {
+              let remappedKey = key;
+              clonedContactIds.forEach((newContactId, oldContactId) => {
+                remappedKey = remappedKey.replace(oldContactId, newContactId);
+              });
+              remappedValues[remappedKey] = value;
+            });
+            await supabase
+              .from('deal_section_values')
+              .update({ field_values: remappedValues, updated_at: new Date().toISOString() })
+              .eq('id', participantSection.id);
+          }
+        }
       }
 
       // 7. Explicitly DO NOT copy: generated_documents, event_journal,
