@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO, differenceInMonths, differenceInDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { formatRatio } from '@/lib/precisionFormat';
 
 const FIELD_IDS = {
   loanAmount: '163cd0b4-7cc0-4975-bcfb-43aa4be9c5c8',
@@ -94,7 +95,7 @@ function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string
 const fmtCurrency = (v: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
 
-const fmtPct = (v: number) => (v != null && !isNaN(v) ? `${v.toFixed(2)}%` : '-');
+const fmtPct = (v: number) => (v != null && !isNaN(v) ? (formatRatio(v) || '-') : '-');
 
 const fmtDate = (v: string) => {
   if (!v) return '-';

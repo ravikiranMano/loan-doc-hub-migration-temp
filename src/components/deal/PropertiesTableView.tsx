@@ -13,6 +13,7 @@ import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { SortableTableHead } from './SortableTableHead';
 import { useGridSortFilter } from '@/hooks/useGridSortFilter';
 import { useGridSelection } from '@/hooks/useGridSelection';
+import { formatRatio } from '@/lib/precisionFormat';
 
 export interface PropertyData {
   id: string;
@@ -210,10 +211,8 @@ export const PropertiesTableView: React.FC<PropertiesTableViewProps> = ({
   };
 
   const formatPercentage = (value: string) => {
-    if (!value) return '0.00%';
-    const num = parseFloat(value);
-    if (isNaN(num)) return '0.00%';
-    return `${num.toFixed(2)}%`;
+    if (!value && value !== '0') return '0.00%';
+    return formatRatio(value) || '0.00%';
   };
 
   const formatDate = (val: string) => {
