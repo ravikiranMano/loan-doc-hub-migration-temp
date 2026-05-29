@@ -174,16 +174,23 @@ function rewriteDocumentXml(xml: string): { xml: string; report: any } {
     const hasHelper = /this is conditional based on/i.test(text);
     const hasAnyOptionMarker = hasOpt1 || hasOpt2 || hasHelper;
 
-    // Idempotency: paragraph already has conditional and no legacy markers.
-    if (
-      text.includes("{{#if ln_p_defaultInterestModifierEnabled}}") &&
-      !hasOpt1 &&
-      !hasOpt2 &&
-      !hasHelper
-    ) {
-      report.alreadyConditional = true;
-      return paraXml;
+    // Detect the broken state from v3: paragraph contains the conditional
+    // but is missing the legal prefix and/or suffix. In that case, rebuild
+    // the entire paragraph as PREFIX + CONDITIONAL + SUFFIX.
+    if (text.includes("{{#if ln_p_defaultInterestModifierEnabled}}") && !hasAnyOptionMarker) {
+      const startsCorrectly = text.startsWith(LEGAL_PREFIX);
+      const endsCorrectly = text.endsWith(LEGAL_SUFFIX);
+      if (startsCorrectly && endsCorrectly) {
+        report.alreadyConditional = true;
+        return paraXml;
+      }
+      // Restore the full paragraph.
+      report.targetParagraphMatched = true;
+      report.flatTextBefore = text;
+      report.changes++;
+      return rebuildParagraphWithText(paraXml, LEGAL_PREFIX + CONDITIONAL_SEGMENT + LEGAL_SUFFIX);
     }
+
 
     if (!hasAnyOptionMarker) return paraXml;
 
