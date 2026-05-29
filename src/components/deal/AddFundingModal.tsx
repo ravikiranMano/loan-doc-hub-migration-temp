@@ -1146,9 +1146,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                       } : {}),
                     }));
                   }}
-                  className="h-6 text-xs"
+                  className={cn("h-6 text-xs", showError('lenderId') && "border-destructive focus-visible:ring-destructive")}
                 />
               </div>
+              {showError('lenderId') && fieldErrorMsg('Lender ID')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Name</Label>
                 <Input value={formData.lenderFullName} readOnly className="h-6 text-xs bg-muted/30" />
