@@ -651,6 +651,13 @@ export const DealsPage: React.FC = () => {
                             <Edit className="h-4 w-4 mr-2" />
                             Enter Data
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
+                            setCopyTarget(deal);
+                          }}>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Create Copy
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
