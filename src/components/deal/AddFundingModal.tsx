@@ -798,9 +798,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   // Lender share values for disbursement calculation
   const paymentShareNum = parseFloat((formData.regularPayment || '').replace(/[$,]/g, '')) || 0;
-  const principalBalNum = parseFloat((formData.principalBalance || '').replace(/[$,]/g, '')) || 0;
+  // Interest share is derived from the lender's Original (Funding) Amount —
+  // not Principal/Current Balance — so funding-side math stays consistent.
+  const originalAmtForInterest = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
   const lenderRateNum = parseFloat(formData.lenderRate || '0') || 0;
-  const interestShareNum = principalBalNum > 0 && lenderRateNum > 0 ? (principalBalNum * lenderRateNum) / 12 / 100 : 0;
+  const interestShareNum = originalAmtForInterest > 0 && lenderRateNum > 0 ? (originalAmtForInterest * lenderRateNum) / 12 / 100 : 0;
   const principalShareNum = Math.max(paymentShareNum - interestShareNum, 0);
 
   const handleDeleteDisbursement = (index: number) => {
