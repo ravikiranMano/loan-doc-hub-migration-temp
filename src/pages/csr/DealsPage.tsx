@@ -112,7 +112,8 @@ export const DealsPage: React.FC = () => {
   const workspace = useWorkspaceOptional();
   const { user } = useAuth();
   const [creating, setCreating] = useState(false);
-  const [deals, setDeals] = useState<Deal[]>(cachedState?.deals || []);
+  const [copying, setCopying] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(!cachedState);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
