@@ -645,28 +645,9 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         const liveNoteNum = parseFloat(liveNote.replace(/[%,]/g, '')) || 0;
         const syncedNum = liveSoldNum > 0 ? liveSoldNum : liveNoteNum;
         if (syncedNum > 0) {
-          const sourceLabel = liveSoldNum > 0 ? 'Sold Rate' : 'Note Rate';
-          // When the synced rate matches the saved rate, show it plain
-          // (no "auto" badge) — they're already in sync.
-          if (hasLenderRate(record) && Math.abs(record.lenderRate - syncedNum) < 1e-6) {
-            return <span>{formatPercentage(syncedNum, 3)}</span>;
-          }
-          return (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1">
-                    <span>{formatPercentage(syncedNum, 3)}</span>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">auto</span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  Auto-synced from {sourceLabel}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          );
+          return <span>{formatPercentage(syncedNum, 3)}</span>;
         }
+
         if (hasLenderRate(record)) {
           return <span>{formatPercentage(record.lenderRate, 3)}</span>;
         }
