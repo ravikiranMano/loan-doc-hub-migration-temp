@@ -88,6 +88,64 @@ const modeLabels: Record<string, string> = {
 const PAGE_SIZE = 10;
 const DEALS_CACHE_KEY = 'deals_page_cache';
 
+const FUNDING_OPERATIONAL_FIELD_KEYS = [
+  'loan_terms.funding_history',
+  'ln_p_fundingHistor',
+  'loan_terms.funding_adjustments',
+];
+
+const CLEAN_FUNDING_HISTORY_KEYS = new Set([
+  'loan_terms.funding_history',
+  'ln_p_fundingHistor',
+  'loan_terms.funding_adjustments',
+]);
+
+const CONTACT_OPERATIONAL_KEYWORDS = [
+  'history',
+  'conversation',
+  'attachment',
+  'event_journal',
+  'events_journal',
+  'audit',
+  'activity',
+  'workflow',
+  'task_history',
+  'status_history',
+  'communication',
+  'internal_notes',
+  'chat',
+  'sms',
+];
+
+const isOperationalContactDataKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  return normalized.startsWith('_') && CONTACT_OPERATIONAL_KEYWORDS.some((token) => normalized.includes(token));
+};
+
+const sanitizeContactDataForCopy = (contactData: unknown) => {
+  const source = contactData && typeof contactData === 'object'
+    ? contactData as Record<string, unknown>
+    : {};
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => !isOperationalContactDataKey(key))
+  );
+};
+
+const isOperationalCloneFieldKey = (key: string) => {
+  const normalized = key.toLowerCase();
+  if (normalized.includes('funding_history') || normalized.includes('fundinghistor') || normalized.includes('funding_adjustments')) {
+    return true;
+  }
+
+  const isContactScoped = /^(borrower|coborrower|co_borrower|broker|lender|authorized_party|additional_guarantor|other|contact|participant|notes_entry)[._]/.test(normalized);
+  return isContactScoped && CONTACT_OPERATIONAL_KEYWORDS.some((token) => normalized.includes(token));
+};
+
+const getCanonicalFundingHistoryKey = (fieldKey: string) => {
+  if (fieldKey === 'ln_p_fundingHistor') return 'loan_terms.funding_history';
+  return fieldKey;
+};
+
 interface DealsPageCache {
   deals: Deal[];
   totalCount: number;
