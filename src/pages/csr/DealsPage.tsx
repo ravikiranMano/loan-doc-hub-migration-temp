@@ -418,11 +418,20 @@ export const DealsPage: React.FC = () => {
       const { data: excludeDictRows } = await supabase
         .from('field_dictionary')
         .select('id, field_key')
-        .in('field_key', [
-          'loan_terms.funding_history',
-          'loan_terms.funding_adjustments',
-        ]);
-      const excludedDictIds = new Set<string>((excludeDictRows || []).map((r: any) => r.id));
+        .or(
+          FUNDING_OPERATIONAL_FIELD_KEYS
+            .map((key) => `field_key.eq.${key}`)
+            .concat(CONTACT_OPERATIONAL_KEYWORDS.map((token) => `field_key.ilike.%${token}%`))
+            .join(',')
+        );
+      const excludedDictIds = new Set<string>();
+      const excludedDbKeys = new Set<string>();
+      (excludeDictRows || []).forEach((r: any) => {
+        if (isOperationalCloneFieldKey(r.field_key) || CLEAN_FUNDING_HISTORY_KEYS.has(getCanonicalFundingHistoryKey(r.field_key))) {
+          excludedDictIds.add(r.id);
+          excludedDbKeys.add(r.field_key);
+        }
+      });
 
       // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
       //    property, contacts prefixes, funding setup, custom fields, etc.)
@@ -443,6 +452,12 @@ export const DealsPage: React.FC = () => {
           for (const [k, v] of Object.entries(fv)) {
             const tail = k.includes('::') ? k.split('::').pop()! : k;
             if (excludedDictIds.has(tail)) continue;
+            if (excludedDbKeys.has(tail) || isOperationalCloneFieldKey(k)) continue;
+            if (v && typeof v === 'object') {
+              const fieldData = v as Record<string, any>;
+              const indexedKey = String(fieldData.indexed_key || fieldData.indexed_db_key || '');
+              if (indexedKey && isOperationalCloneFieldKey(indexedKey)) continue;
+            }
             cleaned[k] = v;
           }
           return {
