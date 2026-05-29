@@ -114,6 +114,8 @@ export const DealsPage: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [copying, setCopying] = useState(false);
   const [copyTarget, setCopyTarget] = useState<Deal | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Deal | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [deals, setDeals] = useState<Deal[]>(cachedState?.deals || []);
   const [loading, setLoading] = useState(!cachedState);
   const [searchQuery, setSearchQuery] = useState('');
@@ -280,12 +282,18 @@ export const DealsPage: React.FC = () => {
     }
   };
   const handleDelete = async (deal: Deal) => {
-    if (!confirm(`Delete file ${deal.deal_number}?`)) return;
-
+    setDeleting(true);
     try {
+      // Clean up dependent rows first to avoid FK constraint failures
+      await Promise.all([
+        supabase.from('deal_section_values').delete().eq('deal_id', deal.id),
+        supabase.from('deal_field_values').delete().eq('deal_id', deal.id),
+        supabase.from('deal_participants').delete().eq('deal_id', deal.id),
+      ]);
       const { error } = await supabase.from('deals').delete().eq('id', deal.id);
       if (error) throw error;
-      toast({ title: 'File deleted' });
+      toast({ title: 'File deleted', description: `File ${deal.deal_number} has been deleted.` });
+      setDeleteTarget(null);
       fetchDeals(currentPage);
     } catch (error: any) {
       toast({
@@ -293,6 +301,8 @@ export const DealsPage: React.FC = () => {
         description: error.message || 'Failed to delete file',
         variant: 'destructive',
       });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -661,7 +671,7 @@ export const DealsPage: React.FC = () => {
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDelete(deal);
+                              setDeleteTarget(deal);
                             }}
                             className="text-destructive"
                           >
@@ -758,6 +768,34 @@ export const DealsPage: React.FC = () => {
             >
               {copying ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Copy className="h-4 w-4 mr-2" />}
               Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete file no.{' '}
+              <span className="font-medium text-foreground">{deleteTarget?.deal_number}</span>?
+              This action cannot be undone and will permanently remove all data associated
+              with this file.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) handleDelete(deleteTarget);
+              }}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
