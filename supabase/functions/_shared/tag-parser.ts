@@ -1189,27 +1189,7 @@ export function formatValueForInsertion(
   const escaped = escapeXmlValue(value);
   if (!escaped.includes('\n')) return escaped;
   if (isInsideTextRun(surroundingXml, index)) {
-    // Find the enclosing <w:r ...> open tag and (optionally) its <w:rPr>...</w:rPr>
-    // so each newline becomes a NEW run: close current run, emit a break-only
-    // run, then open a fresh run that preserves the same run-properties. This
-    // avoids stacking multiple <w:t> + <w:br/> siblings inside a single <w:r>,
-    // which Word renders with extra vertical spacing between the lines.
-    let rPr = '';
-    const lastRunOpen = surroundingXml.lastIndexOf('<w:r', index);
-    if (lastRunOpen !== -1) {
-      const runHeadEnd = surroundingXml.indexOf('>', lastRunOpen);
-      if (runHeadEnd !== -1 && runHeadEnd < index) {
-        const head = surroundingXml.substring(lastRunOpen, runHeadEnd + 1);
-        // Must be <w:r> or <w:r ...> — not <w:rPr>, <w:rFonts>, etc.
-        if (/^<w:r(\s[^>]*)?>$/.test(head)) {
-          const afterHead = surroundingXml.substring(runHeadEnd + 1, index);
-          const rPrMatch = afterHead.match(/^\s*<w:rPr>[\s\S]*?<\/w:rPr>/);
-          if (rPrMatch) rPr = rPrMatch[0].trim();
-        }
-      }
-    }
-    const breakRun = `</w:t></w:r><w:r>${rPr}<w:br/></w:r><w:r>${rPr}<w:t xml:space="preserve">`;
-    return escaped.replace(/\n/g, breakRun);
+    return escaped.replace(/\n/g, '</w:t><w:br/><w:t xml:space="preserve">');
   }
   return escaped.replace(/\n/g, ' ');
 }
