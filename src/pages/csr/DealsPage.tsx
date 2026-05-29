@@ -25,10 +25,21 @@ import {
   Eye,
   Edit,
   Trash2,
+  Copy,
   ChevronLeft,
   ChevronRight,
   RefreshCw
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
