@@ -355,10 +355,15 @@ export const DealsPage: React.FC = () => {
 
       // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
       //    property, contacts prefixes, funding setup, custom fields, etc.)
+      //    EXCLUDES the 'notes' section so the copied loan starts with a
+      //    completely clean Conversation Log (no chat history, internal
+      //    comments, email threads, SMS history, or communication audit
+      //    records carry over to the new independent file).
       const { data: sectionRows, error: secErr } = await supabase
         .from('deal_section_values')
         .select('section, field_values, version')
-        .eq('deal_id', source.id);
+        .eq('deal_id', source.id)
+        .neq('section', 'notes');
       if (secErr) throw secErr;
       if (sectionRows && sectionRows.length > 0) {
         const payload = sectionRows.map((r: any) => ({
