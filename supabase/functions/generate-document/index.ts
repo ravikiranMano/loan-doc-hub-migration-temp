@@ -4488,6 +4488,8 @@ async function generateSingleDocument(
         if (isTemplateFormalRequestInfo) {
           type Cand = { idx: number; rawIdx: string; priority: string; holder: string };
           const candidates: Cand[] = [];
+          // Collect every lien index that has either a holder or a priority value.
+          const seenIdx = new Set<string>();
           for (const [key, val] of fieldValues.entries()) {
             const m = key.match(/^lien(\d*)\.(.+)$/);
             if (!m) continue;
@@ -4495,10 +4497,19 @@ async function generateSingleDocument(
             if (
               field !== "lien_priority_now" &&
               field !== "priority" &&
-              field !== "lien_priority"
+              field !== "lien_priority" &&
+              field !== "holder" &&
+              field !== "lienHolder"
             ) continue;
             const rawIdx = m[1] || "";
-            const prio = String(val?.rawValue ?? "").trim().toLowerCase();
+            if (seenIdx.has(rawIdx)) continue;
+            seenIdx.add(rawIdx);
+            const prio = String(
+              fieldValues.get(`lien${rawIdx}.priority`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lien_priority_now`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lien_priority`)?.rawValue ??
+              val?.rawValue ?? ""
+            ).trim().toLowerCase();
             const holderVal =
               fieldValues.get(`lien${rawIdx}.holder`)?.rawValue ??
               fieldValues.get(`lien${rawIdx}.lienHolder`)?.rawValue ??
@@ -4511,20 +4522,53 @@ async function generateSingleDocument(
             });
           }
           const isFirst = (p: string) => p === "1st" || p === "1" || p === "first";
-          const winner = candidates
+          // Precedence:
+          //   1. lien with priority 1st AND non-empty holder (lowest index wins)
+          //   2. first non-empty holder by ascending index (fallback)
+          //   3. direct lien1.holder / lien.holder lookup (last-ditch fallback)
+          let winnerHolder = "";
+          let winnerLabel = "";
+          const priorityWinner = candidates
             .filter((c) => isFirst(c.priority) && c.holder !== "")
             .sort((a, b) => a.idx - b.idx)[0];
-          if (winner) {
-            fieldValues.set("pr_li_lienHolder", {
-              rawValue: winner.holder,
-              dataType: "text",
-            });
+          if (priorityWinner) {
+            winnerHolder = priorityWinner.holder;
+            winnerLabel = `1st-priority lien${priorityWinner.rawIdx}`;
+          } else {
+            const fallbackWinner = candidates
+              .filter((c) => c.holder !== "")
+              .sort((a, b) => a.idx - b.idx)[0];
+            if (fallbackWinner) {
+              winnerHolder = fallbackWinner.holder;
+              winnerLabel = `first non-empty lien${fallbackWinner.rawIdx} (no lien marked 1st)`;
+            } else {
+              const direct =
+                fieldValues.get("lien1.holder")?.rawValue ??
+                fieldValues.get("lien1.lienHolder")?.rawValue ??
+                fieldValues.get("lien.holder")?.rawValue ??
+                fieldValues.get("lien.lienHolder")?.rawValue ??
+                "";
+              const directStr = String(direct).trim();
+              if (directStr) {
+                winnerHolder = directStr;
+                winnerLabel = "direct lien1/lien.holder lookup";
+              }
+            }
+          }
+          if (winnerHolder) {
+            const payload = { rawValue: winnerHolder, dataType: "text" as const };
+            fieldValues.set("pr_li_lienHolder", payload);
+            // Also publish canonical aliases so any downstream resolver path
+            // that prefers a different key still gets the same value.
+            if (!fieldValues.get("property1.lien_holder")?.rawValue) {
+              fieldValues.set("property1.lien_holder", payload);
+            }
             debugLog(
-              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder restricted to 1st-priority lien (lien${winner.rawIdx} holder="${winner.holder}")`
+              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder = "${winnerHolder}" (${winnerLabel}; candidates=${candidates.length})`
             );
           } else {
             debugLog(
-              `[generate-document] Formal_Request_for_Information: no lien with priority "1st" found; leaving aggregated pr_li_lienHolder unchanged (candidates=${candidates.length})`
+              `[generate-document] Formal_Request_for_Information: no lien holder resolved (candidates=${candidates.length})`
             );
           }
         }
