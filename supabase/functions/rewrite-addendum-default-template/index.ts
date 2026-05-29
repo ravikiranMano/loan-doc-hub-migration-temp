@@ -132,11 +132,14 @@ serve(async (req) => {
 function rewriteDocumentXml(xml: string): { xml: string; report: any } {
   const report = {
     changes: 0,
-    option1Replaced: false,
-    option2Replaced: false,
+    sentenceReplaced: false,
     helperRemoved: false,
+    option2ParagraphRemoved: false,
     paragraphsInspected: 0,
   };
+
+  const FULL_SENTENCE =
+    '{{#if ln_p_defaultInterestModifierEnabled}}to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time.{{else if ln_p_defaultInterestFlatRateEnabled}}to a flat rate of {{ln_p_defaultInterestFlatRate}}%{{/if}} (the "Default Rate").';
 
   // Match a <w:p ...>...</w:p> paragraph (non-greedy).
   const paraRe = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
@@ -146,28 +149,9 @@ function rewriteDocumentXml(xml: string): { xml: string; report: any } {
     const text = extractParagraphText(paraXml);
     if (!text.trim()) return paraXml;
 
-    // Normalize whitespace for matching.
     const flat = text.replace(/\s+/g, " ").trim();
 
-    // ---------- Option 1 paragraph ----------
-    if (/Option\s*1\s*:/i.test(flat) && /ln_p_defaultInterestModifier/.test(flat)) {
-      const newSentence =
-        '{{#if ln_p_defaultInterestModifierEnabled}}to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time.';
-      report.option1Replaced = true;
-      report.changes++;
-      return rewriteParagraphText(paraXml, newSentence);
-    }
-
-    // ---------- Option 2 paragraph ----------
-    if (/Option\s*2\s*:/i.test(flat) && /ln_p_defaultInterestFlatRate/.test(flat)) {
-      const newSentence =
-        '{{else if ln_p_defaultInterestFlatRateEnabled}}to a flat rate of {{ln_p_defaultInterestFlatRate}}%{{/if}} (the "Default Rate").';
-      report.option2Replaced = true;
-      report.changes++;
-      return rewriteParagraphText(paraXml, newSentence);
-    }
-
-    // ---------- Red helper paragraph ----------
+    // ---------- Red helper paragraph (remove entirely) ----------
     if (
       /this is conditional based on the selection made in/i.test(flat) &&
       /Default Interest/i.test(flat) &&
@@ -175,7 +159,36 @@ function rewriteDocumentXml(xml: string): { xml: string; report: any } {
     ) {
       report.helperRemoved = true;
       report.changes++;
-      return ""; // remove paragraph entirely
+      return "";
+    }
+
+    // ---------- Standalone Option 2 paragraph (merge into Option 1's, remove) ----------
+    if (
+      /Option\s*2\s*:/i.test(flat) &&
+      /ln_p_defaultInterestFlatRate/.test(flat) &&
+      !/Option\s*1\s*:/i.test(flat)
+    ) {
+      report.option2ParagraphRemoved = true;
+      report.changes++;
+      return "";
+    }
+
+    // ---------- The Default-Interest sentence paragraph ----------
+    // Match any paragraph that already drives Option 1 (matches original
+    // "Option 1:" labelled form, the partially-rewritten {{#if}} form, or any
+    // paragraph that mentions ln_p_defaultInterestModifier with no other content).
+    const mentionsModifier = /ln_p_defaultInterestModifier(?!Enabled)/.test(flat);
+    const isOption1Like =
+      /Option\s*1\s*:/i.test(flat) ||
+      /\{\{#if\s+ln_p_defaultInterestModifierEnabled\}\}/.test(flat) ||
+      (mentionsModifier && /above the Note rate/i.test(flat));
+
+    if (isOption1Like) {
+      // Idempotency guard — already exactly correct.
+      if (flat === FULL_SENTENCE.replace(/\s+/g, " ").trim()) return paraXml;
+      report.sentenceReplaced = true;
+      report.changes++;
+      return rewriteParagraphText(paraXml, FULL_SENTENCE);
     }
 
     return paraXml;
