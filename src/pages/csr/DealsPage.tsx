@@ -735,6 +735,34 @@ export const DealsPage: React.FC = () => {
         </div>
       )}
 
+      <AlertDialog open={!!copyTarget} onOpenChange={(open) => { if (!open && !copying) setCopyTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create a copy of this loan/file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The new loan will copy setup and entered data from{' '}
+              <span className="font-medium text-foreground">{copyTarget?.deal_number}</span>{' '}
+              but will <span className="font-medium">NOT</span> copy generated documents,
+              communication history, event logs, or transaction history. A new unique file
+              number will be assigned.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={copying}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={copying}
+              onClick={(e) => {
+                e.preventDefault();
+                if (copyTarget) handleCopyDeal(copyTarget);
+              }}
+            >
+              {copying ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Copy className="h-4 w-4 mr-2" />}
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <MaxFilesDialog
         open={showMaxFilesDialog}
         onClose={() => setShowMaxFilesDialog(false)}
