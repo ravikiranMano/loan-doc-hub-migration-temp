@@ -4488,6 +4488,8 @@ async function generateSingleDocument(
         if (isTemplateFormalRequestInfo) {
           type Cand = { idx: number; rawIdx: string; priority: string; holder: string };
           const candidates: Cand[] = [];
+          // Collect every lien index that has either a holder or a priority value.
+          const seenIdx = new Set<string>();
           for (const [key, val] of fieldValues.entries()) {
             const m = key.match(/^lien(\d*)\.(.+)$/);
             if (!m) continue;
@@ -4495,10 +4497,19 @@ async function generateSingleDocument(
             if (
               field !== "lien_priority_now" &&
               field !== "priority" &&
-              field !== "lien_priority"
+              field !== "lien_priority" &&
+              field !== "holder" &&
+              field !== "lienHolder"
             ) continue;
             const rawIdx = m[1] || "";
-            const prio = String(val?.rawValue ?? "").trim().toLowerCase();
+            if (seenIdx.has(rawIdx)) continue;
+            seenIdx.add(rawIdx);
+            const prio = String(
+              fieldValues.get(`lien${rawIdx}.priority`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lien_priority_now`)?.rawValue ??
+              fieldValues.get(`lien${rawIdx}.lien_priority`)?.rawValue ??
+              val?.rawValue ?? ""
+            ).trim().toLowerCase();
             const holderVal =
               fieldValues.get(`lien${rawIdx}.holder`)?.rawValue ??
               fieldValues.get(`lien${rawIdx}.lienHolder`)?.rawValue ??
@@ -4511,20 +4522,53 @@ async function generateSingleDocument(
             });
           }
           const isFirst = (p: string) => p === "1st" || p === "1" || p === "first";
-          const winner = candidates
+          // Precedence:
+          //   1. lien with priority 1st AND non-empty holder (lowest index wins)
+          //   2. first non-empty holder by ascending index (fallback)
+          //   3. direct lien1.holder / lien.holder lookup (last-ditch fallback)
+          let winnerHolder = "";
+          let winnerLabel = "";
+          const priorityWinner = candidates
             .filter((c) => isFirst(c.priority) && c.holder !== "")
             .sort((a, b) => a.idx - b.idx)[0];
-          if (winner) {
-            fieldValues.set("pr_li_lienHolder", {
-              rawValue: winner.holder,
-              dataType: "text",
-            });
+          if (priorityWinner) {
+            winnerHolder = priorityWinner.holder;
+            winnerLabel = `1st-priority lien${priorityWinner.rawIdx}`;
+          } else {
+            const fallbackWinner = candidates
+              .filter((c) => c.holder !== "")
+              .sort((a, b) => a.idx - b.idx)[0];
+            if (fallbackWinner) {
+              winnerHolder = fallbackWinner.holder;
+              winnerLabel = `first non-empty lien${fallbackWinner.rawIdx} (no lien marked 1st)`;
+            } else {
+              const direct =
+                fieldValues.get("lien1.holder")?.rawValue ??
+                fieldValues.get("lien1.lienHolder")?.rawValue ??
+                fieldValues.get("lien.holder")?.rawValue ??
+                fieldValues.get("lien.lienHolder")?.rawValue ??
+                "";
+              const directStr = String(direct).trim();
+              if (directStr) {
+                winnerHolder = directStr;
+                winnerLabel = "direct lien1/lien.holder lookup";
+              }
+            }
+          }
+          if (winnerHolder) {
+            const payload = { rawValue: winnerHolder, dataType: "text" as const };
+            fieldValues.set("pr_li_lienHolder", payload);
+            // Also publish canonical aliases so any downstream resolver path
+            // that prefers a different key still gets the same value.
+            if (!fieldValues.get("property1.lien_holder")?.rawValue) {
+              fieldValues.set("property1.lien_holder", payload);
+            }
             debugLog(
-              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder restricted to 1st-priority lien (lien${winner.rawIdx} holder="${winner.holder}")`
+              `[generate-document] Formal_Request_for_Information: pr_li_lienHolder = "${winnerHolder}" (${winnerLabel}; candidates=${candidates.length})`
             );
           } else {
             debugLog(
-              `[generate-document] Formal_Request_for_Information: no lien with priority "1st" found; leaving aggregated pr_li_lienHolder unchanged (candidates=${candidates.length})`
+              `[generate-document] Formal_Request_for_Information: no lien holder resolved (candidates=${candidates.length})`
             );
           }
         }
@@ -8051,6 +8095,104 @@ async function generateSingleDocument(
             effectiveValidFieldKeys.add(`${base}_${p}_${s}`);
           }
         }
+      }
+    }
+
+    // ── Formal_Request_for_Information ONLY: stitch fragmented {{pr_li_lienHolder}} ──
+    // Word authored this template with the field name split across two <w:r> runs
+    // (the opening "{{" sits in one run, "pr_li_lienHolder}}" sits in the next run
+    // which carries a different <w:rPr>, including a <w:highlight w:val="white"/>).
+    // The generic run-consolidation passes occasionally fail to stitch this exact
+    // shape, leaving the merge-tag resolver with no contiguous `{{pr_li_lienHolder}}`
+    // token — so the placeholder renders as blank (or as raw text). Run a narrow,
+    // idempotent paragraph rewrite over document.xml + headers + footers that joins
+    // every <w:t> in any paragraph containing `pr_li_lienHolder` into the first run,
+    // preserving its rPr but stripping the orphan white-highlight.
+    if (isTemplateFormalRequestInfo) {
+      try {
+        const fr_decompressed = fflate.unzipSync(templateBuffer);
+        const fr_decoder = new TextDecoder();
+        const fr_encoder = new TextEncoder();
+        const fr_PARTS = Object.keys(fr_decompressed).filter((f) =>
+          f === "word/document.xml" ||
+          f.startsWith("word/header") ||
+          f.startsWith("word/footer")
+        );
+        let fr_touched = false;
+        const stitchPara = (para: string): string => {
+          if (!para.includes("pr_li_lienHolder")) return para;
+          // Gather <w:t> text contents in order.
+          const tTexts: string[] = [];
+          para.replace(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g, (_m, t) => {
+            tTexts.push(t);
+            return "";
+          });
+          if (tTexts.length < 2) return para;
+          const joined = tTexts.join("");
+          if (!joined.includes("{{pr_li_lienHolder}}")) return para;
+          // If the tag is already contiguous in a single <w:t>, no-op.
+          if (tTexts.some((t) => t.includes("{{pr_li_lienHolder}}"))) return para;
+          fr_touched = true;
+          // Consolidate: put the full joined text into the first <w:t>, empty the rest.
+          let isFirst = true;
+          let out = para.replace(
+            /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/g,
+            (_m, attrs: string | undefined) => {
+              if (isFirst) {
+                isFirst = false;
+                return `<w:t xml:space="preserve">${joined}</w:t>`;
+              }
+              return `<w:t${attrs || ""}></w:t>`;
+            }
+          );
+          // Drop the orphan white-highlight run-property that survived from the
+          // split run — it was only applied to the fragment, not to the rest of
+          // the paragraph, so keeping it would visibly highlight nothing useful.
+          out = out.replace(
+            /<w:highlight\s+w:val="white"\s*\/>/g,
+            ""
+          );
+          return out;
+        };
+        for (const part of fr_PARTS) {
+          const bytes = fr_decompressed[part];
+          if (!bytes) continue;
+          const xml = fr_decoder.decode(bytes);
+          if (!xml.includes("pr_li_lienHolder")) continue;
+          // Walk paragraphs.
+          let out = "";
+          let pos = 0;
+          let partTouched = false;
+          while (pos < xml.length) {
+            const pStart = xml.indexOf("<w:p", pos);
+            if (pStart === -1) {
+              out += xml.substring(pos);
+              break;
+            }
+            const pClose = xml.indexOf("</w:p>", pStart);
+            if (pClose === -1) {
+              out += xml.substring(pos);
+              break;
+            }
+            const pEnd = pClose + "</w:p>".length;
+            out += xml.substring(pos, pStart);
+            const para = xml.substring(pStart, pEnd);
+            const stitched = stitchPara(para);
+            if (stitched !== para) partTouched = true;
+            out += stitched;
+            pos = pEnd;
+          }
+          if (partTouched) {
+            fr_decompressed[part] = fr_encoder.encode(out);
+            debugLog(`[generate-document] Formal_Request_for_Information: stitched fragmented {{pr_li_lienHolder}} in ${part}`);
+          }
+        }
+        if (fr_touched) {
+          templateBuffer = fflate.zipSync(fr_decompressed);
+        }
+      } catch (frErr) {
+        const msg = frErr instanceof Error ? frErr.message : String(frErr);
+        console.error(`[generate-document] Formal_Request_for_Information stitch pass failed (continuing with original buffer): ${msg}`);
       }
     }
 

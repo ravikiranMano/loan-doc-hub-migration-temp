@@ -1,45 +1,63 @@
-# Plan — Fix "Lender:" → "Lender 1:" + trailing space in Addendum to LPDS
 
-## Diagnosis
+## Problem
 
-Confirmed by unpacking the active template (`1780062103672_Addendum_to_LPDS__1___3__v2.docx`):
+In the **Formal Request for Information V7** template, the tag `{{pr_li_lienHolder}}` renders blank (or as the literal `{{pr_li_lienHolder}}`) instead of the lien holder name.
 
-- The Lender 1 label paragraph is literally: `Lender: {{#if (eq ld_p_lenderType "Individual")}}{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}{{else}}{{ld_p_vesting}}{{/if}}`
-- It is split across two `<w:r>` runs: the first run holds `Lender: ` (label, `sz 22`, color `231F20`), the second run holds the conditional name expression (Arial, `sz 19`).
-- Lenders 2..N are built by the runtime cloner in `supabase/functions/generate-document/index.ts` (~line 8443), which writes `Lender ${labelN}: ${displayName}` where `displayName` is a single, trimmed string. So Lender 1's discrepancy is entirely on the template side.
+## Root cause
 
-Trailing-space cause: the Individual branch concatenates `{{ld_p_firstIfEntityUse}}{{ld_p_middle}}{{ld_p_last}}` directly. If a stored value carries a trailing space (commonly `ld_p_middle` when empty/padded), the rendered Lender 1 line gets a trailing space that Lenders 2..N (which use the single `displayName` from the cloner) never have.
+In `word/document.xml` the merge tag is split across three runs because Word applied `<w:highlight w:val="white"/>` to part of the text:
 
-## Fix — one-shot edge function, no app code changes
+```
+<w:r>...<w:t>To: </w:t></w:r>
+<w:r>...<w:t>{{</w:t></w:r>
+<w:r><w:rPr><w:highlight w:val="white"/>...</w:rPr><w:t>pr_li_lienHolder}}</w:t></w:r>
+```
 
-Create `supabase/functions/rewrite-lpds-lender1-label/index.ts` (modeled on the existing `rewrite-addendum-default-template`). It will:
+The opening `{{` lives in one run; the field name and closing `}}` live in a separate run that carries a different `<w:rPr>` (highlight + minimal properties — no font/size). The generic run-consolidation pass occasionally fails to stitch this exact shape because the two runs have non-matching `<w:rPr>` blocks, so the downstream merge-tag resolver never sees a complete `{{pr_li_lienHolder}}` token and the placeholder is left as-is (or eaten when downstream "leftover handlebars" cleanup runs).
 
-1. Look up the `Addendum to LPDS` template row, download the current `file_path` from the `templates` bucket.
-2. Locate the single paragraph whose flattened text starts with `Lender:` and contains `ld_p_lenderType`.
-3. Rebuild that paragraph as a clean two-run structure that preserves the existing formatting:
-   - Run 1 — copies the existing first-run `<w:rPr>` (color `231F20`, `sz 22`) and writes text `Lender 1: ` (note the trailing space).
-   - Run 2 — copies the existing second-run `<w:rPr>` (Arial, `sz 19`) and writes the conditional expression rewritten to a single token so no concatenation can introduce stray whitespace: `{{#if (eq ld_p_lenderType "Individual")}}{{ld_p_firstIfEntityUse}} {{ld_p_last}}{{else}}{{ld_p_vesting}}{{/if}}`.
-   - Middle is dropped from the label line because it is the documented source of the trailing space and is not displayed in any other lender block. Vesting (entity branch) is unchanged.
-   - Existing `<w:pPr>` is preserved verbatim (indent, spacing, etc.).
-4. Pack and upload as `…_v3.docx`, then update the `templates.file_path` to point at the new file.
-5. Expose `?verify=1` returning the rewritten paragraph text plus booleans `has_lender1`, `still_has_bare_lender`, `still_has_middle_token`.
+Separately, the existing Formal-Request-specific publisher (`supabase/functions/generate-document/index.ts` ~line 4488) only overwrites `pr_li_lienHolder` when it finds a lien whose `priority` field equals exactly `1st`/`1`/`first`. If no such lien exists, the aggregated newline-joined list is left in place — which is also wrong for this single-cell tag.
 
-The function is idempotent: if the paragraph already starts with `Lender 1:`, it returns `changes: 0` without uploading.
+## Fix
 
-## Out of scope (explicitly NOT changing)
+Single-file change in **`supabase/functions/generate-document/index.ts`**.
 
-- No edits to `generate-document/index.ts` — Lender 2..N cloner already produces `Lender N: <displayName>` correctly.
-- No edits to UI, schema, field dictionary, or any other template.
-- No change to Signature / Date paragraphs in the Lender 1 block.
-- No change to entity-branch vesting rendering.
+### 1. Strengthen the Formal-Request-only `pr_li_lienHolder` publisher (around lines 4488–4530)
+
+- Resolve the holder value with this precedence:
+  1. Lien (by ascending index) whose `priority` is `1st`/`1`/`first` AND whose `holder` is non-empty.
+  2. Lien (by ascending index) whose `holder` is non-empty (fallback when no priority is marked `1st`).
+  3. `lien1.holder` / `lien.holder` direct lookup.
+- Publish the resolved holder under all of: `pr_li_lienHolder`, `property1.lien_holder`, and the canonical-key alias used by the field-dictionary id `3157074f-b561-45f8-b358-01fb264bc06b`, so any downstream resolver path that reads a different key still gets the same value.
+- Add a `debugLog` line that reports the chosen lien + holder for diagnosis.
+
+### 2. Add a Formal-Request-only XML safety pass
+
+Run once per `document.xml` (and headers/footers) when `isTemplateFormalRequestInfo === true`, after the existing `normalizeWordXml` pass and before merge-tag resolution:
+
+- Scan paragraphs that contain `pr_li_lienHolder`.
+- Extract the concatenated text of all `<w:t>` elements in the paragraph; if the concatenation contains `{{pr_li_lienHolder}}` but no single `<w:t>` does, rewrite the paragraph so the first run containing `{{` carries the full `{{pr_li_lienHolder}}` text and the following runs that contributed only the split remainder (`pr_li_lienHolder}}` and the orphan `{{`) are emptied. Preserve the `<w:rPr>` of the run that originally held `{{` so font/size/color stay Times New Roman 12pt black to match the surrounding `To: ` text. Drop the `<w:highlight w:val="white"/>` carried only by the orphan run.
+- Idempotent: if the tag is already contiguous in a single `<w:t>` the pass is a no-op.
+
+This mirrors the pattern already used in this file (`consolidateAppraiserConditional`, the LPDS Lender 1 rewriter) for one specific tag in one specific template — no impact on other templates.
+
+### 3. No template change, no schema change
+
+- Do not modify the uploaded `Formal_Request_for_Information V7.docx`.
+- Do not touch `field_dictionary`, RLS, or any other module.
+- Do not change behavior for any template whose name does not match the existing `isTemplateFormalRequestInfo` regex.
 
 ## Verification
 
-1. Deploy and POST the new function — expect `changes: 1` and a new `…_v3.docx`.
-2. GET with `?verify=1` — expect paragraph text `Lender 1: {{#if (eq ld_p_lenderType "Individual")}}{{ld_p_firstIfEntityUse}} {{ld_p_last}}{{else}}{{ld_p_vesting}}{{/if}}` and `still_has_bare_lender: false`, `still_has_middle_token: false`.
-3. Generate Addendum to LPDS for a deal whose primary lender is `Michael Carter` (individual) — expect rendered line `Lender 1: Michael Carter` (no trailing space).
-4. Generate for a deal with multiple lenders — expect `Lender 1: …`, `Lender 2: …`, …, all formatted identically.
+1. Regenerate Formal Request for Information for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65`.
+2. Open the resulting `.docx`; the `To:` line must read `To: First National Commercial Bank` (the 1st-priority lien holder for this deal — confirmed in `deal_section_values` section=`liens`, key `lien1::3157074f-…` = "First National Commercial Bank", priority `lien1.priority` = "1st"). Font/size/color must match the rest of the paragraph (Times New Roman 12pt black, no white highlight artifact).
+3. Re-run on a deal with no liens at priority "1st" — confirm fallback to the first non-empty lien holder.
+4. Re-run on a deal with no lien data — confirm the tag renders empty (no literal `{{pr_li_lienHolder}}` remains).
+5. Sanity-check at least one unrelated template (e.g. RE885, LPDS Addendum) regenerates with no regressions in lien-holder cells.
 
-## Risk / fallback
+## Files touched
 
-If `ld_p_middle` is required somewhere downstream for the Lender 1 label specifically, I will switch the Individual branch to `{{ld_p_vesting}}` (same as the entity branch) — this is the safest token because `ld_p_vesting` is also what every Lender 2..N renders. One-line tweak inside the rewriter.
+- `supabase/functions/generate-document/index.ts` — edits in the Formal-Request section (~lines 4482–4530) and one new safety-pass helper invoked from the same template branch.
+
+## Deploy
+
+Redeploy the `generate-document` edge function after the edit.
