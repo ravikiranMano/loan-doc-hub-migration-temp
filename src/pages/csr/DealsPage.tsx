@@ -773,6 +773,34 @@ export const DealsPage: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete file no.{' '}
+              <span className="font-medium text-foreground">{deleteTarget?.deal_number}</span>?
+              This action cannot be undone and will permanently remove all data associated
+              with this file.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) handleDelete(deleteTarget);
+              }}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <MaxFilesDialog
         open={showMaxFilesDialog}
         onClose={() => setShowMaxFilesDialog(false)}
