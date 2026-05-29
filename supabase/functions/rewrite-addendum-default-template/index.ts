@@ -19,6 +19,9 @@ const TEMPLATE_NAME = "ADDENDUM TO NOTE EVENT OF DEFAULT";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const url = new URL(req.url);
+  const dryRun = url.searchParams.get("dryRun") === "1";
+  const dump = url.searchParams.get("dump") === "1";
 
   try {
     const supabase = createClient(
