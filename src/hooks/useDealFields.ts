@@ -19,7 +19,6 @@ import {
   resolveAllFields,
   getMissingRequiredFields as getResolverMissingFields,
   getMissingTemplateRequiredFields,
-  getValueForResolvedField,
   isSectionComplete as isResolverSectionComplete,
   SECTION_ORDER,
   type ResolvedField,
@@ -235,11 +234,17 @@ function formatCurrencyForDisplay(value: string): string {
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Coerce JSONB primitives to the string form valuesMap expects (same contract as main).
+function jsonbValueToString(value: unknown): string {
+  if (value == null || value === '') return '';
+  return typeof value === 'string' ? value : String(value);
+}
+
 // Extract typed value from JSONB structure
 function extractTypedValueFromJsonb(fieldData: JsonbFieldValue, dataType: FieldDataType): string {
   switch (dataType) {
     case 'currency': {
-      const raw = fieldData.value_number?.toString() || fieldData.value_text || '';
+      const raw = jsonbValueToString(fieldData.value_number ?? fieldData.value_text);
       // Return raw numeric value (e.g. "1234.00") — UI components handle display formatting
       if (!raw) return '';
       const num = parseFloat(raw.replace(/,/g, ''));
@@ -247,19 +252,19 @@ function extractTypedValueFromJsonb(fieldData: JsonbFieldValue, dataType: FieldD
       return num.toFixed(2);
     }
     case 'number':
-      return fieldData.value_number?.toString() || fieldData.value_text || '';
+      return jsonbValueToString(fieldData.value_number ?? fieldData.value_text);
     case 'percentage': {
-      const raw = fieldData.value_number?.toString() || fieldData.value_text || '';
+      const raw = jsonbValueToString(fieldData.value_number ?? fieldData.value_text);
       if (!raw) return '';
       const num = parseFloat(raw.replace(/,/g, ''));
       return isNaN(num) ? raw : num.toFixed(2);
     }
     case 'date':
-      return fieldData.value_date || fieldData.value_text || '';
+      return jsonbValueToString(fieldData.value_date ?? fieldData.value_text);
     case 'boolean':
-      return fieldData.value_text || '';
+      return jsonbValueToString(fieldData.value_text);
     default:
-      return fieldData.value_text || '';
+      return jsonbValueToString(fieldData.value_text);
   }
 }
 
@@ -322,18 +327,21 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
   const [requiredFieldChanged, setRequiredFieldChanged] = useState(false);
   const [deletedPrefixes, setDeletedPrefixes] = useState<string[]>([]);
   const isFetchingRef = useRef(false);
-  const hasLoadedRef = useRef(false);
+  const dealLoadKeyRef = useRef('');
   const valuesRef = useRef<Record<string, string>>({});
   const savedValuesSnapshotRef = useRef<Record<string, string>>({});
   const { logFieldChanges } = useEventJournalLogger();
 
-  // Fetch resolved fields and values - deferred until active
+  // Fetch resolved fields and values - deferred until active; re-run when deal, packet, or dictionary cache changes
   useEffect(() => {
     if (!dealId || !active) return;
-    if (hasLoadedRef.current) return; // Already loaded
-    hasLoadedRef.current = true;
+    if (cache?.loading) return;
+
+    const loadKey = `${dealId}|${packetId ?? ''}|${cache?.allEntries?.length ?? 0}`;
+    if (dealLoadKeyRef.current === loadKey) return;
+    dealLoadKeyRef.current = loadKey;
     fetchData();
-  }, [dealId, packetId, active]);
+  }, [dealId, packetId, active, cache?.loading, cache?.allEntries?.length]);
 
   const fetchData = async () => {
     // Guard against concurrent fetches
@@ -483,141 +491,150 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
       setFieldDataTypes(dataTypeMap);
       setFieldIdMap(idMap);
 
-      // 2. Fetch existing field values for this deal from deal_section_values
-      if (mergedResolved.visibleFieldKeys.length > 0) {
-        const sectionValues = await fetchSectionValuesByDeal(dealId);
+      // 2. Fetch existing field values for this deal from deal_section_values (always — even when no packet fields)
+      const sectionValues = await fetchSectionValuesByDeal(dealId);
 
-        // Create lookup map from field_dictionary_id to field metadata
-        const fieldDictIdToMeta = new Map<string, { field_key: string; data_type: FieldDataType }>();
-        mergedResolved.fields.forEach(f => {
-          fieldDictIdToMeta.set(f.field_dictionary_id, { field_key: f.field_key, data_type: f.data_type });
-        });
+      // Create lookup map from field_dictionary_id to field metadata
+      const fieldDictIdToMeta = new Map<string, { field_key: string; data_type: FieldDataType }>();
+      mergedResolved.fields.forEach(f => {
+        fieldDictIdToMeta.set(f.field_dictionary_id, { field_key: f.field_key, data_type: f.data_type });
+      });
 
-        // Fallback: some persisted values (like Loan > Trust Ledger dynamic rows) may exist in
-        // deal_section_values even when their field definitions were not part of the packet-resolved
-        // field set. Load those field_dictionary rows on demand so saved values hydrate correctly.
-        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const missingFieldDictIds = Array.from(new Set(
-          ((sectionValues || []) as any[]).flatMap((sv: any) =>
-            Object.keys(sv.field_values || {}).map((storageKey) => parseStorageKey(storageKey).fieldDictId)
-          )
-        )).filter((fieldDictId) => fieldDictId && UUID_REGEX.test(fieldDictId) && !fieldDictIdToMeta.has(fieldDictId));
+      // Fallback: some persisted values (like Loan > Trust Ledger dynamic rows) may exist in
+      // deal_section_values even when their field definitions were not part of the packet-resolved
+      // field set. Load those field_dictionary rows on demand so saved values hydrate correctly.
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const missingFieldDictIds = Array.from(new Set(
+        ((sectionValues || []) as any[]).flatMap((sv: any) =>
+          Object.keys(sv.field_values || {}).map((storageKey) => parseStorageKey(storageKey).fieldDictId)
+        )
+      )).filter((fieldDictId) => fieldDictId && UUID_REGEX.test(fieldDictId) && !fieldDictIdToMeta.has(fieldDictId));
 
-        if (missingFieldDictIds.length > 0) {
-          try {
-            const fallbackFieldRows = await fetchFieldDictionaryByIds(missingFieldDictIds);
-            (fallbackFieldRows || []).forEach((row: any) => {
-              if (row?.id && row?.field_key && row?.data_type) {
-                fieldDictIdToMeta.set(row.id, {
-                  field_key: row.field_key,
-                  data_type: row.data_type,
-                });
-              }
-            });
-          } catch (e) {
-            console.warn('[useDealFields] Fallback field_dictionary lookup threw:', e);
-          }
-        }
-
-        // Build values map - parse JSONB field_values with composite key support
-        // Composite keys are formatted as "{prefix}::{fieldDictId}" for multi-entity fields
-        // Falls back to indexed_key property for backward compatibility
-        const valuesMap: Record<string, string> = {};
-        ((sectionValues || []) as any[]).forEach((sv) => {
-          const fieldValues = sv.field_values || {};
-          const isChargeSection = sv.section === 'charges';
-          
-          Object.entries(fieldValues).forEach(([storageKey, fieldData]: [string, any]) => {
-            const { prefix, fieldDictId } = parseStorageKey(storageKey);
-            const fieldMeta = fieldDictIdToMeta.get(fieldDictId);
-            
-            if (fieldMeta && fieldData) {
-              const value = extractTypedValueFromJsonb(fieldData as JsonbFieldValue, fieldMeta.data_type);
-              if (value) {
-                // Priority: 1) indexed_key property, 2) reconstruct from prefix, 3) canonical field_key
-                let keyToUse = (fieldData as JsonbFieldValue).indexed_key;
-                if (!keyToUse && prefix) {
-                  // Reconstruct indexed key from prefix and canonical field key
-                  // First, resolve the DB field_key to legacy dot-notation if possible
-                  const legacyFieldKey = resolveDbKeyToLegacy(fieldMeta.field_key);
-                  
-                  // For charge fields, we need to reverse-map dictionary keys to UI format
-                  if (isChargeSection && prefix.startsWith('charge')) {
-                    const uiCanonicalKey = mapChargeFieldKey(fieldMeta.field_key, false);
-                    if (uiCanonicalKey.startsWith('charge.')) {
-                      const fieldSuffix = uiCanonicalKey.replace(/^charge\./, '');
-                      keyToUse = `${prefix}.${fieldSuffix}`;
-                    } else if (legacyFieldKey.startsWith('charge.')) {
-                      const fieldSuffix = legacyFieldKey.replace(/^charge\./, '');
-                      keyToUse = `${prefix}.${fieldSuffix}`;
-                    } else {
-                      keyToUse = `${prefix}.${fieldMeta.field_key}`;
-                    }
-                  } else if (legacyFieldKey !== fieldMeta.field_key) {
-                    // DB key has a legacy equivalent - use the legacy format for UI compatibility
-                    // e.g., DB key "br_p_firstName" -> legacy "borrower.first_name"
-                    // Extract the suffix after the entity prefix (borrower., lender., etc.)
-                    const entityPrefixMatch = legacyFieldKey.match(/^(borrower|coborrower|co_borrower|lender|property\d*|broker|lien|insurance|propertytax|notes_entry)\.(.*)/);
-                    if (entityPrefixMatch) {
-                      keyToUse = `${prefix}.${entityPrefixMatch[2]}`;
-                    } else {
-                      // Non-entity legacy key (e.g., ach.bank_name, loan_terms.loan_amount)
-                      keyToUse = legacyFieldKey;
-                    }
-                  } else {
-                    // No legacy mapping - use DB field_key with prefix
-                    const canonicalField = fieldMeta.field_key.replace(/^(borrower|coborrower|co_borrower|lender|property\d*|broker|lien|insurance|propertytax|notes_entry)\./, '');
-                    keyToUse = `${prefix}.${canonicalField}`;
-                  }
-                }
-                // For non-indexed keys, also translate DB key to legacy if possible
-                if (!keyToUse) {
-                  const legacyFieldKey = resolveDbKeyToLegacy(fieldMeta.field_key);
-                  keyToUse = legacyFieldKey; // Will be the same as field_key if no mapping exists
-                }
-                const existingValue = valuesMap[keyToUse];
-                if (keyToUse === 'loan_terms.funding_records' && existingValue) {
-                  try {
-                    const existingCount = Array.isArray(JSON.parse(existingValue)) ? JSON.parse(existingValue).length : 0;
-                    const nextCount = Array.isArray(JSON.parse(value)) ? JSON.parse(value).length : 0;
-                    if (nextCount >= existingCount) valuesMap[keyToUse] = value;
-                  } catch {
-                    valuesMap[keyToUse] = value;
-                  }
-                } else {
-                  valuesMap[keyToUse] = value;
-                }
-              }
+      if (missingFieldDictIds.length > 0) {
+        try {
+          const fallbackFieldRows = await fetchFieldDictionaryByIds(missingFieldDictIds);
+          (fallbackFieldRows || []).forEach((row: any) => {
+            if (row?.id && row?.field_key && row?.data_type) {
+              fieldDictIdToMeta.set(row.id, {
+                field_key: row.field_key,
+                data_type: row.data_type,
+              });
             }
           });
-        });
-
-        // Mirror legacy/indexed keys under dictionary field_key so completeness checks and DealSectionTab agree
-        mergedResolved.fields.forEach((field) => {
-          if (!valuesMap[field.field_key]?.trim()) {
-            const resolved = getValueForResolvedField(valuesMap, field);
-            if (resolved) valuesMap[field.field_key] = resolved;
-          }
-        });
-
-        // Apply default values for fields without values
-        mergedResolved.fields.forEach(field => {
-          if (!valuesMap[field.field_key] && field.default_value) {
-            valuesMap[field.field_key] = field.default_value;
-          }
-        });
-
-        // Snapshot reflects DB + defaults (canonical "saved" state)
-        savedValuesSnapshotRef.current = { ...valuesMap };
-
-        // Always load clean: ignore any session cache to prevent phantom
-        // dirty state from key-format mismatches between cache and snapshot.
-        clearSessionCache(dealId);
-        setValues(valuesMap);
-        valuesRef.current = valuesMap;
-        setDirtyFieldKeys(new Set());
-        setIsDirty(false);
+        } catch (e) {
+          console.warn('[useDealFields] Fallback field_dictionary lookup threw:', e);
+        }
       }
+
+      // Build values map - parse JSONB field_values with composite key support
+      // Composite keys are formatted as "{prefix}::{fieldDictId}" for multi-entity fields
+      // Falls back to indexed_key property for backward compatibility
+      const valuesMap: Record<string, string> = {};
+      let storageKeysTotal = 0;
+      let hydratedCount = 0;
+      let skippedNoMeta = 0;
+
+      ((sectionValues || []) as any[]).forEach((sv) => {
+        const fieldValues = sv.field_values || {};
+        const isChargeSection = sv.section === 'charges';
+
+        Object.entries(fieldValues).forEach(([storageKey, fieldData]: [string, any]) => {
+          storageKeysTotal++;
+          const { prefix, fieldDictId } = parseStorageKey(storageKey);
+          const fieldMeta = fieldDictIdToMeta.get(fieldDictId);
+
+          if (!fieldMeta || !fieldData) {
+            if (!fieldMeta) skippedNoMeta++;
+            return;
+          }
+
+          const value = extractTypedValueFromJsonb(fieldData as JsonbFieldValue, fieldMeta.data_type);
+          if (value) {
+            hydratedCount++;
+            // Priority: 1) indexed_key property, 2) reconstruct from prefix, 3) canonical field_key
+            let keyToUse = (fieldData as JsonbFieldValue).indexed_key;
+            if (!keyToUse && prefix) {
+              // Reconstruct indexed key from prefix and canonical field key
+              // First, resolve the DB field_key to legacy dot-notation if possible
+              const legacyFieldKey = resolveDbKeyToLegacy(fieldMeta.field_key);
+
+              // For charge fields, we need to reverse-map dictionary keys to UI format
+              if (isChargeSection && prefix.startsWith('charge')) {
+                const uiCanonicalKey = mapChargeFieldKey(fieldMeta.field_key, false);
+                if (uiCanonicalKey.startsWith('charge.')) {
+                  const fieldSuffix = uiCanonicalKey.replace(/^charge\./, '');
+                  keyToUse = `${prefix}.${fieldSuffix}`;
+                } else if (legacyFieldKey.startsWith('charge.')) {
+                  const fieldSuffix = legacyFieldKey.replace(/^charge\./, '');
+                  keyToUse = `${prefix}.${fieldSuffix}`;
+                } else {
+                  keyToUse = `${prefix}.${fieldMeta.field_key}`;
+                }
+              } else if (legacyFieldKey !== fieldMeta.field_key) {
+                // DB key has a legacy equivalent - use the legacy format for UI compatibility
+                // e.g., DB key "br_p_firstName" -> legacy "borrower.first_name"
+                // Extract the suffix after the entity prefix (borrower., lender., etc.)
+                const entityPrefixMatch = legacyFieldKey.match(/^(borrower|coborrower|co_borrower|lender|property\d*|broker|lien|insurance|propertytax|notes_entry)\.(.*)/);
+                if (entityPrefixMatch) {
+                  keyToUse = `${prefix}.${entityPrefixMatch[2]}`;
+                } else {
+                  // Non-entity legacy key (e.g., ach.bank_name, loan_terms.loan_amount)
+                  keyToUse = legacyFieldKey;
+                }
+              } else {
+                // No legacy mapping - use DB field_key with prefix
+                const canonicalField = fieldMeta.field_key.replace(/^(borrower|coborrower|co_borrower|lender|property\d*|broker|lien|insurance|propertytax|notes_entry)\./, '');
+                keyToUse = `${prefix}.${canonicalField}`;
+              }
+            }
+            // For non-indexed keys, also translate DB key to legacy if possible
+            if (!keyToUse) {
+              const legacyFieldKey = resolveDbKeyToLegacy(fieldMeta.field_key);
+              keyToUse = legacyFieldKey; // Will be the same as field_key if no mapping exists
+            }
+            const existingValue = valuesMap[keyToUse];
+            if (keyToUse === 'loan_terms.funding_records' && existingValue) {
+              try {
+                const existingCount = Array.isArray(JSON.parse(existingValue)) ? JSON.parse(existingValue).length : 0;
+                const nextCount = Array.isArray(JSON.parse(value)) ? JSON.parse(value).length : 0;
+                if (nextCount >= existingCount) valuesMap[keyToUse] = value;
+              } catch {
+                valuesMap[keyToUse] = value;
+              }
+            } else {
+              valuesMap[keyToUse] = value;
+            }
+          }
+        });
+      });
+
+      if (import.meta.env.DEV && storageKeysTotal > 0) {
+        console.debug('[useDealFields] hydration', {
+          dealId,
+          storageKeysTotal,
+          hydratedCount,
+          skippedNoMeta,
+          valuesMapSize: Object.keys(valuesMap).length,
+        });
+      }
+
+      // Apply default values for fields without values
+      mergedResolved.fields.forEach(field => {
+        if (!valuesMap[field.field_key] && field.default_value) {
+          valuesMap[field.field_key] = field.default_value;
+        }
+      });
+
+      // Snapshot reflects DB + defaults (canonical "saved" state)
+      savedValuesSnapshotRef.current = { ...valuesMap };
+
+      // Always load clean: ignore any session cache to prevent phantom
+      // dirty state from key-format mismatches between cache and snapshot.
+      clearSessionCache(dealId);
+      setValues(valuesMap);
+      valuesRef.current = valuesMap;
+      setDirtyFieldKeys(new Set());
+      setIsDirty(false);
     } catch (err: any) {
       console.error('Error fetching deal fields:', err);
       setError(err.message || 'Failed to load fields');
@@ -1197,11 +1214,11 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
   }, [dealId]);
 
   const refetchData = useCallback(async () => {
-    hasLoadedRef.current = false;
+    dealLoadKeyRef.current = '';
     isFetchingRef.current = false;
     setDeletedPrefixes([]);
     await fetchData();
-  }, [dealId, packetId]);
+  }, [dealId, packetId, cache?.loading, cache?.allEntries?.length]);
 
   return {
     fields: resolvedFields?.fields || [],

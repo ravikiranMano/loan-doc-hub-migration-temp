@@ -4,11 +4,7 @@ import type { FundingRecord } from './LoanFundingGrid';
 import type { FundingAdjustmentData } from './FundingAdjustmentModal';
 import { toast } from 'sonner';
 import { fetchFieldDictionaryByFieldKeys } from '@/services/deals/section-values.service';
-import {
-  fetchLoanTermsSectionRows,
-  updateSectionValueById,
-  insertLoanTermsSectionRow,
-} from '@/services/deals/section-values.service';
+import { fetchLoanTermsSectionRows } from '@/services/deals/section-values.service';
 import {
   findParticipantByDealNameRole,
   insertParticipant,
@@ -110,62 +106,6 @@ async function resolveFieldDictId(fieldKey: string, cache: Map<string, string>):
   return data.id;
 }
 
-/**
- * Direct-persist a JSON value into deal_section_values for loan_terms section.
- */
-async function directPersistFundingField(
-  dealId: string,
-  fieldKey: string,
-  jsonValue: string,
-  dictCache: Map<string, string>,
-): Promise<boolean> {
-  try {
-    const fieldDictId = await resolveFieldDictId(fieldKey, dictCache);
-    if (!fieldDictId) return false;
-
-    const sectionRows = await fetchLoanTermsSectionRows(dealId);
-
-    if (sectionRows && sectionRows.length > 0) {
-      let targetRow = sectionRows.find((sv) => {
-        const fv = (sv.field_values as Record<string, any>) || {};
-        return !!fv[fieldDictId];
-      }) || sectionRows[0];
-
-      const fieldValues = ((targetRow.field_values as Record<string, any>) || {});
-      fieldValues[fieldDictId] = {
-        ...(fieldValues[fieldDictId] || {}),
-        value_text: jsonValue,
-        indexed_key: fieldKey,
-        indexed_db_key: resolveLegacyKey(fieldKey),
-        updated_at: new Date().toISOString(),
-      };
-
-      await updateSectionValueById(targetRow.id, {
-        deal_id: dealId,
-        section: 'loan_terms',
-        field_values: JSON.parse(JSON.stringify(fieldValues)),
-        updated_at: new Date().toISOString(),
-        version: (targetRow.version || 0) + 1,
-      });
-      return true;
-    } else {
-      const fieldValues: Record<string, any> = {};
-      fieldValues[fieldDictId] = {
-        value_text: jsonValue,
-        indexed_key: fieldKey,
-        indexed_db_key: resolveLegacyKey(fieldKey),
-        updated_at: new Date().toISOString(),
-      };
-
-      await insertLoanTermsSectionRow(dealId, fieldValues);
-      return true;
-    }
-  } catch (err) {
-    console.error(`[LoanTermsFundingForm] directPersist failed for "${fieldKey}":`, err);
-    return false;
-  }
-}
-
 export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   fields,
   values,
@@ -182,6 +122,11 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const dictCacheRef = useRef<Map<string, string>>(new Map());
   const hydrationAttemptedRef = useRef(false);
+
+  const persistChanges = useCallback(async (): Promise<boolean> => {
+    if (!saveDraft) return true;
+    return saveDraft();
+  }, [saveDraft]);
 
   // Get loan number and borrower name from values - auto-populate.
   // Account auto-fills from Previous Account Number (loan_terms.previous_account_number)
@@ -319,8 +264,8 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     if (lastHealedRef.current === json) return;
     lastHealedRef.current = json;
     onValueChange(FIELD_KEYS.fundingRecords, json);
-    void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
-  }, [fundingRecords, loanAmount, dealId, onValueChange]);
+    void persistChanges();
+  }, [fundingRecords, loanAmount, onValueChange, persistChanges]);
 
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
   // No longer normalized to 100% — when the loan is partially funded the total
@@ -335,10 +280,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   }, [fundingRecords]);
 
   // Persist the auto-filled Pro Rata into loan_terms.pro_rata whenever the
-  // grid total changes. Uses the same direct-persist path as funding_records
-  // so it cannot race with — or be overwritten by — a parent saveDraft() that
-  // may be operating on a stale field_values snapshot (which would drop the
-  // most recently added funding record).
+  // grid total changes via the parent saveDraft path (server merges JSON keys).
   const lastPersistedProRataRef = useRef<string | null>(null);
   useEffect(() => {
     if (!computedProRataTotal) return;
@@ -350,13 +292,8 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     if (lastPersistedProRataRef.current === computedProRataTotal) return;
     lastPersistedProRataRef.current = computedProRataTotal;
     onValueChange('loan_terms.pro_rata', computedProRataTotal);
-    void directPersistFundingField(
-      dealId,
-      'loan_terms.pro_rata',
-      computedProRataTotal,
-      dictCacheRef.current,
-    );
-  }, [computedProRataTotal, values, onValueChange, dealId]);
+    void persistChanges();
+  }, [computedProRataTotal, values, onValueChange, persistChanges]);
 
   // Parse funding history from stored JSON value.
   // Fallback: if no stored history exists yet (e.g. legacy/in-progress deals where the
@@ -614,11 +551,10 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const updatedHistoryJson = JSON.stringify(history);
     onValueChange(FIELD_KEYS.fundingHistory, updatedHistoryJson);
 
-    // Direct-persist both fields to DB
-    await Promise.all([
-      directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, updatedRecordsJson, dictCacheRef.current),
-      directPersistFundingField(dealId, FIELD_KEYS.fundingHistory, updatedHistoryJson, dictCacheRef.current),
-    ]);
+    const saved = await persistChanges();
+    if (!saved) {
+      toast.error('Failed to save funding record');
+    }
 
     // Auto-add lender to deal_participants if not already present
     if (data.lenderFullName) {
@@ -658,7 +594,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
         console.error('[LoanTermsFundingForm] Auto-add lender participant failed:', err);
       }
     }
-  }, [fundingRecords, values, onValueChange, dealId]);
+  }, [fundingRecords, values, onValueChange, persistChanges, dealId, remainingPayments, noteRate, pageSize]);
 
   const handleUpdateRecord = useCallback(async (id: string, updates: Partial<FundingRecord>) => {
     // Mutual exclusivity for Rounding Adjustment: only ONE lender can hold it.
@@ -702,33 +638,27 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       onValueChange(FIELD_KEYS.fundingHistory, updatedHistoryJson);
     }
 
-    // Direct-persist to DB
-    await Promise.all([
-      directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, updatedRecordsJson, dictCacheRef.current),
-      updatedHistoryJson
-        ? directPersistFundingField(dealId, FIELD_KEYS.fundingHistory, updatedHistoryJson, dictCacheRef.current)
-        : Promise.resolve(),
-    ]);
-  }, [fundingRecords, values, onValueChange, dealId]);
+    await persistChanges();
+  }, [fundingRecords, values, onValueChange, persistChanges, remainingPayments, noteRate]);
 
   const handleDeleteHistoryRecord = useCallback(async (record: { id: string }) => {
     const current = historyRecords.filter((r: any) => r.id !== record.id);
     const json = JSON.stringify(current);
     onValueChange(FIELD_KEYS.fundingHistory, json);
     try {
-      await directPersistFundingField(dealId, FIELD_KEYS.fundingHistory, json, dictCacheRef.current);
-      toast.success('Funding history record deleted');
+      const saved = await persistChanges();
+      if (saved) toast.success('Funding history record deleted');
+      else toast.error('Failed to delete funding history record');
     } catch (err) {
       console.error('[LoanTermsFundingForm] Delete history record failed:', err);
       toast.error('Failed to delete funding history record');
     }
-  }, [historyRecords, onValueChange, dealId]);
+  }, [historyRecords, onValueChange, persistChanges]);
 
   const handleDeleteRecord = async (record: FundingRecord) => {
     const updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
     onValueChange(FIELD_KEYS.fundingRecords, JSON.stringify(updatedRecords));
 
-    // Mirror deletion into Funding History so the history grid auto-updates
     const historyValue = values[FIELD_KEYS.fundingHistory];
     let history: any[] = [];
     try {
@@ -739,58 +669,16 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     if (Array.isArray(history) && history.length > 0) {
       const historyId = `history-${record.id}`;
       const updatedHistory = history.filter((h: any) => h?.id !== historyId);
-      const updatedHistoryJson = JSON.stringify(updatedHistory);
-      onValueChange(FIELD_KEYS.fundingHistory, updatedHistoryJson);
-      try {
-        await directPersistFundingField(dealId, FIELD_KEYS.fundingHistory, updatedHistoryJson, dictCacheRef.current);
-      } catch (err) {
-        console.error('[LoanTermsFundingForm] Mirror history delete failed:', err);
-      }
+      onValueChange(FIELD_KEYS.fundingHistory, JSON.stringify(updatedHistory));
     }
 
     try {
-      const fieldDictId = await resolveFieldDictId(FIELD_KEYS.fundingRecords, dictCacheRef.current);
-      if (!fieldDictId) throw new Error('Field dictionary entry not found for funding_records');
-
-      const sectionRows = await fetchLoanTermsSectionRows(dealId);
-
-      for (const sv of sectionRows) {
-        const fieldValues = (sv.field_values as Record<string, any>) || {};
-
-        if (fieldValues[fieldDictId]) {
-          fieldValues[fieldDictId] = {
-            ...fieldValues[fieldDictId],
-            value_text: JSON.stringify(updatedRecords),
-            updated_at: new Date().toISOString(),
-          };
-
-          await updateSectionValueById(sv.id, {
-            deal_id: dealId,
-            section: 'loan_terms',
-            field_values: JSON.parse(JSON.stringify(fieldValues)),
-            updated_at: new Date().toISOString(),
-            version: (sv.version || 0) + 1,
-          });
-
-          toast.success('Funding record deleted successfully');
-          return;
-        }
-      }
-
-      if (saveDraft) {
-        const success = await saveDraft();
-        if (success) {
-          toast.success('Funding record deleted successfully');
-        }
-      }
+      const saved = await persistChanges();
+      if (saved) toast.success('Funding record deleted successfully');
+      else toast.error('Failed to delete funding record');
     } catch (err) {
       console.error('Error persisting funding deletion:', err);
-      if (saveDraft) {
-        const success = await saveDraft();
-        if (success) {
-          toast.success('Funding record deleted successfully');
-        }
-      }
+      toast.error('Failed to delete funding record');
     }
   };
 
@@ -801,9 +689,10 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const json = JSON.stringify(updated);
     onValueChange(FIELD_KEYS.fundingAdjustments, json);
 
-    await directPersistFundingField(dealId, FIELD_KEYS.fundingAdjustments, json, dictCacheRef.current);
-    toast.success('Funding adjustment saved');
-  }, [fundingAdjustments, onValueChange, dealId]);
+    const saved = await persistChanges();
+    if (saved) toast.success('Funding adjustment saved');
+    else toast.error('Failed to save funding adjustment');
+  }, [fundingAdjustments, onValueChange, persistChanges]);
 
   const handleLoanNumberChange = useCallback((value: string) => {
     loanNumberEdited.current = true;

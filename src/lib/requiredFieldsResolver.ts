@@ -318,6 +318,11 @@ export async function resolvePacketFields(packetId: string, cachedEntries?: any[
  * UI / JSONB persistence uses legacy dot-notation and indexed keys (borrower1.first_name);
  * field_dictionary uses DB keys (br_p_firstName). Check all aliases so completeness matches saved data.
  */
+function trimFieldValue(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  return (typeof raw === 'string' ? raw : String(raw)).trim();
+}
+
 export function getValueForResolvedField(
   values: Record<string, string>,
   field: Pick<ResolvedField, 'field_key'>,
@@ -330,7 +335,7 @@ export function getValueForResolvedField(
   if (dbFromLegacy !== field.field_key) keysToTry.add(dbFromLegacy);
 
   for (const key of keysToTry) {
-    const direct = values[key]?.trim();
+    const direct = trimFieldValue(values[key]);
     if (direct) return direct;
 
     const dotIdx = key.indexOf('.');
@@ -342,7 +347,7 @@ export function getValueForResolvedField(
 
     for (let n = 1; n <= 9; n++) {
       const indexed = `${entityBase}${n}.${suffix}`;
-      const indexedVal = values[indexed]?.trim();
+      const indexedVal = trimFieldValue(values[indexed]);
       if (indexedVal) return indexedVal;
     }
   }

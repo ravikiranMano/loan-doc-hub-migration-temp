@@ -55,6 +55,13 @@ const VALUATION_TYPE_OPTIONS = ['Appraisal', 'Broker Determined Value (BPO)'];
 const INFO_PROVIDED_BY_OPTIONS = ['Broker', 'Borrower', 'Public Record', 'Other'];
 
 import { PROPERTY_DETAILS_KEYS } from '@/lib/fieldKeyMap';
+import {
+  parseNumericField,
+  resolveLoanAmount,
+  resolveCurrentPrincipal,
+  sumExistingLiensTotal,
+  sumLiensCurrentBalanceTotal,
+} from '@/lib/loanPropertyCalculations';
 
 const FIELD_KEYS = PROPERTY_DETAILS_KEYS;
 
@@ -75,37 +82,17 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   const handleCurrencyChange = (fieldKey: string, value: string) => onValueChange(fieldKey, sanitizeNumericValue(value));
   const handlePercentageChange = (fieldKey: string, value: string) => onValueChange(fieldKey, sanitizeNumericValue(value).replace(/-/g, ''));
 
-  // Helper: sum all lien new_remaining_balance values
-  const existingLiensTotal = React.useMemo(() => {
-    let total = 0;
-    const lienPrefixes = new Set<string>();
-    Object.keys(values).forEach(key => {
-      const m = key.match(/^(lien\d+)\./);
-      if (m) lienPrefixes.add(m[1]);
-    });
-    lienPrefixes.forEach(prefix => {
-      const raw = values[`${prefix}.new_remaining_balance`] || '';
-      const num = parseFloat(raw.replace(/[, $]/g, ''));
-      if (!isNaN(num)) total += num;
-    });
-    return total;
-  }, [values]);
+  // Helper: sum all lien new_remaining_balance values (with current_balance fallback)
+  const existingLiensTotal = React.useMemo(
+    () => sumExistingLiensTotal(values),
+    [values],
+  );
 
   // Helper: sum all lien current_balance values for Current LTV numerator
-  const liensCurrentBalanceTotal = React.useMemo(() => {
-    let total = 0;
-    const lienPrefixes = new Set<string>();
-    Object.keys(values).forEach(key => {
-      const m = key.match(/^(lien\d+)\./);
-      if (m) lienPrefixes.add(m[1]);
-    });
-    lienPrefixes.forEach(prefix => {
-      const raw = values[`${prefix}.current_balance`] || '';
-      const num = parseFloat(raw.replace(/[, $]/g, ''));
-      if (!isNaN(num)) total += num;
-    });
-    return total;
-  }, [values]);
+  const liensCurrentBalanceTotal = React.useMemo(
+    () => sumLiensCurrentBalanceTotal(values),
+    [values],
+  );
 
   // Auto-calculate equities, LTVs, and Principal Paid.
   // Formulas (per spec):
@@ -117,16 +104,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   //   Current LTV       = Balances → Principal / Estimate of Value × 100  (recalcs whenever
   //                       Principal or Estimate of Value changes)
   //   Principal Paid    = Loan Amount − Balances → Principal      (derived; not user-editable)
-  const loanAmountRaw = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || values['loan_terms.original_amount'] || values['ln_p_originalAmount'] || values['loan.original_amount'] || '';
+  const loanAmountRaw = String(resolveLoanAmount(values) || '');
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
   const currentPrincipalRaw = values['loan_terms.principal'] || '';
   const purchasePriceRaw = values[FIELD_KEYS.purchasePrice] || '';
   const liensBalanceForEquity = liensCurrentBalanceTotal;
 
-  const loanAmountNum = parseFloat(loanAmountRaw.replace(/[, $]/g, ''));
-  const estValueNum = parseFloat(estValueRaw.replace(/[, $]/g, ''));
-  const currentPrincipalNum = parseFloat(currentPrincipalRaw.replace(/[, $]/g, ''));
-  const purchasePriceNum = parseFloat(purchasePriceRaw.replace(/[, $]/g, ''));
+  const loanAmountNum = resolveLoanAmount(values);
+  const estValueNum = parseNumericField(estValueRaw);
+  const currentPrincipalNum = resolveCurrentPrincipal(values);
+  const purchasePriceNum = parseNumericField(purchasePriceRaw);
 
   // Inline validation flags (skip the offending calc, surface near the field).
   const estValueInvalid = estValueRaw.trim() !== '' && (!Number.isFinite(estValueNum) || estValueNum <= 0);

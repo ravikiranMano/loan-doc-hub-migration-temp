@@ -976,7 +976,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
                     : fieldsBySection[section as FieldSection] || [];
 
                   const sectionMissing = sectionFields.filter(
-                    (f) => f.is_required && !values[f.field_key]?.trim(),
+                    (f) => f.is_required && !getValueForResolvedField(values, f),
                   ).length;
                   const isComplete = sectionMissing === 0;
                   const hasRequiredFields = sectionFields.some((f) => f.is_required);
@@ -1134,7 +1134,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
                         ...(isExternalUser
                           ? visibleFieldsBySection["dates" as FieldSection] || []
                           : fieldsBySection["dates" as FieldSection] || []),
-                      ].filter((f) => f.is_required && !values[f.field_key]?.trim())}
+                      ].filter((f) => f.is_required && !getValueForResolvedField(values, f))}
                       showValidation={showValidation}
                       calculationResults={calculationResults}
                       orchestrationCanEdit={isSectionDisabledByFormPerm('other') ? false : orchestrationCanEdit}
@@ -1151,7 +1151,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
                       missingRequiredFields={(isExternalUser
                         ? visibleFieldsBySection[section] || []
                         : fieldsBySection[section] || []
-                      ).filter((f) => f.is_required && !values[f.field_key]?.trim())}
+                      ).filter((f) => f.is_required && !getValueForResolvedField(values, f))}
                       showValidation={showValidation}
                       calculationResults={calculationResults}
                       orchestrationCanEdit={isSectionDisabledByFormPerm(section) ? false : orchestrationCanEdit}

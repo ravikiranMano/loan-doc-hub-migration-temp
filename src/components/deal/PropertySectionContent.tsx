@@ -20,6 +20,12 @@ import { useDirtyFields } from '@/contexts/DirtyFieldsContext';
 import { DirtyFieldsProvider } from '@/contexts/DirtyFieldsContext';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
+import {
+  resolveLoanAmount,
+  resolveCurrentPrincipal,
+  sumExistingLiensTotal,
+  sumLiensCurrentBalanceTotal,
+} from '@/lib/loanPropertyCalculations';
 
 interface PropertySectionContentProps {
   fields: FieldDefinition[];
@@ -902,36 +908,10 @@ export const PropertySectionContent: React.FC<PropertySectionContentProps> = ({
         borrowerOptions={borrowerOptions}
         borrowerAddress={primaryBorrowerAddress}
         borrowerParticipants={borrowerParticipants}
-        loanAmount={(() => {
-          const n = parseFloat(String(values['loan_terms.loan_amount'] || '').replace(/[, $]/g, ''));
-          return Number.isFinite(n) ? n : 0;
-        })()}
-        currentPrincipal={(() => {
-          const n = parseFloat(String(values['loan_terms.principal'] || '').replace(/[, $]/g, ''));
-          return Number.isFinite(n) ? n : 0;
-        })()}
-        existingLiensTotal={(() => {
-          let total = 0;
-          const prefixes = new Set<string>();
-          Object.keys(values).forEach(k => { const m = k.match(/^(lien\d+)\./); if (m) prefixes.add(m[1]); });
-          prefixes.forEach(p => {
-            const raw = values[`${p}.new_remaining_balance`] || '';
-            const n = parseFloat(String(raw).replace(/[, $]/g, ''));
-            if (Number.isFinite(n)) total += n;
-          });
-          return total;
-        })()}
-        liensCurrentBalanceTotal={(() => {
-          let total = 0;
-          const prefixes = new Set<string>();
-          Object.keys(values).forEach(k => { const m = k.match(/^(lien\d+)\./); if (m) prefixes.add(m[1]); });
-          prefixes.forEach(p => {
-            const raw = values[`${p}.current_balance`] || '';
-            const n = parseFloat(String(raw).replace(/[, $]/g, ''));
-            if (Number.isFinite(n)) total += n;
-          });
-          return total;
-        })()}
+        loanAmount={resolveLoanAmount(values)}
+        currentPrincipal={resolveCurrentPrincipal(values)}
+        existingLiensTotal={sumExistingLiensTotal(values)}
+        liensCurrentBalanceTotal={sumLiensCurrentBalanceTotal(values)}
       />
 
 

@@ -220,13 +220,23 @@ export class DealsRepository {
     });
   }
 
-  upsertSection(dealId: string, section: string, fieldValues: Record<string, unknown>) {
+  async upsertSection(dealId: string, section: string, fieldValues: Record<string, unknown>) {
     const sec = section as $Enums.field_section;
-    const fv = fieldValues as Prisma.InputJsonValue;
+    const existing = await this.prisma.deal_section_values.findFirst({
+      where: { deal_id: dealId, section: sec },
+      select: { field_values: true, version: true },
+    });
+    const existingFv =
+      (existing?.field_values as Record<string, unknown> | null | undefined) ?? {};
+    const mergedFv = { ...existingFv, ...fieldValues } as Prisma.InputJsonValue;
     return this.prisma.deal_section_values.upsert({
       where: { deal_id_section: { deal_id: dealId, section: sec } },
-      create: { deal_id: dealId, section: sec, field_values: fv, version: 1 },
-      update: { field_values: fv, updated_at: new Date() },
+      create: { deal_id: dealId, section: sec, field_values: mergedFv, version: 1 },
+      update: {
+        field_values: mergedFv,
+        updated_at: new Date(),
+        version: (existing?.version ?? 0) + 1,
+      },
     });
   }
 

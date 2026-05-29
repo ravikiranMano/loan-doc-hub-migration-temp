@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Lock, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
+import { getValueForResolvedField } from '@/lib/requiredFieldsResolver';
 import { useFieldPermissions } from '@/hooks/useFieldPermissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { getRoleDisplayName } from '@/lib/accessControl';
@@ -48,7 +49,11 @@ export const DealSectionTab: React.FC<DealSectionTabProps> = ({
 }) => {
   const { checkCanView, checkCanEdit } = useFieldPermissions();
   const { isExternalUser } = useAuth();
-  const missingFieldKeys = new Set(missingRequiredFields.map(f => f.field_key));
+  const missingFieldKeys = new Set(
+    missingRequiredFields
+      .filter((f) => !getValueForResolvedField(values, f))
+      .map((f) => f.field_key),
+  );
 
   // Filter fields based on view permissions for external users
   const visibleFields = isExternalUser 
@@ -160,7 +165,7 @@ export const DealSectionTab: React.FC<DealSectionTabProps> = ({
               >
                 <DealFieldInput
                   field={field}
-                  value={values[field.field_key] || ''}
+                  value={getValueForResolvedField(values, field)}
                   onChange={(value) => onValueChange(field.field_key, value)}
                   error={false}
                   showValidation={false}
@@ -175,7 +180,7 @@ export const DealSectionTab: React.FC<DealSectionTabProps> = ({
             <DealFieldInput
               key={field.field_key}
               field={field}
-              value={values[field.field_key] || ''}
+              value={getValueForResolvedField(values, field)}
               onChange={(value) => onValueChange(field.field_key, value)}
               error={missingFieldKeys.has(field.field_key)}
               showValidation={showValidation}

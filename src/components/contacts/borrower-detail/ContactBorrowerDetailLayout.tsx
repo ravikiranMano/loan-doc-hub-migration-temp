@@ -14,6 +14,8 @@ import TaxReportingCard, { type TaxPartyType } from '@/components/contacts/share
 import BorrowerTrustLedger from './BorrowerTrustLedger';
 import BorrowerDashboard from './BorrowerDashboard';
 import BorrowerPortfolio from './BorrowerPortfolio';
+import GuarantorPortfolio from './GuarantorPortfolio';
+import AuthPartyPortfolio from './AuthPartyPortfolio';
 import BorrowerHistory from './BorrowerHistory';
 import BorrowerCharges from './BorrowerCharges';
 import BorrowerConversationLog from './BorrowerConversationLog';
@@ -180,6 +182,10 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
       case 'dashboard':
         return <BorrowerDashboard contact={contact} />;
       case 'portfolio':
+        if (borrowerSectionVariant === 'additional_guarantor')
+          return <GuarantorPortfolio guarantorId={contact.contact_id} contactDbId={contact.id} />;
+        if (borrowerSectionVariant === 'authorized_party')
+          return <AuthPartyPortfolio authPartyId={contact.contact_id} contactDbId={contact.id} />;
         return <BorrowerPortfolio borrowerId={contact.contact_id} contactDbId={contact.id} />;
       case 'history':
         return <BorrowerHistory borrowerId={contact.contact_id} contactDbId={contact.id} />;

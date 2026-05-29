@@ -12,6 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { listParticipantsByContact, listParticipantsByDealIds } from '@/services/deals/participants.service';
 import { listDealsByIds } from '@/services/deals/deals.service';
 import { fetchSectionValuesForDeals } from '@/services/deals/section-values.service';
+import {
+  extractSectionFieldValue,
+  extractPortfolioLoanAmount,
+  PORTFOLIO_FIELD_IDS,
+} from '@/lib/sectionFieldValues';
 
 interface ParticipantInfo {
   name: string;
@@ -30,17 +35,48 @@ interface PortfolioLoan {
   interestRate: string;
   maturityDate: string;
   participants: ParticipantInfo[];
+  // Spec additions (read-only, '-' when unavailable)
+  accountNumber: string;
+  loanType: string;
+  originationDate: string;
+  paymentAmount: string;
+  lastPaymentDate: string;
+  lastPaymentAmount: string;
+  daysPastDue: string;
+  totalPaidToDate: string;
+  propertyAddress: string;
 }
 
+const DEFAULT_VISIBLE_BP = new Set([
+  'loanNumber', 'accountNumber', 'status',
+  'loanAmount', 'principalBalance',
+  'interestRate', 'loanType',
+  'originationDate', 'maturityDate',
+  'nextPaymentDate', 'paymentAmount',
+  'lastPaymentDate', 'lastPaymentAmount',
+  'daysPastDue', 'totalPaidToDate',
+  'propertyAddress',
+]);
+
 const ALL_COLUMNS = [
-  { id: 'loanNumber', label: 'Loan Number' },
-  { id: 'loanAmount', label: 'Loan Amount' },
-  { id: 'capacity', label: 'Capacity' },
-  { id: 'status', label: 'Status' },
-  { id: 'nextPaymentDate', label: 'Next Payment Date' },
-  { id: 'principalBalance', label: 'Principal Balance' },
-  { id: 'interestRate', label: 'Interest Rate' },
+  { id: 'loanNumber', label: 'Loan ID' },
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'status', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Original Amount' },
+  { id: 'principalBalance', label: 'Current Balance' },
+  { id: 'interestRate', label: 'Note Rate' },
+  { id: 'loanType', label: 'Loan Type' },
+  { id: 'originationDate', label: 'Origination Date' },
   { id: 'maturityDate', label: 'Maturity Date' },
+  { id: 'nextPaymentDate', label: 'Next Payment Date' },
+  { id: 'paymentAmount', label: 'Payment Amount' },
+  { id: 'lastPaymentDate', label: 'Last Payment Date' },
+  { id: 'lastPaymentAmount', label: 'Last Payment Amount' },
+  { id: 'daysPastDue', label: 'Days Past Due' },
+  { id: 'totalPaidToDate', label: 'Total Paid to Date' },
+  { id: 'propertyAddress', label: 'Property/Collateral Address' },
+  // Optional (hidden by default)
+  { id: 'capacity', label: 'Capacity' },
 ];
 
 const ROLE_FILTER_OPTIONS = ['Borrower (Primary)', 'Borrower', 'Co-Borrower', 'Additional Guarantor', 'Trustee', 'Co-Trustee', 'Managing Member', 'Authorized Signer', 'Lender', 'Broker'];
@@ -102,7 +138,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(ALL_COLUMNS.map(c => c.id)));
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE_BP));
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -127,28 +163,27 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
         const dealIds = [...new Set(participants.map(p => p.deal_id))];
 
         // 3. Fetch deals
-        const deals = await listDealsByIds(dealIds, 'id, deal_number, loan_amount, status');
+        const deals = await listDealsByIds(
+          dealIds,
+          'id, deal_number, loan_amount, status, property_address, product_type'
+        );
 
-        // 4. Fetch deal_section_values for loan_terms to get interest rate, maturity, etc.
-        // Field dictionary UUIDs for the fields we need
-        const FIELD_IDS = {
-          loanAmount: '163cd0b4-7cc0-4975-bcfb-43aa4be9c5c8',
-          noteRate: '969b2029-d56f-4789-8d77-1f9aecc88f2b',
-          principalBalance: '27c1bee2-05d4-46e5-a16b-e10c1e38cafd',
-          maturityDate: '33fadfcb-b70c-4425-944e-23044f21a06b',
-          nextPaymentDate: '384a8113-5d6d-47fd-9146-b3b1e9f65037',
-          nextPayment: '18cff33e-9553-4860-becf-e6c4b54f2a20',
-        };
+        // Field dictionary UUIDs for the fields we need (supports composite storage keys)
+        const FIELD_IDS = PORTFOLIO_FIELD_IDS;
 
         const sectionValues = await fetchSectionValuesForDeals(dealIds, { section: 'loan_terms' });
 
-        // Helper to extract a value from the stored field_values JSON structure
-        const extractFieldValue = (fieldValues: Record<string, any>, fieldId: string, valueKey: string): any => {
-          const entry = fieldValues[fieldId];
-          if (!entry) return null;
-          if (typeof entry === 'object' && entry !== null) return entry[valueKey] ?? null;
-          return entry;
+        const extractFieldValue = (
+          fieldValues: Record<string, any>,
+          fieldId: string | string[],
+          valueKey: 'value_number' | 'value_text' | 'value_date' | 'auto' = 'auto',
+        ): any => {
+          const prefer = valueKey === 'auto' ? 'auto' : valueKey;
+          return extractSectionFieldValue(fieldValues, fieldId, prefer);
         };
+
+        const extractLoanAmount = (fieldValues: Record<string, any>) =>
+          extractPortfolioLoanAmount(fieldValues);
 
         const sectionMap = new Map<string, Record<string, any>>();
         (sectionValues || []).forEach(sv => {
@@ -273,12 +308,6 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           const loanTerms = sectionMap.get(p.deal_id) || {};
           const displayRole = resolveCapacity(p.deal_id, contactDbId, p.role);
 
-          // Map deal status to portfolio status
-          let displayStatus = 'Active';
-          const loanStatus = loanTerms['loan_status'] || loanTerms['status'] || '';
-          if (typeof loanStatus === 'string' && loanStatus.toLowerCase().includes('closed')) displayStatus = 'Closed';
-          if (typeof loanStatus === 'string' && loanStatus.toLowerCase().includes('default')) displayStatus = 'Default';
-
           const formatCurrency = (val: any) => {
             if (val == null || val === '') return '-';
             const num = typeof val === 'number' ? val : parseFloat(String(val));
@@ -303,7 +332,7 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           };
 
           // Extract values from field_values using field dictionary IDs
-          const loanAmountVal = extractFieldValue(loanTerms, FIELD_IDS.loanAmount, 'value_number');
+          const loanAmountVal = extractLoanAmount(loanTerms);
           const noteRateVal = extractFieldValue(loanTerms, FIELD_IDS.noteRate, 'value_number');
           const principalBalanceVal = extractFieldValue(loanTerms, FIELD_IDS.principalBalance, 'value_number');
           const maturityDateVal = extractFieldValue(loanTerms, FIELD_IDS.maturityDate, 'value_date') 
@@ -317,6 +346,73 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
           const displayLoanAmount = loanAmountVal ?? deal.loan_amount;
           const displayPrincipalBalance = principalBalanceVal ?? loanAmountVal ?? deal.loan_amount;
 
+          // Fallback fragment lookup for legacy keys
+          const findByKey = (...frags: string[]): any => {
+            for (const [k, v] of Object.entries(loanTerms)) {
+              const lk = k.toLowerCase();
+              if (frags.some(f => lk.includes(f))) {
+                if (v && typeof v === 'object') {
+                  const o = v as Record<string, any>;
+                  return o.value_number ?? o.value_date ?? o.value_text ?? null;
+                }
+                return v;
+              }
+            }
+            return null;
+          };
+
+          // Spec column lookups: prefer field_dictionary UUID; fallback to legacy keys
+          const accountNumberVal =
+            extractFieldValue(loanTerms, FIELD_IDS.accountNumber, 'value_text') ??
+            findByKey('account_number', 'loan_account', 'previousaccount');
+          const loanStatusVal =
+            extractFieldValue(loanTerms, FIELD_IDS.loanStatus, 'value_text') ??
+            findByKey('loan_status', 'loanstatus');
+          const loanTypeVal =
+            extractFieldValue(loanTerms, FIELD_IDS.loanType, 'value_text') ??
+            findByKey('loan_type', 'loantype') ?? deal.product_type;
+          const originationDateVal =
+            extractFieldValue(loanTerms, FIELD_IDS.originationDate, 'value_date') ??
+            extractFieldValue(loanTerms, FIELD_IDS.originationDate, 'value_text') ??
+            extractFieldValue(loanTerms, FIELD_IDS.closingDate, 'value_date') ??
+            extractFieldValue(loanTerms, FIELD_IDS.closingDate, 'value_text') ??
+            findByKey('origination_date', 'funding_date', 'closing_date', 'originat');
+          const paymentAmountVal =
+            extractFieldValue(loanTerms, FIELD_IDS.paymentAmount, 'value_number') ??
+            findByKey('regular_payment', 'monthly_payment', 'payment_amount', 'paymentamount');
+          const lastPaymentDateVal =
+            extractFieldValue(loanTerms, FIELD_IDS.lastPaymentDate, 'value_date') ??
+            extractFieldValue(loanTerms, FIELD_IDS.lastPaymentDate, 'value_text') ??
+            findByKey('last_payment_date', 'lastpaymen');
+          const lastPaymentAmountVal =
+            extractFieldValue(loanTerms, FIELD_IDS.lastPaymentAmount, 'value_number') ??
+            findByKey('last_payment_amount', 'lastpaymenamount');
+          const totalPaidVal = findByKey('total_paid', 'paid_to_date', 'totalpaid');
+
+          // Display status: prefer ln_p_loanStatus, fall back to legacy
+          let displayStatus = 'Active';
+          const rawStatus = (typeof loanStatusVal === 'string' ? loanStatusVal : '') ||
+            (typeof loanTerms['loan_status'] === 'string' ? loanTerms['loan_status'] : '') ||
+            (typeof loanTerms['status'] === 'string' ? loanTerms['status'] : '');
+          if (rawStatus) {
+            const r = rawStatus.toLowerCase();
+            if (r.includes('closed') || r.includes('paid')) displayStatus = 'Closed';
+            else if (r.includes('default')) displayStatus = 'Default';
+            else if (rawStatus.trim()) displayStatus = rawStatus;
+          }
+
+          let daysPastDueStr = '-';
+          if (nextPaymentDateVal) {
+            try {
+              const d = new Date(String(nextPaymentDateVal));
+              if (!isNaN(d.getTime())) {
+                const diff = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+                daysPastDueStr = diff > 0 ? String(diff) : '0';
+              }
+            } catch { /* ignore */ }
+          }
+
+
           portfolioRows.push({
             id: `${p.deal_id}`,
             dealId: p.deal_id,
@@ -329,6 +425,15 @@ const BorrowerPortfolio: React.FC<Props> = ({ contactDbId }) => {
             interestRate: formatPercent(noteRateVal),
             maturityDate: formatDate(maturityDateVal),
             participants: allParticipantsMap.get(p.deal_id) || [],
+            accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+            loanType: loanTypeVal ? String(loanTypeVal) : '-',
+            originationDate: formatDate(originationDateVal),
+            paymentAmount: formatCurrency(paymentAmountVal),
+            lastPaymentDate: formatDate(lastPaymentDateVal),
+            lastPaymentAmount: formatCurrency(lastPaymentAmountVal),
+            daysPastDue: daysPastDueStr,
+            totalPaidToDate: formatCurrency(totalPaidVal),
+            propertyAddress: deal.property_address || '-',
           });
         }
 

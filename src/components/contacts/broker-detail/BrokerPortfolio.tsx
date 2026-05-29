@@ -19,14 +19,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 import { format, parseISO, differenceInMonths, differenceInDays } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import {
+  extractPortfolioLoanAmount,
+  extractSectionFieldValue,
+  PORTFOLIO_FIELD_IDS,
+} from '@/lib/sectionFieldValues';
 
-const FIELD_IDS = {
-  loanAmount: '163cd0b4-7cc0-4975-bcfb-43aa4be9c5c8',
-  noteRate: '969b2029-d56f-4789-8d77-1f9aecc88f2b',
-  principalBalance: '27c1bee2-05d4-46e5-a16b-e10c1e38cafd',
-  maturityDate: '33fadfcb-b70c-4425-944e-23044f21a06b',
-  nextPaymentDate: '384a8113-5d6d-47fd-9146-b3b1e9f65037',
-};
+const FIELD_IDS = PORTFOLIO_FIELD_IDS;
 
 interface PortfolioRow {
   id: string;
@@ -44,11 +43,39 @@ interface PortfolioRow {
   termLeft: string;
   daysLate: number;
   regularPayment: number;
+  accountNumber: string;
+  originationDate: string;
+  closingDate: string;
+  brokerFeeAmount: number;
+  feePct: number;
+  feePaymentStatus: string;
+  feePaymentDate: string;
+  commissionEarned: number;
 }
 
+const DEFAULT_VISIBLE_BRP = new Set([
+  'dealNumber', 'accountNumber', 'loanStatus',
+  'loanAmount', 'originationDate', 'closingDate',
+  'borrowerName',
+  'brokerFeeAmount', 'feePct',
+  'feePaymentStatus', 'feePaymentDate',
+  'commissionEarned',
+]);
+
 const ALL_COLUMNS = [
-  { id: 'dealNumber', label: 'Loan Account' },
+  { id: 'dealNumber', label: 'Loan ID' },
+  { id: 'accountNumber', label: 'Account Number' },
+  { id: 'loanStatus', label: 'Loan Status' },
+  { id: 'loanAmount', label: 'Loan Amount' },
+  { id: 'originationDate', label: 'Origination Date' },
+  { id: 'closingDate', label: 'Closing Date' },
   { id: 'borrowerName', label: 'Borrower Name' },
+  { id: 'brokerFeeAmount', label: 'Broker Fee Amount' },
+  { id: 'feePct', label: 'Fee %' },
+  { id: 'feePaymentStatus', label: 'Fee Payment Status' },
+  { id: 'feePaymentDate', label: 'Fee Payment Date' },
+  { id: 'commissionEarned', label: 'Commission Earned' },
+  // Optional columns (hidden by default)
   { id: 'noteRate', label: 'Note Rate' },
   { id: 'regularPayment', label: 'Regular Payment' },
   { id: 'outstandingBalance', label: 'Principal Balance' },
@@ -59,11 +86,13 @@ const ALL_COLUMNS = [
   { id: 'propertyAddress', label: 'Property Description' },
 ];
 
-function extractFieldValue(fv: Record<string, any>, fieldId: string, key: string): any {
-  const entry = fv[fieldId];
-  if (!entry) return null;
-  if (typeof entry === 'object' && entry !== null) return entry[key] ?? null;
-  return entry;
+function extractFieldValue(
+  fv: Record<string, any>,
+  fieldId: string | string[],
+  valueKey: 'value_number' | 'value_text' | 'value_date' | 'auto' = 'auto',
+): any {
+  const prefer = valueKey === 'auto' ? 'auto' : valueKey;
+  return extractSectionFieldValue(fv, fieldId, prefer);
 }
 
 const fmtCurrency = (v: number) =>
@@ -107,9 +136,7 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDirection>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
-    new Set(ALL_COLUMNS.map(c => c.id))
-  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(DEFAULT_VISIBLE_BRP));
 
   const loadPortfolio = useCallback(async () => {
     setIsLoading(true);
@@ -178,7 +205,7 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
         const lt = loanTermsMap.get(dealId) || {};
 
         const totalLoanAmount = Number(
-          extractFieldValue(lt, FIELD_IDS.loanAmount, 'value_number') || deal.loan_amount || 0
+          extractPortfolioLoanAmount(lt) || deal.loan_amount || 0
         );
         const noteRateVal = Number(
           extractFieldValue(lt, FIELD_IDS.noteRate, 'value_number') || 0
@@ -194,14 +221,46 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           extractFieldValue(lt, FIELD_IDS.nextPaymentDate, 'value_text') || '';
 
         const daysLate = calcDaysLate(nextPaymentVal);
+        const lsField = extractFieldValue(lt, FIELD_IDS.loanStatus, 'value_text');
         let loanStatus = 'Active';
-        const lsRaw = lt['loan_status'] || lt['status'] || '';
-        if (typeof lsRaw === 'string') {
-          if (lsRaw.toLowerCase().includes('paid') || lsRaw.toLowerCase().includes('closed')) loanStatus = 'Paid Off';
-          if (lsRaw.toLowerCase().includes('default')) loanStatus = 'Default';
-          if (lsRaw.toLowerCase().includes('delinquent')) loanStatus = 'Delinquent';
+        const lsRaw = lsField || lt['loan_status'] || lt['status'] || '';
+        if (typeof lsRaw === 'string' && lsRaw) {
+          loanStatus = lsRaw;
+          const lsLow = lsRaw.toLowerCase();
+          if (lsLow.includes('paid') || lsLow.includes('closed')) loanStatus = 'Paid Off';
+          else if (lsLow.includes('default')) loanStatus = 'Default';
+          else if (lsLow.includes('delinquent')) loanStatus = 'Delinquent';
+          else if (lsLow.includes('active')) loanStatus = 'Active';
         }
         if (daysLate > 30 && loanStatus === 'Active') loanStatus = 'Delinquent';
+
+        // Spec column lookups (best-effort from loan_terms; '-' fallback)
+        const findLT = (...frags: string[]): any => {
+          for (const [k, v] of Object.entries(lt)) {
+            const lk = k.toLowerCase();
+            if (frags.some(f => lk.includes(f))) {
+              if (v && typeof v === 'object') {
+                const o = v as Record<string, any>;
+                return o.value_number ?? o.value_date ?? o.value_text ?? null;
+              }
+              return v;
+            }
+          }
+          return null;
+        };
+        const accountNumberVal =
+          extractFieldValue(lt, FIELD_IDS.accountNumber, 'value_text') ||
+          findLT('account_number', 'loan_account');
+        const originationDateVal =
+          extractFieldValue(lt, FIELD_IDS.originationDate, 'value_date') ||
+          extractFieldValue(lt, FIELD_IDS.originationDate, 'value_text') ||
+          findLT('origination_date', 'funding_date');
+        const closingDateVal = findLT('closing_date');
+        const brokerFeeAmountVal = Number(findLT('broker_fee_amount', 'broker_fee') || 0);
+        const feePctVal = Number(findLT('broker_fee_pct', 'fee_percent', 'fee_pct') || 0);
+        const feePaymentStatusVal = findLT('fee_payment_status', 'fee_status');
+        const feePaymentDateVal = findLT('fee_payment_date', 'fee_paid_date');
+        const commissionEarnedVal = Number(findLT('commission_earned', 'broker_commission') || 0);
 
         portfolioRows.push({
           id: `${dealId}-${brokerId}`,
@@ -219,6 +278,14 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
           termLeft: calcTermLeft(maturityDateVal),
           daysLate,
           regularPayment: 0,
+          accountNumber: accountNumberVal ? String(accountNumberVal) : '-',
+          originationDate: originationDateVal ? String(originationDateVal) : '',
+          closingDate: closingDateVal ? String(closingDateVal) : '',
+          brokerFeeAmount: brokerFeeAmountVal,
+          feePct: feePctVal,
+          feePaymentStatus: feePaymentStatusVal ? String(feePaymentStatusVal) : '-',
+          feePaymentDate: feePaymentDateVal ? String(feePaymentDateVal) : '',
+          commissionEarned: commissionEarnedVal,
         });
       }
 
@@ -287,6 +354,12 @@ const BrokerPortfolio: React.FC<BrokerPortfolioProps> = ({ brokerId, contactDbId
       case 'outstandingBalance': return fmtCurrency(row.outstandingBalance);
       case 'maturityDate': return fmtDate(row.maturityDate);
       case 'nextPaymentDate': return fmtDate(row.nextPaymentDate);
+      case 'originationDate': return fmtDate(row.originationDate);
+      case 'closingDate': return fmtDate(row.closingDate);
+      case 'feePaymentDate': return fmtDate(row.feePaymentDate);
+      case 'brokerFeeAmount': return fmtCurrency(row.brokerFeeAmount);
+      case 'commissionEarned': return fmtCurrency(row.commissionEarned);
+      case 'feePct': return fmtPct(row.feePct);
       case 'daysLate': return row.daysLate > 0 ? String(row.daysLate) : '0';
       default: return String((row as any)[colId] || '-');
     }
