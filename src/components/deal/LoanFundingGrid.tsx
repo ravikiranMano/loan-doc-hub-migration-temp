@@ -309,18 +309,19 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // Effective loan principal balance (LOAN-LEVEL): single source of truth.
   // Bound directly to loan_terms.principal (Loan → Balances → Principal).
   // Fallback: when principal is not yet entered, derive from the sum of
-  // lender Current Balances (or Funding Amounts) so Pro Rata still resolves
-  // for the user — otherwise denominator = 0 and every row shows 0.00%.
+  // lender Original (Funding) Amounts so Pro Rata still resolves for the user
+  // — otherwise denominator = 0 and every row shows 0.00%.
+  // NOTE: Funding calculations always use Original Amount, never Current
+  // Balance or Principal Balance, so the same field powers numerator + fallback
+  // denominator and the math stays consistent across lender add/edit/delete.
   const effectiveLoanPrincipal = React.useMemo(() => {
     const parsed = parseFloat(String(loanPrincipalBalance || '').replace(/[$,]/g, ''));
     if (!isNaN(parsed) && parsed > 0) return parsed;
-    const sumCurrent = fundingRecords.reduce((s, r) => {
-      const cb = (r.currentBalance !== undefined && r.currentBalance !== null && !isNaN(r.currentBalance))
-        ? r.currentBalance
-        : (r.originalAmount || 0);
-      return s + (cb || 0);
-    }, 0);
-    return sumCurrent > 0 ? sumCurrent : 0;
+    const sumOriginal = fundingRecords.reduce(
+      (s, r) => s + (r.originalAmount || 0),
+      0,
+    );
+    return sumOriginal > 0 ? sumOriginal : 0;
   }, [loanPrincipalBalance, fundingRecords]);
 
   // Strict tolerance: only floating-point rounding noise ($0.01) is allowed.
@@ -333,16 +334,12 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return new Decimal(parseFloat(String(totalPayment || '').replace(/[$,]/g, '')) || 0);
   }, [totalPayment]);
 
-  // Helper: per-record current balance (preferred) or fallback to original
-  // minus disbursements. Used as the canonical numerator for Pro Rata.
+  // Canonical numerator for every funding calculation (Pro Rata, Payment
+  // split, totals, funded/unfunded status). Always the lender's Original
+  // Amount — never Current Balance or Principal Balance. Kept as
+  // `computeCurrentBalance` to avoid touching the many existing call sites.
   const computeCurrentBalance = (record: FundingRecord): number => {
-    if (record.currentBalance !== undefined && record.currentBalance !== null && !isNaN(record.currentBalance)) {
-      return record.currentBalance;
-    }
-    const disbSum = (record.disbursements || []).reduce(
-      (s, d) => s + (parseFloat(String(d.amount || '').replace(/[$,]/g, '')) || 0), 0
-    );
-    return Math.max(0, (record.originalAmount || 0) - disbSum);
+    return record.originalAmount || 0;
   };
 
   // Pro Rata: lender CURRENT BALANCE / loan PRINCIPAL × 100. Stored at 6dp,
