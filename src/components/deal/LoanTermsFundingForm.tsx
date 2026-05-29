@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { LoanFundingGrid } from './LoanFundingGrid';
+import { ReassignRoundingDialog } from './ReassignRoundingDialog';
 import type { FundingRecord } from './LoanFundingGrid';
 import type { FundingAdjustmentData } from './FundingAdjustmentModal';
 import { toast } from 'sonner';
