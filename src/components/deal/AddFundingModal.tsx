@@ -871,12 +871,11 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         return;
       }
     }
-    // Fully-funded soft lock (Rules 1, 2, 5): reject any save that mutates
-    // Funding Amount or Current Balance on a locked row. Allocation changes
-    // must go through the Funding Adjustment workflow.
+    // Fully-funded soft lock (Rules 1, 2, 5): previously blocked saves on a
+    // locked row. Per product change, allow the modification through but warn
+    // the user that funding is already fully allocated.
     if (lockedFieldsModified) {
-      toast.error('Modification not allowed. Loan funding is already fully allocated.');
-      return;
+      toast.warning('Loan funding is already fully allocated. Saving your changes anyway.');
     }
     // Rule 3: when fully funded, Current Balance must equal Funding Amount.
     if (fullyFundedCBMismatch) {
