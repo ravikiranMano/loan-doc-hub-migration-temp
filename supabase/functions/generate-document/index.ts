@@ -1137,6 +1137,7 @@ async function generateSingleDocument(
             // {{authorized_signer.primary_residence_address}} → Lender → Authorized Party → Address
             forceSet("authorized_signer.primary_residence_address", apFullAddress);
             forceSet("ld_ap_primaryResidenceAddress", apFullAddress);
+            forceSet("ld_ap_primaryResidenceAddr", apFullAddress); // template-compatible short form
             forceSet("lender.authorized_party.address.full", apFullAddress);
             if (apStreet) forceSet("lender.authorized_party.address.street", apStreet);
             if (apCity) forceSet("lender.authorized_party.address.city", apCity);
