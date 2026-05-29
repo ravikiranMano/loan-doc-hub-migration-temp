@@ -875,7 +875,11 @@ async function generateSingleDocument(
       if (coBorrower?.contact_id && coBorrower.contact_id !== primaryBorrower?.contact_id) {
         const cbc = contactRowsByUuid.get(coBorrower.contact_id);
         if (cbc) {
-          injectContact(cbc, ["co_borrower1", "coborrower", "co_borrower"], undefined);
+          // Also publish `br2_p_*` short-prefix aliases so templates can reference
+          // the second borrower directly (e.g., {{br2_p_fullName}}). Only emitted
+          // when a distinct second borrower exists; otherwise the keys remain
+          // unset and render blank per existing application standards.
+          injectContact(cbc, ["co_borrower1", "coborrower", "co_borrower", "borrower2"], "br2_p");
           debugLog(`[generate-document] Injected co-borrower contact fields from participant (contact ${cbc.contact_id})`);
         }
       }
