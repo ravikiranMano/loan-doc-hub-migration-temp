@@ -3712,9 +3712,13 @@ async function generateSingleDocument(
       // here — RE851D and similar multi-block templates need them to remain
       // per-property so each PROPERTY block renders its own address.
       if (propertyLines.length > 1) {
-        const multiAddrText = propertyLines.join("\n");
+        // Borrower Certification of Loan Purpose template expects a single
+        // continuous flowing string (Word wraps naturally); all other
+        // templates keep the legacy newline-separated stacked layout.
+        const separator = isTemplateCertOfPurpose ? " " : "\n";
+        const multiAddrText = propertyLines.join(separator);
         fieldValues.set("pr_p_address", { rawValue: multiAddrText, dataType: "text" });
-        debugLog(`[generate-document] Overrode bare pr_p_address with ${propertyLines.length}-line multi-property list`);
+        debugLog(`[generate-document] Overrode bare pr_p_address with ${propertyLines.length} properties (separator=${JSON.stringify(separator)}, certOfPurpose=${isTemplateCertOfPurpose})`);
       }
           }
 
