@@ -496,18 +496,56 @@ export const DealsPage: React.FC = () => {
         }
       }
 
-      // 6. Copy deal_participants as NEW relationship mappings — reuse the
-      //    same master contact_id but reset participant lifecycle state so
-      //    edits to the copy do not affect the original participant rows.
+      // 6. Copy deal_participants as NEW relationship mappings and clone the
+      //    linked contact setup into clean contact rows. This prevents any
+      //    original contact history/conversation/attachment/event data from
+      //    reloading through a reused contact_id.
       const { data: partRows, error: partErr } = await supabase
         .from('deal_participants')
         .select('contact_id, role, name, email, phone, sequence_order, access_method')
         .eq('deal_id', source.id);
       if (partErr) throw partErr;
       if (partRows && partRows.length > 0) {
+        const sourceContactIds = Array.from(new Set(partRows.map((p: any) => p.contact_id).filter(Boolean)));
+        const clonedContactIds = new Map<string, string>();
+
+        if (sourceContactIds.length > 0) {
+          const { data: contacts, error: contactsErr } = await supabase
+            .from('contacts')
+            .select('id, contact_id, contact_type, full_name, first_name, last_name, email, phone, city, state, company, contact_data')
+            .in('id', sourceContactIds);
+          if (contactsErr) throw contactsErr;
+
+          for (const contact of (contacts || []) as any[]) {
+            const { data: generatedContactId, error: contactIdErr } = await supabase.rpc('generate_contact_id', { p_type: contact.contact_type });
+            if (contactIdErr) throw contactIdErr;
+
+            const { data: clonedContact, error: cloneContactErr } = await supabase
+              .from('contacts')
+              .insert({
+                contact_type: contact.contact_type,
+                contact_id: generatedContactId as string,
+                created_by: user?.id,
+                full_name: contact.full_name || '',
+                first_name: contact.first_name || '',
+                last_name: contact.last_name || '',
+                email: contact.email || '',
+                phone: contact.phone || '',
+                city: contact.city || '',
+                state: contact.state || '',
+                company: contact.company || '',
+                contact_data: sanitizeContactDataForCopy(contact.contact_data) as any,
+              })
+              .select('id')
+              .single();
+            if (cloneContactErr) throw cloneContactErr;
+            clonedContactIds.set(contact.id, clonedContact.id);
+          }
+        }
+
         const payload = partRows.map((p: any) => ({
           deal_id: newDealId,
-          contact_id: p.contact_id,
+          contact_id: p.contact_id ? (clonedContactIds.get(p.contact_id) ?? null) : null,
           role: p.role,
           name: p.name,
           email: p.email,
