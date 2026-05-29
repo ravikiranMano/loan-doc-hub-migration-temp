@@ -671,7 +671,7 @@ export const DealsPage: React.FC = () => {
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDelete(deal);
+                              setDeleteTarget(deal);
                             }}
                             className="text-destructive"
                           >
