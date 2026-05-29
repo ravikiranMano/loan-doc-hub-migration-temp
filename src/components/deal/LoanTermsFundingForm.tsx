@@ -845,6 +845,36 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     }
   };
 
+  // Reassignment prompt state: when the user deletes the lender currently
+  // flagged as `roundingAdjustment`, we block the delete and prompt them to
+  // choose a replacement before committing. Adding a new lender NEVER triggers
+  // reassignment — only delete does.
+  const [reassignDeleteState, setReassignDeleteState] = useState<{
+    record: FundingRecord;
+    candidates: FundingRecord[];
+    selectedId: string;
+  } | null>(null);
+
+  const handleDeleteRecord = async (record: FundingRecord) => {
+    const remaining = fundingRecords.filter((r) => r.id !== record.id);
+    if (record.roundingAdjustment && remaining.length > 1) {
+      // Prompt user to pick a new rounding lender before delete is committed.
+      setReassignDeleteState({
+        record,
+        candidates: remaining,
+        selectedId: remaining[0].id,
+      });
+      return;
+    }
+    // 0 or 1 remaining → no prompt needed. If exactly 1, transfer the flag
+    // automatically so the sole surviving lender still owns rounding.
+    const autoReassignId =
+      record.roundingAdjustment && remaining.length === 1 ? remaining[0].id : undefined;
+    await performDeleteRecord(record, autoReassignId);
+  };
+
+
+
   const handleSaveAdjustment = useCallback(async (adjustment: FundingAdjustmentData) => {
     // Upsert: replace if same id exists, else append
     const existing = fundingAdjustments.filter((a) => a.id !== adjustment.id);
