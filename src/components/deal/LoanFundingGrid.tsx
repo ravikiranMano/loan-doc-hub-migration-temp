@@ -394,23 +394,35 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   // Per-lender Payment (GROSS): Pro Rata × Regular P&I. Calculated independently
   // for every lender via .map (no shared scope, no early break). Banker's
   // rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
-  const computedPaymentsArr = React.useMemo(() => {
-    if (!fundingRecords.length) return [] as number[];
-    const exact = fundingRecords.map((_, i) => {
-      const pct = computedPctOwnedArr[i] ?? 0;
-      return new Decimal(pct).div(100).mul(regularPIDec);
-    });
-    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
-    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
-    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
-    const diff = sumExact.minus(sumRounded);
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    if (adjIdx >= 0 && !diff.isZero()) {
-      rounded[adjIdx] = rounded[adjIdx].plus(diff);
+  // Per-lender Payment split with automatic penny-level rounding adjustment.
+  // All math runs in cents via calculateProRataWithRounding(). Largest
+  // fractional remainder receives a penny first; ties resolve to the
+  // lowest input index. The recipient flag drives the Rounding column ✓
+  // — there is no separate manual adjustment field anymore.
+  const proRataDistribution = React.useMemo(() => {
+    if (!fundingRecords.length) {
+      return [] as ReturnType<typeof calculateProRataWithRounding>;
     }
-    return rounded.map(d => d.toNumber());
-  }, [fundingRecords, computedPctOwnedArr, regularPIDec]);
+    const total = regularPIDec.toNumber();
+    return calculateProRataWithRounding(
+      total,
+      fundingRecords.map((r, i) => ({
+        id: r.id || String(i),
+        originalAmount: r.originalAmount || 0,
+      })),
+    );
+  }, [fundingRecords, regularPIDec]);
+
+  const computedPaymentsArr = React.useMemo(
+    () => proRataDistribution.map((d) => d.proRataAmount),
+    [proRataDistribution],
+  );
+
+  const roundingRecipientArr = React.useMemo(
+    () => proRataDistribution.map((d) => d.isRoundingRecipient),
+    [proRataDistribution],
+  );
+
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const i = recordIndexMap.get(record);
