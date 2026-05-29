@@ -1425,42 +1425,13 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
           {/* Checkboxes row */}
           <div className="space-y-1 pt-1">
-            <div className="flex items-center gap-3">
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Label className="text-xs font-medium cursor-help">Rounding Adjustment</Label>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs">
-                    This lender will receive any rounding difference (e.g., $0.01).
-                    Only one lender can be selected at a time — enabling here will disable it on all other lenders.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <RadioGroup
-                value={formData.roundingAdjustment ? 'yes' : 'no'}
-                onValueChange={(v) => {
-                  const next = v === 'yes';
-                  if (next && !formData.roundingAdjustment) {
-                    const msg = currentRoundingLenderName
-                      ? `Enabling this will remove the rounding adjustment from ${currentRoundingLenderName}.`
-                      : 'Only one lender per deal can hold the rounding adjustment. Enabling this will clear it from any other lender.';
-                    toast(msg, { duration: 5000 });
-                  }
-                  handleChange('roundingAdjustment', next);
-                }}
-                className="flex items-center gap-3"
-              >
-                <div className="flex items-center gap-1">
-                  <RadioGroupItem value="yes" id="rounding-adj-yes" className="h-3.5 w-3.5" />
-                  <Label htmlFor="rounding-adj-yes" className="text-xs cursor-pointer">Yes</Label>
-                </div>
-                <div className="flex items-center gap-1">
-                  <RadioGroupItem value="no" id="rounding-adj-no" className="h-3.5 w-3.5" />
-                  <Label htmlFor="rounding-adj-no" className="text-xs cursor-pointer">No</Label>
-                </div>
-              </RadioGroup>
-            </div>
+            {/*
+             * Rounding Adjustment is now fully automatic — the lender row
+             * with the largest fractional remainder receives the rounding
+             * penny (✓) automatically in the grid. The previous manual
+             * Yes/No radio was removed per spec.
+             */}
+
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={formData.brokerParticipates}
