@@ -25,10 +25,21 @@ import {
   Eye,
   Edit,
   Trash2,
+  Copy,
   ChevronLeft,
   ChevronRight,
   RefreshCw
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,6 +112,8 @@ export const DealsPage: React.FC = () => {
   const workspace = useWorkspaceOptional();
   const { user } = useAuth();
   const [creating, setCreating] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<Deal | null>(null);
   const [deals, setDeals] = useState<Deal[]>(cachedState?.deals || []);
   const [loading, setLoading] = useState(!cachedState);
   const [searchQuery, setSearchQuery] = useState('');
@@ -282,6 +295,148 @@ export const DealsPage: React.FC = () => {
       });
     }
   };
+
+  // Create Copy / Clone Loan — duplicates business setup into a brand-new
+  // independent file. Explicitly whitelists the rows we copy (deals row,
+  // deal_section_values, deal_field_values, deal_participants) and skips
+  // everything else (generated_documents, event_journal, activity_log,
+  // messages, loan_history*) so no historical/system-generated data leaks
+  // into the copy. Uses existing insert APIs only — no new tables/schema.
+  const handleCopyDeal = async (source: Deal) => {
+    if (copying) return;
+    setCopying(true);
+    try {
+      // 1. Generate new unique file number
+      const { data: dealNumber, error: numErr } = await supabase.rpc('generate_deal_number');
+      if (numErr) throw numErr;
+
+      // 2. Re-fetch full source deal (the grid row omits notes/packet_id)
+      const { data: src, error: srcErr } = await supabase
+        .from('deals')
+        .select('*')
+        .eq('id', source.id)
+        .single();
+      if (srcErr) throw srcErr;
+
+      // 3. Insert new deal — copy business setup, reset system metadata
+      const { data: newDeal, error: insErr } = await supabase
+        .from('deals')
+        .insert({
+          deal_number: dealNumber,
+          state: src.state || 'TBD',
+          product_type: src.product_type || 'TBD',
+          mode: src.mode || 'doc_prep',
+          status: 'draft', // always start fresh
+          packet_id: src.packet_id ?? null,
+          loan_amount: src.loan_amount ?? null,
+          property_address: src.property_address ?? null,
+          borrower_name: src.borrower_name ?? null,
+          notes: src.notes ?? null,
+          created_by: user?.id,
+        })
+        .select()
+        .single();
+      if (insErr) throw insErr;
+
+      const newDealId = newDeal.id as string;
+
+      // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
+      //    property, contacts prefixes, funding setup, custom fields, etc.)
+      const { data: sectionRows, error: secErr } = await supabase
+        .from('deal_section_values')
+        .select('section, field_values, version')
+        .eq('deal_id', source.id);
+      if (secErr) throw secErr;
+      if (sectionRows && sectionRows.length > 0) {
+        const payload = sectionRows.map((r: any) => ({
+          deal_id: newDealId,
+          section: r.section,
+          field_values: r.field_values ?? {},
+          version: r.version ?? 1,
+        }));
+        const { error } = await supabase.from('deal_section_values').insert(payload);
+        if (error) throw error;
+      }
+
+      // 5. Copy deal_field_values (typed per-field values referenced by the
+      //    field_dictionary). Same field_dictionary_id, new deal_id.
+      const { data: fieldRows, error: fldErr } = await supabase
+        .from('deal_field_values')
+        .select('field_dictionary_id, value_text, value_number, value_date, value_json')
+        .eq('deal_id', source.id);
+      if (fldErr) throw fldErr;
+      if (fieldRows && fieldRows.length > 0) {
+        const payload = fieldRows.map((r: any) => ({
+          deal_id: newDealId,
+          field_dictionary_id: r.field_dictionary_id,
+          value_text: r.value_text,
+          value_number: r.value_number,
+          value_date: r.value_date,
+          value_json: r.value_json,
+          updated_by: user?.id,
+        }));
+        const { error } = await supabase.from('deal_field_values').insert(payload);
+        if (error) throw error;
+      }
+
+      // 6. Copy deal_participants as NEW relationship mappings — reuse the
+      //    same master contact_id but reset participant lifecycle state so
+      //    edits to the copy do not affect the original participant rows.
+      const { data: partRows, error: partErr } = await supabase
+        .from('deal_participants')
+        .select('contact_id, role, name, email, phone, sequence_order, access_method')
+        .eq('deal_id', source.id);
+      if (partErr) throw partErr;
+      if (partRows && partRows.length > 0) {
+        const payload = partRows.map((p: any) => ({
+          deal_id: newDealId,
+          contact_id: p.contact_id,
+          role: p.role,
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          sequence_order: p.sequence_order,
+          access_method: p.access_method ?? 'login',
+          status: 'invited' as const, // reset workflow status
+          // user_id, completed_at, revoked_at intentionally left NULL
+        }));
+        const { error } = await supabase.from('deal_participants').insert(payload);
+        if (error) throw error;
+      }
+
+      // 7. Explicitly DO NOT copy: generated_documents, event_journal,
+      //    activity_log, messages, loan_history, loan_history_lenders,
+      //    magic_links, generation_jobs. These rows are tied by deal_id to
+      //    the original file and the new file starts with an empty history.
+
+      await logDealCreated(newDealId, {
+        dealNumber,
+        state: newDeal.state,
+        productType: newDeal.product_type,
+        mode: newDeal.mode,
+        copiedFrom: source.deal_number,
+      } as any);
+
+      toast({
+        title: 'File copied',
+        description: `New file ${dealNumber} created from ${source.deal_number}.`,
+      });
+      setCopyTarget(null);
+      // Open the new loan in edit mode
+      navigate(`/deals/${newDealId}/edit`, { state: { resetToLoanTerms: true } });
+    } catch (error: any) {
+      console.error('Error copying deal:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to copy file',
+        variant: 'destructive',
+      });
+    } finally {
+      setCopying(false);
+    }
+  };
+
+
 
   const formatCurrency = (amount: number | null) => {
     if (!amount) return '—';
@@ -496,6 +651,13 @@ export const DealsPage: React.FC = () => {
                             <Edit className="h-4 w-4 mr-2" />
                             Enter Data
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
+                            setCopyTarget(deal);
+                          }}>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Create Copy
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => {
                               e.stopPropagation();
@@ -572,6 +734,34 @@ export const DealsPage: React.FC = () => {
           )}
         </div>
       )}
+
+      <AlertDialog open={!!copyTarget} onOpenChange={(open) => { if (!open && !copying) setCopyTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create a copy of this loan/file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The new loan will copy setup and entered data from{' '}
+              <span className="font-medium text-foreground">{copyTarget?.deal_number}</span>{' '}
+              but will <span className="font-medium">NOT</span> copy generated documents,
+              communication history, event logs, or transaction history. A new unique file
+              number will be assigned.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={copying}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={copying}
+              onClick={(e) => {
+                e.preventDefault();
+                if (copyTarget) handleCopyDeal(copyTarget);
+              }}
+            >
+              {copying ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Copy className="h-4 w-4 mr-2" />}
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MaxFilesDialog
         open={showMaxFilesDialog}
