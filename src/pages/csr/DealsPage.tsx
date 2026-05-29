@@ -679,11 +679,9 @@ export const DealsPage: React.FC = () => {
                             Create Copy
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget(deal);
-                            }}
-                            className="text-destructive"
+                            disabled
+                            onSelect={(e) => e.preventDefault()}
+                            className="text-destructive opacity-50 cursor-not-allowed"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
                             Delete
