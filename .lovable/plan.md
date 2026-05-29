@@ -1,43 +1,56 @@
-# Fix Navigation Flicker
+# Fix ADDENDUM TO NOTE EVENT OF DEFAULT Template
 
-## Root causes identified
+Three bugs to fix. Field key names are already correct in the dictionary (`ln_p_defaultInterestModifierEnabled` and `ln_p_defaultInterestFlatRateEnabled` exist as booleans), so no schema changes required.
 
-1. **`RoleGuard` loader flashes on every guarded navigation.** `src/components/layout/RoleGuard.tsx` returns a centered `Loader2` whenever `role === null || loading`. Even when auth is already resolved, React Router re-evaluates the guard on each route change and the guard component re-mounts, briefly showing the spinner before `Outlet` renders.
+## Bug 1 — Split tags across XML runs
 
-2. **`AppLayout` shows a full-screen "Loading..." overlay** on auth/role transitions, which can flash on tab focus or token refresh.
+The parser at `supabase/functions/_shared/tag-parser.ts` already strips `<w:proofErr/>` and consolidates adjacent runs, but only inside paragraphs that already contain `{`, `«`, or `»`. When a `{{` itself is split across runs the paragraph still qualifies (the `{` characters are present), but to be safe we will also:
 
-3. **Keep-alive pane fade transition causes a visible cross-fade flicker.** `src/index.css` `.app-keepalive-pane { transition: opacity 150ms ease-in-out, visibility 150ms ease-in-out }` cross-fades workspace ↔ outlet panes on every navigation. With both panes positioned, the inactive one briefly remains visible at low opacity.
+- Ensure the proofErr/bookmark stripper runs before brace-repair on every paragraph that contains any `{` or `}` (already true), and
+- After stripping, run an extra adjacent-run consolidation pass that targets the specific pattern `}}…proofErr…{{` and merges sibling `<w:t>` elements that, when concatenated, form a complete `{{key}}` token.
 
-4. **`Outlet` route content is wrapped in a div that toggles `app-route-hidden` (absolute, opacity 0).** During the toggle between workspace and non-workspace routes, both wrappers exist simultaneously and the absolute one paints under the other for a frame.
+Concretely, in `normalizeWordXml`, add a small post-strip pass that collapses any `</w:t></w:r><w:r…><w:t…>` sequence sitting between `{{` and `}}` on the same paragraph into a single `<w:t>` run.
 
-5. **`ScrollToTop` runs `window.scrollTo` synchronously on every `pathname` change**, causing a perceptible jump when the next page is still mounting.
+This makes all six occurrences in this template resolve as a single clean tag without touching field key names.
 
-6. **`QueryClient` `staleTime: 30_000` is fine, but no `placeholderData`/`keepPreviousData` on list queries** — pages re-show their own skeletons on revisits. (Not changed here; out of minimal scope unless requested.)
+## Bug 2 — Missing parentheses in Option 1
 
-## Changes (frontend / presentation only)
+Edit the DOCX template stored at `templates/1779997783876_ADDENDUM_TO_NOTE_EVENT_OF_DEFAULT_v1.docx` (template id `a678600f-c1f9-44fc-ba89-24513fef507d`).
 
-### A. `src/components/layout/RoleGuard.tsx`
-- Remove the inline `Loader2` fallback. Instead, return `null` while `loading || role === null` so the previously-rendered route stays painted until the new route is ready. This prevents the spinner flash between routes (AuthProvider already gates the entire app initially in `AppLayout`).
+Replace the second `{{ln_p_defaultInterestModifier}}` in Option 1 with `({{ln_p_defaultInterestModifier}}%)` so the sentence reads:
 
-### B. `src/components/layout/AppLayout.tsx`
-- Replace the two intermediate "Loading..." full-screen blocks (when `loading` or `!role`) with `null`. The initial unauth path still redirects via `<Navigate to="/auth" />`. This eliminates the brief spinner that appears on session refresh.
+```
+to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time.
+```
 
-### C. `src/index.css`
-- Remove the `transition: opacity 150ms ease-in-out, visibility 150ms ease-in-out` from `.app-keepalive-pane`. Swap panes instantly — no cross-fade, no flicker.
-- Keep `.app-route-hidden` rule but add `display: none` fallback (still keyed by class so React state is preserved via the keep-alive pane mechanism for the workspace; outlet routes were already remounting). Use `content-visibility: hidden` so the hidden subtree is not painted at all.
+## Bug 3 — Add conditional logic, remove Option labels and red helper text
 
-### D. `src/components/ScrollToTop.tsx`
-- Defer `window.scrollTo` to the next paint via `requestAnimationFrame` so the scroll happens after the new route has rendered, eliminating the visible jump during transition.
+In the same DOCX, replace the entire Option 1 / Option 2 block (including the `Option 1:` and `Option 2:` labels and the red `(this is conditional based on…)` instruction) with:
 
-### E. (Optional, low risk) `src/App.tsx`
-- Wrap `<Routes>` in a `<Suspense fallback={null}>` boundary (currently no lazy imports — defensive only; skip if not needed).
+```
+{{#if ln_p_defaultInterestModifierEnabled}}
+to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time.
+{{else if ln_p_defaultInterestFlatRateEnabled}}
+to a flat rate of {{ln_p_defaultInterestFlatRate}}%
+{{/if}}
+(the "Default Rate").
+```
 
-## Out of scope (per minimal-change policy)
-- No changes to data fetching, React Query config, page-level skeletons, or any business components.
-- No changes to routing structure, AuthContext logic, or schema.
-- No new dependencies.
+When neither checkbox is set, both branches are skipped and the sentence collapses to `…shall increase (the "Default Rate").` as expected.
 
-## Verification
-- Navigate between `/dashboard`, `/deals`, `/contacts/*`, and `/deals/:id/edit` — confirm no spinner flash, no white flash, no cross-fade between panes, and no scroll jump.
-- Hard-refresh on guarded routes — confirm previously-rendered content is replaced cleanly once auth resolves.
-- Sidebar/header remain mounted (already the case via single `AppLayout`).
+## Implementation steps
+
+1. **Edge function** — update `supabase/functions/_shared/tag-parser.ts` `normalizeWordXml` with the targeted `{{…}}` run-consolidation pass described in Bug 1 (no behavior change for non-tag paragraphs). Deploy the affected functions (`generate-document` and any peers that bundle the shared parser).
+2. **Template DOCX** — write a one-shot edge function `rewrite-addendum-default-template` that:
+   - Downloads `1779997783876_ADDENDUM_TO_NOTE_EVENT_OF_DEFAULT_v1.docx` from the `templates` bucket.
+   - Unzips, edits `word/document.xml` to apply Bug 2 + Bug 3 rewrites (regex anchored on the Option 1 / Option 2 paragraphs, preserving surrounding static legal text, signature, date, and page numbering).
+   - Removes the red helper paragraph.
+   - Re-zips and uploads as a new version `…_v2.docx`, then updates the `templates` row's `file_path`.
+   - Returns a diff summary so we can verify before/after.
+3. **Verification** — re-render the template for a deal with: (a) modifier checked, value 5; (b) flat rate checked, value 18; (c) neither checked. Confirm output matches the three expected snippets in the brief and that `Borrower:` and `Loan No.:` resolve to the live values.
+
+## Out of scope (do not change)
+
+- Any field key names.
+- Any other template text, signature line, date line, or page numbering.
+- Any other forms, components, or database schema.
