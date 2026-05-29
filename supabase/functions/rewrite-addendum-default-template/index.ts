@@ -17,9 +17,15 @@ const corsHeaders = {
 
 const TEMPLATE_NAME = "ADDENDUM TO NOTE EVENT OF DEFAULT";
 
+// Legal text that must precede the conditional segment in the Remedies paragraph.
+const LEGAL_PREFIX =
+  "Remedies Upon Event of Default. Upon the occurrence of an Event of Default, Lender may, following either formal notice thereof or the filing of a Notice of Default, declare the entire unpaid principal balance, together with all accrued and unpaid interest thereon, immediately due and payable, without further demand or notice. In addition, upon the occurrence of an Event of Default, and continuing for so long as such Event of Default exists and for a period of not less than six (6) months after such Event of Default is cured, the interest rate applicable to the outstanding principal balance shall increase ";
+
+// Legal text that must follow the conditional segment in the Remedies paragraph.
+const LEGAL_SUFFIX =
+  " No delay or omission by Lender in exercising any right or remedy under this Note or any of the Loan Documents shall constitute a waiver of such right or remedy.";
+
 // Final conditional segment that replaces "Option 1: ... Option 2: ... (this is conditional ... "Loan")"
-// Uses straight ASCII quotes inside `(the "Default Rate").` to match the
-// existing template style; downstream rendering preserves them.
 const CONDITIONAL_SEGMENT =
   '{{#if ln_p_defaultInterestModifierEnabled}}to a rate equal to {{ln_p_defaultInterestModifier}} percent ({{ln_p_defaultInterestModifier}}%) above the Note rate at that time.{{else if ln_p_defaultInterestFlatRateEnabled}}to a flat rate of {{ln_p_defaultInterestFlatRate}}%{{/if}} (the "Default Rate").';
 
