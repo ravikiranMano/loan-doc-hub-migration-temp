@@ -1069,6 +1069,8 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               const remaining = Math.max(0, principalBalanceNum - otherLendersCurrentBalanceTotal);
               const pct = principalBalanceNum > 0 ? (remaining / principalBalanceNum) * 100 : 0;
               const isFull = remaining <= FUNDING_TOLERANCE;
+              // Hide entirely when loan funding is fully allocated.
+              if (isFull) return null;
               return (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold">Available Capacity</span>
@@ -1082,12 +1084,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <div className={cn(
-                    "text-xs px-2 py-0.5 rounded border",
-                    isFull
-                      ? "bg-red-500/10 text-red-700 border-red-500/30"
-                      : "bg-green-600/10 text-green-700 border-green-600/30"
-                  )}>
+                  <div className="text-xs px-2 py-0.5 rounded border bg-green-600/10 text-green-700 border-green-600/30">
                     ${remaining.toFixed(2)} ({pct.toFixed(2)}% available)
                   </div>
                 </div>
