@@ -283,7 +283,14 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   const soldRate = values['loan_terms.sold_rate_enabled'] ? (values['loan_terms.sold_rate_company'] || values['loan_terms.sold_rate'] || '') : '';
   const totalPayment = values['loan_terms.regular_payment'] || values['loan_terms.total_payment'] || '';
   const loanAmount = values['loan_terms.loan_amount'] || values['loan_terms.original_loan_amount'] || '';
-  const loanPrincipalBalance = values['loan_terms.principal'] || '';
+  // Funding is anchored to Loan → Terms & Balances → Original Amount.
+  // All funding math (Pro Rata, Current Balance fill, over-funding guard) flows
+  // from this single source; falls back to loan_terms.principal only if Original
+  // Amount has not been entered yet so legacy deals keep working.
+  const loanPrincipalBalance =
+    values['loan_terms.original_amount'] ||
+    values['loan_terms.principal'] ||
+    '';
   const remainingPayments = parseFloat(values['ln_p_termMonths'] || '') || 0;
 
   // Parse funding records from stored JSON value
