@@ -831,7 +831,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
             />
           </div>
           <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-foreground font-medium shrink-0">Balance</Label>
+            <Label className="text-xs text-foreground font-medium shrink-0">Original Amount</Label>
             <div className="relative">
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
               <Input
