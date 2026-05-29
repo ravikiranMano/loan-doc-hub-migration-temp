@@ -749,6 +749,20 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
     onValueChange(FIELD_KEYS.fundingRecords, JSON.stringify(updatedRecords));
 
+    // Clear any sessionStorage drafts associated with this loan so that
+    // re-opening the Add Funding modal — for a brand-new lender or for the
+    // just-deleted lender's id — never restores stale funding amounts.
+    try {
+      const prefix = 'addFundingDraft:';
+      const keysToClear: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(prefix)) keysToClear.push(k);
+      }
+      keysToClear.forEach((k) => sessionStorage.removeItem(k));
+    } catch { /* ignore */ }
+
+
     // Mirror deletion into Funding History so the history grid auto-updates
     const historyValue = values[FIELD_KEYS.fundingHistory];
     let history: any[] = [];
