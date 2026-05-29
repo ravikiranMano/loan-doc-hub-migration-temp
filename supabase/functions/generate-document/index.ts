@@ -8073,6 +8073,68 @@ async function generateSingleDocument(
       debugLog(`[RE885] DOCX Render: ${Math.round(performance.now() - tRenderStart)} ms (output=${processedDocx.length} bytes)`);
     }
 
+    // ── ADDENDUM TO LPDS: trim trailing whitespace from primary lender ────
+    // Bug fix: the rendered primary lender vesting line (e.g. "Lender 1:
+    // Michael Carter, an unmarried man ") sometimes carries a trailing space
+    // from the merged value runs. Scoped strictly to "Addendum to LPDS" so
+    // no other template is affected. The primary paragraph is identified by
+    // visible-text pattern /^\s*Lender(?:\s+1)?:\s*\S/ (post-merge).
+    try {
+      const tplName = template && typeof template.name === "string" ? template.name : "";
+      if (tplName === "Addendum to LPDS") {
+        const fflateMod = await import("https://esm.sh/fflate@0.8.2");
+        const unz = fflateMod.unzipSync(processedDocx);
+        const docBytes = unz["word/document.xml"];
+        if (docBytes) {
+          const decoder = new TextDecoder("utf-8");
+          const encoder = new TextEncoder();
+          const originalXml = decoder.decode(docBytes);
+          const paraRe = /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g;
+          const visibleOf = (p: string) => {
+            const out: string[] = [];
+            const re = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
+            let mm: RegExpExecArray | null;
+            while ((mm = re.exec(p)) !== null) out.push(mm[1]);
+            return out.join("");
+          };
+          let trimmed = 0;
+          const newXml = originalXml.replace(paraRe, (paraXml) => {
+            const vis = visibleOf(paraXml);
+            if (!/^\s*Lender(?:\s+1)?\s*:\s*\S/.test(vis)) return paraXml;
+            if (!/\s$/.test(vis)) return paraXml;
+            // Trim trailing whitespace from the LAST non-empty <w:t> in this paragraph.
+            const toks: Array<{ start: number; end: number; open: string; inner: string; close: string }> = [];
+            const tRe = /(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g;
+            let tm: RegExpExecArray | null;
+            while ((tm = tRe.exec(paraXml)) !== null) {
+              toks.push({ start: tm.index, end: tm.index + tm[0].length, open: tm[1], inner: tm[2], close: tm[3] });
+            }
+            for (let i = toks.length - 1; i >= 0; i--) {
+              const t = toks[i];
+              if (!t.inner.length) continue;
+              const trim = t.inner.replace(/\s+$/, "");
+              if (trim === t.inner) break;
+              trimmed++;
+              const openWithSpace = /xml:space=/.test(t.open)
+                ? t.open
+                : t.open.replace(/<w:t/, '<w:t xml:space="preserve"');
+              return paraXml.slice(0, t.start) + `${openWithSpace}${trim}${t.close}` + paraXml.slice(t.end);
+            }
+            return paraXml;
+          });
+          if (trimmed > 0) {
+            unz["word/document.xml"] = encoder.encode(newXml);
+            processedDocx = fflateMod.zipSync(unz);
+            console.log(`[lpds-trim] template=Addendum to LPDS trimmed=${trimmed}`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[lpds-trim] non-fatal:", e instanceof Error ? e.message : String(e));
+    }
+
+
+
     // ── UNIVERSAL LENDER SIGNATURE BLOCK PASS ────────────────────────────
     // Single source of truth: ensures every lender (2..N) ends up with a
     // standardized signature block appended before </w:body>. Detects how
