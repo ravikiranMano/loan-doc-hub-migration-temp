@@ -353,12 +353,25 @@ export const DealsPage: React.FC = () => {
 
       const newDealId = newDeal.id as string;
 
+      // 3a. Resolve field_dictionary IDs for operational/history fields that
+      //     must NOT be cloned (funding history + funding override history).
+      //     Stored both as composite keys inside deal_section_values.loan_terms
+      //     and as typed rows in deal_field_values.
+      const { data: excludeDictRows } = await supabase
+        .from('field_dictionary')
+        .select('id, field_key')
+        .in('field_key', [
+          'loan_terms.funding_history',
+          'loan_terms.funding_adjustments',
+        ]);
+      const excludedDictIds = new Set<string>((excludeDictRows || []).map((r: any) => r.id));
+
       // 4. Copy deal_section_values (all JSONB section payloads — loan terms,
       //    property, contacts prefixes, funding setup, custom fields, etc.)
       //    EXCLUDES the 'notes' section so the copied loan starts with a
-      //    completely clean Conversation Log (no chat history, internal
-      //    comments, email threads, SMS history, or communication audit
-      //    records carry over to the new independent file).
+      //    completely clean Conversation Log, and strips any composite keys
+      //    that reference funding history / funding override history so the
+      //    copied loan has zero funding event records.
       const { data: sectionRows, error: secErr } = await supabase
         .from('deal_section_values')
         .select('section, field_values, version')
@@ -366,35 +379,48 @@ export const DealsPage: React.FC = () => {
         .neq('section', 'notes');
       if (secErr) throw secErr;
       if (sectionRows && sectionRows.length > 0) {
-        const payload = sectionRows.map((r: any) => ({
-          deal_id: newDealId,
-          section: r.section,
-          field_values: r.field_values ?? {},
-          version: r.version ?? 1,
-        }));
+        const payload = sectionRows.map((r: any) => {
+          const cleaned: Record<string, any> = {};
+          const fv = (r.field_values && typeof r.field_values === 'object') ? r.field_values : {};
+          for (const [k, v] of Object.entries(fv)) {
+            const tail = k.includes('::') ? k.split('::').pop()! : k;
+            if (excludedDictIds.has(tail)) continue;
+            cleaned[k] = v;
+          }
+          return {
+            deal_id: newDealId,
+            section: r.section,
+            field_values: cleaned,
+            version: r.version ?? 1,
+          };
+        });
         const { error } = await supabase.from('deal_section_values').insert(payload);
         if (error) throw error;
       }
 
       // 5. Copy deal_field_values (typed per-field values referenced by the
       //    field_dictionary). Same field_dictionary_id, new deal_id.
+      //    EXCLUDES funding history / funding override history rows.
       const { data: fieldRows, error: fldErr } = await supabase
         .from('deal_field_values')
         .select('field_dictionary_id, value_text, value_number, value_date, value_json')
         .eq('deal_id', source.id);
       if (fldErr) throw fldErr;
       if (fieldRows && fieldRows.length > 0) {
-        const payload = fieldRows.map((r: any) => ({
-          deal_id: newDealId,
-          field_dictionary_id: r.field_dictionary_id,
-          value_text: r.value_text,
-          value_number: r.value_number,
-          value_date: r.value_date,
-          value_json: r.value_json,
-          updated_by: user?.id,
-        }));
-        const { error } = await supabase.from('deal_field_values').insert(payload);
-        if (error) throw error;
+        const filtered = fieldRows.filter((r: any) => !excludedDictIds.has(r.field_dictionary_id));
+        if (filtered.length > 0) {
+          const payload = filtered.map((r: any) => ({
+            deal_id: newDealId,
+            field_dictionary_id: r.field_dictionary_id,
+            value_text: r.value_text,
+            value_number: r.value_number,
+            value_date: r.value_date,
+            value_json: r.value_json,
+            updated_by: user?.id,
+          }));
+          const { error } = await supabase.from('deal_field_values').insert(payload);
+          if (error) throw error;
+        }
       }
 
       // 6. Copy deal_participants as NEW relationship mappings — reuse the
