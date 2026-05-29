@@ -914,39 +914,54 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   };
 
   return (
-    <LoanFundingGrid
-      dealId={dealId}
-      loanNumber={loanNumber}
-      borrowerName={borrowerName}
-      fundingRecords={paginatedRecords}
-      totalRecordCount={fundingRecords.length}
-      historyRecords={historyRecords}
-      onAddFunding={handleAddFunding}
-      onDeleteRecord={handleDeleteRecord}
-      onUpdateRecord={handleUpdateRecord}
-      onRefresh={onRefresh}
-      isLoading={isLoading}
-      disabled={disabled}
-      currentPage={currentPage}
-      totalPages={totalPages}
-      pageSize={pageSize}
-      onPageChange={handlePageChange}
-      onPageSizeChange={handlePageSizeChange}
-      noteRate={noteRate}
-      soldRate={soldRate}
-      totalPayment={totalPayment}
-      loanAmount={loanAmount}
-      loanPrincipalBalance={loanPrincipalBalance}
-      remainingPayments={remainingPayments}
-      onLoanNumberChange={handleLoanNumberChange}
-      onBorrowerNameChange={handleBorrowerNameChange}
-      onHeaderFieldBlur={handleHeaderFieldBlur}
-      proRata={computedProRataTotal || values['loan_terms.pro_rata'] || ''}
-      onProRataChange={(v) => onValueChange('loan_terms.pro_rata', v)}
-      fundingAdjustments={fundingAdjustments}
-      onSaveAdjustment={handleSaveAdjustment}
-      onDeleteHistoryRecord={handleDeleteHistoryRecord}
-    />
+    <>
+      <LoanFundingGrid
+        dealId={dealId}
+        loanNumber={loanNumber}
+        borrowerName={borrowerName}
+        fundingRecords={paginatedRecords}
+        totalRecordCount={fundingRecords.length}
+        historyRecords={historyRecords}
+        onAddFunding={handleAddFunding}
+        onDeleteRecord={handleDeleteRecord}
+        onUpdateRecord={handleUpdateRecord}
+        onRefresh={onRefresh}
+        isLoading={isLoading}
+        disabled={disabled}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        noteRate={noteRate}
+        soldRate={soldRate}
+        totalPayment={totalPayment}
+        loanAmount={loanAmount}
+        loanPrincipalBalance={loanPrincipalBalance}
+        remainingPayments={remainingPayments}
+        onLoanNumberChange={handleLoanNumberChange}
+        onBorrowerNameChange={handleBorrowerNameChange}
+        onHeaderFieldBlur={handleHeaderFieldBlur}
+        proRata={computedProRataTotal || values['loan_terms.pro_rata'] || ''}
+        onProRataChange={(v) => onValueChange('loan_terms.pro_rata', v)}
+        fundingAdjustments={fundingAdjustments}
+        onSaveAdjustment={handleSaveAdjustment}
+        onDeleteHistoryRecord={handleDeleteHistoryRecord}
+      />
+      <ReassignRoundingDialog
+        state={reassignDeleteState}
+        onCancel={() => setReassignDeleteState(null)}
+        onSelectionChange={(id) =>
+          setReassignDeleteState((s) => (s ? { ...s, selectedId: id } : s))
+        }
+        onConfirm={async () => {
+          if (!reassignDeleteState) return;
+          const { record, selectedId } = reassignDeleteState;
+          setReassignDeleteState(null);
+          await performDeleteRecord(record, selectedId);
+        }}
+      />
+    </>
   );
 };
 
