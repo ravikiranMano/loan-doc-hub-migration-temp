@@ -510,21 +510,23 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   }, [formData.lenderRate, formData.rateLenderValue]);
 
   // Auto-compute Lender Pro Rata (Percent Owned):
-  //   Pro Rata = Lender Current Balance ÷ Loan Principal Balance × 100
+  //   Pro Rata = Lender Original (Funding) Amount ÷ Loan Principal Balance × 100
   // Stored at 6 decimal places (display layer rounds to 4dp + %).
+  // Original Amount is the single source of truth for funding math — Current
+  // Balance and Principal Balance are never used as a Pro Rata numerator.
   React.useEffect(() => {
     const principal = parseFloat((loanPrincipalBalance || '').replace(/[$,]/g, '')) || 0;
-    const cb = parseFloat((formData.currentBalance || '').replace(/[$,]/g, ''));
-    if (principal > 0 && !isNaN(cb) && cb > 0) {
-      const computed = new Decimal(cb).div(principal).mul(100)
+    const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, ''));
+    if (principal > 0 && !isNaN(fa) && fa > 0) {
+      const computed = new Decimal(fa).div(principal).mul(100)
         .toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed(6);
       if (computed !== formData.percentOwned) {
         setFormData(prev => ({ ...prev, percentOwned: computed }));
       }
-    } else if ((isNaN(cb) || cb <= 0) && formData.percentOwned !== '') {
+    } else if ((isNaN(fa) || fa <= 0) && formData.percentOwned !== '') {
       setFormData(prev => ({ ...prev, percentOwned: '' }));
     }
-  }, [formData.currentBalance, loanPrincipalBalance]);
+  }, [formData.fundingAmount, loanPrincipalBalance]);
 
 
 
