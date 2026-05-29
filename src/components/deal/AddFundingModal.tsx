@@ -409,10 +409,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
   React.useEffect(() => {
     if (open) {
+      // Fresh open for a NEW lender (no editingRecordId): drop any stale
+      // sessionStorage draft left over from a prior aborted Add session so the
+      // form initialises clean instead of restoring a deleted lender's amount.
+      if (!editingRecordId && !editData) {
+        try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ }
+      }
       const data = getInitialFormData();
       setFormData(data);
+      // Reset the "user touched Current Balance" sentinel on every open so the
+      // Original Amount → Current Balance auto-fill always runs for new rows.
+      currentBalanceTouchedRef.current = !!editData?.currentBalance;
+      prevCurrentBalanceRef.current = data.currentBalance;
     }
-  }, [open, editData, draftKey]);
+  }, [open, editData, draftKey, editingRecordId]);
 
   // Note Rate, Sold Rate, and Lender Rate are dynamically linked.
   // Source of truth: Sold Rate (falls back to Note Rate when Sold is empty).
