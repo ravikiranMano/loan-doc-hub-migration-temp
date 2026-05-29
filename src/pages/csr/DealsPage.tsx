@@ -290,8 +290,11 @@ export const DealsPage: React.FC = () => {
         supabase.from('deal_field_values').delete().eq('deal_id', deal.id),
         supabase.from('deal_participants').delete().eq('deal_id', deal.id),
       ]);
-      const { error } = await supabase.from('deals').delete().eq('id', deal.id);
+      const { data: deleted, error } = await supabase.from('deals').delete().eq('id', deal.id).select('id');
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        throw new Error('You do not have permission to delete this file.');
+      }
       toast({ title: 'File deleted', description: `File ${deal.deal_number} has been deleted.` });
       setDeleteTarget(null);
       fetchDeals(currentPage);
