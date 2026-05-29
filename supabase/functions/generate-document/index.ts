@@ -8339,15 +8339,27 @@ async function generateSingleDocument(
                 if (sigXmls.length >= 3) break;
               }
               if (labelText && sawDate) {
+                // Keep only Signature/Date paragraphs in the per-lender clone.
+                // Some templates (e.g. "Addendum to LPDS") have a
+                // "Broker's Representative: <name>" paragraph sandwiched
+                // between the primary lender's name and its Signature/Date
+                // line — that line belongs to the Broker section and must
+                // not be cloned into every Lender 2..N block.
+                const sigOnly = sigXmls.filter((x) => {
+                  const v = visibleFromWordXml(x);
+                  if (/Broker/i.test(v)) return false;
+                  if (/\{\{/.test(v)) return false;
+                  return /\b(Signature|Date)\s*:/i.test(v) || /_{4,}/.test(v);
+                });
                 primaryTpl = {
                   labelXml: labelBlock.xml,
                   labelText,
                   nameXml,
                   nameText,
-                  sigXmls,
+                  sigXmls: sigOnly.length ? sigOnly : sigXmls,
                 };
                 console.log(
-                  `[lender-sig] template=${tName} primaryBlock.captured=true labelText="${labelText}" nameSep=${nameIdx !== primaryIdx} sigBlocks=${sigXmls.length}`,
+                  `[lender-sig] template=${tName} primaryBlock.captured=true labelText="${labelText}" nameSep=${nameIdx !== primaryIdx} sigBlocks=${sigXmls.length} sigBlocksFiltered=${sigOnly.length}`,
                 );
               }
             }
