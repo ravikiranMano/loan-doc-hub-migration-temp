@@ -220,9 +220,15 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
         const noteRateVal = (data.rateNoteValue || '').trim();
         const isOn = !!data.lenderRateOverride;
         const overrideVal = data.lenderRateOverrideValue || '';
-        // Source rate per spec: Sold (when checked/non-empty) else Note.
-        const linkedRate = soldRateVal !== '' ? soldRateVal : noteRateVal;
-        const hasLinkedRate = linkedRate !== '' && !isNaN(parseFloat(linkedRate));
+        // Source rate priority: Sold Rate when configured (>0), else Note Rate.
+        // Empty / null / 0 / non-numeric Sold Rate falls back to Note Rate so
+        // Lender Rate never remains blank when only Note Rate is set.
+        const soldRateNum = parseFloat(soldRateVal.replace(/[%,]/g, ''));
+        const noteRateNum = parseFloat(noteRateVal.replace(/[%,]/g, ''));
+        const hasSold = Number.isFinite(soldRateNum) && soldRateNum > 0;
+        const hasNote = Number.isFinite(noteRateNum) && noteRateNum > 0;
+        const linkedRate = hasSold ? soldRateVal : (hasNote ? noteRateVal : '');
+        const hasLinkedRate = hasSold || hasNote;
         // When override is on, the displayed Lender Rate reflects user input.
         const displayRate = isOn
           ? (overrideVal || data.lenderRate || linkedRate || '')
