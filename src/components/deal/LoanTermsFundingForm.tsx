@@ -432,11 +432,11 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       };
     };
 
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (storedValue) {
       return parsed.map(enrich);
     }
 
-    // Derive from funding records as a fallback (no DB writes here)
+    // Derive from funding records as a fallback only when no history field exists (no DB writes here)
     if (!recs.length) return [];
     return recs.map((r) => ({
       id: `history-${r.id || r.lenderAccount || Math.random()}`,
