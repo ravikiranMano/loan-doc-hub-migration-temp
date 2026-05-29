@@ -626,35 +626,49 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
         // Always sync display with Loan > Terms & Balances > Note Rate (source of truth)
         return <span>{noteRate ? `${formatPercentDisplay(noteRate, 3)}%` : (record.rateNoteValue ? `${formatPercentDisplay(record.rateNoteValue, 3)}%` : '-')}</span>;
       case 'lenderRate': {
-        if (hasLenderRate(record)) {
-          return <span>{formatPercentage(record.lenderRate, 3)}</span>;
+        // Mirror Add/Edit Lender Funding modal's Lender Rate resolution so the
+        // grid stays in sync with what the modal would show for this lender:
+        //   1. Manual Override on (valid value) → override value
+        //   2. Live Sold Rate (from Loan Terms) if valid
+        //   3. Live Note Rate (from Loan Terms) if valid
+        //   4. Stored record.lenderRate (last saved)
+        //   5. Stored rateSoldValue / rateNoteValue snapshots
+        const overrideOn = !!record.lenderRateOverride;
+        const overrideVal = (record.lenderRateOverrideValue || '').toString().trim();
+        const overrideNum = parseFloat(overrideVal.replace(/[%,]/g, '')) || 0;
+        if (overrideOn && overrideNum > 0) {
+          return <span>{formatPercentage(overrideNum, 3)}</span>;
         }
-        // Auto-fill display: when no explicit Lender Rate is stored, fall back
-        // to Sold Rate (if valid) else Note Rate so the cell never appears
-        // blank. Manual overrides are already persisted into record.lenderRate
-        // on save, so the hasLenderRate branch above handles them.
-        const recSold = (record.rateSoldValue || soldRate || '').trim();
-        const hasValidSold = recSold !== '' && !isNaN(parseFloat(recSold)) && parseFloat(recSold) > 0;
-        const fallbackRaw = hasValidSold
-          ? recSold
-          : (noteRate || record.rateNoteValue || record.noteRateDisplay || '').toString().trim();
-        const fallbackNum = parseFloat(fallbackRaw.replace(/[%,]/g, '')) || 0;
-        if (fallbackNum > 0) {
+        const liveSold = (soldRate || record.rateSoldValue || '').toString().trim();
+        const liveSoldNum = parseFloat(liveSold.replace(/[%,]/g, '')) || 0;
+        const liveNote = (noteRate || record.rateNoteValue || record.noteRateDisplay || '').toString().trim();
+        const liveNoteNum = parseFloat(liveNote.replace(/[%,]/g, '')) || 0;
+        const syncedNum = liveSoldNum > 0 ? liveSoldNum : liveNoteNum;
+        if (syncedNum > 0) {
+          const sourceLabel = liveSoldNum > 0 ? 'Sold Rate' : 'Note Rate';
+          // When the synced rate matches the saved rate, show it plain
+          // (no "auto" badge) — they're already in sync.
+          if (hasLenderRate(record) && Math.abs(record.lenderRate - syncedNum) < 1e-6) {
+            return <span>{formatPercentage(syncedNum, 3)}</span>;
+          }
           return (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex items-center gap-1">
-                    <span>{formatPercentage(fallbackNum, 3)}</span>
+                    <span>{formatPercentage(syncedNum, 3)}</span>
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">auto</span>
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  Auto-filled from {hasValidSold ? 'Sold Rate' : 'Note Rate'}
+                  Auto-synced from {sourceLabel}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           );
+        }
+        if (hasLenderRate(record)) {
+          return <span>{formatPercentage(record.lenderRate, 3)}</span>;
         }
         return (
           <TooltipProvider delayDuration={200}>
