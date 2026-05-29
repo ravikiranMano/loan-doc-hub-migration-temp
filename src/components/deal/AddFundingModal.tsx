@@ -840,6 +840,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const isFormFilled = hasModalFormData(formData, ['loan', 'borrower', 'rateSelection', 'rateNoteValue', 'rateSoldValue', 'rateLenderValue', 'percentOwned', 'regularPayment', 'lenderRate', 'disbursements', 'payments', 'principalBalance', 'noteRateDisplay', 'overrideServicing', 'companyBaseFee', 'companyBaseFeePct', 'companyAdditionalServices', 'companyMinimum', 'companyMaximum', 'companyNrSitSplitPct', 'companyNrSitSplit', 'companyTotal', 'vendorId', 'vendorName', 'vendorBaseFee', 'vendorBaseFeePct', 'vendorAdditionalServices', 'vendorMinimum', 'vendorMaximum', 'vendorNrSitSplitPct', 'vendorNrSitSplit', 'vendorTotal'], { brokerParticipates: false, overrideServicingFees: false, overrideDefaultFees: false, roundingAdjustment: false });
 
   const handleSaveClick = () => {
+    // Required-field gating: surface inline red errors under each empty field
+    // (Lender ID, Lender Rate, Funding Date, Original Funding, Current Balance,
+    // Interest From) and abort without firing the cross-field rules below.
+    if (Object.values(requiredErrors).some(Boolean)) {
+      setSubmitAttempted(true);
+      return;
+    }
+    setSubmitAttempted(false);
     // Rule: when this lender already owns 100% Pro Rata AND its Funding
     // Amount and Current Balance both equal the loan's Principal Balance,
     // the record is fully allocated to this single lender. Inputs remain
@@ -978,7 +986,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const fundingDate = parseDateOnly(formData.fundingDate);
   const interestFromDate = parseDateOnly(formData.interestFrom);
 
-  const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false) => (
+  const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false, invalid = false) => (
     <div className="relative flex-1">
       <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
       <Input
@@ -988,7 +996,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         onPaste={(e) => numericPaste(e, (val) => handleChange(field, val))}
         onBlur={() => { const raw = formData[field] as string; if (raw) handleChange(field, formatCurrencyDisplay(raw)); }}
         onFocus={() => { const raw = formData[field] as string; if (raw) handleChange(field, unformatCurrencyDisplay(raw)); }}
-        className="h-6 text-xs pl-4"
+        className={cn("h-6 text-xs pl-4", invalid && "border-destructive focus-visible:ring-destructive")}
         inputMode="decimal"
         placeholder={placeholder}
         disabled={disabled}
@@ -1019,10 +1027,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     );
   };
 
-  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void) => (
+  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void, invalid = false) => (
     <Popover open={isOpen} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground')}>
+        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground', invalid && 'border-destructive focus-visible:ring-destructive')}>
           {value && !isNaN(value.getTime()) ? formatDateOnly(value, 'MM/dd/yyyy') : 'Date'}
           <CalendarIcon className="ml-auto h-3 w-3" />
         </Button>
@@ -1032,6 +1040,27 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       </PopoverContent>
     </Popover>
   );
+
+  // Required-field gating. Errors are computed from current formData and only
+  // surfaced after the user clicks Update Funding (submitAttempted) so the
+  // modal does not paint red on first open.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const effectiveLenderRateForValidation = formData.lenderRateOverride
+    ? (formData.lenderRateOverrideValue || '')
+    : (formData.lenderRate || formData.rateLenderValue || '');
+  const requiredErrors = {
+    lenderId: !((formData.lenderId || '').trim()),
+    lenderRate: !(String(effectiveLenderRateForValidation || '').trim()),
+    fundingDate: !((formData.fundingDate || '').trim()),
+    fundingAmount: !((formData.fundingAmount || '').replace(/[$,\s]/g, '').trim()),
+    currentBalance: !((formData.currentBalance || '').replace(/[$,\s]/g, '').trim()),
+    interestFrom: !((formData.interestFrom || '').trim()),
+  };
+  const showError = (k: keyof typeof requiredErrors) => submitAttempted && requiredErrors[k];
+  const fieldErrorMsg = (label: string) => (
+    <p className="text-[10px] text-destructive pl-[79px] mt-0.5">{label} is required</p>
+  );
+
 
   return (
     <>
@@ -1125,9 +1154,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                       } : {}),
                     }));
                   }}
-                  className="h-6 text-xs"
+                  className={cn("h-6 text-xs", showError('lenderId') && "border-destructive focus-visible:ring-destructive")}
                 />
               </div>
+              {showError('lenderId') && fieldErrorMsg('Lender ID')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Name</Label>
                 <Input value={formData.lenderFullName} readOnly className="h-6 text-xs bg-muted/30" />
@@ -1191,7 +1221,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         }}
                         onKeyDown={numericKeyDown}
                         disabled={hasLenderRate}
-                        className={cn("h-6 text-xs pr-4", hasLenderRate && "opacity-60 bg-muted cursor-not-allowed")}
+                        className={cn("h-6 text-xs pr-4", hasLenderRate && "opacity-60 bg-muted cursor-not-allowed", showError('lenderRate') && "border-destructive focus-visible:ring-destructive")}
                         inputMode="decimal"
                         placeholder="%"
                       />
@@ -1200,6 +1230,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                   );
                 })()}
               </div>
+              {showError('lenderRate') && fieldErrorMsg('Lender Rate')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0 flex items-center gap-1">
                   <span>Override</span>
@@ -1272,25 +1303,29 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Funding Date</Label>
-                {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen)}
+                {renderDateField(fundingDate, (d) => handleChange('fundingDate', formatDateOnly(d)), fundingDateOpen, setFundingDateOpen, showError('fundingDate'))}
               </div>
+              {showError('fundingDate') && fieldErrorMsg('Funding Date')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Original Funding</Label>
-                {renderCurrencyInput('fundingAmount', '0.00', false)}
+                {renderCurrencyInput('fundingAmount', '0.00', false, showError('fundingAmount'))}
               </div>
+              {showError('fundingAmount') && fieldErrorMsg('Original Funding')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Base Fee</Label>
                 {renderCurrencyInput('baseFee', 'Enter amount')}
               </div>
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] max-w-[75px] shrink-0 whitespace-normal leading-tight">Current Balance</Label>
-                {renderCurrencyInput('currentBalance', '0.00', false)}
+                {renderCurrencyInput('currentBalance', '0.00', false, showError('currentBalance'))}
               </div>
+              {showError('currentBalance') && fieldErrorMsg('Current Balance')}
 
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Interest From</Label>
-                {renderDateField(interestFromDate, (d) => handleChange('interestFrom', formatDateOnly(d)), interestFromOpen, setInterestFromOpen)}
+                {renderDateField(interestFromDate, (d) => handleChange('interestFrom', formatDateOnly(d)), interestFromOpen, setInterestFromOpen, showError('interestFrom'))}
               </div>
+              {showError('interestFrom') && fieldErrorMsg('Interest From')}
               <div className="flex items-center gap-1">
                 <Label className="text-xs font-bold min-w-[75px] shrink-0">Pro Rata</Label>
                 <div className="relative flex-1">
