@@ -858,7 +858,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         Math.abs(thisLenderCurrentBalance - origCB) > FUNDING_TOLERANCE;
       if (wasFullyAllocatedToThisLender && changedFundingOrCB) {
         toast.error(
-          'Cannot save: this lender already holds 100% Pro Rata with Funding Amount and Current Balance equal to the Principal Balance. Use the Funding Adjustment workflow to reallocate.'
+          'Cannot save: this lender already holds 100% Pro Rata with Funding Amount and Current Balance equal to the Original Amount. Use the Funding Adjustment workflow to reallocate.'
         );
         return;
       }
@@ -1042,14 +1042,14 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
           <span className="text-xs font-bold">Add / Edit Lender Funding</span>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold">Principal Balance</span>
+              <span className="text-xs font-bold">Original Amount</span>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                    Outstanding principal balance for this loan. All lender funding totals and pro rata calculations must reconcile to this amount.
+                    Original loan amount. All lender funding totals and pro rata calculations must reconcile to this amount.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1082,7 +1082,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
                         <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                        Principal balance minus the sum of all other lenders' current balances. Funding amount cannot exceed this value.
+                        Original loan amount minus the sum of all other lenders' current balances. Funding amount cannot exceed this value.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1422,7 +1422,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
             <p className="text-xs text-destructive font-medium">Percent Owned cannot exceed 100%</p>
           )}
           {totalPercentError && !percentOwnedError && (
-            <p className="text-xs text-destructive font-medium">Funding exceeds loan principal balance.</p>
+            <p className="text-xs text-destructive font-medium">Funding exceeds loan original amount.</p>
           )}
 
           {/* Checkboxes row */}
