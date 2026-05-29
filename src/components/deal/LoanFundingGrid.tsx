@@ -19,6 +19,7 @@ import { FilterOption } from './GridToolbar';
 import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
 import { formatPercentDisplay, Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { calculateProRataWithRounding } from '@/lib/proRataRounding';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
