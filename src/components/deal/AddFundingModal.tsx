@@ -540,9 +540,17 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
 
 
 
-  // Auto-default Current Balance = Original Funding − Base Fee (only when not manually edited)
+  // Auto-sync Current Balance = Original Funding − Base Fee.
+  // Any edit to Original Funding re-syncs Current Balance, even if the user
+  // previously typed a custom value (per spec: Current Balance must follow
+  // Original Funding while editing).
   const currentBalanceTouchedRef = React.useRef<boolean>(!!editData?.currentBalance);
+  const prevFundingAmountRef = React.useRef<string>(formData.fundingAmount || '');
   React.useEffect(() => {
+    if (prevFundingAmountRef.current !== formData.fundingAmount) {
+      currentBalanceTouchedRef.current = false;
+      prevFundingAmountRef.current = formData.fundingAmount;
+    }
     if (currentBalanceTouchedRef.current) return;
     const fa = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const bf = parseFloat((formData.baseFee || '').replace(/[$,]/g, '')) || 0;
@@ -558,6 +566,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       setFormData(prev => ({ ...prev, currentBalance: formatted }));
     }
   }, [formData.fundingAmount, formData.baseFee]);
+
 
   // Mark Current Balance as manually touched when user edits it
   const prevCurrentBalanceRef = React.useRef<string | undefined>(formData.currentBalance);
