@@ -3700,12 +3700,21 @@ async function generateSingleDocument(
         fieldValues.set("all_properties_list", { rawValue: allPropertiesText, dataType: "text" });
         debugLog(`[generate-document] Built all_properties_list with ${propertyLines.length} properties`);
       }
-      // NOTE: Do NOT overwrite pr_p_address / property1.address / Property1.Address with the
-      // joined multi-line string when multiple properties exist. RE851D and similar multi-block
-      // templates rely on per-index aliases (pr_p_address_1, pr_p_address_2, ...) so each
-      // property block populates with its own data. Concatenating all addresses into
-      // pr_p_address caused every property block to display the same combined list.
-      // Templates that need the combined list can use {{all_properties_list}}.
+      // Multi-property pr_p_address: when more than one property exists, the
+      // bare {{pr_p_address}} merge tag (used outside per-property blocks,
+      // e.g. on cover pages and Assignment-of-Rents headers) should render
+      // every property's full address on its own line. With exactly one
+      // property we leave pr_p_address untouched so single-property templates
+      // continue to render a single-line address.
+      // NOTE: property1.address / Property1.Address and the per-index aliases
+      // (pr_p_address_1, pr_p_address_2, ...) are intentionally NOT overwritten
+      // here — RE851D and similar multi-block templates need them to remain
+      // per-property so each PROPERTY block renders its own address.
+      if (propertyLines.length > 1) {
+        const multiAddrText = propertyLines.join("\n");
+        fieldValues.set("pr_p_address", { rawValue: multiAddrText, dataType: "text" });
+        debugLog(`[generate-document] Overrode bare pr_p_address with ${propertyLines.length}-line multi-property list`);
+      }
           }
 
 
