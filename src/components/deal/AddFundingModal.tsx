@@ -978,7 +978,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const fundingDate = parseDateOnly(formData.fundingDate);
   const interestFromDate = parseDateOnly(formData.interestFrom);
 
-  const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false) => (
+  const renderCurrencyInput = (field: keyof FundingFormData, placeholder = '-', disabled = false, invalid = false) => (
     <div className="relative flex-1">
       <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
       <Input
@@ -988,7 +988,7 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
         onPaste={(e) => numericPaste(e, (val) => handleChange(field, val))}
         onBlur={() => { const raw = formData[field] as string; if (raw) handleChange(field, formatCurrencyDisplay(raw)); }}
         onFocus={() => { const raw = formData[field] as string; if (raw) handleChange(field, unformatCurrencyDisplay(raw)); }}
-        className="h-6 text-xs pl-4"
+        className={cn("h-6 text-xs pl-4", invalid && "border-destructive focus-visible:ring-destructive")}
         inputMode="decimal"
         placeholder={placeholder}
         disabled={disabled}
@@ -1019,10 +1019,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     );
   };
 
-  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void) => (
+  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void, invalid = false) => (
     <Popover open={isOpen} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground')}>
+        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground', invalid && 'border-destructive focus-visible:ring-destructive')}>
           {value && !isNaN(value.getTime()) ? formatDateOnly(value, 'MM/dd/yyyy') : 'Date'}
           <CalendarIcon className="ml-auto h-3 w-3" />
         </Button>
@@ -1032,6 +1032,27 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       </PopoverContent>
     </Popover>
   );
+
+  // Required-field gating. Errors are computed from current formData and only
+  // surfaced after the user clicks Update Funding (submitAttempted) so the
+  // modal does not paint red on first open.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const effectiveLenderRateForValidation = formData.lenderRateOverride
+    ? (formData.lenderRateOverrideValue || '')
+    : (formData.lenderRate || formData.rateLenderValue || '');
+  const requiredErrors = {
+    lenderId: !((formData.lenderId || '').trim()),
+    lenderRate: !(String(effectiveLenderRateForValidation || '').trim()),
+    fundingDate: !((formData.fundingDate || '').trim()),
+    fundingAmount: !((formData.fundingAmount || '').replace(/[$,\s]/g, '').trim()),
+    currentBalance: !((formData.currentBalance || '').replace(/[$,\s]/g, '').trim()),
+    interestFrom: !((formData.interestFrom || '').trim()),
+  };
+  const showError = (k: keyof typeof requiredErrors) => submitAttempted && requiredErrors[k];
+  const fieldErrorMsg = (label: string) => (
+    <p className="text-[10px] text-destructive pl-[79px] mt-0.5">{label} is required</p>
+  );
+
 
   return (
     <>
