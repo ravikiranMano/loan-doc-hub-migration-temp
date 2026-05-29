@@ -745,8 +745,17 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     }
   }, [historyRecords, onValueChange, dealId]);
 
-  const handleDeleteRecord = async (record: FundingRecord) => {
-    const updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
+  const performDeleteRecord = async (record: FundingRecord, reassignToId?: string) => {
+    let updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
+    // If the deleted record was the designated rounding lender, transfer the
+    // flag atomically in this same write so only one lender ever holds it.
+    if (record.roundingAdjustment && reassignToId) {
+      updatedRecords = updatedRecords.map((r) =>
+        r.id === reassignToId
+          ? { ...r, roundingAdjustment: true }
+          : (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r),
+      );
+    }
     onValueChange(FIELD_KEYS.fundingRecords, JSON.stringify(updatedRecords));
 
     // Clear any sessionStorage drafts associated with this loan so that
