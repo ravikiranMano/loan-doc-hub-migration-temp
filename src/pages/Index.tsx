@@ -1,18 +1,14 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2 } from 'lucide-react';
 
 const Index: React.FC = () => {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  // While auth resolves, render nothing — the html background (set in
+  // index.css) covers the screen so there's no white/spinner flash before
+  // redirecting to /dashboard or /auth.
+  if (loading) return null;
 
   return <Navigate to={user ? '/dashboard' : '/auth'} replace />;
 };

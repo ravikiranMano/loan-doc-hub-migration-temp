@@ -176,20 +176,15 @@
       "calt" 1;
   }
 
-  /* Smooth transitions for theme switching — scoped to the elements
-     that actually change color on theme toggle (root surfaces + common
-     chrome). The previous universal `*` selector forced a 200ms
-     color cross-fade on every element on every navigation, which
-     showed up as flicker/flash during route changes. */
+  /* Smooth transitions for theme switching — scoped tightly to the root
+     surfaces and the sidebar shell. The previous selector included
+     `.bg-card`, `.bg-popover`, `.bg-muted`, and `.bg-sidebar-accent`,
+     which caused a visible 200ms cross-fade on every route change as
+     those elements remounted. Keep transitions only where the CSS
+     variable actually changes on theme toggle. */
   html,
   body,
-  [data-sidebar],
-  .bg-background,
-  .bg-card,
-  .bg-popover,
-  .bg-muted,
-  .bg-sidebar,
-  .bg-sidebar-accent {
+  [data-sidebar] {
     transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
   }
 }
