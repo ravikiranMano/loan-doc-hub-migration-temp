@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { LoanFundingGrid } from './LoanFundingGrid';
+import { ReassignRoundingDialog } from './ReassignRoundingDialog';
 import type { FundingRecord } from './LoanFundingGrid';
 import type { FundingAdjustmentData } from './FundingAdjustmentModal';
 import { toast } from 'sonner';
@@ -745,8 +746,17 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     }
   }, [historyRecords, onValueChange, dealId]);
 
-  const handleDeleteRecord = async (record: FundingRecord) => {
-    const updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
+  const performDeleteRecord = async (record: FundingRecord, reassignToId?: string) => {
+    let updatedRecords = fundingRecords.filter((r) => r.id !== record.id);
+    // If the deleted record was the designated rounding lender, transfer the
+    // flag atomically in this same write so only one lender ever holds it.
+    if (record.roundingAdjustment && reassignToId) {
+      updatedRecords = updatedRecords.map((r) =>
+        r.id === reassignToId
+          ? { ...r, roundingAdjustment: true }
+          : (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r),
+      );
+    }
     onValueChange(FIELD_KEYS.fundingRecords, JSON.stringify(updatedRecords));
 
     // Clear any sessionStorage drafts associated with this loan so that
@@ -836,6 +846,36 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     }
   };
 
+  // Reassignment prompt state: when the user deletes the lender currently
+  // flagged as `roundingAdjustment`, we block the delete and prompt them to
+  // choose a replacement before committing. Adding a new lender NEVER triggers
+  // reassignment — only delete does.
+  const [reassignDeleteState, setReassignDeleteState] = useState<{
+    record: FundingRecord;
+    candidates: FundingRecord[];
+    selectedId: string;
+  } | null>(null);
+
+  const handleDeleteRecord = async (record: FundingRecord) => {
+    const remaining = fundingRecords.filter((r) => r.id !== record.id);
+    if (record.roundingAdjustment && remaining.length > 1) {
+      // Prompt user to pick a new rounding lender before delete is committed.
+      setReassignDeleteState({
+        record,
+        candidates: remaining,
+        selectedId: remaining[0].id,
+      });
+      return;
+    }
+    // 0 or 1 remaining → no prompt needed. If exactly 1, transfer the flag
+    // automatically so the sole surviving lender still owns rounding.
+    const autoReassignId =
+      record.roundingAdjustment && remaining.length === 1 ? remaining[0].id : undefined;
+    await performDeleteRecord(record, autoReassignId);
+  };
+
+
+
   const handleSaveAdjustment = useCallback(async (adjustment: FundingAdjustmentData) => {
     // Upsert: replace if same id exists, else append
     const existing = fundingAdjustments.filter((a) => a.id !== adjustment.id);
@@ -875,39 +915,54 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   };
 
   return (
-    <LoanFundingGrid
-      dealId={dealId}
-      loanNumber={loanNumber}
-      borrowerName={borrowerName}
-      fundingRecords={paginatedRecords}
-      totalRecordCount={fundingRecords.length}
-      historyRecords={historyRecords}
-      onAddFunding={handleAddFunding}
-      onDeleteRecord={handleDeleteRecord}
-      onUpdateRecord={handleUpdateRecord}
-      onRefresh={onRefresh}
-      isLoading={isLoading}
-      disabled={disabled}
-      currentPage={currentPage}
-      totalPages={totalPages}
-      pageSize={pageSize}
-      onPageChange={handlePageChange}
-      onPageSizeChange={handlePageSizeChange}
-      noteRate={noteRate}
-      soldRate={soldRate}
-      totalPayment={totalPayment}
-      loanAmount={loanAmount}
-      loanPrincipalBalance={loanPrincipalBalance}
-      remainingPayments={remainingPayments}
-      onLoanNumberChange={handleLoanNumberChange}
-      onBorrowerNameChange={handleBorrowerNameChange}
-      onHeaderFieldBlur={handleHeaderFieldBlur}
-      proRata={computedProRataTotal || values['loan_terms.pro_rata'] || ''}
-      onProRataChange={(v) => onValueChange('loan_terms.pro_rata', v)}
-      fundingAdjustments={fundingAdjustments}
-      onSaveAdjustment={handleSaveAdjustment}
-      onDeleteHistoryRecord={handleDeleteHistoryRecord}
-    />
+    <>
+      <LoanFundingGrid
+        dealId={dealId}
+        loanNumber={loanNumber}
+        borrowerName={borrowerName}
+        fundingRecords={paginatedRecords}
+        totalRecordCount={fundingRecords.length}
+        historyRecords={historyRecords}
+        onAddFunding={handleAddFunding}
+        onDeleteRecord={handleDeleteRecord}
+        onUpdateRecord={handleUpdateRecord}
+        onRefresh={onRefresh}
+        isLoading={isLoading}
+        disabled={disabled}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        noteRate={noteRate}
+        soldRate={soldRate}
+        totalPayment={totalPayment}
+        loanAmount={loanAmount}
+        loanPrincipalBalance={loanPrincipalBalance}
+        remainingPayments={remainingPayments}
+        onLoanNumberChange={handleLoanNumberChange}
+        onBorrowerNameChange={handleBorrowerNameChange}
+        onHeaderFieldBlur={handleHeaderFieldBlur}
+        proRata={computedProRataTotal || values['loan_terms.pro_rata'] || ''}
+        onProRataChange={(v) => onValueChange('loan_terms.pro_rata', v)}
+        fundingAdjustments={fundingAdjustments}
+        onSaveAdjustment={handleSaveAdjustment}
+        onDeleteHistoryRecord={handleDeleteHistoryRecord}
+      />
+      <ReassignRoundingDialog
+        state={reassignDeleteState}
+        onCancel={() => setReassignDeleteState(null)}
+        onSelectionChange={(id) =>
+          setReassignDeleteState((s) => (s ? { ...s, selectedId: id } : s))
+        }
+        onConfirm={async () => {
+          if (!reassignDeleteState) return;
+          const { record, selectedId } = reassignDeleteState;
+          setReassignDeleteState(null);
+          await performDeleteRecord(record, selectedId);
+        }}
+      />
+    </>
   );
 };
 
