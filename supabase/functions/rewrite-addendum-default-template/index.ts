@@ -53,11 +53,24 @@ serve(async (req) => {
     if (!docXmlBytes) throw new Error("word/document.xml not found");
     const originalXml = new TextDecoder().decode(docXmlBytes);
 
+    if (dump) {
+      const paras: string[] = [];
+      const paraRe = /<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = paraRe.exec(originalXml)) !== null) {
+        const text = extractParagraphText(pm[0]);
+        if (text.trim()) paras.push(text);
+      }
+      return new Response(JSON.stringify({ paragraphs: paras }, null, 2), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { xml: newXml, report } = rewriteDocumentXml(originalXml);
 
-    if (report.changes === 0) {
+    if (report.changes === 0 || dryRun) {
       return new Response(
-        JSON.stringify({ ok: false, message: "No changes applied", report }),
+        JSON.stringify({ ok: false, dryRun, message: "no upload", report }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
