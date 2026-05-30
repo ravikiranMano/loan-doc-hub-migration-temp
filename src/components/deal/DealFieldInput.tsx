@@ -16,6 +16,124 @@ import { useDirtyFields } from '@/contexts/DirtyFieldsContext';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 
+/** Auto-format MM/DD/YYYY: digits only, insert slashes at positions 2 and 5. */
+function maskDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  const parts: string[] = [];
+  if (digits.length > 0) parts.push(digits.slice(0, 2));
+  if (digits.length > 2) parts.push(digits.slice(2, 4));
+  if (digits.length > 4) parts.push(digits.slice(4, 8));
+  return parts.join('/');
+}
+
+interface DateMaskedInputProps {
+  id: string;
+  value: string;
+  displayValue: string;
+  selectedDate?: Date;
+  disabled: boolean;
+  showError: boolean;
+  datePickerOpen: boolean;
+  setDatePickerOpen: (v: boolean) => void;
+  onChangeCanonical: (v: string) => void;
+  onCalendarSelect: (date: Date | undefined) => void;
+  onClear: () => void;
+  onToday: () => void;
+}
+
+const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
+  id, value, displayValue, selectedDate, disabled, showError,
+  datePickerOpen, setDatePickerOpen,
+  onChangeCanonical, onCalendarSelect, onClear, onToday,
+}) => {
+  const [typed, setTyped] = useState<string>(displayValue);
+  const [typedError, setTypedError] = useState(false);
+
+  // Re-sync local typed text when the upstream value changes (e.g. calendar pick,
+  // Today/Clear, or parent reset) — only when the input isn't focused.
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (document.activeElement !== inputRef.current) {
+      setTyped(displayValue);
+      setTypedError(false);
+    }
+  }, [displayValue]);
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const masked = maskDateInput(e.target.value);
+    setTyped(masked);
+    if (masked === '') {
+      setTypedError(false);
+      onChangeCanonical('');
+      return;
+    }
+    const parsed = parseDisplayDate(masked);
+    if (parsed) {
+      setTypedError(false);
+      onChangeCanonical(formatDateOnly(parsed));
+    }
+    // Partial / not-yet-valid input: keep typing without error noise.
+  };
+
+  const handleTextBlur = () => {
+    if (!typed) { setTypedError(false); return; }
+    const parsed = parseDisplayDate(typed);
+    if (!parsed) {
+      setTypedError(true);
+    } else {
+      setTypedError(false);
+      setTyped(formatDateOnly(parsed, 'MM/dd/yyyy'));
+    }
+  };
+
+  return (
+    <div className="flex items-stretch gap-1">
+      <Input
+        ref={inputRef}
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="MM/DD/YYYY"
+        value={typed}
+        onChange={handleTextChange}
+        onBlur={handleTextBlur}
+        disabled={disabled}
+        className={cn(
+          'h-7 text-xs flex-1 transition-colors',
+          (showError || typedError) && 'border-destructive focus:ring-destructive bg-destructive/5',
+          disabled && 'bg-muted cursor-not-allowed'
+        )}
+      />
+      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={disabled}
+            className={cn('h-7 w-7 shrink-0', disabled && 'cursor-not-allowed')}
+            aria-label="Open calendar"
+          >
+            <CalendarIcon className="h-3 w-3" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+          <EnhancedCalendar
+            mode="single"
+            selected={selectedDate}
+            month={selectedDate}
+            onSelect={onCalendarSelect}
+            onClear={onClear}
+            onToday={onToday}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+};
+
 interface DealFieldInputProps {
   field: FieldDefinition;
   value: string;
