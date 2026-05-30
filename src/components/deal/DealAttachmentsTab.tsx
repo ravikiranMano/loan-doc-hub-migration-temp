@@ -163,9 +163,10 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (disabled) throw new Error('You have read-only access');
-      if (!uploadForm.file || !user) throw new Error('Select a file first');
-      if (uploadForm.file.size > MAX_FILE_SIZE) throw new Error('File exceeds 25 MB limit');
-      const file = uploadForm.file;
+      if (!user) throw new Error('Not authenticated');
+      const validation = validateAttachment(uploadForm.file);
+      if (!validation.isValid) throw new Error(validation.error || 'Invalid file');
+      const file = uploadForm.file!;
       const path = `deal/${dealId}/${crypto.randomUUID()}_${file.name}`;
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file);
       if (upErr) throw upErr;
@@ -183,8 +184,9 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
       const next = [meta, ...(rowData?.files || [])];
       await persistFiles(next);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.refetchQueries({ queryKey });
       toast.success('Attachment uploaded');
       setShowUploadModal(false);
       setUploadForm({ file: null, category: 'Loan Documents', description: '' });
@@ -199,11 +201,13 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
       const next = (rowData?.files || []).filter(a => a.id !== att.id);
       await persistFiles(next);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.refetchQueries({ queryKey });
       toast.success('Attachment deleted');
+      setDeleteTarget(null);
     },
-    onError: (e: any) => toast.error(e.message || 'Delete failed'),
+    onError: (e: any) => { toast.error(e.message || 'Delete failed'); setDeleteTarget(null); },
   });
 
   const handleDownload = useCallback(async (att: AttachmentMeta) => {
