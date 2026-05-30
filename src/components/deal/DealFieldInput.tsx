@@ -72,7 +72,7 @@ const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
   }, [displayValue]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const masked = maskDateInput(e.target.value);
+    const masked = maskDateInput(e.target.value, typed);
     setTyped(masked);
     if (masked === '') {
       setTypedError(false);
