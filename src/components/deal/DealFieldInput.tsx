@@ -8,7 +8,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { AlertCircle, Lock, Calculator, Asterisk, CheckCircle2, CalendarIcon } from 'lucide-react';
-import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { formatDateOnly, parseDateOnly, parseDisplayDate, todayDateOnly } from '@/lib/dateOnly';
 import { parseToCanonical, formatForDisplay } from '@/lib/fieldTransforms';
 import { roundPctForStorage } from '@/lib/precisionFormat';
 import { isNegativeValue, INTEREST_NEGATIVE_MESSAGE } from '@/lib/interestValidation';
