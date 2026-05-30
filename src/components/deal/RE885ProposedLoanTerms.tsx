@@ -739,6 +739,116 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
           </div>
         </div>
       </div>
+
+      {/* ─── XVII. Prepayment Penalty (from Loan → Article 7) ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">XVII. Prepayment Penalty</span>
+        </div>
+        <div className="px-3 py-1 text-[10px] italic text-muted-foreground border-b border-border/30">
+          Auto-populated from Loan → Article 7 (Pre-payment Penalty). User can override.
+        </div>
+        <div className={ROW}>
+          <span className={LBL}>Does this loan contain a prepayment penalty?</span>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getBoolValue(FK.xvii_prepay_has)}
+                onCheckedChange={(c) => setBoolValue(FK.xvii_prepay_has, !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">Yes</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={!getBoolValue(FK.xvii_prepay_has)}
+                onCheckedChange={(c) => { if (c) setBoolValue(FK.xvii_prepay_has, false); }}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">No</span>
+            </label>
+          </div>
+        </div>
+        {getBoolValue(FK.xvii_prepay_has) && (
+          <>
+            <div className={ROW}>
+              <span className={LBL}>Penalty Amount</span>
+              <div className={FIELD_W}>
+                <CurrencyInput
+                  value={getValue(FK.xvii_prepay_amount)}
+                  onChange={(v) => setValue(FK.xvii_prepay_amount, v)}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+            <div className={ROW}>
+              <span className={LBL}>Penalty Period (months)</span>
+              <div className={FIELD_W}>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={getValue(FK.xvii_prepay_term_months)}
+                  onChange={(e) => setValue(FK.xvii_prepay_term_months, e.target.value)}
+                  disabled={disabled}
+                  placeholder="0"
+                  className="h-8 text-xs text-right"
+                />
+              </div>
+            </div>
+            <div className={ROW}>
+              <span className={LBL}>Penalty % of outstanding balance</span>
+              <div className={FIELD_W}>
+                <div className="relative">
+                  <Input
+                    inputMode="decimal"
+                    value={getValue(FK.xvii_prepay_pct)}
+                    onChange={(e) => setValue(FK.xvii_prepay_pct, sanitizeInterestInput(e.target.value))}
+                    onBlur={() => { const v = normalizeInterestOnBlur(getValue(FK.xvii_prepay_pct), 3); if (v !== getValue(FK.xvii_prepay_pct)) setValue(FK.xvii_prepay_pct, v); }}
+                    disabled={disabled}
+                    placeholder="0.00"
+                    className="h-8 text-xs text-right pr-5"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">%</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ─── XVIII. Loan Documentation Type (from Loan → Limited/No Doc) ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">XVIII. Loan Documentation Type</span>
+        </div>
+        <div className="px-3 py-1 text-[10px] italic text-muted-foreground border-b border-border/30">
+          Auto-populated from Loan → Limited / No Documentation. User can override.
+        </div>
+        <div className="px-3 py-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/30">
+          {DOC_TYPE_OPTIONS.map(opt => (
+            <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getValue(FK.xviii_doc_type) === opt.value}
+                onCheckedChange={(c) => { if (c) setValue(FK.xviii_doc_type, opt.value); }}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">{opt.label}</span>
+            </label>
+          ))}
+          {getValue(FK.xviii_doc_type) === 'other' && (
+            <Input
+              value={getValue(FK.xviii_doc_type_other)}
+              onChange={(e) => setValue(FK.xviii_doc_type_other, e.target.value)}
+              disabled={disabled}
+              placeholder="Specify..."
+              className="h-7 text-xs w-40"
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 };
