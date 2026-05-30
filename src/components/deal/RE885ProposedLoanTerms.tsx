@@ -666,10 +666,10 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         </div>
       </div>
 
-      {/* ─── Impound (Escrow) Account ─── */}
+      {/* ─── XIV. Impound (Escrow) Account ─── */}
       <div className="space-y-0">
         <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
-          <span className="text-xs font-bold text-foreground">Impound (Escrow) Account</span>
+          <span className="text-xs font-bold text-foreground">XIV. Impound (Escrow) Account</span>
         </div>
         <div className="px-3 py-3 space-y-3 border-b border-border/30">
           <div className="flex items-start gap-1 flex-wrap">
