@@ -187,34 +187,64 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   }, [upstreamLoanTermUnit]);
 
   // ─── Seed Section III rate type (Fixed / Adjustable) from Loan → Rate Structure
-  // Only when neither checkbox has been chosen yet (both false).
+  // or Loan → Loan Type → Variable/ARM. Only when neither checkbox has been chosen.
   React.useEffect(() => {
-    if (!upstreamRateStructure) return;
+    if (!upstreamRateStructure && !upstreamVariableArm) return;
     const alreadyChosen = getBoolValue(FK.rate_type_fixed) || getBoolValue(FK.rate_type_adjustable);
     if (alreadyChosen) return;
-    if (upstreamRateStructure === 'frm_fixed_rate') {
-      setBoolValue(FK.rate_type_fixed, true);
-      setBoolValue(FK.rate_type_adjustable, false);
-    } else if (
+    const adjustable =
+      upstreamVariableArm ||
       upstreamRateStructure === 'arm_adjustable_rate' ||
-      upstreamRateStructure === 'gtm_graduated_terms'
-    ) {
+      upstreamRateStructure === 'gtm_graduated_terms';
+    if (adjustable) {
       setBoolValue(FK.rate_type_adjustable, true);
       setBoolValue(FK.rate_type_fixed, false);
+    } else if (upstreamRateStructure === 'frm_fixed_rate') {
+      setBoolValue(FK.rate_type_fixed, true);
+      setBoolValue(FK.rate_type_adjustable, false);
     }
-  }, [upstreamRateStructure]);
+  }, [upstreamRateStructure, upstreamVariableArm]);
+
+  // ─── Seed Section V Fully Indexed Rate from Loan → Current Rate (adjustable only)
+  React.useEffect(() => {
+    if (upstreamCurrentRate > 0 && isEmptyOrZero(getValue(FK.v_fully_indexed_rate))) {
+      setValue(FK.v_fully_indexed_rate, upstreamCurrentRate.toFixed(4));
+    }
+  }, [upstreamCurrentRate]);
+
+  // ─── Seed Section VIII rate-increase % from Loan → Penalties → Default Interest flat rate
+  React.useEffect(() => {
+    if (upstreamDefaultInterestRate > 0 && isEmptyOrZero(getValue(FK.viii_rate_increase_pct))) {
+      setValue(FK.viii_rate_increase_pct, upstreamDefaultInterestRate.toFixed(4));
+    }
+  }, [upstreamDefaultInterestRate]);
+
+  // ─── Seed Section X Balloon from Loan → Loan Type → Balloon Payment
+  React.useEffect(() => {
+    // Only seed when user hasn't touched it (both flag and amount untouched).
+    const hasFlag = getValue(FK.x_balloon_has);
+    if (hasFlag === '' && isEmptyOrZero(getValue(FK.x_balloon_amount))) {
+      setBoolValue(FK.x_balloon_has, !!upstreamBalloonEnabled);
+      if (upstreamBalloonEnabled && upstreamBalloonAmount > 0) {
+        setValue(FK.x_balloon_amount, formatCurrencyDisplay(upstreamBalloonAmount.toFixed(2)));
+      }
+    }
+  }, [upstreamBalloonEnabled, upstreamBalloonAmount]);
 
   // ─── Seed Section XVII (Prepayment Penalty) from Loan → Article 7 (only if untouched)
+  // Per spec: penalty term in months = first_years × 12; falls back to penalty_months when years absent.
   React.useEffect(() => {
     if (getValue(FK.xvii_prepay_has) === '' && getValue(FK.xvii_prepay_amount) === '' &&
         getValue(FK.xvii_prepay_term_months) === '' && getValue(FK.xvii_prepay_pct) === '') {
       setBoolValue(FK.xvii_prepay_has, upstreamPrepayEnabled);
       if (upstreamPrepayEnabled) {
-        if (upstreamPrepayPenaltyMonths) setValue(FK.xvii_prepay_term_months, String(upstreamPrepayPenaltyMonths));
+        const years = parseNumber(upstreamPrepayFirstYears);
+        const months = years > 0 ? years * 12 : parseNumber(upstreamPrepayPenaltyMonths);
+        if (months > 0) setValue(FK.xvii_prepay_term_months, String(months));
         if (upstreamPrepayGreaterThanPct) setValue(FK.xvii_prepay_pct, String(upstreamPrepayGreaterThanPct));
       }
     }
-  }, [upstreamPrepayEnabled, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
+  }, [upstreamPrepayEnabled, upstreamPrepayFirstYears, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
 
   // ─── Seed Section XVIII (Documentation Type) from Loan → Limited/No Doc (only if untouched)
   React.useEffect(() => {
