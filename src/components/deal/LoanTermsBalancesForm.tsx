@@ -573,11 +573,13 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     last edited so downstream consumers know the user's intent. */}
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentAmount}>
                   <div className="flex items-start gap-3">
-                    <Label className={LABEL_CLASS}>Apply to Pmt Params</Label>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
+                    <Label className={cn(LABEL_CLASS, "whitespace-normal leading-tight")}>
+                      Apply to Payment<br />Parameters
+                    </Label>
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex flex-col gap-1.5 w-40">
                         {/* Amount ($) */}
-                        <div className="relative flex-1">
+                        <div className="relative w-full">
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
                           <Input
                             id={FIELD_KEYS.applyToPaymentAmount}
@@ -601,9 +603,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                             inputMode="decimal"
                           />
                         </div>
-                        <span className="text-xs text-muted-foreground">or</span>
                         {/* Percent (%) */}
-                        <div className="relative flex-1">
+                        <div className="relative w-full">
                           <Input
                             id={FIELD_KEYS.applyToPaymentPercent}
                             value={getValue(FIELD_KEYS.applyToPaymentPercent)}
