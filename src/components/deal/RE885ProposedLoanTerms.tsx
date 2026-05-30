@@ -42,7 +42,25 @@ const FK = {
   impound_other: 'origination_fees.re885_impound_other',
   impound_other_desc: 'origination_fees.re885_impound_other_desc',
   impound_approx_amount: 'origination_fees.re885_impound_approx_amount',
+  // Section XVII – Prepayment Penalty (seeded from Loan → Article 7)
+  xvii_prepay_has: 'origination_fees.re885_xvii_prepay_has',
+  xvii_prepay_amount: 'origination_fees.re885_xvii_prepay_amount',
+  xvii_prepay_term_months: 'origination_fees.re885_xvii_prepay_term_months',
+  xvii_prepay_pct: 'origination_fees.re885_xvii_prepay_pct',
+  // Section XVIII – Documentation Type (seeded from Loan → Limited/No Doc)
+  xviii_doc_type: 'origination_fees.re885_xviii_doc_type',
+  xviii_doc_type_other: 'origination_fees.re885_xviii_doc_type_other',
 };
+
+const DOC_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'full', label: 'Full Documentation' },
+  { value: 'limited', label: 'Limited Documentation' },
+  { value: 'none', label: 'No Documentation' },
+  { value: 'stated_income', label: 'Stated Income' },
+  { value: 'sisa', label: 'SISA (Stated Income / Stated Assets)' },
+  { value: 'nina', label: 'NINA (No Income / No Assets)' },
+  { value: 'other', label: 'Other' },
+];
 
 interface RE885Props {
   getValue: (key: string) => string;
