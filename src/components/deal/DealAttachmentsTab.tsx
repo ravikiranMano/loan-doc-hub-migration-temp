@@ -397,6 +397,14 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
           )}
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmationDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget); }}
+        title="Delete Attachment"
+        description={deleteTarget ? `Are you sure you want to delete "${deleteTarget.file_name}"? This action cannot be undone.` : ''}
+      />
     </div>
   );
 };
