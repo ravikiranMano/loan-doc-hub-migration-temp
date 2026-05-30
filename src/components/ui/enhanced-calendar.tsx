@@ -135,7 +135,7 @@ function EnhancedCalendar({
   return (
     <div
       className="flex flex-col pointer-events-auto"
-      style={{ width: 288, minHeight: 340 }}
+      style={{ width: 288, height: 348 }}
     >
       {/* Header row — always rendered identically across all 3 sub-views so
           the prev/next stack stays anchored. */}
@@ -195,7 +195,9 @@ function EnhancedCalendar({
       </div>
 
       {/* Body — fixed height so swapping sub-views never reflows footer/header. */}
-      <div className="px-3" style={{ height: 260 }}>
+      <div className="px-3 flex-1 min-h-0">
+        <div className="h-full" style={{ minHeight: 252 }}>
+        {/* fixed inner shell so calendar/year/month occupy identical space */}
         {pickerView === "year" && (
           <div
             ref={yearScrollRef}
@@ -278,6 +280,7 @@ function EnhancedCalendar({
             {...props}
           />
         )}
+        </div>
       </div>
 
       {showClearToday && (
