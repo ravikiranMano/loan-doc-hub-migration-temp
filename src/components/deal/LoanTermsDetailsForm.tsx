@@ -564,7 +564,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
           {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
-          {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity')}
+          {renderManualDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
           {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
