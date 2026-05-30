@@ -1,63 +1,69 @@
 
-## Problem
+## Scope
 
-In the **Formal Request for Information V7** template, the tag `{{pr_li_lienHolder}}` renders blank (or as the literal `{{pr_li_lienHolder}}`) instead of the lien holder name.
+Add exactly 2 blank custom rows to the bottom of HUD-1 sections **800**, **900**, and **1100** in `Other Origination → Origination Fees`. Each row uses the existing 7-column grid (HUD-1 # blank, Description, Comment slot, Paid to Others, Paid to Broker, Include in APR, Paid to Company). Persist via the existing dictionary/JSONB pipeline (no new tables) and expose merge tags so document templates can pick them up without affecting any existing template that doesn't reference them.
 
-## Root cause
+No other UI, schema, or generation logic changes.
 
-In `word/document.xml` the merge tag is split across three runs because Word applied `<w:highlight w:val="white"/>` to part of the text:
+## 1. UI — `src/components/deal/OriginationFeesForm.tsx`
 
-```
-<w:r>...<w:t>To: </w:t></w:r>
-<w:r>...<w:t>{{</w:t></w:r>
-<w:r><w:rPr><w:highlight w:val="white"/>...</w:rPr><w:t>pr_li_lienHolder}}</w:t></w:r>
-```
+- Extend `FIELD_KEYS` with 6 rows × 5 fields each (description + 2 currency + 2 booleans). Storage keys follow the existing convention:
+  - `origination_fees.800_customN_description | _others | _broker | _apr | _paid_to_company`
+  - `origination_fees.900_customN_description | ...`
+  - `origination_fees.1100_customN_description | ...`
+- In the JSX, immediately after row 812 (line 630), row 905 (line 640), and row 1108 (line 657), add 2 calls to the existing `renderFeeRow(...)` helper:
+  - HUD # cell → empty string `''`
+  - `labelKey` arg → the new `_description` key (renders the "Enter Description" text input in the Item Description cell exactly like all other rows)
+  - `commentKey` arg → `undefined` (the screenshot rows show no separate comment column for custom rows; the description field is the single free-text input as specified)
+  - `keys` → others / broker / apr / paidToCompany pointing at the 4 new keys
+- No new components, styling, or layout changes — reusing `renderFeeRow` guarantees identical column structure, spacing, and behavior (currency mask, checkbox, DirtyFieldWrapper, disabled state).
 
-The opening `{{` lives in one run; the field name and closing `}}` live in a separate run that carries a different `<w:rPr>` (highlight + minimal properties — no font/size). The generic run-consolidation pass occasionally fails to stitch this exact shape because the two runs have non-matching `<w:rPr>` blocks, so the downstream merge-tag resolver never sees a complete `{{pr_li_lienHolder}}` token and the placeholder is left as-is (or eaten when downstream "leftover handlebars" cleanup runs).
+## 2. Persistence — field_dictionary seed migration
 
-Separately, the existing Formal-Request-specific publisher (`supabase/functions/generate-document/index.ts` ~line 4488) only overwrites `pr_li_lienHolder` when it finds a lien whose `priority` field equals exactly `1st`/`1`/`first`. If no such lien exists, the aggregated newline-joined list is left in place — which is also wrong for this single-cell tag.
+Per the project's storage contract (composite `{prefix}::{field_dictionary_id}` JSONB keys in `deal_section_values`), each new UI key MUST have a `field_dictionary` row or it is silently skipped on save.
 
-## Fix
+Add one migration that inserts 30 dictionary rows (6 rows × 5 fields) into `field_dictionary` under section `origination_fees`:
 
-Single-file change in **`supabase/functions/generate-document/index.ts`**.
+| field_key | label | data_type |
+|---|---|---|
+| `origination_fees.800_custom1_description` | 800 Custom Row 1 Description | text |
+| `origination_fees.800_custom1_others` | 800 Custom Row 1 Paid to Others | currency |
+| `origination_fees.800_custom1_broker` | 800 Custom Row 1 Paid to Broker | currency |
+| `origination_fees.800_custom1_apr` | 800 Custom Row 1 Include in APR | boolean |
+| `origination_fees.800_custom1_paid_to_company` | 800 Custom Row 1 Paid to Company | boolean |
+| …repeat for `800_custom2`, `900_custom1/2`, `1100_custom1/2` | | |
 
-### 1. Strengthen the Formal-Request-only `pr_li_lienHolder` publisher (around lines 4488–4530)
+Migration uses `ON CONFLICT (field_key) DO NOTHING` so it is idempotent and touches no existing rows. No new tables, no schema changes, no GRANT changes (existing `field_dictionary` grants apply).
 
-- Resolve the holder value with this precedence:
-  1. Lien (by ascending index) whose `priority` is `1st`/`1`/`first` AND whose `holder` is non-empty.
-  2. Lien (by ascending index) whose `holder` is non-empty (fallback when no priority is marked `1st`).
-  3. `lien1.holder` / `lien.holder` direct lookup.
-- Publish the resolved holder under all of: `pr_li_lienHolder`, `property1.lien_holder`, and the canonical-key alias used by the field-dictionary id `3157074f-b561-45f8-b358-01fb264bc06b`, so any downstream resolver path that reads a different key still gets the same value.
-- Add a `debugLog` line that reports the chosen lien + holder for diagnosis.
+This automatically gives us: save on file save, persistence across logout/refresh/draft/reopen/status change, and correct restore of currency and checkbox state — all through the existing `useDealFields` / `deal_section_values` plumbing already used by every other row in this form.
 
-### 2. Add a Formal-Request-only XML safety pass
+## 3. Document generation — merge tags
 
-Run once per `document.xml` (and headers/footers) when `isTemplateFormalRequestInfo === true`, after the existing `normalizeWordXml` pass and before merge-tag resolution:
+The spec requires merge field names like `hud800_custom1_description`, etc. The platform already supports surfacing dictionary values under alternate tag names via `merge_tag_aliases`.
 
-- Scan paragraphs that contain `pr_li_lienHolder`.
-- Extract the concatenated text of all `<w:t>` elements in the paragraph; if the concatenation contains `{{pr_li_lienHolder}}` but no single `<w:t>` does, rewrite the paragraph so the first run containing `{{` carries the full `{{pr_li_lienHolder}}` text and the following runs that contributed only the split remainder (`pr_li_lienHolder}}` and the orphan `{{`) are emptied. Preserve the `<w:rPr>` of the run that originally held `{{` so font/size/color stay Times New Roman 12pt black to match the surrounding `To: ` text. Drop the `<w:highlight w:val="white"/>` carried only by the orphan run.
-- Idempotent: if the tag is already contiguous in a single `<w:t>` the pass is a no-op.
+Add a second small data-seed migration that inserts 30 rows into `merge_tag_aliases`:
 
-This mirrors the pattern already used in this file (`consolidateAppraiserConditional`, the LPDS Lender 1 rewriter) for one specific tag in one specific template — no impact on other templates.
+| tag_name | field_key | tag_type |
+|---|---|---|
+| `hud800_custom1_description` | `origination_fees.800_custom1_description` | merge_tag |
+| `hud800_custom1_paid_to_others` | `origination_fees.800_custom1_others` | merge_tag |
+| `hud800_custom1_paid_to_broker` | `origination_fees.800_custom1_broker` | merge_tag |
+| `hud800_custom1_include_apr` | `origination_fees.800_custom1_apr` | merge_tag |
+| `hud800_custom1_paid_to_company` | `origination_fees.800_custom1_paid_to_company` | merge_tag |
+| …repeat for the other 5 rows (`hud800_custom2_*`, `hud900_custom1/2_*`, `hud1100_custom1/2_*`) | | |
 
-### 3. No template change, no schema change
+Also idempotent (`ON CONFLICT DO NOTHING`). Because the resolver only acts when a template literally contains one of these tag names, **no existing template's output changes** — this is the explicit "do not affect current document generation logic" guarantee.
 
-- Do not modify the uploaded `Formal_Request_for_Information V7.docx`.
-- Do not touch `field_dictionary`, RLS, or any other module.
-- Do not change behavior for any template whose name does not match the existing `isTemplateFormalRequestInfo` regex.
+No edge-function code changes. The existing tag-parser and field-resolver already handle alias→dictionary→`deal_section_values` lookups and apply standard currency/boolean formatting via `_shared/formatting.ts`, matching what is used by every other 800/900/1100 row today.
 
-## Verification
+## 4. Out of scope (explicitly NOT changing)
 
-1. Regenerate Formal Request for Information for deal `a4eefafb-cd04-4bf5-adb8-f432d79e0e65`.
-2. Open the resulting `.docx`; the `To:` line must read `To: First National Commercial Bank` (the 1st-priority lien holder for this deal — confirmed in `deal_section_values` section=`liens`, key `lien1::3157074f-…` = "First National Commercial Bank", priority `lien1.priority` = "1st"). Font/size/color must match the rest of the paragraph (Times New Roman 12pt black, no white highlight artifact).
-3. Re-run on a deal with no liens at priority "1st" — confirm fallback to the first non-empty lien holder.
-4. Re-run on a deal with no lien data — confirm the tag renders empty (no literal `{{pr_li_lienHolder}}` remains).
-5. Sanity-check at least one unrelated template (e.g. RE885, LPDS Addendum) regenerates with no regressions in lien-holder cells.
+- No changes to Subtotal/Total calculations, RE 885 page, Compensation to Broker, Payment of Other Obligations, Payment to Existing Liens, 1000/1200/1300 sections.
+- No changes to existing field keys, dictionary rows, aliases, or templates.
+- No changes to RLS, grants, edge functions, or `recomputeLenderPayments`.
 
 ## Files touched
 
-- `supabase/functions/generate-document/index.ts` — edits in the Formal-Request section (~lines 4482–4530) and one new safety-pass helper invoked from the same template branch.
-
-## Deploy
-
-Redeploy the `generate-document` edge function after the edit.
+- `src/components/deal/OriginationFeesForm.tsx` — add keys + 6 `renderFeeRow` calls.
+- New migration: insert 30 `field_dictionary` rows.
+- New migration: insert 30 `merge_tag_aliases` rows.
