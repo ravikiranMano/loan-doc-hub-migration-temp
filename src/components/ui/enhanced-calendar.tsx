@@ -280,6 +280,7 @@ function EnhancedCalendar({
             {...props}
           />
         )}
+        </div>
       </div>
 
       {showClearToday && (
