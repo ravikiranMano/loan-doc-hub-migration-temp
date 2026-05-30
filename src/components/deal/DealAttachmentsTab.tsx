@@ -334,9 +334,12 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
               <input
                 ref={inputRef}
                 type="file"
+                accept={ACCEPT_ATTR}
+                disabled={uploadMutation.isPending}
                 onChange={(e) => setUploadForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
                 className="block w-full text-sm mt-1"
               />
+              <p className="text-[11px] text-muted-foreground mt-1">Allowed: PDF, JPG, PNG, GIF, DOC, DOCX, XLS, XLSX, TXT. Max 25 MB.</p>
               {uploadForm.file && (
                 <p className="text-xs text-muted-foreground mt-1">{uploadForm.file.name} ({formatSize(uploadForm.file.size)})</p>
               )}
