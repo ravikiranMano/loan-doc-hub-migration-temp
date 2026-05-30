@@ -329,6 +329,46 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  // Numeric day-of-month input (1-31). Used for Payment Due Date, First Payment Due, and Next Due Date.
+  const renderDayNumberField = (key: string, label: string) => {
+    const raw = getValue(key) || '';
+    const num = raw === '' ? NaN : parseInt(raw, 10);
+    const invalid = raw !== '' && (isNaN(num) || num < 1 || num > 31 || !/^\d+$/.test(raw));
+    return (
+      <DirtyFieldWrapper fieldKey={key}>
+        <div className="flex items-start gap-3">
+          <Label className={LABEL_CLASS}>{label}</Label>
+          <div className="flex-1">
+            <Input
+              id={key}
+              type="text"
+              inputMode="numeric"
+              value={raw}
+              onChange={(e) => {
+                const cleaned = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+                setValue(key, cleaned);
+              }}
+              onBlur={() => {
+                const v = getValue(key);
+                if (!v) return;
+                const n = parseInt(v, 10);
+                if (isNaN(n) || n < 1 || n > 31) return;
+                setValue(key, String(n));
+              }}
+              disabled={disabled}
+              className={cn('h-8 text-sm w-full', invalid && 'border-destructive focus-visible:ring-destructive')}
+              placeholder="1-31"
+              maxLength={2}
+            />
+            {invalid && (
+              <p className="text-[10px] text-destructive mt-0.5">{label} must be a whole number between 1 and 31.</p>
+            )}
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   return (
     <div className="p-4 space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -878,12 +918,12 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {renderDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
+            {renderDayNumberField(FIELD_KEYS.dayDue, "Payment Due Date")}
 
-            {renderDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
+            {renderDayNumberField(FIELD_KEYS.firstPayment, "First Payment Due")}
             {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
             {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
-            {renderDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
+            {renderDayNumberField(FIELD_KEYS.nextPayment, "Next Due Date")}
             {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
