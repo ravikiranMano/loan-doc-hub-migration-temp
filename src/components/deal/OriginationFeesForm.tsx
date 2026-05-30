@@ -954,6 +954,12 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         upstreamLoanTermValue={loanTermValueUpstream}
         upstreamLoanTermUnit={loanTermUnitUpstream}
         upstreamRateStructure={values['loan_terms.rate_structure'] || ''}
+        upstreamVariableArm={values['loan_terms.variable_arm'] === 'true'}
+        upstreamCurrentRate={parseNumber(values['loan_terms.current_rate'] || '')}
+        upstreamRegularPI={parseNumber(values['loan_terms.regular_payment'] || '')}
+        upstreamBalloonEnabled={values['loan_terms.balloon_payment'] === 'true'}
+        upstreamBalloonAmount={parseNumber(values['loan_terms.estimated_balloon_payment'] || values['loan_terms.balloon_payment_amount'] || '')}
+        upstreamDefaultInterestRate={parseNumber(values['loan_terms.penalties.default_interest.flat_rate'] || '')}
         section800Total={section800Total}
         liensPayoffTotal={liensPayoffTotal}
         upstreamPrepayEnabled={values['loan_terms.penalties.prepayment.enabled'] === 'true'}
