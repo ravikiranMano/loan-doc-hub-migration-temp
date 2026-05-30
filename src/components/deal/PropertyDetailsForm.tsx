@@ -554,7 +554,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Down Payment</Label>
               <div className="flex-1">
-                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={() => {}} disabled />
+                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={(v) => onValueChange(FIELD_KEYS.downPayment, v)} />
               </div>
             </div>
           </DirtyFieldWrapper>
