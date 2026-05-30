@@ -195,7 +195,9 @@ function EnhancedCalendar({
       </div>
 
       {/* Body — fixed height so swapping sub-views never reflows footer/header. */}
-      <div className="px-3" style={{ height: 260 }}>
+      <div className="px-3 flex-1 min-h-0">
+        <div className="h-full" style={{ minHeight: 252 }}>
+        {/* fixed inner shell so calendar/year/month occupy identical space */}
         {pickerView === "year" && (
           <div
             ref={yearScrollRef}
