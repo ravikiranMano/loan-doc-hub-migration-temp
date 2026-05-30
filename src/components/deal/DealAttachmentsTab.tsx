@@ -12,10 +12,38 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { DeleteConfirmationDialog } from '@/components/deal/DeleteConfirmationDialog';
 
 const BUCKET = 'contact-attachments';
 const SECTION = 'attachments_grid' as const;
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+];
+
+const ACCEPT_ATTR = '.pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt';
+
+function validateAttachment(file: File | null): { isValid: boolean; error?: string } {
+  if (!file) return { isValid: false, error: 'No file selected' };
+  if (file.name.length > 255) return { isValid: false, error: 'File name too long — max 255 characters' };
+  if (file.size > MAX_FILE_SIZE) {
+    return { isValid: false, error: `File size ${(file.size / 1024 / 1024).toFixed(2)}MB exceeds 25MB limit` };
+  }
+  if (file.type && !ALLOWED_MIME_TYPES.includes(file.type)) {
+    return { isValid: false, error: 'File type not allowed. Allowed: PDF, JPG, PNG, GIF, DOC, DOCX, XLS, XLSX, TXT' };
+  }
+  return { isValid: true };
+}
 
 const CATEGORIES = [
   'Loan Documents',
@@ -62,6 +90,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewAtt, setPreviewAtt] = useState<AttachmentMeta | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AttachmentMeta | null>(null);
   const [uploadForm, setUploadForm] = useState<{ file: File | null; category: string; description: string }>({
     file: null,
     category: 'Loan Documents',
@@ -134,9 +163,10 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (disabled) throw new Error('You have read-only access');
-      if (!uploadForm.file || !user) throw new Error('Select a file first');
-      if (uploadForm.file.size > MAX_FILE_SIZE) throw new Error('File exceeds 25 MB limit');
-      const file = uploadForm.file;
+      if (!user) throw new Error('Not authenticated');
+      const validation = validateAttachment(uploadForm.file);
+      if (!validation.isValid) throw new Error(validation.error || 'Invalid file');
+      const file = uploadForm.file!;
       const path = `deal/${dealId}/${crypto.randomUUID()}_${file.name}`;
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file);
       if (upErr) throw upErr;
@@ -154,8 +184,9 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
       const next = [meta, ...(rowData?.files || [])];
       await persistFiles(next);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.refetchQueries({ queryKey });
       toast.success('Attachment uploaded');
       setShowUploadModal(false);
       setUploadForm({ file: null, category: 'Loan Documents', description: '' });
@@ -170,11 +201,13 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
       const next = (rowData?.files || []).filter(a => a.id !== att.id);
       await persistFiles(next);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+      await queryClient.refetchQueries({ queryKey });
       toast.success('Attachment deleted');
+      setDeleteTarget(null);
     },
-    onError: (e: any) => toast.error(e.message || 'Delete failed'),
+    onError: (e: any) => { toast.error(e.message || 'Delete failed'); setDeleteTarget(null); },
   });
 
   const handleDownload = useCallback(async (att: AttachmentMeta) => {
@@ -206,7 +239,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-foreground">Attachments</h2>
+        <h2 className="text-lg font-semibold text-foreground">Attachments ({attachments.length})</h2>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -251,7 +284,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  No attachments yet
+                  No attachments yet. Click Upload to add one.
                 </TableCell>
               </TableRow>
             ) : filtered.map(att => (
@@ -275,9 +308,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          if (confirm(`Delete "${att.file_name}"?`)) deleteMutation.mutate(att);
-                        }}
+                        onClick={() => setDeleteTarget(att)}
                         title="Delete"
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -303,9 +334,12 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
               <input
                 ref={inputRef}
                 type="file"
+                accept={ACCEPT_ATTR}
+                disabled={uploadMutation.isPending}
                 onChange={(e) => setUploadForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
                 className="block w-full text-sm mt-1"
               />
+              <p className="text-[11px] text-muted-foreground mt-1">Allowed: PDF, JPG, PNG, GIF, DOC, DOCX, XLS, XLSX, TXT. Max 25 MB.</p>
               {uploadForm.file && (
                 <p className="text-xs text-muted-foreground mt-1">{uploadForm.file.name} ({formatSize(uploadForm.file.size)})</p>
               )}
@@ -363,6 +397,14 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
           )}
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmationDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget); }}
+        title="Delete Attachment"
+        description={deleteTarget ? `Are you sure you want to delete "${deleteTarget.file_name}"? This action cannot be undone.` : ''}
+      />
     </div>
   );
 };
