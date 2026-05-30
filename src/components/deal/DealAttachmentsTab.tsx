@@ -272,8 +272,6 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
               <TableHead>File Name</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Size</TableHead>
               <TableHead>Uploaded By</TableHead>
               <TableHead>Uploaded Date</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -282,7 +280,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
                   <div>No attachments yet.</div>
                   {!disabled && (
@@ -302,8 +300,6 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
                 <TableCell className="font-medium">{att.file_name}</TableCell>
                 <TableCell><Badge variant="outline">{att.category}</Badge></TableCell>
                 <TableCell className="text-xs text-muted-foreground max-w-[260px] truncate">{att.description || '—'}</TableCell>
-                <TableCell className="text-xs">{att.file_type || '—'}</TableCell>
-                <TableCell className="text-xs">{att.file_size}</TableCell>
                 <TableCell className="text-xs">{att.uploader_name}</TableCell>
                 <TableCell className="text-xs">{new Date(att.uploaded_at).toLocaleDateString()}</TableCell>
                 <TableCell className="text-right">
@@ -350,9 +346,6 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
                 className="block w-full text-sm mt-1"
               />
               <p className="text-[11px] text-muted-foreground mt-1">Allowed: PDF, JPG, PNG, GIF, DOC, DOCX, XLS, XLSX, TXT. Max 25 MB.</p>
-              {uploadForm.file && (
-                <p className="text-xs text-muted-foreground mt-1">{uploadForm.file.name} ({formatSize(uploadForm.file.size)})</p>
-              )}
             </div>
             <div>
               <Label className="text-xs">Category</Label>
