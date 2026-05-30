@@ -662,8 +662,8 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('810', 'Processing Fee', { others: FIELD_KEYS.processingFee_others, broker: FIELD_KEYS.processingFee_broker, apr: FIELD_KEYS.processingFee_apr, paidToCompany: FIELD_KEYS.processingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.processingFee_d)}
         {renderFeeRow('811', 'Underwriting Fee', { others: FIELD_KEYS.underwritingFee_others, broker: FIELD_KEYS.underwritingFee_broker, apr: FIELD_KEYS.underwritingFee_apr, paidToCompany: FIELD_KEYS.underwritingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.underwritingFee_d)}
         {renderFeeRow('812', 'Wire Transfer Fee', { others: FIELD_KEYS.wireTransferFee_others, broker: FIELD_KEYS.wireTransferFee_broker, apr: FIELD_KEYS.wireTransferFee_apr, paidToCompany: FIELD_KEYS.wireTransferFee_paid_to_company }, undefined, undefined, FIELD_KEYS.wireTransferFee_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud800_custom1_others, broker: FIELD_KEYS.hud800_custom1_broker, apr: FIELD_KEYS.hud800_custom1_apr, paidToCompany: FIELD_KEYS.hud800_custom1_paid_to_company }, FIELD_KEYS.hud800_custom1_description)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud800_custom2_others, broker: FIELD_KEYS.hud800_custom2_broker, apr: FIELD_KEYS.hud800_custom2_apr, paidToCompany: FIELD_KEYS.hud800_custom2_paid_to_company }, FIELD_KEYS.hud800_custom2_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud800_custom1_others, broker: FIELD_KEYS.hud800_custom1_broker, apr: FIELD_KEYS.hud800_custom1_apr, paidToCompany: FIELD_KEYS.hud800_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud800_custom1_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud800_custom2_others, broker: FIELD_KEYS.hud800_custom2_broker, apr: FIELD_KEYS.hud800_custom2_apr, paidToCompany: FIELD_KEYS.hud800_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud800_custom2_description)}
       </div>
 
       {/* 900 Items Required by Lender to be Paid in Advance */}
@@ -674,8 +674,8 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('903', 'Hazard Insurance Premiums', { others: FIELD_KEYS.hazardInsurancePremiums_others, broker: FIELD_KEYS.hazardInsurancePremiums_broker, apr: FIELD_KEYS.hazardInsurancePremiums_apr, paidToCompany: FIELD_KEYS.hazardInsurancePremiums_paid_to_company }, undefined, undefined, FIELD_KEYS.hazardInsurancePremiums_d)}
         {renderFeeRow('904', 'County Property Taxes', { others: FIELD_KEYS.countyPropertyTaxes_others, broker: FIELD_KEYS.countyPropertyTaxes_broker, apr: FIELD_KEYS.countyPropertyTaxes_apr, paidToCompany: FIELD_KEYS.countyPropertyTaxes_paid_to_company }, undefined, undefined, FIELD_KEYS.countyPropertyTaxes_d)}
         {renderFeeRow('905', 'VA Funding Fee', { others: FIELD_KEYS.vaFundingFee_others, broker: FIELD_KEYS.vaFundingFee_broker, apr: FIELD_KEYS.vaFundingFee_apr, paidToCompany: FIELD_KEYS.vaFundingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.vaFundingFee_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker, apr: FIELD_KEYS.hud900_custom1_apr, paidToCompany: FIELD_KEYS.hud900_custom1_paid_to_company }, FIELD_KEYS.hud900_custom1_description)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom2_others, broker: FIELD_KEYS.hud900_custom2_broker, apr: FIELD_KEYS.hud900_custom2_apr, paidToCompany: FIELD_KEYS.hud900_custom2_paid_to_company }, FIELD_KEYS.hud900_custom2_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker, apr: FIELD_KEYS.hud900_custom1_apr, paidToCompany: FIELD_KEYS.hud900_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom1_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom2_others, broker: FIELD_KEYS.hud900_custom2_broker, apr: FIELD_KEYS.hud900_custom2_apr, paidToCompany: FIELD_KEYS.hud900_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom2_description)}
       </div>
 
       {/* 1000 Reserves Deposited with Lender or Other */}
@@ -693,8 +693,8 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('1105', 'Document Preparation Fee', { others: FIELD_KEYS.docPreparationFee_others, broker: FIELD_KEYS.docPreparationFee_broker, apr: FIELD_KEYS.docPreparationFee_apr, paidToCompany: FIELD_KEYS.docPreparationFee_paid_to_company }, undefined, undefined, FIELD_KEYS.docPreparationFee_d)}
         {renderFeeRow('1106', 'Notary Fee', { others: FIELD_KEYS.notaryFee_others, broker: FIELD_KEYS.notaryFee_broker, apr: FIELD_KEYS.notaryFee_apr, paidToCompany: FIELD_KEYS.notaryFee_paid_to_company }, undefined, undefined, FIELD_KEYS.notaryFee_d)}
         {renderFeeRow('1108', 'Title Insurance', { others: FIELD_KEYS.titleInsurance_others, broker: FIELD_KEYS.titleInsurance_broker, apr: FIELD_KEYS.titleInsurance_apr, paidToCompany: FIELD_KEYS.titleInsurance_paid_to_company }, undefined, undefined, FIELD_KEYS.titleInsurance_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom1_others, broker: FIELD_KEYS.hud1100_custom1_broker, apr: FIELD_KEYS.hud1100_custom1_apr, paidToCompany: FIELD_KEYS.hud1100_custom1_paid_to_company }, FIELD_KEYS.hud1100_custom1_description)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom2_others, broker: FIELD_KEYS.hud1100_custom2_broker, apr: FIELD_KEYS.hud1100_custom2_apr, paidToCompany: FIELD_KEYS.hud1100_custom2_paid_to_company }, FIELD_KEYS.hud1100_custom2_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom1_others, broker: FIELD_KEYS.hud1100_custom1_broker, apr: FIELD_KEYS.hud1100_custom1_apr, paidToCompany: FIELD_KEYS.hud1100_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud1100_custom1_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom2_others, broker: FIELD_KEYS.hud1100_custom2_broker, apr: FIELD_KEYS.hud1100_custom2_apr, paidToCompany: FIELD_KEYS.hud1100_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud1100_custom2_description)}
       </div>
 
       {/* 1200 Government Recording and Transfer Charges */}
