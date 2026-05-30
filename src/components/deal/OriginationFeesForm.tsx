@@ -443,6 +443,40 @@ const FIELD_KEYS = {
   re885_viii_rate_increase_months: 'origination_fees.re885_viii_rate_increase_months',
   re885_ix_payment_end_months: 'origination_fees.re885_ix_payment_end_months',
   re885_ix_payment_end_pct: 'origination_fees.re885_ix_payment_end_pct',
+
+  // Custom fillable rows (2 per section) for HUD-1 sections 800, 900, 1100
+  hud800_custom1_description: 'origination_fees.800_custom1_description',
+  hud800_custom1_others: 'origination_fees.800_custom1_others',
+  hud800_custom1_broker: 'origination_fees.800_custom1_broker',
+  hud800_custom1_apr: 'origination_fees.800_custom1_apr',
+  hud800_custom1_paid_to_company: 'origination_fees.800_custom1_paid_to_company',
+  hud800_custom2_description: 'origination_fees.800_custom2_description',
+  hud800_custom2_others: 'origination_fees.800_custom2_others',
+  hud800_custom2_broker: 'origination_fees.800_custom2_broker',
+  hud800_custom2_apr: 'origination_fees.800_custom2_apr',
+  hud800_custom2_paid_to_company: 'origination_fees.800_custom2_paid_to_company',
+
+  hud900_custom1_description: 'origination_fees.900_custom1_description',
+  hud900_custom1_others: 'origination_fees.900_custom1_others',
+  hud900_custom1_broker: 'origination_fees.900_custom1_broker',
+  hud900_custom1_apr: 'origination_fees.900_custom1_apr',
+  hud900_custom1_paid_to_company: 'origination_fees.900_custom1_paid_to_company',
+  hud900_custom2_description: 'origination_fees.900_custom2_description',
+  hud900_custom2_others: 'origination_fees.900_custom2_others',
+  hud900_custom2_broker: 'origination_fees.900_custom2_broker',
+  hud900_custom2_apr: 'origination_fees.900_custom2_apr',
+  hud900_custom2_paid_to_company: 'origination_fees.900_custom2_paid_to_company',
+
+  hud1100_custom1_description: 'origination_fees.1100_custom1_description',
+  hud1100_custom1_others: 'origination_fees.1100_custom1_others',
+  hud1100_custom1_broker: 'origination_fees.1100_custom1_broker',
+  hud1100_custom1_apr: 'origination_fees.1100_custom1_apr',
+  hud1100_custom1_paid_to_company: 'origination_fees.1100_custom1_paid_to_company',
+  hud1100_custom2_description: 'origination_fees.1100_custom2_description',
+  hud1100_custom2_others: 'origination_fees.1100_custom2_others',
+  hud1100_custom2_broker: 'origination_fees.1100_custom2_broker',
+  hud1100_custom2_apr: 'origination_fees.1100_custom2_apr',
+  hud1100_custom2_paid_to_company: 'origination_fees.1100_custom2_paid_to_company',
 };
 
 const GRID_STYLE: React.CSSProperties = {
