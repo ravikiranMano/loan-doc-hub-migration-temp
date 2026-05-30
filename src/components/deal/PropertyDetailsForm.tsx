@@ -315,6 +315,40 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  const renderYearField = (fieldKey: string, label: string) => {
+    const raw = getFieldValue(fieldKey) ?? '';
+    // Extract 4-digit year from legacy date strings (e.g. "2026-05-21")
+    const yearMatch = String(raw).match(/\d{4}/);
+    const displayValue = yearMatch ? yearMatch[0] : '';
+    const maxYear = new Date().getFullYear() + 1;
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-center gap-2">
+          <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
+          <Input
+            value={displayValue}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+              onValueChange(fieldKey, digits);
+            }}
+            onBlur={(e) => {
+              const v = e.target.value.replace(/\D/g, '');
+              if (!v) return;
+              const n = parseInt(v, 10);
+              if (n < 1800) onValueChange(fieldKey, '1800');
+              else if (n > maxYear) onValueChange(fieldKey, String(maxYear));
+            }}
+            disabled={disabled}
+            inputMode="numeric"
+            placeholder="YYYY"
+            maxLength={4}
+            className="h-7 text-xs flex-1"
+          />
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   const renderInlineSelect = (fieldKey: string, label: string, options: string[], placeholder: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
