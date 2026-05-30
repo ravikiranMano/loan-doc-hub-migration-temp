@@ -381,8 +381,6 @@ export const OriginationEscrowTitleForm: React.FC<OriginationEscrowTitleFormProp
                 <ZipInput value={v(FK.trustee_zip)} onValueChange={(val) => sv(FK.trustee_zip, val)} disabled={disabled} className="h-7 text-sm" />
               </div>
             </DirtyFieldWrapper>
-            {renderTextField('Escrow Officer Name', FK.trustee_officer)}
-            {renderTextField('Escrow Contact', FK.trustee_contact)}
             <DirtyFieldWrapper fieldKey={FK.trustee_telephone}>
               <div className="flex items-center gap-2">
                 <Label className="w-[120px] text-sm shrink-0">Telephone</Label>
