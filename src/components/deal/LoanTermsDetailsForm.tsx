@@ -717,7 +717,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </DirtyFieldWrapper>
             );
           })()}
-          {renderManualDateField(FIELD_KEYS.maturityDate, 'Maturity Date', { validate: validateMaturityDate, required: true })}
+          {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
           {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
