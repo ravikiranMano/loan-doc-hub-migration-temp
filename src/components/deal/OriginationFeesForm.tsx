@@ -632,6 +632,18 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   const section1300Total = sumRowKeys(section1300Rows);
   const grandTotal = section800Total + section900Total + section1000Total + section1100Total + section1200Total + section1300Total;
 
+  // ─── APR Total — sum of (others+broker) for every row whose APR checkbox is checked
+  const allAprRows = [
+    ...section800Rows, ...section900Rows, ...section1000Rows,
+    ...section1100Rows, ...section1200Rows, ...section1300Rows,
+  ];
+  const aprKeyForRow = (othersKey: string) => othersKey.replace(/_others$/, '_apr');
+  const aprTotal = allAprRows.reduce((acc, r) => {
+    const aprChecked = getBoolValue(aprKeyForRow(r.others));
+    if (!aprChecked) return acc;
+    return acc + parseNumber(getValue(r.others)) + parseNumber(getValue(r.broker));
+  }, 0);
+
   // Persist computed subtotal/total so document merge-tags resolve
   useEffect(() => {
     const f = formatCurrencyDisplay(grandTotal.toFixed(2));
