@@ -551,6 +551,51 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         </div>
       </div>
 
+      {/* ─── X. Balloon Payment ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">X. Balloon Payment</span>
+        </div>
+        <div className={ROW}>
+          <div className="flex items-center gap-3 flex-1 flex-wrap">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getBoolValue(FK.x_balloon_has)}
+                onCheckedChange={(c) => setBoolValue(FK.x_balloon_has, !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">This loan contains a balloon payment</span>
+            </label>
+          </div>
+        </div>
+        {getBoolValue(FK.x_balloon_has) && (
+          <div className={ROW}>
+            <div className="flex items-center gap-2 flex-1 flex-wrap">
+              <span className="text-xs text-foreground">Balloon payment of</span>
+              <div className="w-[140px] flex-shrink-0">
+                <CurrencyInput
+                  value={getValue(FK.x_balloon_amount)}
+                  onChange={(v) => setValue(FK.x_balloon_amount, v)}
+                  disabled={disabled}
+                />
+              </div>
+              <span className="text-xs text-foreground">due in</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={getValue(FK.x_balloon_due_months)}
+                onChange={(e) => setValue(FK.x_balloon_due_months, e.target.value)}
+                disabled={disabled}
+                placeholder="0"
+                className="h-8 text-xs w-20"
+              />
+              <span className="text-xs text-foreground">months from the date of the loan.</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ─── XI. Negative Amortization ─── */}
       <div className="space-y-0">
         <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
