@@ -13,9 +13,9 @@ export type EnhancedCalendarProps = React.ComponentProps<typeof DayPicker> & {
   onClear?: () => void;
   onToday?: () => void;
   showClearToday?: boolean;
-  /** Earliest selectable year (default: currentYear - 120). */
+  /** Earliest selectable year (default: currentYear - 100). */
   fromYear?: number;
-  /** Latest selectable year (default: currentYear + 10). */
+  /** Latest selectable year (default: currentYear + 100). */
   toYear?: number;
 };
 
@@ -99,8 +99,8 @@ function EnhancedCalendar({
   const goToNextMonth = () => handleMonthChange(addMonths(displayMonth, 1));
 
   const currentYear = today.getFullYear();
-  const effectiveFromYear = fromYear ?? currentYear - 120;
-  const effectiveToYear = toYear ?? currentYear + 10;
+  const effectiveFromYear = fromYear ?? currentYear - 100;
+  const effectiveToYear = toYear ?? currentYear + 100;
   const years = React.useMemo(() => {
     const arr: number[] = [];
     for (let y = effectiveToYear; y >= effectiveFromYear; y--) arr.push(y);
