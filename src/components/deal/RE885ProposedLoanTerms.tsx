@@ -75,6 +75,17 @@ interface RE885Props {
   upstreamLoanTermUnit?: string;
   /** Loan tab → Rate Structure (e.g. 'frm_fixed_rate' | 'arm_adjustable_rate' | 'gtm_graduated_terms') */
   upstreamRateStructure?: string;
+  /** Loan tab → Loan Type → Variable / ARM checkbox */
+  upstreamVariableArm?: boolean;
+  /** Loan tab → Current Rate (Section V — Fully Indexed) */
+  upstreamCurrentRate?: number;
+  /** Loan tab → Regular P&I (Section VII Min Monthly Payment, preferred over computed) */
+  upstreamRegularPI?: number;
+  /** Loan tab → Loan Type → Balloon Payment + Estimated Balloon */
+  upstreamBalloonEnabled?: boolean;
+  upstreamBalloonAmount?: number;
+  /** Loan tab → Penalties → Default Interest flat rate (Section VIII rate-increase %) */
+  upstreamDefaultInterestRate?: number;
   section800Total?: number;
   liensPayoffTotal?: number;
   // Loan tab → Article 7 (Pre-payment Penalty)
