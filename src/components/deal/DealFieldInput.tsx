@@ -160,40 +160,27 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
     }
   };
 
-  // Render date picker
+  // Render date picker — masked MM/DD/YYYY text input + calendar icon button.
   const renderDatePicker = () => {
     const selectedDate = parseDateOnly(value);
     const isValidDate = !!selectedDate;
+    const displayValue = isValidDate ? formatDateOnly(selectedDate, 'MM/dd/yyyy') : '';
 
     return (
-      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={field.field_key}
-            variant="outline"
-            disabled={isDisabled}
-            className={cn(
-              'w-full justify-start text-left font-normal h-7 text-xs',
-              !value && 'text-muted-foreground',
-              showError && 'border-destructive focus:ring-destructive bg-destructive/5',
-              isDisabled && 'bg-muted cursor-not-allowed'
-            )}
-          >
-            {isValidDate ? formatDateOnly(selectedDate, 'MM/dd/yyyy') : <span>mm/dd/yyyy</span>}
-            <CalendarIcon className="ml-auto h-3 w-3" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-          <EnhancedCalendar
-            mode="single"
-            selected={isValidDate ? selectedDate : undefined}
-            onSelect={handleDateSelect}
-            onClear={() => { onChange(''); setDatePickerOpen(false); }}
-            onToday={() => { onChange(todayDateOnly()); setDatePickerOpen(false); }}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
+      <DateMaskedInput
+        id={field.field_key}
+        value={value || ''}
+        displayValue={displayValue}
+        selectedDate={isValidDate ? selectedDate : undefined}
+        disabled={isDisabled}
+        showError={showError}
+        datePickerOpen={datePickerOpen}
+        setDatePickerOpen={setDatePickerOpen}
+        onChangeCanonical={(v) => onChange(v)}
+        onCalendarSelect={handleDateSelect}
+        onClear={() => { onChange(''); setDatePickerOpen(false); }}
+        onToday={() => { onChange(todayDateOnly()); setDatePickerOpen(false); }}
+      />
     );
   };
 
