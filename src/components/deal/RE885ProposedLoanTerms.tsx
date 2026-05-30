@@ -206,9 +206,10 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         <div className={ROW}>
           <span className={LBL}>Initial Commissions, Fees, Costs and Expenses Summarized on Page 1</span>
           <div className={FIELD_W}>
-            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={(v) => setValue(FK.initial_fees_page1, v)} disabled={disabled} />
+            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={() => {}} readOnly disabled />
           </div>
         </div>
+
 
         <div className="bg-muted/20 px-3 py-1 border-b border-border/30">
           <span className="text-xs font-semibold text-foreground">Payment of Other Obligations (List)</span>
