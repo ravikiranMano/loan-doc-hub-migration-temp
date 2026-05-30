@@ -123,6 +123,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   upstreamInterestRate = 0,
   upstreamLoanTermValue = '',
   upstreamLoanTermUnit = '',
+  upstreamRateStructure = '',
   section800Total = 0,
   liensPayoffTotal = 0,
   upstreamPrepayEnabled = false,
@@ -135,23 +136,30 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   const isAdjustable = getBoolValue(FK.rate_type_adjustable);
   const adjustableSectionsDisabled = disabled || isFixed;
 
-  // ─── Seed Proposed Loan Amount from Loan tab if empty
+  // Treat "", "0", "0.00", "$0.00" all as "empty" so re-seeding works after first render
+  const isEmptyOrZero = (raw: string): boolean => {
+    if (!raw) return true;
+    const n = parseNumber(raw);
+    return !Number.isFinite(n) || n === 0;
+  };
+
+  // ─── Seed Proposed Loan Amount from Loan tab if empty/zero
   React.useEffect(() => {
-    if (upstreamLoanAmount > 0 && !getValue(FK.proposed_loan_amount)) {
+    if (upstreamLoanAmount > 0 && isEmptyOrZero(getValue(FK.proposed_loan_amount))) {
       setValue(FK.proposed_loan_amount, formatCurrencyDisplay(upstreamLoanAmount.toFixed(2)));
     }
   }, [upstreamLoanAmount]);
 
-  // ─── Seed Interest Rate from Loan tab if empty
+  // ─── Seed Interest Rate from Loan tab if empty/zero
   React.useEffect(() => {
-    if (upstreamInterestRate > 0 && !getValue(FK.interest_rate)) {
+    if (upstreamInterestRate > 0 && isEmptyOrZero(getValue(FK.interest_rate))) {
       setValue(FK.interest_rate, upstreamInterestRate.toFixed(4));
     }
   }, [upstreamInterestRate]);
 
-  // ─── Seed Loan Term value + unit from Loan tab if empty
+  // ─── Seed Loan Term value + unit from Loan tab if empty/zero
   React.useEffect(() => {
-    if (upstreamLoanTermValue && !getValue(FK.loan_term_value)) {
+    if (upstreamLoanTermValue && isEmptyOrZero(getValue(FK.loan_term_value))) {
       setValue(FK.loan_term_value, String(upstreamLoanTermValue));
     }
   }, [upstreamLoanTermValue]);
@@ -160,6 +168,24 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
       setValue(FK.loan_term_unit, upstreamLoanTermUnit);
     }
   }, [upstreamLoanTermUnit]);
+
+  // ─── Seed Section III rate type (Fixed / Adjustable) from Loan → Rate Structure
+  // Only when neither checkbox has been chosen yet (both false).
+  React.useEffect(() => {
+    if (!upstreamRateStructure) return;
+    const alreadyChosen = getBoolValue(FK.rate_type_fixed) || getBoolValue(FK.rate_type_adjustable);
+    if (alreadyChosen) return;
+    if (upstreamRateStructure === 'frm_fixed_rate') {
+      setBoolValue(FK.rate_type_fixed, true);
+      setBoolValue(FK.rate_type_adjustable, false);
+    } else if (
+      upstreamRateStructure === 'arm_adjustable_rate' ||
+      upstreamRateStructure === 'gtm_graduated_terms'
+    ) {
+      setBoolValue(FK.rate_type_adjustable, true);
+      setBoolValue(FK.rate_type_fixed, false);
+    }
+  }, [upstreamRateStructure]);
 
   // ─── Seed Section XVII (Prepayment Penalty) from Loan → Article 7 (only if untouched)
   React.useEffect(() => {
@@ -180,8 +206,6 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [upstreamLimitedNoDoc]);
 
-
-
   // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
   React.useEffect(() => {
     const formatted = formatCurrencyDisplay(section800Total.toFixed(2));
@@ -191,23 +215,24 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   }, [section800Total]);
 
   // Auto-calculate subtotal of deductions
+  // Per spec (Fix 3): subtotal = sum of the 5 listed deductions only.
+  // Existing-liens payoff is tracked separately and does NOT roll into this subtotal.
   const subtotal = useMemo(() => {
     const fees = parseNumber(getValue(FK.initial_fees_page1));
     const otherObl = parseNumber(getValue(FK.other_obligations));
     const insurance = parseNumber(getValue(FK.credit_life_insurance));
     const add1 = parseNumber(getValue(FK.additional_obligation_1));
     const add2 = parseNumber(getValue(FK.additional_obligation_2));
-    return fees + otherObl + insurance + add1 + add2 + liensPayoffTotal;
+    return fees + otherObl + insurance + add1 + add2;
   }, [
     getValue(FK.initial_fees_page1),
     getValue(FK.other_obligations),
     getValue(FK.credit_life_insurance),
     getValue(FK.additional_obligation_1),
     getValue(FK.additional_obligation_2),
-    liensPayoffTotal,
   ]);
 
-  // Auto-calculate cash at closing: loan amount − all deductions
+  // Auto-calculate cash at closing: loan amount − subtotal deductions
   const cashAtClosing = useMemo(() => {
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount));
     return loanAmt - subtotal;
@@ -218,6 +243,45 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     const f = formatCurrencyDisplay(subtotal.toFixed(2));
     if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
   }, [subtotal]);
+
+  // ─── Section VII: auto Minimum Monthly Payment from Loan tab
+  // Standard amortization: P × r(1+r)^n / ((1+r)^n − 1)  where r = annualRate/12, n = termMonths.
+  // Adjustable section is disabled when Fixed Rate is checked, but the spec says VII should
+  // still display the calculated minimum monthly payment for the proposed loan, so we always
+  // compute and write — user can override afterwards.
+  const minMonthlyPayment = useMemo(() => {
+    const loanAmt = parseNumber(getValue(FK.proposed_loan_amount)) || upstreamLoanAmount;
+    const annualRate = parseNumber(getValue(FK.interest_rate)) || upstreamInterestRate;
+    const termRaw = parseNumber(getValue(FK.loan_term_value)) || parseNumber(upstreamLoanTermValue);
+    const unit = (getValue(FK.loan_term_unit) || upstreamLoanTermUnit || 'years').toLowerCase();
+    const termMonths = unit.startsWith('year') ? termRaw * 12 : termRaw;
+    if (!loanAmt || !annualRate || !termMonths) return 0;
+    const r = annualRate / 100 / 12;
+    if (r <= 0) return 0;
+    const pow = Math.pow(1 + r, termMonths);
+    const pmt = (loanAmt * (r * pow)) / (pow - 1);
+    if (!Number.isFinite(pmt) || pmt <= 0) return 0;
+    return Math.round(pmt * 100) / 100;
+  }, [
+    getValue(FK.proposed_loan_amount),
+    getValue(FK.interest_rate),
+    getValue(FK.loan_term_value),
+    getValue(FK.loan_term_unit),
+    upstreamLoanAmount,
+    upstreamInterestRate,
+    upstreamLoanTermValue,
+    upstreamLoanTermUnit,
+  ]);
+
+  React.useEffect(() => {
+    if (minMonthlyPayment <= 0) return;
+    const formatted = formatCurrencyDisplay(minMonthlyPayment.toFixed(2));
+    // Only auto-write when the field is empty or zero, so a user override sticks.
+    if (isEmptyOrZero(getValue(FK.vii_payment_amount))) {
+      setValue(FK.vii_payment_amount, formatted);
+    }
+  }, [minMonthlyPayment]);
+
 
   // Persist cash-at-closing on EVERY change (no abs > 0 gate)
   React.useEffect(() => {
