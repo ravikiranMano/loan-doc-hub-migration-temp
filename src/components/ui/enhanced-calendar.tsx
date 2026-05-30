@@ -99,8 +99,8 @@ function EnhancedCalendar({
   const goToNextMonth = () => handleMonthChange(addMonths(displayMonth, 1));
 
   const currentYear = today.getFullYear();
-  const effectiveFromYear = fromYear ?? currentYear - 120;
-  const effectiveToYear = toYear ?? currentYear + 10;
+  const effectiveFromYear = fromYear ?? currentYear - 100;
+  const effectiveToYear = toYear ?? currentYear + 100;
   const years = React.useMemo(() => {
     const arr: number[] = [];
     for (let y = effectiveToYear; y >= effectiveFromYear; y--) arr.push(y);
