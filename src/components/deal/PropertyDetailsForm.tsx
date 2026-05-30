@@ -317,9 +317,10 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
   const renderYearField = (fieldKey: string, label: string) => {
     const raw = getFieldValue(fieldKey) ?? '';
-    // Extract 4-digit year from legacy date strings (e.g. "2026-05-21")
-    const yearMatch = String(raw).match(/\d{4}/);
-    const displayValue = yearMatch ? yearMatch[0] : '';
+    // Extract 4-digit year from legacy date strings (e.g. "2026-05-21"); otherwise show raw digits as user types
+    const rawStr = String(raw);
+    const yearMatch = rawStr.match(/\d{4}/);
+    const displayValue = yearMatch ? yearMatch[0] : rawStr.replace(/\D/g, '').slice(0, 4);
     const maxYear = new Date().getFullYear() + 1;
     return (
       <DirtyFieldWrapper fieldKey={fieldKey}>
