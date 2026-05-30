@@ -502,28 +502,54 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     return isNaN(num) ? 0 : num;
   };
 
-  // Calculate insurance totals for 1000 section
+  // Calculate insurance totals for 1000 section (clears when months or per-month go to zero)
   useEffect(() => {
     const m = parseNumber(getValue(FIELD_KEYS.hazardInsurance_months));
     const p = parseNumber(getValue(FIELD_KEYS.hazardInsurance_perMonth));
-    if (m * p > 0) setValue(FIELD_KEYS.hazardInsurance_total, (m * p).toFixed(2));
+    const next = m > 0 && p > 0 ? formatCurrencyDisplay((m * p).toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.hazardInsurance_total) !== next) setValue(FIELD_KEYS.hazardInsurance_total, next);
   }, [values[FIELD_KEYS.hazardInsurance_months], values[FIELD_KEYS.hazardInsurance_perMonth]]);
 
   useEffect(() => {
     const m = parseNumber(getValue(FIELD_KEYS.mortgageInsurance_months));
     const p = parseNumber(getValue(FIELD_KEYS.mortgageInsurance_perMonth));
-    if (m * p > 0) setValue(FIELD_KEYS.mortgageInsurance_total, (m * p).toFixed(2));
+    const next = m > 0 && p > 0 ? formatCurrencyDisplay((m * p).toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.mortgageInsurance_total) !== next) setValue(FIELD_KEYS.mortgageInsurance_total, next);
   }, [values[FIELD_KEYS.mortgageInsurance_months], values[FIELD_KEYS.mortgageInsurance_perMonth]]);
 
   useEffect(() => {
     const m = parseNumber(getValue(FIELD_KEYS.coPropertyTaxes_months));
     const p = parseNumber(getValue(FIELD_KEYS.coPropertyTaxes_perMonth));
-    if (m * p > 0) setValue(FIELD_KEYS.coPropertyTaxes_total, (m * p).toFixed(2));
+    const next = m > 0 && p > 0 ? formatCurrencyDisplay((m * p).toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.coPropertyTaxes_total) !== next) setValue(FIELD_KEYS.coPropertyTaxes_total, next);
   }, [values[FIELD_KEYS.coPropertyTaxes_months], values[FIELD_KEYS.coPropertyTaxes_perMonth]]);
 
-  // ─── Upstream loan values (read from Loan tab)
-  const loanAmountUpstream = parseNumber(values['loan_terms.loan_amount'] || values['loan_terms.original_amount'] || '');
-  const loanRateUpstream = parseNumber(values['loan_terms.note_rate'] || values['loan_terms.current_rate'] || '');
+  // ─── Upstream loan values (read from Loan tab) — widened fallback chain
+  const loanAmountUpstream = parseNumber(
+    values['loan_terms.loan_amount']
+      || values['loan_terms.original_loan_amount']
+      || values['loan_terms.original_amount']
+      || values['loan_terms.principal']
+      || ''
+  );
+  const loanRateUpstream = parseNumber(
+    values['loan_terms.note_rate']
+      || values['loan_terms.current_rate']
+      || values['loan_terms.interest_rate']
+      || ''
+  );
+  // Loan term value + unit from Loan tab (best-effort fallback chain)
+  const loanTermValueUpstream =
+    values['loan_terms.loan_term']
+    || values['loan_terms.term']
+    || values['loan_terms.term_months']
+    || values['loan_terms.term_years']
+    || values['loan_terms.amortization_term']
+    || '';
+  const loanTermUnitUpstream =
+    values['loan_terms.loan_term_unit']
+    || values['loan_terms.term_unit']
+    || (values['loan_terms.term_months'] ? 'months' : values['loan_terms.term_years'] ? 'years' : '');
 
   // ─── 901 Prepaid Interest: per-day = loan_amount × (rate/100/365); row total = days × per-day
   const perDayAuto = loanAmountUpstream > 0 && loanRateUpstream > 0
@@ -605,6 +631,18 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   const section1200Total = sumRowKeys(section1200Rows);
   const section1300Total = sumRowKeys(section1300Rows);
   const grandTotal = section800Total + section900Total + section1000Total + section1100Total + section1200Total + section1300Total;
+
+  // ─── APR Total — sum of (others+broker) for every row whose APR checkbox is checked
+  const allAprRows = [
+    ...section800Rows, ...section900Rows, ...section1000Rows,
+    ...section1100Rows, ...section1200Rows, ...section1300Rows,
+  ];
+  const aprKeyForRow = (othersKey: string) => othersKey.replace(/_others$/, '_apr');
+  const aprTotal = allAprRows.reduce((acc, r) => {
+    const aprChecked = getBoolValue(aprKeyForRow(r.others));
+    if (!aprChecked) return acc;
+    return acc + parseNumber(getValue(r.others)) + parseNumber(getValue(r.broker));
+  }, 0);
 
   // Persist computed subtotal/total so document merge-tags resolve
   useEffect(() => {
@@ -849,6 +887,15 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
             <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold bg-muted/50" />
           </div>
         </div>
+        <div className="flex items-center gap-2 py-1">
+          <div className="text-sm font-semibold text-foreground flex-1" title="Sum of Paid to Others + Paid to Broker across all rows where 'Include in APR' is checked">
+            APR Total <span className="text-xs font-normal text-muted-foreground">(checked items)</span>
+          </div>
+          <div className="relative w-28">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+            <Input inputMode="decimal" value={formatCurrencyDisplay(aprTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 bg-muted/50" />
+          </div>
+        </div>
       </div>
 
 
@@ -898,6 +945,8 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         disabled={disabled}
         upstreamLoanAmount={loanAmountUpstream}
         upstreamInterestRate={loanRateUpstream}
+        upstreamLoanTermValue={loanTermValueUpstream}
+        upstreamLoanTermUnit={loanTermUnitUpstream}
         section800Total={section800Total}
         liensPayoffTotal={liensPayoffTotal}
       />

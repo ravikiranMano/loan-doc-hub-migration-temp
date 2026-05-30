@@ -30,6 +30,10 @@ const FK = {
   viii_rate_increase_months: 'origination_fees.re885_viii_rate_increase_months',
   ix_payment_end_months: 'origination_fees.re885_ix_payment_end_months',
   ix_payment_end_pct: 'origination_fees.re885_ix_payment_end_pct',
+  // Section X – Balloon Payment
+  x_balloon_has: 'origination_fees.re885_x_balloon_has',
+  x_balloon_amount: 'origination_fees.re885_x_balloon_amount',
+  x_balloon_due_months: 'origination_fees.re885_x_balloon_due_months',
   xi_neg_amort_balance: 'origination_fees.re885_xi_neg_amort_balance',
   impound_county_taxes: 'origination_fees.re885_impound_county_taxes',
   impound_hazard_ins: 'origination_fees.re885_impound_hazard_ins',
@@ -49,6 +53,8 @@ interface RE885Props {
   disabled: boolean;
   upstreamLoanAmount?: number;
   upstreamInterestRate?: number;
+  upstreamLoanTermValue?: string;
+  upstreamLoanTermUnit?: string;
   section800Total?: number;
   liensPayoffTotal?: number;
 }
@@ -88,6 +94,8 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   disabled,
   upstreamLoanAmount = 0,
   upstreamInterestRate = 0,
+  upstreamLoanTermValue = '',
+  upstreamLoanTermUnit = '',
   section800Total = 0,
   liensPayoffTotal = 0,
 }) => {
@@ -108,6 +116,19 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
       setValue(FK.interest_rate, upstreamInterestRate.toFixed(4));
     }
   }, [upstreamInterestRate]);
+
+  // ─── Seed Loan Term value + unit from Loan tab if empty
+  React.useEffect(() => {
+    if (upstreamLoanTermValue && !getValue(FK.loan_term_value)) {
+      setValue(FK.loan_term_value, String(upstreamLoanTermValue));
+    }
+  }, [upstreamLoanTermValue]);
+  React.useEffect(() => {
+    if (upstreamLoanTermUnit && !getValue(FK.loan_term_unit)) {
+      setValue(FK.loan_term_unit, upstreamLoanTermUnit);
+    }
+  }, [upstreamLoanTermUnit]);
+
 
   // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
   React.useEffect(() => {
@@ -528,6 +549,51 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             <span className="text-xs text-foreground italic">of Original Balance, whichever comes first</span>
           </div>
         </div>
+      </div>
+
+      {/* ─── X. Balloon Payment ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">X. Balloon Payment</span>
+        </div>
+        <div className={ROW}>
+          <div className="flex items-center gap-3 flex-1 flex-wrap">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getBoolValue(FK.x_balloon_has)}
+                onCheckedChange={(c) => setBoolValue(FK.x_balloon_has, !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">This loan contains a balloon payment</span>
+            </label>
+          </div>
+        </div>
+        {getBoolValue(FK.x_balloon_has) && (
+          <div className={ROW}>
+            <div className="flex items-center gap-2 flex-1 flex-wrap">
+              <span className="text-xs text-foreground">Balloon payment of</span>
+              <div className="w-[140px] flex-shrink-0">
+                <CurrencyInput
+                  value={getValue(FK.x_balloon_amount)}
+                  onChange={(v) => setValue(FK.x_balloon_amount, v)}
+                  disabled={disabled}
+                />
+              </div>
+              <span className="text-xs text-foreground">due in</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={getValue(FK.x_balloon_due_months)}
+                onChange={(e) => setValue(FK.x_balloon_due_months, e.target.value)}
+                disabled={disabled}
+                placeholder="0"
+                className="h-8 text-xs w-20"
+              />
+              <span className="text-xs text-foreground">months from the date of the loan.</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── XI. Negative Amortization ─── */}
