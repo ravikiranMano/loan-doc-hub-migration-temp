@@ -10,7 +10,7 @@ export const getLicenseNumberError = (value: string, required = false): string =
   const raw = value || '';
   const trimmed = raw.trim();
 
-  if (!trimmed) return required ? 'Enter valid license number' : '';
+  if (!trimmed) return required ? 'Please enter a valid license number.' : '';
   if (raw.length > 50) return 'License Number cannot exceed 50 characters.';
   if (!LICENSE_NUMBER_PATTERN.test(raw)) return 'Please enter a valid license number.';
 
