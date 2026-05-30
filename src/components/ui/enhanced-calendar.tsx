@@ -123,6 +123,18 @@ function EnhancedCalendar({
     setPickerView("month");
   };
 
+  const [yearInput, setYearInput] = React.useState<string>("");
+  React.useEffect(() => {
+    if (pickerView === "year") setYearInput(String(displayMonth.getFullYear()));
+  }, [pickerView, displayMonth]);
+
+  const commitYearInput = () => {
+    const n = parseInt(yearInput, 10);
+    if (!Number.isFinite(n)) return;
+    const clamped = Math.min(effectiveToYear, Math.max(effectiveFromYear, n));
+    handleYearSelect(clamped);
+  };
+
   const handleMonthSelect = (monthIndex: number) => {
     handleMonthChange(setMonth(displayMonth, monthIndex));
     setPickerView("calendar");
