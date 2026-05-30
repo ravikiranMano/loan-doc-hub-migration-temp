@@ -47,6 +47,10 @@ interface RE885Props {
   setBoolValue: (key: string, value: boolean) => void;
   parseNumber: (val: string) => number;
   disabled: boolean;
+  upstreamLoanAmount?: number;
+  upstreamInterestRate?: number;
+  section800Total?: number;
+  liensPayoffTotal?: number;
 }
 
 const CurrencyInput: React.FC<{
@@ -82,48 +86,88 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   setBoolValue,
   parseNumber,
   disabled,
+  upstreamLoanAmount = 0,
+  upstreamInterestRate = 0,
+  section800Total = 0,
+  liensPayoffTotal = 0,
 }) => {
   const isFixed = getBoolValue(FK.rate_type_fixed);
   const isAdjustable = getBoolValue(FK.rate_type_adjustable);
   const adjustableSectionsDisabled = disabled || isFixed;
 
-  // Auto-calculate subtotal
+  // ─── Seed Proposed Loan Amount from Loan tab if empty
+  React.useEffect(() => {
+    if (upstreamLoanAmount > 0 && !getValue(FK.proposed_loan_amount)) {
+      setValue(FK.proposed_loan_amount, formatCurrencyDisplay(upstreamLoanAmount.toFixed(2)));
+    }
+  }, [upstreamLoanAmount]);
+
+  // ─── Seed Interest Rate from Loan tab if empty
+  React.useEffect(() => {
+    if (upstreamInterestRate > 0 && !getValue(FK.interest_rate)) {
+      setValue(FK.interest_rate, upstreamInterestRate.toFixed(4));
+    }
+  }, [upstreamInterestRate]);
+
+  // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
+  React.useEffect(() => {
+    const formatted = formatCurrencyDisplay(section800Total.toFixed(2));
+    if (getValue(FK.initial_fees_page1) !== formatted) {
+      setValue(FK.initial_fees_page1, formatted);
+    }
+  }, [section800Total]);
+
+  // Auto-calculate subtotal of deductions
   const subtotal = useMemo(() => {
     const fees = parseNumber(getValue(FK.initial_fees_page1));
     const otherObl = parseNumber(getValue(FK.other_obligations));
     const insurance = parseNumber(getValue(FK.credit_life_insurance));
     const add1 = parseNumber(getValue(FK.additional_obligation_1));
     const add2 = parseNumber(getValue(FK.additional_obligation_2));
-    return fees + otherObl + insurance + add1 + add2;
+    return fees + otherObl + insurance + add1 + add2 + liensPayoffTotal;
   }, [
     getValue(FK.initial_fees_page1),
     getValue(FK.other_obligations),
     getValue(FK.credit_life_insurance),
     getValue(FK.additional_obligation_1),
     getValue(FK.additional_obligation_2),
+    liensPayoffTotal,
   ]);
 
-  // Auto-calculate cash at closing
+  // Auto-calculate cash at closing: loan amount − all deductions
   const cashAtClosing = useMemo(() => {
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount));
     return loanAmt - subtotal;
   }, [getValue(FK.proposed_loan_amount), subtotal]);
 
-  // Write computed values
+  // Persist subtotal
   React.useEffect(() => {
-    if (subtotal > 0) setValue(FK.subtotal_deductions, formatCurrencyDisplay(subtotal.toFixed(2)));
+    const f = formatCurrencyDisplay(subtotal.toFixed(2));
+    if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
   }, [subtotal]);
 
+  // Persist cash-at-closing on EVERY change (no abs > 0 gate)
   React.useEffect(() => {
     const abs = Math.abs(cashAtClosing);
-    if (abs > 0) {
-      setValue(FK.cash_at_closing_amount, formatCurrencyDisplay(abs.toFixed(2)));
-      const payable = cashAtClosing >= 0;
-      setValue(FK.cash_at_closing_option, payable ? 'payable_to_you' : 'you_must_pay');
-      setBoolValue(FK.cash_payable_to_you, payable);
-      setBoolValue(FK.cash_you_must_pay, !payable);
+    const amountFormatted = formatCurrencyDisplay(abs.toFixed(2));
+    if (getValue(FK.cash_at_closing_amount) !== amountFormatted) {
+      setValue(FK.cash_at_closing_amount, amountFormatted);
+    }
+    if (cashAtClosing > 0) {
+      if (getValue(FK.cash_at_closing_option) !== 'payable_to_you') setValue(FK.cash_at_closing_option, 'payable_to_you');
+      if (!getBoolValue(FK.cash_payable_to_you)) setBoolValue(FK.cash_payable_to_you, true);
+      if (getBoolValue(FK.cash_you_must_pay)) setBoolValue(FK.cash_you_must_pay, false);
+    } else if (cashAtClosing < 0) {
+      if (getValue(FK.cash_at_closing_option) !== 'you_must_pay') setValue(FK.cash_at_closing_option, 'you_must_pay');
+      if (getBoolValue(FK.cash_payable_to_you)) setBoolValue(FK.cash_payable_to_you, false);
+      if (!getBoolValue(FK.cash_you_must_pay)) setBoolValue(FK.cash_you_must_pay, true);
+    } else {
+      if (getValue(FK.cash_at_closing_option) !== '') setValue(FK.cash_at_closing_option, '');
+      if (getBoolValue(FK.cash_payable_to_you)) setBoolValue(FK.cash_payable_to_you, false);
+      if (getBoolValue(FK.cash_you_must_pay)) setBoolValue(FK.cash_you_must_pay, false);
     }
   }, [cashAtClosing]);
+
 
   const closingOption = getValue(FK.cash_at_closing_option);
   const isPayableToYou = getBoolValue(FK.cash_payable_to_you) || closingOption === 'payable_to_you';
@@ -162,9 +206,10 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         <div className={ROW}>
           <span className={LBL}>Initial Commissions, Fees, Costs and Expenses Summarized on Page 1</span>
           <div className={FIELD_W}>
-            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={(v) => setValue(FK.initial_fees_page1, v)} disabled={disabled} />
+            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={() => {}} readOnly disabled />
           </div>
         </div>
+
 
         <div className="bg-muted/20 px-3 py-1 border-b border-border/30">
           <span className="text-xs font-semibold text-foreground">Payment of Other Obligations (List)</span>

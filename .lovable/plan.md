@@ -1,43 +1,56 @@
-## Goal
+## Origination Fees + RE 885 — Conformance Pass
 
-The Loan → Attachments tab (`DealAttachmentsTab.tsx`) already exists and is wired into `DealDataEntryPage.tsx`. Network inspection on deal `DL-2026-0282` shows the fetch succeeds (HTTP 200, empty array) and no row exists yet in `deal_section_values` for `section='attachments_grid'`. So the wiring works, but the spec calls out several gaps vs. the required behavior. This plan closes those gaps without changing schema, APIs, or layout.
+Scope: audit & fix gaps only. No DB migrations, no new tables, no new field_dictionary rows. Existing `deal_section_values` JSONB storage and document merge-tags preserved.
 
-## Changes (single file: `src/components/deal/DealAttachmentsTab.tsx`)
+### Files touched
+- `src/pages/loan/origination/OriginationFeesForm.tsx`
+- `src/pages/loan/origination/RE885ProposedLoanTerms.tsx`
+- (read-only) `src/lib/precisionFormat.ts`, Decimal.js helpers
 
-1. **File validation before upload** (per spec)
-   - Add `validateAttachment(file)`:
-     - Allowed MIME types: PDF, JPG, PNG, GIF, DOC, DOCX, XLS, XLSX, TXT.
-     - Max size: 25 MB (already enforced) → unified into validator.
-     - File name length ≤ 255.
-   - Run validator in the upload mutation; on failure show `toast.error(message)` and abort.
-   - Set `accept="..."` on the `<input type="file">` so the OS picker pre-filters.
+### Fixes
 
-2. **Attachment count badge** next to the "Attachments" heading: `Attachments (N)` using `attachments.length`.
+**1. Section subtotals + Grand Total → read-only computed**
+Add `computeSectionTotals(values)` summing rows in 800 (801–812 + custom), 900, 1000, 1100, 1200, 1300 series. Replace the manual Subtotal/Total inputs (~lines 715–728) with read-only currency-formatted fields. Recompute on every change.
 
-3. **Delete confirmation**: replace `window.confirm` with the existing `DeleteConfirmationDialog` component for consistency with the rest of the app.
+**2. 901 Per-Day → auto, read-only**
+Formula: `perDay = loan_amount × (interest_rate / 100 / 365)` using Decimal.js, 2dp. Source `loan_amount` and `interest_rate` from `loan_terms.*`. Render read-only in `render901Description`.
 
-4. **Upload progress / disabled state**: disable the Upload button + show spinner while `uploadMutation.isPending` (already partly done); also disable the file `<input>` during upload to prevent double-submit.
+**3. 901 Row Total (Paid to Others) → auto**
+`interestForDays_others = days × perDay`, 2dp. Write on change to days or upstream loan values; read-only.
 
-5. **Refresh-after-upload guarantee**: keep existing `invalidateQueries`; additionally `await queryClient.refetchQueries({ queryKey })` in `onSuccess` of upload + delete so the list reflects immediately even if the cache is stale.
+**4. RE 885 Proposed Loan Amount → seed from Loan tab**
+On mount / when empty, populate from `loan_terms.loan_amount` (fallback `loan_terms.original_amount`). User can still override.
 
-6. **Loan-id scoping safety**: early-return an empty state if `dealId` is falsy; key the query strictly on `dealId` (already true) so navigating between loans clears the list automatically via React Query.
+**5. RE 885 Interest Rate → seed from Loan tab**
+On mount / when empty, populate from `loan_terms.interest_rate` (4dp). User can still override.
 
-7. **Empty-state copy**: keep current empty state but show "No attachments yet. Click Upload to add one." (minor copy tweak, no layout change).
+**6. RE 885 Initial Commissions/Fees (Page 1) → always = Section 800 total**
+Pass computed `section800Total` from `OriginationFeesForm` into `RE885ProposedLoanTerms`. Render read-only, recompute live.
 
-## Out of scope (explicitly NOT changed)
+**7. RE 885 Cash at Closing → always write**
+Remove the `abs > 0` gate (lines 117–126). On every change:
+- `cash = loanAmount − section800Total − liensPayoff − otherDeductions` (per current spec)
+- `cash > 0` → set `payable_to_you = cash`, clear `you_must_pay`
+- `cash < 0` → set `you_must_pay = |cash|`, clear `payable_to_you`
+- `cash = 0` → clear both
 
-- No new tables / schema (`deal_section_values.attachments_grid` JSONB row keeps current shape `{ files: AttachmentMeta[] }`).
-- No new APIs or edge functions; continues to use Supabase Storage bucket `contact-attachments` under `deal/{dealId}/...` and existing RLS policies.
-- No changes to `DealDataEntryPage.tsx` wiring, tab layout, other forms, document generation, or any unrelated component.
-- No changes to existing successful upload/download/delete flows beyond the items above.
+**8. Payment to Existing Liens → auto from Properties tab**
+Read `property{N}.lien*` array (current_balance / payoff_amount per existing memory pattern). Populate row 1204-style label + amount; render read-only. Multiple liens → sum or list per existing Properties convention.
 
-## Verification
+### Calc & precision rules
+- Money 2dp, rates 4dp — use `src/lib/precisionFormat.ts`
+- All arithmetic via Decimal.js (no native float)
+- Currency display on blur; raw on focus (existing standard)
 
-- Open deal `DL-2026-0282` → Attachments tab.
-- Upload a PDF < 25 MB → appears in list, count badge increments, toast shown, row persists in `deal_section_values` (`section='attachments_grid'`).
-- Upload an `.exe` → blocked with validation toast.
-- Upload a 30 MB file → blocked with size toast.
-- Download → triggers browser download with original filename.
-- Delete → confirmation dialog → row removed, storage object removed, count decrements.
-- Refresh page → list still shows uploaded files (persistence).
-- Navigate to a different deal → list shows only that deal's attachments.
+### Out of scope
+- New SQL tables (`origination_fees`, `origination_reserves`, `re885_loan_terms`)
+- New APR % field
+- Impound checkbox behavior changes
+- Unit tests
+- Field dictionary additions
+
+### Verification
+- Manually verify each of the 8 fixes in `/deals/.../edit` → Loan → Other Origination → Origination Fees
+- Confirm RE 885 card updates live as Section 800 rows change
+- Confirm cash-at-closing sign flips correctly across zero
+- Confirm no regression to existing saved deals (composite JSONB keys unchanged)

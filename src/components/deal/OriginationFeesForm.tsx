@@ -496,11 +496,9 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   const getBoolValue = (key: string) => values[key] === 'true';
   const setBoolValue = (key: string, value: boolean) => onValueChange(key, String(value));
 
-
-
-
   const parseNumber = (val: string): number => {
-    const num = parseFloat(val.replace(/[^0-9.-]/g, ''));
+    if (!val) return 0;
+    const num = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
     return isNaN(num) ? 0 : num;
   };
 
@@ -522,6 +520,130 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     const p = parseNumber(getValue(FIELD_KEYS.coPropertyTaxes_perMonth));
     if (m * p > 0) setValue(FIELD_KEYS.coPropertyTaxes_total, (m * p).toFixed(2));
   }, [values[FIELD_KEYS.coPropertyTaxes_months], values[FIELD_KEYS.coPropertyTaxes_perMonth]]);
+
+  // ─── Upstream loan values (read from Loan tab)
+  const loanAmountUpstream = parseNumber(values['loan_terms.loan_amount'] || values['loan_terms.original_amount'] || '');
+  const loanRateUpstream = parseNumber(values['loan_terms.note_rate'] || values['loan_terms.current_rate'] || '');
+
+  // ─── 901 Prepaid Interest: per-day = loan_amount × (rate/100/365); row total = days × per-day
+  const perDayAuto = loanAmountUpstream > 0 && loanRateUpstream > 0
+    ? (loanAmountUpstream * (loanRateUpstream / 100) / 365)
+    : 0;
+
+  useEffect(() => {
+    if (perDayAuto > 0) {
+      const formatted = formatCurrencyDisplay(perDayAuto.toFixed(2));
+      if (getValue(FIELD_KEYS.interestForDays_perDay) !== formatted) {
+        setValue(FIELD_KEYS.interestForDays_perDay, formatted);
+      }
+    }
+  }, [perDayAuto]);
+
+  useEffect(() => {
+    const days = parseNumber(getValue(FIELD_KEYS.interestForDays_days));
+    if (days > 0 && perDayAuto > 0) {
+      const total = days * perDayAuto;
+      const formatted = formatCurrencyDisplay(total.toFixed(2));
+      if (getValue(FIELD_KEYS.interestForDays_others) !== formatted) {
+        setValue(FIELD_KEYS.interestForDays_others, formatted);
+      }
+    }
+  }, [perDayAuto, values[FIELD_KEYS.interestForDays_days]]);
+
+  // ─── Section subtotals + Grand Total (Paid to Others + Paid to Broker across all rows)
+  const sumRowKeys = (rows: { others: string; broker: string }[]) =>
+    rows.reduce((acc, r) => acc + parseNumber(getValue(r.others)) + parseNumber(getValue(r.broker)), 0);
+
+  const section800Rows = [
+    { others: FIELD_KEYS.lendersLoanOriginationFee_others, broker: FIELD_KEYS.lendersLoanOriginationFee_broker },
+    { others: FIELD_KEYS.lendersLoanDiscountFee_others, broker: FIELD_KEYS.lendersLoanDiscountFee_broker },
+    { others: FIELD_KEYS.appraisalFee_others, broker: FIELD_KEYS.appraisalFee_broker },
+    { others: FIELD_KEYS.creditReport_others, broker: FIELD_KEYS.creditReport_broker },
+    { others: FIELD_KEYS.lendersInspectionFee_others, broker: FIELD_KEYS.lendersInspectionFee_broker },
+    { others: FIELD_KEYS.mortgageBrokerFee_others, broker: FIELD_KEYS.mortgageBrokerFee_broker },
+    { others: FIELD_KEYS.taxServiceFee_others, broker: FIELD_KEYS.taxServiceFee_broker },
+    { others: FIELD_KEYS.processingFee_others, broker: FIELD_KEYS.processingFee_broker },
+    { others: FIELD_KEYS.underwritingFee_others, broker: FIELD_KEYS.underwritingFee_broker },
+    { others: FIELD_KEYS.wireTransferFee_others, broker: FIELD_KEYS.wireTransferFee_broker },
+    { others: FIELD_KEYS.hud800_custom1_others, broker: FIELD_KEYS.hud800_custom1_broker },
+    { others: FIELD_KEYS.hud800_custom2_others, broker: FIELD_KEYS.hud800_custom2_broker },
+  ];
+  const section900Rows = [
+    { others: FIELD_KEYS.interestForDays_others, broker: FIELD_KEYS.interestForDays_broker },
+    { others: FIELD_KEYS.mortgageInsurancePremiums_others, broker: FIELD_KEYS.mortgageInsurancePremiums_broker },
+    { others: FIELD_KEYS.hazardInsurancePremiums_others, broker: FIELD_KEYS.hazardInsurancePremiums_broker },
+    { others: FIELD_KEYS.countyPropertyTaxes_others, broker: FIELD_KEYS.countyPropertyTaxes_broker },
+    { others: FIELD_KEYS.vaFundingFee_others, broker: FIELD_KEYS.vaFundingFee_broker },
+    { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker },
+    { others: FIELD_KEYS.hud900_custom2_others, broker: FIELD_KEYS.hud900_custom2_broker },
+  ];
+  const section1000Rows = [
+    { others: FIELD_KEYS.hazardInsurance_others, broker: FIELD_KEYS.hazardInsurance_broker },
+    { others: FIELD_KEYS.mortgageInsurance_others, broker: FIELD_KEYS.mortgageInsurance_broker },
+    { others: FIELD_KEYS.coPropertyTaxes_others, broker: FIELD_KEYS.coPropertyTaxes_broker },
+  ];
+  const section1100Rows = [
+    { others: FIELD_KEYS.settlementClosingFee_others, broker: FIELD_KEYS.settlementClosingFee_broker },
+    { others: FIELD_KEYS.docPreparationFee_others, broker: FIELD_KEYS.docPreparationFee_broker },
+    { others: FIELD_KEYS.notaryFee_others, broker: FIELD_KEYS.notaryFee_broker },
+    { others: FIELD_KEYS.titleInsurance_others, broker: FIELD_KEYS.titleInsurance_broker },
+    { others: FIELD_KEYS.hud1100_custom1_others, broker: FIELD_KEYS.hud1100_custom1_broker },
+    { others: FIELD_KEYS.hud1100_custom2_others, broker: FIELD_KEYS.hud1100_custom2_broker },
+  ];
+  const section1200Rows = [
+    { others: FIELD_KEYS.recordingFees_others, broker: FIELD_KEYS.recordingFees_broker },
+    { others: FIELD_KEYS.cityCountyTaxStamps_others, broker: FIELD_KEYS.cityCountyTaxStamps_broker },
+  ];
+  const section1300Rows = [
+    { others: FIELD_KEYS.pestInspection_others, broker: FIELD_KEYS.pestInspection_broker },
+  ];
+
+  const section800Total = sumRowKeys(section800Rows);
+  const section900Total = sumRowKeys(section900Rows);
+  const section1000Total = sumRowKeys(section1000Rows);
+  const section1100Total = sumRowKeys(section1100Rows);
+  const section1200Total = sumRowKeys(section1200Rows);
+  const section1300Total = sumRowKeys(section1300Rows);
+  const grandTotal = section800Total + section900Total + section1000Total + section1100Total + section1200Total + section1300Total;
+
+  // Persist computed subtotal/total so document merge-tags resolve
+  useEffect(() => {
+    const f = formatCurrencyDisplay(grandTotal.toFixed(2));
+    if (getValue(FIELD_KEYS.subtotal_j) !== f) setValue(FIELD_KEYS.subtotal_j, f);
+    if (getValue(FIELD_KEYS.total_j) !== f) setValue(FIELD_KEYS.total_j, f);
+  }, [grandTotal]);
+
+  // ─── Auto-fill Payment to Existing Liens from Properties tab
+  useEffect(() => {
+    const lienSlots = [
+      { labelKey: FIELD_KEYS.existingLien1_label, amtKey: FIELD_KEYS.existingLien1_d },
+      { labelKey: FIELD_KEYS.existingLien2_label, amtKey: FIELD_KEYS.existingLien2_d },
+      { labelKey: FIELD_KEYS.existingLien3_label, amtKey: FIELD_KEYS.existingLien3_d },
+    ];
+    const collected: { label: string; amount: number }[] = [];
+    for (let p = 1; p <= 10 && collected.length < lienSlots.length; p++) {
+      const holder = values[`property${p}.lien_holder`] || '';
+      const balance = parseNumber(values[`property${p}.lien_current_balance`] || values[`property${p}.lien_original_balance`] || '');
+      if (holder || balance > 0) {
+        collected.push({ label: holder || `Property ${p} Lien`, amount: balance });
+      }
+    }
+    lienSlots.forEach((slot, i) => {
+      const entry = collected[i];
+      const lbl = entry ? entry.label : '';
+      const amt = entry && entry.amount > 0 ? formatCurrencyDisplay(entry.amount.toFixed(2)) : '';
+      if (getValue(slot.labelKey) !== lbl) setValue(slot.labelKey, lbl);
+      if (getValue(slot.amtKey) !== amt) setValue(slot.amtKey, amt);
+    });
+  }, [
+    values['property1.lien_holder'], values['property1.lien_current_balance'], values['property1.lien_original_balance'],
+    values['property2.lien_holder'], values['property2.lien_current_balance'], values['property2.lien_original_balance'],
+    values['property3.lien_holder'], values['property3.lien_current_balance'], values['property3.lien_original_balance'],
+  ]);
+
+  const liensPayoffTotal = parseNumber(getValue(FIELD_KEYS.existingLien1_d))
+    + parseNumber(getValue(FIELD_KEYS.existingLien2_d))
+    + parseNumber(getValue(FIELD_KEYS.existingLien3_d));
 
   // Standard fee row: HUD# | Description | Comment | Paid to Others | Paid to Broker | Include in APR | Paid to Company
   const renderFeeRow = (
@@ -625,16 +747,17 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     </DirtyFieldWrapper>
   );
 
-  // Dynamic description for 901
+  // Dynamic description for 901 (per-day auto-computed, read-only)
   const render901Description = () => (
     <div className="flex items-center gap-1 text-xs text-foreground flex-wrap">
       <span>Interest for</span>
       <Input type="number" inputMode="numeric" value={getValue(FIELD_KEYS.interestForDays_days)} onChange={(e) => setValue(FIELD_KEYS.interestForDays_days, e.target.value)} disabled={disabled} placeholder="0" className="h-6 text-xs text-right w-12 inline-flex" />
       <span>days at $</span>
-      <Input inputMode="decimal" value={getValue(FIELD_KEYS.interestForDays_perDay)} onChange={(e) => setValue(FIELD_KEYS.interestForDays_perDay, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(FIELD_KEYS.interestForDays_perDay, val))} onBlur={() => { const raw = getValue(FIELD_KEYS.interestForDays_perDay); if (raw) setValue(FIELD_KEYS.interestForDays_perDay, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(FIELD_KEYS.interestForDays_perDay); if (raw) setValue(FIELD_KEYS.interestForDays_perDay, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-6 text-xs text-right w-20 inline-flex" />
+      <Input inputMode="decimal" value={getValue(FIELD_KEYS.interestForDays_perDay)} readOnly disabled placeholder="0.00" title="Auto: Loan Amount × (Interest Rate ÷ 365)" className="h-6 text-xs text-right w-20 inline-flex bg-muted/50" />
       <span>per day</span>
     </div>
   );
+
 
   return (
     <div className="p-4 space-y-6 overflow-x-auto">
@@ -710,23 +833,24 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('1302', 'Pest Inspection', { others: FIELD_KEYS.pestInspection_others, broker: FIELD_KEYS.pestInspection_broker, apr: FIELD_KEYS.pestInspection_apr, paidToCompany: FIELD_KEYS.pestInspection_paid_to_company }, undefined, undefined, FIELD_KEYS.pestInspection_d)}
       </div>
 
-      {/* Subtotal and Total */}
+      {/* Subtotal and Total (auto-computed, read-only) */}
       <div className="space-y-1 pt-4 border-t-2 border-foreground">
         <div className="flex items-center gap-2 py-1">
           <div className="text-sm font-semibold text-foreground flex-1">Subtotal</div>
           <div className="relative w-28">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
-            <Input inputMode="decimal" value={getValue(FIELD_KEYS.subtotal_j)} onChange={(e) => setValue(FIELD_KEYS.subtotal_j, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(FIELD_KEYS.subtotal_j, val))} onBlur={() => { const raw = getValue(FIELD_KEYS.subtotal_j); if (raw) setValue(FIELD_KEYS.subtotal_j, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(FIELD_KEYS.subtotal_j); if (raw) setValue(FIELD_KEYS.subtotal_j, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-7 text-xs text-right pl-5" />
+            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 bg-muted/50" />
           </div>
         </div>
         <div className="flex items-center gap-2 py-1">
           <div className="text-sm font-bold text-foreground flex-1">Total</div>
           <div className="relative w-28">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold pointer-events-none">$</span>
-            <Input inputMode="decimal" value={getValue(FIELD_KEYS.total_j)} onChange={(e) => setValue(FIELD_KEYS.total_j, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(FIELD_KEYS.total_j, val))} onBlur={() => { const raw = getValue(FIELD_KEYS.total_j); if (raw) setValue(FIELD_KEYS.total_j, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(FIELD_KEYS.total_j); if (raw) setValue(FIELD_KEYS.total_j, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold" />
+            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold bg-muted/50" />
           </div>
         </div>
       </div>
+
 
       {/* Compensation to Broker */}
       <div className="space-y-0">
@@ -772,7 +896,12 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         setBoolValue={setBoolValue}
         parseNumber={parseNumber}
         disabled={disabled}
+        upstreamLoanAmount={loanAmountUpstream}
+        upstreamInterestRate={loanRateUpstream}
+        section800Total={section800Total}
+        liensPayoffTotal={liensPayoffTotal}
       />
+
     </div>
   );
 };
