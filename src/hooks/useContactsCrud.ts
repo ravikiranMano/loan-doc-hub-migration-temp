@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { normalizeBrokerLicenseFields, validateBrokerLicenseFields } from '@/lib/licenseNumberValidation';
 
 export interface ContactRecord {
   id: string;
@@ -100,7 +101,12 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
   const createContact = useCallback(async (contactData: Record<string, string>) => {
     if (!user) return null;
     try {
-      const fullName = contactData.full_name || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
+      const normalizedContactData = contactType === 'broker' ? normalizeBrokerLicenseFields(contactData) : contactData;
+      if (contactType === 'broker') {
+        const licenseError = validateBrokerLicenseFields(normalizedContactData);
+        if (licenseError) { toast.error(licenseError); return null; }
+      }
+      const fullName = normalizedContactData.full_name || `${normalizedContactData.first_name || ''} ${normalizedContactData.last_name || ''}`.trim();
       
       // Generate contact_id via DB function
       const { data: idData, error: idError } = await supabase.rpc('generate_contact_id', { p_type: contactType });
@@ -111,14 +117,14 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
         contact_id: idData as string,
         created_by: user.id,
         full_name: fullName,
-        first_name: contactData.first_name || contactData['first_name'] || '',
-        last_name: contactData.last_name || contactData['last_name'] || '',
-        email: contactData.email || '',
-        phone: contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '',
-        city: contactData.city || contactData['address.city'] || contactData['primary_address.city'] || '',
-        state: contactData.state || contactData['address.state'] || contactData['primary_address.state'] || '',
-        company: contactData.company || '',
-        contact_data: contactData,
+        first_name: normalizedContactData.first_name || normalizedContactData['first_name'] || '',
+        last_name: normalizedContactData.last_name || normalizedContactData['last_name'] || '',
+        email: normalizedContactData.email || '',
+        phone: normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '',
+        city: normalizedContactData.city || normalizedContactData['address.city'] || normalizedContactData['primary_address.city'] || '',
+        state: normalizedContactData.state || normalizedContactData['address.state'] || normalizedContactData['primary_address.state'] || '',
+        company: normalizedContactData.company || '',
+        contact_data: normalizedContactData,
       };
 
       const { data, error } = await supabase
