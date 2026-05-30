@@ -566,29 +566,86 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     </Select>
                   </div>
                 </DirtyFieldWrapper>
-                <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentParameters}>
-                  <div className="flex items-center gap-3">
+                {/* Apply to Pmt Params: dual $ / % inputs with bi-directional calculation.
+                    Driver: whichever field was last edited. Base for the %↔$ conversion is the
+                    Regular P&I Payment (FIELD_KEYS.regularPayment). The legacy
+                    applyToPaymentParameters key still records which mode (percent | dollar) was
+                    last edited so downstream consumers know the user's intent. */}
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentAmount}>
+                  <div className="flex items-start gap-3">
                     <Label className={LABEL_CLASS}>Apply to Pmt Params</Label>
-                    <div className="flex items-center gap-3 flex-1">
-                      <label className="flex items-center gap-1 text-sm cursor-pointer">
-                        <Checkbox
-                          checked={getValue(FIELD_KEYS.applyToPaymentParameters) === 'percent'}
-                          onCheckedChange={(c) => setValue(FIELD_KEYS.applyToPaymentParameters, c ? 'percent' : '')}
-                          disabled={disabled}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span>%</span>
-                      </label>
-                      <span className="text-xs text-muted-foreground">or</span>
-                      <label className="flex items-center gap-1 text-sm cursor-pointer">
-                        <Checkbox
-                          checked={getValue(FIELD_KEYS.applyToPaymentParameters) === 'dollar'}
-                          onCheckedChange={(c) => setValue(FIELD_KEYS.applyToPaymentParameters, c ? 'dollar' : '')}
-                          disabled={disabled}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span>$</span>
-                      </label>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        {/* Amount ($) */}
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+                          <Input
+                            id={FIELD_KEYS.applyToPaymentAmount}
+                            value={getValue(FIELD_KEYS.applyToPaymentAmount)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9.]/g, '');
+                              if ((raw.match(/\./g) || []).length > 1) return;
+                              setValue(FIELD_KEYS.applyToPaymentAmount, raw);
+                              setValue(FIELD_KEYS.applyToPaymentParameters, 'dollar');
+                              const base = parseFloat(getValue(FIELD_KEYS.regularPayment) || '0');
+                              const amt = parseFloat(raw);
+                              if (!isNaN(amt) && base > 0) {
+                                setValue(FIELD_KEYS.applyToPaymentPercent, ((amt / base) * 100).toFixed(4));
+                              } else if (raw === '') {
+                                setValue(FIELD_KEYS.applyToPaymentPercent, '');
+                              }
+                            }}
+                            disabled={disabled}
+                            className="h-8 text-sm pl-6"
+                            placeholder="0.00"
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">or</span>
+                        {/* Percent (%) */}
+                        <div className="relative flex-1">
+                          <Input
+                            id={FIELD_KEYS.applyToPaymentPercent}
+                            value={getValue(FIELD_KEYS.applyToPaymentPercent)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9.]/g, '');
+                              if ((raw.match(/\./g) || []).length > 1) return;
+                              const pct = parseFloat(raw);
+                              if (!isNaN(pct) && pct > 100) return;
+                              setValue(FIELD_KEYS.applyToPaymentPercent, raw);
+                              setValue(FIELD_KEYS.applyToPaymentParameters, 'percent');
+                              const base = parseFloat(getValue(FIELD_KEYS.regularPayment) || '0');
+                              if (!isNaN(pct) && base > 0) {
+                                setValue(FIELD_KEYS.applyToPaymentAmount, ((pct / 100) * base).toFixed(2));
+                              } else if (raw === '') {
+                                setValue(FIELD_KEYS.applyToPaymentAmount, '');
+                              }
+                            }}
+                            disabled={disabled}
+                            className="h-8 text-sm pr-6"
+                            placeholder="0.00"
+                            inputMode="decimal"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">%</span>
+                        </div>
+                      </div>
+                      {(() => {
+                        const a = getValue(FIELD_KEYS.applyToPaymentAmount);
+                        const p = getValue(FIELD_KEYS.applyToPaymentPercent);
+                        const amtNum = a === '' ? NaN : parseFloat(a);
+                        const pctNum = p === '' ? NaN : parseFloat(p);
+                        const amtBad = a !== '' && (isNaN(amtNum) || amtNum < 0);
+                        const pctBad = p !== '' && (isNaN(pctNum) || pctNum < 0 || pctNum > 100);
+                        if (amtBad || pctBad) {
+                          return (
+                            <p className="text-[10px] text-destructive">
+                              {amtBad ? 'Amount must be a non-negative number. ' : ''}
+                              {pctBad ? 'Percent must be between 0 and 100.' : ''}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 </DirtyFieldWrapper>
