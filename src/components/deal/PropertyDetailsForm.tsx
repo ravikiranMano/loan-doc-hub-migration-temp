@@ -70,6 +70,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   dealId,
 }) => {
   const [datePickerStates, setDatePickerStates] = React.useState<Record<string, boolean>>({});
+  const lastAutoDownPaymentRef = React.useRef<string>('');
   const getFieldValue = (key: string) => values[key] || '';
   const sanitizeNumericValue = (value: string): string => value.replace(/[^0-9.-]/g, '');
   const handleCurrencyChange = (fieldKey: string, value: string) => onValueChange(fieldKey, sanitizeNumericValue(value));
@@ -185,10 +186,18 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(loanAmountNum - currentPrincipalNum));
     }
 
-    // Down Payment = Purchase Price − Loan Amount (auto-calculated, persisted)
+    // Down Payment = Purchase Price − Loan Amount (auto-calculated, but user-editable).
+    // We only overwrite the stored value when it matches the last auto-computed value
+    // (i.e. the user hasn't manually overridden it). When Purchase Price or Loan Amount
+    // change, the new auto value is written even if the previous value was a manual edit,
+    // since the calculation explicitly drives this field.
     if (Number.isFinite(purchasePriceNum) && purchasePriceNum >= 0 && Number.isFinite(loanAmountNum) && loanAmountNum >= 0) {
-      const dp = purchasePriceNum - loanAmountNum;
-      writeIfChanged(FIELD_KEYS.downPayment, roundDollarForStorage(dp));
+      const dp = roundDollarForStorage(purchasePriceNum - loanAmountNum);
+      const current = getFieldValue(FIELD_KEYS.downPayment);
+      if (!current || current === lastAutoDownPaymentRef.current) {
+        writeIfChanged(FIELD_KEYS.downPayment, dp);
+      }
+      lastAutoDownPaymentRef.current = dp;
     }
   }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, purchasePriceRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
 
@@ -545,7 +554,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Down Payment</Label>
               <div className="flex-1">
-                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={() => {}} disabled />
+                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={(v) => onValueChange(FIELD_KEYS.downPayment, v)} />
               </div>
             </div>
           </DirtyFieldWrapper>
