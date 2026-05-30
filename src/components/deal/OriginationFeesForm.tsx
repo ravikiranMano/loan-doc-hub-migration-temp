@@ -896,7 +896,12 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         setBoolValue={setBoolValue}
         parseNumber={parseNumber}
         disabled={disabled}
+        upstreamLoanAmount={loanAmountUpstream}
+        upstreamInterestRate={loanRateUpstream}
+        section800Total={section800Total}
+        liensPayoffTotal={liensPayoffTotal}
       />
+
     </div>
   );
 };
