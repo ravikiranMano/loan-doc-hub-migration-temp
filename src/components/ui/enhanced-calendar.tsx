@@ -135,7 +135,7 @@ function EnhancedCalendar({
   return (
     <div
       className="flex flex-col pointer-events-auto"
-      style={{ width: 288, minHeight: 340 }}
+      style={{ width: 288, height: 348 }}
     >
       {/* Header row — always rendered identically across all 3 sub-views so
           the prev/next stack stays anchored. */}
