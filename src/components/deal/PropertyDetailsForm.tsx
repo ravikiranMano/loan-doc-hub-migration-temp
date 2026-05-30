@@ -70,6 +70,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   dealId,
 }) => {
   const [datePickerStates, setDatePickerStates] = React.useState<Record<string, boolean>>({});
+  const lastAutoDownPaymentRef = React.useRef<string>('');
   const getFieldValue = (key: string) => values[key] || '';
   const sanitizeNumericValue = (value: string): string => value.replace(/[^0-9.-]/g, '');
   const handleCurrencyChange = (fieldKey: string, value: string) => onValueChange(fieldKey, sanitizeNumericValue(value));
