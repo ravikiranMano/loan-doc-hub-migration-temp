@@ -123,6 +123,18 @@ function EnhancedCalendar({
     setPickerView("month");
   };
 
+  const [yearInput, setYearInput] = React.useState<string>("");
+  React.useEffect(() => {
+    if (pickerView === "year") setYearInput(String(displayMonth.getFullYear()));
+  }, [pickerView, displayMonth]);
+
+  const commitYearInput = () => {
+    const n = parseInt(yearInput, 10);
+    if (!Number.isFinite(n)) return;
+    const clamped = Math.min(effectiveToYear, Math.max(effectiveFromYear, n));
+    handleYearSelect(clamped);
+  };
+
   const handleMonthSelect = (monthIndex: number) => {
     handleMonthChange(setMonth(displayMonth, monthIndex));
     setPickerView("calendar");
@@ -199,28 +211,48 @@ function EnhancedCalendar({
         <div className="h-full" style={{ minHeight: 252 }}>
         {/* fixed inner shell so calendar/year/month occupy identical space */}
         {pickerView === "year" && (
-          <div
-            ref={yearScrollRef}
-            className="h-full overflow-y-auto pointer-events-auto overscroll-contain pr-1"
-            onWheel={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-          >
-            <div className="grid grid-cols-4 gap-1 pr-2">
-              {years.map((y) => (
-                <button
-                  key={y}
-                  type="button"
-                  data-active={y === displayMonth.getFullYear()}
-                  onClick={() => handleYearSelect(y)}
-                  className={cn(
-                    "h-8 rounded text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-                    y === displayMonth.getFullYear() &&
-                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
-                  )}
-                >
-                  {y}
-                </button>
-              ))}
+          <div className="h-full flex flex-col">
+            <input
+              type="number"
+              inputMode="numeric"
+              value={yearInput}
+              min={effectiveFromYear}
+              max={effectiveToYear}
+              onChange={(e) => setYearInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitYearInput();
+                }
+              }}
+              onBlur={commitYearInput}
+              className="mb-2 h-8 w-full rounded border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Type a year"
+              aria-label="Type a year"
+            />
+            <div
+              ref={yearScrollRef}
+              className="flex-1 overflow-y-auto pointer-events-auto overscroll-contain pr-1"
+              onWheel={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+            >
+              <div className="grid grid-cols-4 gap-1 pr-2">
+                {years.map((y) => (
+                  <button
+                    key={y}
+                    type="button"
+                    data-active={y === displayMonth.getFullYear()}
+                    onClick={() => handleYearSelect(y)}
+                    className={cn(
+                      "h-8 rounded text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+                      y === displayMonth.getFullYear() &&
+                        "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
+                    )}
+                  >
+                    {y}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
