@@ -747,16 +747,17 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     </DirtyFieldWrapper>
   );
 
-  // Dynamic description for 901
+  // Dynamic description for 901 (per-day auto-computed, read-only)
   const render901Description = () => (
     <div className="flex items-center gap-1 text-xs text-foreground flex-wrap">
       <span>Interest for</span>
       <Input type="number" inputMode="numeric" value={getValue(FIELD_KEYS.interestForDays_days)} onChange={(e) => setValue(FIELD_KEYS.interestForDays_days, e.target.value)} disabled={disabled} placeholder="0" className="h-6 text-xs text-right w-12 inline-flex" />
       <span>days at $</span>
-      <Input inputMode="decimal" value={getValue(FIELD_KEYS.interestForDays_perDay)} onChange={(e) => setValue(FIELD_KEYS.interestForDays_perDay, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(FIELD_KEYS.interestForDays_perDay, val))} onBlur={() => { const raw = getValue(FIELD_KEYS.interestForDays_perDay); if (raw) setValue(FIELD_KEYS.interestForDays_perDay, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(FIELD_KEYS.interestForDays_perDay); if (raw) setValue(FIELD_KEYS.interestForDays_perDay, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-6 text-xs text-right w-20 inline-flex" />
+      <Input inputMode="decimal" value={getValue(FIELD_KEYS.interestForDays_perDay)} readOnly disabled placeholder="0.00" title="Auto: Loan Amount × (Interest Rate ÷ 365)" className="h-6 text-xs text-right w-20 inline-flex bg-muted/50" />
       <span>per day</span>
     </div>
   );
+
 
   return (
     <div className="p-4 space-y-6 overflow-x-auto">
