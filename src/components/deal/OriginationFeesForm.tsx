@@ -693,6 +693,8 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('1105', 'Document Preparation Fee', { others: FIELD_KEYS.docPreparationFee_others, broker: FIELD_KEYS.docPreparationFee_broker, apr: FIELD_KEYS.docPreparationFee_apr, paidToCompany: FIELD_KEYS.docPreparationFee_paid_to_company }, undefined, undefined, FIELD_KEYS.docPreparationFee_d)}
         {renderFeeRow('1106', 'Notary Fee', { others: FIELD_KEYS.notaryFee_others, broker: FIELD_KEYS.notaryFee_broker, apr: FIELD_KEYS.notaryFee_apr, paidToCompany: FIELD_KEYS.notaryFee_paid_to_company }, undefined, undefined, FIELD_KEYS.notaryFee_d)}
         {renderFeeRow('1108', 'Title Insurance', { others: FIELD_KEYS.titleInsurance_others, broker: FIELD_KEYS.titleInsurance_broker, apr: FIELD_KEYS.titleInsurance_apr, paidToCompany: FIELD_KEYS.titleInsurance_paid_to_company }, undefined, undefined, FIELD_KEYS.titleInsurance_d)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom1_others, broker: FIELD_KEYS.hud1100_custom1_broker, apr: FIELD_KEYS.hud1100_custom1_apr, paidToCompany: FIELD_KEYS.hud1100_custom1_paid_to_company }, FIELD_KEYS.hud1100_custom1_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom2_others, broker: FIELD_KEYS.hud1100_custom2_broker, apr: FIELD_KEYS.hud1100_custom2_apr, paidToCompany: FIELD_KEYS.hud1100_custom2_paid_to_company }, FIELD_KEYS.hud1100_custom2_description)}
       </div>
 
       {/* 1200 Government Recording and Transfer Charges */}
