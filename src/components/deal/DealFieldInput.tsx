@@ -18,12 +18,26 @@ import type { CalculationResult } from '@/lib/calculationEngine';
 
 /** Auto-format MM/DD/YYYY: digits only, insert slashes at positions 2 and 5. */
 function maskDateInput(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 8);
-  const parts: string[] = [];
-  if (digits.length > 0) parts.push(digits.slice(0, 2));
-  if (digits.length > 2) parts.push(digits.slice(2, 4));
-  if (digits.length > 4) parts.push(digits.slice(4, 8));
-  return parts.join('/');
+/**
+ * Mask raw input toward MM/DD/YYYY without fighting the user mid-edit.
+ * - Keeps only digits and `/`.
+ * - Auto-inserts a `/` only when the user is TYPING FORWARD past positions 2 and 5.
+ * - Never strips trailing digits the user is in the middle of typing/deleting,
+ *   so `06/14/1925` → backspace → `06/14/192` (not `06/14/19`).
+ * - Caps total length at 10 (MM/DD/YYYY).
+ */
+function maskDateInput(raw: string, prev: string = ''): string {
+  // Keep digits + slashes only.
+  let s = raw.replace(/[^\d/]/g, '');
+  const growing = s.length > prev.length;
+  if (growing) {
+    // Auto-insert separators as the user types forward.
+    if (s.length === 2 && !s.includes('/')) s = s + '/';
+    if (s.length === 5 && s.indexOf('/', 3) === -1) s = s + '/';
+  }
+  // Cap to MM/DD/YYYY length.
+  if (s.length > 10) s = s.slice(0, 10);
+  return s;
 }
 
 interface DateMaskedInputProps {
