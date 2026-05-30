@@ -291,12 +291,15 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
   }, [subtotal]);
 
-  // ─── Section VII: auto Minimum Monthly Payment from Loan tab
-  // Standard amortization: P × r(1+r)^n / ((1+r)^n − 1)  where r = annualRate/12, n = termMonths.
-  // Adjustable section is disabled when Fixed Rate is checked, but the spec says VII should
-  // still display the calculated minimum monthly payment for the proposed loan, so we always
-  // compute and write — user can override afterwards.
+  // ─── Section VII: Minimum Monthly Payment
+  // Priority per spec:
+  //   1) Use Regular P&I from Terms & Balances when present (> 0)
+  //   2) Otherwise compute via standard amortization formula
+  //      P × r(1+r)^n / ((1+r)^n − 1), r = annualRate/12, n = termMonths
   const minMonthlyPayment = useMemo(() => {
+    if (upstreamRegularPI > 0) {
+      return Math.round(upstreamRegularPI * 100) / 100;
+    }
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount)) || upstreamLoanAmount;
     const annualRate = parseNumber(getValue(FK.interest_rate)) || upstreamInterestRate;
     const termRaw = parseNumber(getValue(FK.loan_term_value)) || parseNumber(upstreamLoanTermValue);
@@ -310,6 +313,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     if (!Number.isFinite(pmt) || pmt <= 0) return 0;
     return Math.round(pmt * 100) / 100;
   }, [
+    upstreamRegularPI,
     getValue(FK.proposed_loan_amount),
     getValue(FK.interest_rate),
     getValue(FK.loan_term_value),
