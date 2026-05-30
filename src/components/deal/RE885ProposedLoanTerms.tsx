@@ -94,6 +94,8 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   disabled,
   upstreamLoanAmount = 0,
   upstreamInterestRate = 0,
+  upstreamLoanTermValue = '',
+  upstreamLoanTermUnit = '',
   section800Total = 0,
   liensPayoffTotal = 0,
 }) => {
@@ -114,6 +116,19 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
       setValue(FK.interest_rate, upstreamInterestRate.toFixed(4));
     }
   }, [upstreamInterestRate]);
+
+  // ─── Seed Loan Term value + unit from Loan tab if empty
+  React.useEffect(() => {
+    if (upstreamLoanTermValue && !getValue(FK.loan_term_value)) {
+      setValue(FK.loan_term_value, String(upstreamLoanTermValue));
+    }
+  }, [upstreamLoanTermValue]);
+  React.useEffect(() => {
+    if (upstreamLoanTermUnit && !getValue(FK.loan_term_unit)) {
+      setValue(FK.loan_term_unit, upstreamLoanTermUnit);
+    }
+  }, [upstreamLoanTermUnit]);
+
 
   // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
   React.useEffect(() => {
