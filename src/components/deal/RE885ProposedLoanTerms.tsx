@@ -159,6 +159,26 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [upstreamLoanTermUnit]);
 
+  // ─── Seed Section XVII (Prepayment Penalty) from Loan → Article 7 (only if untouched)
+  React.useEffect(() => {
+    if (getValue(FK.xvii_prepay_has) === '' && getValue(FK.xvii_prepay_amount) === '' &&
+        getValue(FK.xvii_prepay_term_months) === '' && getValue(FK.xvii_prepay_pct) === '') {
+      setBoolValue(FK.xvii_prepay_has, upstreamPrepayEnabled);
+      if (upstreamPrepayEnabled) {
+        if (upstreamPrepayPenaltyMonths) setValue(FK.xvii_prepay_term_months, String(upstreamPrepayPenaltyMonths));
+        if (upstreamPrepayGreaterThanPct) setValue(FK.xvii_prepay_pct, String(upstreamPrepayGreaterThanPct));
+      }
+    }
+  }, [upstreamPrepayEnabled, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
+
+  // ─── Seed Section XVIII (Documentation Type) from Loan → Limited/No Doc (only if untouched)
+  React.useEffect(() => {
+    if (!getValue(FK.xviii_doc_type)) {
+      setValue(FK.xviii_doc_type, upstreamLimitedNoDoc ? 'limited' : 'full');
+    }
+  }, [upstreamLimitedNoDoc]);
+
+
 
   // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
   React.useEffect(() => {
