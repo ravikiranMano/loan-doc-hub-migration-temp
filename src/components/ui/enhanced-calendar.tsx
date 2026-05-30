@@ -13,9 +13,9 @@ export type EnhancedCalendarProps = React.ComponentProps<typeof DayPicker> & {
   onClear?: () => void;
   onToday?: () => void;
   showClearToday?: boolean;
-  /** Earliest selectable year (default: currentYear - 120). */
+  /** Earliest selectable year (default: currentYear - 100). */
   fromYear?: number;
-  /** Latest selectable year (default: currentYear + 10). */
+  /** Latest selectable year (default: currentYear + 100). */
   toYear?: number;
 };
 
