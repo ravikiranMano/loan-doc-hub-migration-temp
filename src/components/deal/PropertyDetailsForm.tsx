@@ -523,7 +523,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
           {renderInlineSelect(FIELD_KEYS.propertyType, 'Property Type', PROPERTY_TYPE_OPTIONS, 'Select type')}
           {renderInlineSelect(FIELD_KEYS.occupancy, 'Occupancy', OCCUPANCY_OPTIONS, 'Select')}
-          {renderDateField(FIELD_KEYS.yearBuilt, 'Year Built')}
+          {renderYearField(FIELD_KEYS.yearBuilt, 'Year Built')}
           {renderInlineField(FIELD_KEYS.squareFeet, 'Square Feet')}
           {renderInlineSelect(FIELD_KEYS.constructionType, 'Type of Construction', CONSTRUCTION_TYPES, 'Select...')}
           {renderInlineSelect(FIELD_KEYS.zoning, 'Zoning', ZONING_OPTIONS, 'Select...')}
