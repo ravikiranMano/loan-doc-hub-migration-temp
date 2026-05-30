@@ -465,6 +465,8 @@ export const LOAN_TERMS_BALANCES_KEYS = {
   // Shortpay / Overpay Handling
   shortPaymentHandling: 'loan_terms.short_payment_handling',
   applyToPaymentParameters: 'loan_terms.apply_to_payment_parameters',
+  applyToPaymentAmount: 'loan_terms.apply_to_payment_amount',
+  applyToPaymentPercent: 'loan_terms.apply_to_payment_percent',
   applyShortPayment: 'loan_terms.apply_short_payment',
   // Unpaid Interest Processing
   unpaidInterestProcessing: 'loan_terms.unpaid_interest_processing',
