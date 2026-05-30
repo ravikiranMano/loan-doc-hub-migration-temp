@@ -692,9 +692,14 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Terms</h3>
           {(() => {
             const key = 'loan_terms.day_due';
-            const raw = getValue(key);
-            const num = raw === '' ? NaN : parseInt(raw, 10);
-            const invalid = raw !== '' && (isNaN(num) || num < 1 || num > 31 || !/^\d+$/.test(raw));
+            const stored = getValue(key) || '';
+            let display = stored;
+            const isoMatch = /^\d{4}-\d{2}-(\d{2})$/.exec(stored);
+            if (isoMatch) display = String(parseInt(isoMatch[1], 10));
+            const numericVal = display === '' ? NaN : Number(display);
+            const invalid =
+              display !== '' &&
+              (!/^\d{1,2}$/.test(display) || numericVal < 1 || numericVal > 31);
             return (
               <DirtyFieldWrapper fieldKey={key}>
                 <div className="flex items-start gap-2">
@@ -704,23 +709,27 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                       id={key}
                       type="text"
                       inputMode="numeric"
-                      value={raw}
+                      value={display}
                       onChange={(e) => {
-                        // Numeric only, max 2 digits
-                        const cleaned = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
-                        setValue(key, cleaned);
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                        setValue(key, digits);
                       }}
                       onBlur={() => {
-                        const v = getValue(key);
-                        if (v === '') return;
+                        const v = (getValue(key) || '').replace(/\D/g, '');
+                        if (!v) { setValue(key, ''); return; }
                         const n = parseInt(v, 10);
-                        if (isNaN(n) || n < 1 || n > 31) return;
-                        setValue(key, String(n));
+                        if (isNaN(n) || n < 1 || n > 31) {
+                          setValue(key, '');
+                        } else {
+                          setValue(key, String(n));
+                        }
                       }}
                       disabled={disabled}
                       className={cn('h-8 text-xs flex-1', invalid && 'border-destructive focus-visible:ring-destructive')}
-                      placeholder="1-31"
+                      placeholder="Day (1-31)"
                       maxLength={2}
+                      min={1}
+                      max={31}
                     />
                     {invalid && (
                       <p className="text-[10px] text-destructive mt-0.5">Day Due must be a whole number between 1 and 31.</p>

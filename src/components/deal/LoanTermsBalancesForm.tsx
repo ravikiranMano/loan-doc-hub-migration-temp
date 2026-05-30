@@ -932,7 +932,6 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {renderDayOfMonthField('loan_terms.day_due_dom', 'Day Due')}
 
 
             {renderDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
