@@ -53,6 +53,8 @@ interface RE885Props {
   disabled: boolean;
   upstreamLoanAmount?: number;
   upstreamInterestRate?: number;
+  upstreamLoanTermValue?: string;
+  upstreamLoanTermUnit?: string;
   section800Total?: number;
   liensPayoffTotal?: number;
 }
