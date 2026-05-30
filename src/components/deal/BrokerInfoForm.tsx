@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { cn } from '@/lib/utils';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { getLicenseNumberError, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 const safeParseAgreementDate = (val: string): Date | undefined => {
   if (!val) return undefined;
@@ -152,18 +153,14 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               <div className="flex-1">
                 {(() => {
                   const raw = getValue('repLicense');
-                  const VALID = /^[A-Za-z0-9\- ]{1,50}$/;
-                  const trimmed = raw.trim();
-                  let error = '';
-                  if (raw.length > 50) error = 'License Number cannot exceed 50 characters.';
-                  else if (raw.length > 0 && (trimmed.length === 0 || !VALID.test(raw))) error = 'Please enter a valid license number.';
+                  const error = getLicenseNumberError(raw);
                   return (
                     <>
                       <Input
                         value={raw}
                         maxLength={50}
                         onChange={(e) => {
-                          const filtered = e.target.value.replace(/[^A-Za-z0-9\- ]/g, '').slice(0, 50);
+                          const filtered = sanitizeLicenseNumber(e.target.value);
                           handleChange('repLicense', filtered);
                         }}
                         onBlur={(e) => {
