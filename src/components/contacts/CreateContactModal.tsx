@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { US_STATES } from '@/lib/usStates';
 import { LenderInfoForm } from '@/components/deal/LenderInfoForm';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { getLicenseNumberError, normalizeLicenseNumber, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 interface CreateContactModalProps {
   open: boolean;
@@ -270,8 +271,10 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
     // Broker-specific required field validation
     if (contactType === 'broker') {
       const errs: Record<string, string> = {};
-      if (!(form['License'] || '').trim()) errs['License'] = 'Enter valid license number';
-      else if ((form['License'] || '').length > 50) errs['License'] = 'Max 50 characters';
+      const licenseError = getLicenseNumberError(form['License'] || '', true);
+      const repLicenseError = getLicenseNumberError(form['rep_license'] || '');
+      if (licenseError) errs['License'] = licenseError;
+      if (repLicenseError) errs['rep_license'] = repLicenseError;
       if (!(form['company'] || '').trim()) errs['company'] = 'Licensee Name is required';
       else if ((form['company'] || '').length > 100) errs['company'] = 'Max 100 characters';
       if (!(form['first_name'] || '').trim()) errs['first_name'] = 'Enter valid first name';
@@ -500,7 +503,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* License Number */}
               <div className="flex items-center gap-2">
                 <Label className="w-[140px] shrink-0 text-xs">License Number</Label>
-                <Input value={form['License'] || ''} onChange={(e) => { set('License', e.target.value); clrKErr('License'); }} onKeyDown={alphaNumKD} onPaste={(e) => { e.preventDefault(); set('License', e.clipboardData.getData('text').replace(/[^A-Za-z0-9]/g, '')); }} onBlur={() => { const v = (form['License'] || '').trim(); set('License', v); if (!v) setKErr('License', 'Enter valid license number'); else clrKErr('License'); }} maxLength={50} className={cn("h-7 text-xs flex-1", brokerErrors['License'] && "border-destructive")} />
+                <Input value={form['License'] || ''} onChange={(e) => { set('License', sanitizeLicenseNumber(e.target.value)); clrKErr('License'); }} onBlur={() => { const v = normalizeLicenseNumber(form['License'] || ''); set('License', v); const err = getLicenseNumberError(v, true); if (err) setKErr('License', err); else clrKErr('License'); }} maxLength={50} className={cn("h-7 text-xs flex-1", brokerErrors['License'] && "border-destructive")} />
               </div>
               {brokerErrors['License'] && <p className="text-[10px] text-destructive ml-[148px]">{brokerErrors['License']}</p>}
 
@@ -542,8 +545,9 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* License Number (Rep) */}
               <div className="flex items-center gap-2">
                 <Label className="w-[140px] shrink-0 text-xs">License Number</Label>
-                <Input value={form['rep_license'] || ''} onChange={(e) => set('rep_license', e.target.value)} onBlur={() => set('rep_license', (form['rep_license'] || '').trim())} maxLength={50} className="h-7 text-xs flex-1" />
+                <Input value={form['rep_license'] || ''} onChange={(e) => { set('rep_license', sanitizeLicenseNumber(e.target.value)); clrKErr('rep_license'); }} onBlur={() => { const v = normalizeLicenseNumber(form['rep_license'] || ''); set('rep_license', v); const err = getLicenseNumberError(v); if (err) setKErr('rep_license', err); else clrKErr('rep_license'); }} maxLength={50} className={cn("h-7 text-xs flex-1", brokerErrors['rep_license'] && "border-destructive")} />
               </div>
+              {brokerErrors['rep_license'] && <p className="text-[10px] text-destructive ml-[148px]">{brokerErrors['rep_license']}</p>}
 
               {/* Email */}
               <div className="flex items-center gap-2">

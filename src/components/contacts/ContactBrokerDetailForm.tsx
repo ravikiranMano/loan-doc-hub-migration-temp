@@ -17,6 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { ContactBroker } from '@/pages/contacts/ContactBrokersPage';
+import { getLicenseNumberError, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 interface Props {
   broker: ContactBroker;
@@ -151,18 +152,14 @@ export const ContactBrokerDetailForm: React.FC<Props> = ({ broker, onSave, onCan
           <Label>License Number</Label>
           {(() => {
             const raw = form.repLicense || '';
-            const VALID = /^[A-Za-z0-9\- ]{1,50}$/;
-            const trimmed = raw.trim();
-            let error = '';
-            if (raw.length > 50) error = 'License Number cannot exceed 50 characters.';
-            else if (raw.length > 0 && (trimmed.length === 0 || !VALID.test(raw))) error = 'Please enter a valid license number.';
+            const error = getLicenseNumberError(raw);
             return (
               <>
                 <Input
                   value={raw}
                   maxLength={50}
                   onChange={(e) => {
-                    const filtered = e.target.value.replace(/[^A-Za-z0-9\- ]/g, '').slice(0, 50);
+                    const filtered = sanitizeLicenseNumber(e.target.value);
                     set('repLicense', filtered);
                   }}
                   onBlur={(e) => {

@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { cn } from '@/lib/utils';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { getLicenseNumberError, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 const safeParseAgreementDate = (val: string): Date | undefined => {
   if (!val) return undefined;
@@ -93,6 +94,37 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  const renderLicenseField = (key: 'license' | 'repLicense', label: string) => (
+    <DirtyFieldWrapper fieldKey={FIELD_KEYS[key]}>
+      <div className="flex items-center gap-2">
+        <Label className="w-[100px] shrink-0 text-xs">{label}</Label>
+        <div className="flex-1">
+          {(() => {
+            const raw = getValue(key);
+            const error = getLicenseNumberError(raw);
+            return (
+              <>
+                <Input
+                  value={raw}
+                  maxLength={50}
+                  onChange={(e) => handleChange(key, sanitizeLicenseNumber(e.target.value))}
+                  onBlur={(e) => {
+                    const t = e.target.value.trim();
+                    if (t !== e.target.value) handleChange(key, t);
+                  }}
+                  disabled={disabled}
+                  aria-invalid={!!error}
+                  className={cn('h-7 text-xs w-full', error && 'border-destructive')}
+                />
+                {error && <p className="text-[10px] text-destructive mt-0.5">{error}</p>}
+              </>
+            );
+          })()}
+        </div>
+      </div>
+    </DirtyFieldWrapper>
+  );
+
   const handlePhonePref = (prefKey: keyof typeof FIELD_KEYS) => {
     const allPrefKeys: (keyof typeof FIELD_KEYS)[] = ['preferredHome', 'preferredWork', 'preferredCell', 'preferredFax'];
     allPrefKeys.forEach(k => {
@@ -118,7 +150,7 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Name</h3>
           {renderInlineField('brokerId', 'Broker ID')}
           {renderInlineField('licenseeNameIfEntity', 'Licensee Name If Entity')}
-          {renderInlineField('license', 'License Number')}
+          {renderLicenseField('license', 'License Number')}
 
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2 mt-4">Broker or Representative</h3>
           {renderInlineField('firstName', 'First')}
@@ -146,41 +178,7 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               })()}
             </div>
           </DirtyFieldWrapper>
-          <DirtyFieldWrapper fieldKey={FIELD_KEYS.repLicense}>
-            <div className="flex items-center gap-2">
-              <Label className="w-[100px] shrink-0 text-xs">License Number</Label>
-              <div className="flex-1">
-                {(() => {
-                  const raw = getValue('repLicense');
-                  const VALID = /^[A-Za-z0-9\- ]{1,50}$/;
-                  const trimmed = raw.trim();
-                  let error = '';
-                  if (raw.length > 50) error = 'License Number cannot exceed 50 characters.';
-                  else if (raw.length > 0 && (trimmed.length === 0 || !VALID.test(raw))) error = 'Please enter a valid license number.';
-                  return (
-                    <>
-                      <Input
-                        value={raw}
-                        maxLength={50}
-                        onChange={(e) => {
-                          const filtered = e.target.value.replace(/[^A-Za-z0-9\- ]/g, '').slice(0, 50);
-                          handleChange('repLicense', filtered);
-                        }}
-                        onBlur={(e) => {
-                          const t = e.target.value.trim();
-                          if (t !== e.target.value) handleChange('repLicense', t);
-                        }}
-                        disabled={disabled}
-                        aria-invalid={!!error}
-                        className={cn('h-7 text-xs w-full', error && 'border-destructive')}
-                      />
-                      {error && <p className="text-[10px] text-destructive mt-0.5">{error}</p>}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          </DirtyFieldWrapper>
+          {renderLicenseField('repLicense', 'License Number')}
 
           
           

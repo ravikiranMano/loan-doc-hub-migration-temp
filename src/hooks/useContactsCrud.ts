@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { normalizeBrokerLicenseFields, validateBrokerLicenseFields } from '@/lib/licenseNumberValidation';
 
 export interface ContactRecord {
   id: string;
@@ -100,7 +101,12 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
   const createContact = useCallback(async (contactData: Record<string, string>) => {
     if (!user) return null;
     try {
-      const fullName = contactData.full_name || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
+      const normalizedContactData = contactType === 'broker' ? normalizeBrokerLicenseFields(contactData) : contactData;
+      if (contactType === 'broker') {
+        const licenseError = validateBrokerLicenseFields(normalizedContactData);
+        if (licenseError) { toast.error(licenseError); return null; }
+      }
+      const fullName = normalizedContactData.full_name || `${normalizedContactData.first_name || ''} ${normalizedContactData.last_name || ''}`.trim();
       
       // Generate contact_id via DB function
       const { data: idData, error: idError } = await supabase.rpc('generate_contact_id', { p_type: contactType });
@@ -111,14 +117,14 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
         contact_id: idData as string,
         created_by: user.id,
         full_name: fullName,
-        first_name: contactData.first_name || contactData['first_name'] || '',
-        last_name: contactData.last_name || contactData['last_name'] || '',
-        email: contactData.email || '',
-        phone: contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '',
-        city: contactData.city || contactData['address.city'] || contactData['primary_address.city'] || '',
-        state: contactData.state || contactData['address.state'] || contactData['primary_address.state'] || '',
-        company: contactData.company || '',
-        contact_data: contactData,
+        first_name: normalizedContactData.first_name || normalizedContactData['first_name'] || '',
+        last_name: normalizedContactData.last_name || normalizedContactData['last_name'] || '',
+        email: normalizedContactData.email || '',
+        phone: normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '',
+        city: normalizedContactData.city || normalizedContactData['address.city'] || normalizedContactData['primary_address.city'] || '',
+        state: normalizedContactData.state || normalizedContactData['address.state'] || normalizedContactData['primary_address.state'] || '',
+        company: normalizedContactData.company || '',
+        contact_data: normalizedContactData,
       };
 
       const { data, error } = await supabase
@@ -141,7 +147,12 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
   const updateContact = useCallback(async (id: string, contactData: Record<string, string>) => {
     if (!user) return false;
     try {
-      const fullName = contactData.full_name || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
+      const normalizedContactData = contactType === 'broker' ? normalizeBrokerLicenseFields(contactData) : contactData;
+      if (contactType === 'broker') {
+        const licenseError = validateBrokerLicenseFields(normalizedContactData);
+        if (licenseError) { toast.error(licenseError); return false; }
+      }
+      const fullName = normalizedContactData.full_name || `${normalizedContactData.first_name || ''} ${normalizedContactData.last_name || ''}`.trim();
 
       // Preserve underscore-prefixed internal keys (e.g. _events_journal, _charges, _conversation_log, _trust_ledger)
       const { data: existing } = await supabase
@@ -151,7 +162,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
         .single();
 
       const existingData = (existing?.contact_data as Record<string, any>) || {};
-      const mergedData: Record<string, any> = { ...contactData };
+      const mergedData: Record<string, any> = { ...normalizedContactData };
       Object.entries(existingData).forEach(([key, value]) => {
         if (key.startsWith('_')) {
           mergedData[key] = value;
@@ -162,13 +173,13 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
         .from('contacts')
         .update({
           full_name: fullName,
-          first_name: contactData.first_name || '',
-          last_name: contactData.last_name || '',
-          email: contactData.email || '',
-          phone: contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '',
-          city: contactData.city || contactData['address.city'] || contactData['primary_address.city'] || '',
-          state: contactData.state || contactData['address.state'] || contactData['primary_address.state'] || '',
-          company: contactData.company || '',
+          first_name: normalizedContactData.first_name || '',
+          last_name: normalizedContactData.last_name || '',
+          email: normalizedContactData.email || '',
+          phone: normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '',
+          city: normalizedContactData.city || normalizedContactData['address.city'] || normalizedContactData['primary_address.city'] || '',
+          state: normalizedContactData.state || normalizedContactData['address.state'] || normalizedContactData['primary_address.state'] || '',
+          company: normalizedContactData.company || '',
           contact_data: mergedData,
           updated_at: new Date().toISOString(),
         })
@@ -177,7 +188,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
       if (error) throw error;
 
       // Sync updated contact fields back to any linked deal_participants
-      const phoneValue = contactData.phone || contactData['phone.cell'] || contactData['phone.mobile'] || contactData['phone.home'] || contactData['phone.work'] || '';
+      const phoneValue = normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '';
       const { data: linkedParticipants } = await supabase
         .from('deal_participants')
         .select('id, deal_id')
@@ -189,14 +200,14 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
           .from('deal_participants')
           .update({
             name: fullName,
-            email: contactData.email || '',
+            email: normalizedContactData.email || '',
             phone: phoneValue,
           })
           .in('id', participantIds);
 
         // Sync per-deal capacity into deal_section_values (section='participants')
         // so the Participants grid reflects updated Capacity from the contact record.
-        const newCapacity = (contactData.capacity || '').toString().trim();
+        const newCapacity = (normalizedContactData.capacity || '').toString().trim();
         if (newCapacity) {
           const dealIds = Array.from(
             new Set(linkedParticipants.map((p: any) => p.deal_id).filter(Boolean))
