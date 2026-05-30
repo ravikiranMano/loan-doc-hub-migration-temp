@@ -146,7 +146,41 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               })()}
             </div>
           </DirtyFieldWrapper>
-          {renderInlineField('repLicense', 'License Number')}
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.repLicense}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[100px] shrink-0 text-xs">License Number</Label>
+              <div className="flex-1">
+                {(() => {
+                  const raw = getValue('repLicense');
+                  const VALID = /^[A-Za-z0-9\- ]{1,50}$/;
+                  const trimmed = raw.trim();
+                  let error = '';
+                  if (raw.length > 50) error = 'License Number cannot exceed 50 characters.';
+                  else if (raw.length > 0 && (trimmed.length === 0 || !VALID.test(raw))) error = 'Please enter a valid license number.';
+                  return (
+                    <>
+                      <Input
+                        value={raw}
+                        maxLength={50}
+                        onChange={(e) => {
+                          const filtered = e.target.value.replace(/[^A-Za-z0-9\- ]/g, '').slice(0, 50);
+                          handleChange('repLicense', filtered);
+                        }}
+                        onBlur={(e) => {
+                          const t = e.target.value.trim();
+                          if (t !== e.target.value) handleChange('repLicense', t);
+                        }}
+                        disabled={disabled}
+                        aria-invalid={!!error}
+                        className={cn('h-7 text-xs w-full', error && 'border-destructive')}
+                      />
+                      {error && <p className="text-[10px] text-destructive mt-0.5">{error}</p>}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </DirtyFieldWrapper>
 
           
           
