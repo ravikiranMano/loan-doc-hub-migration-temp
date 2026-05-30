@@ -12,10 +12,38 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { DeleteConfirmationDialog } from '@/components/deal/DeleteConfirmationDialog';
 
 const BUCKET = 'contact-attachments';
 const SECTION = 'attachments_grid' as const;
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+];
+
+const ACCEPT_ATTR = '.pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt';
+
+function validateAttachment(file: File | null): { isValid: boolean; error?: string } {
+  if (!file) return { isValid: false, error: 'No file selected' };
+  if (file.name.length > 255) return { isValid: false, error: 'File name too long — max 255 characters' };
+  if (file.size > MAX_FILE_SIZE) {
+    return { isValid: false, error: `File size ${(file.size / 1024 / 1024).toFixed(2)}MB exceeds 25MB limit` };
+  }
+  if (file.type && !ALLOWED_MIME_TYPES.includes(file.type)) {
+    return { isValid: false, error: 'File type not allowed. Allowed: PDF, JPG, PNG, GIF, DOC, DOCX, XLS, XLSX, TXT' };
+  }
+  return { isValid: true };
+}
 
 const CATEGORIES = [
   'Loan Documents',
