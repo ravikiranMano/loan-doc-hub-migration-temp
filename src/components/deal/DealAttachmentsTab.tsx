@@ -239,7 +239,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-foreground">Attachments</h2>
+        <h2 className="text-lg font-semibold text-foreground">Attachments ({attachments.length})</h2>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
