@@ -73,6 +73,8 @@ interface RE885Props {
   upstreamInterestRate?: number;
   upstreamLoanTermValue?: string;
   upstreamLoanTermUnit?: string;
+  /** Loan tab → Rate Structure (e.g. 'frm_fixed_rate' | 'arm_adjustable_rate' | 'gtm_graduated_terms') */
+  upstreamRateStructure?: string;
   section800Total?: number;
   liensPayoffTotal?: number;
   // Loan tab → Article 7 (Pre-payment Penalty)
