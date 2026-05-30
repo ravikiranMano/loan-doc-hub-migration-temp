@@ -329,26 +329,19 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     </DirtyFieldWrapper>
   );
 
-  // Manual numeric MM/DD/YYYY entry. Stored as 'yyyy-MM-dd' (matching date pickers).
-  // Used for Payment Due Date, First Payment Due, and Next Due Date.
-  const renderManualDateField = (key: string, label: string) => {
+  // Numeric day-of-month entry (1-31). Used for Payment Due Date, First Payment Due,
+  // and Next Due Date. Persists as the integer string (e.g. "15"). Migrates legacy
+  // yyyy-MM-dd values to the day portion on display.
+  const renderDayOfMonthField = (key: string, label: string) => {
     const stored = getValue(key) || '';
-    // Display value = MM/DD/YYYY built from stored yyyy-MM-dd, or pass-through if user is mid-typing.
-    let display = '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(stored)) {
-      const [y, m, d] = stored.split('-');
-      display = `${m}/${d}/${y}`;
-    } else {
-      display = stored; // mid-typing buffer (already MM/DD/YYYY-ish)
-    }
-    const invalid = display.length === 10 && !/^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(display);
+    let display = stored;
+    const isoMatch = /^\d{4}-\d{2}-(\d{2})$/.exec(stored);
+    if (isoMatch) display = String(parseInt(isoMatch[1], 10));
 
-    const formatWithSlashes = (digits: string): string => {
-      const d = digits.slice(0, 8);
-      if (d.length <= 2) return d;
-      if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
-      return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
-    };
+    const numericVal = display === '' ? NaN : Number(display);
+    const invalid =
+      display !== '' &&
+      (!/^\d{1,2}$/.test(display) || numericVal < 1 || numericVal > 31);
 
     return (
       <DirtyFieldWrapper fieldKey={key}>
@@ -361,33 +354,28 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               inputMode="numeric"
               value={display}
               onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
-                const masked = formatWithSlashes(digits);
-                if (masked.length === 10) {
-                  const m = masked.slice(0, 2);
-                  const d = masked.slice(3, 5);
-                  const y = masked.slice(6, 10);
-                  // Persist as yyyy-MM-dd when complete; otherwise persist the partial mask so React stays in sync.
-                  setValue(key, `${y}-${m}-${d}`);
-                } else {
-                  setValue(key, masked);
-                }
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                setValue(key, digits);
               }}
               onBlur={() => {
-                const v = getValue(key) || '';
-                if (!v) return;
-                // If user left a partial entry, clear it so we don't store garbage.
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                const v = (getValue(key) || '').replace(/\D/g, '');
+                if (!v) { setValue(key, ''); return; }
+                const n = parseInt(v, 10);
+                if (isNaN(n) || n < 1 || n > 31) {
                   setValue(key, '');
+                } else {
+                  setValue(key, String(n));
                 }
               }}
               disabled={disabled}
               className={cn('h-8 text-sm w-full', invalid && 'border-destructive focus-visible:ring-destructive')}
-              placeholder="MM/DD/YYYY"
-              maxLength={10}
+              placeholder="Day (1-31)"
+              maxLength={2}
+              min={1}
+              max={31}
             />
             {invalid && (
-              <p className="text-[10px] text-destructive mt-0.5">{label} must be a valid MM/DD/YYYY date.</p>
+              <p className="text-[10px] text-destructive mt-0.5">{label} must be a whole number between 1 and 31.</p>
             )}
           </div>
         </div>
@@ -944,12 +932,12 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {renderManualDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
+            {renderDayOfMonthField(FIELD_KEYS.dayDue, "Payment Due Date")}
 
-            {renderManualDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
+            {renderDayOfMonthField(FIELD_KEYS.firstPayment, "First Payment Due")}
             {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
             {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
-            {renderManualDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
+            {renderDayOfMonthField(FIELD_KEYS.nextPayment, "Next Due Date")}
             {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
