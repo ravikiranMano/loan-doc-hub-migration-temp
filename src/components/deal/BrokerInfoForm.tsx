@@ -146,6 +146,9 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               })()}
             </div>
           </DirtyFieldWrapper>
+          {renderInlineField('repLicense', 'License Number')}
+
+          
           
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.email}>
             <div className="flex items-center gap-2">
