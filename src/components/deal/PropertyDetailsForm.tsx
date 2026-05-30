@@ -174,13 +174,8 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.ltv, '');
     }
 
-    // Origination LTV — Loan Amount / Estimate of Value (frozen formula)
-    if (estValueValid && loanAmountValid) {
-      const origLtv = computeLtv(loanAmountNum, estValueNum);
-      writeIfChanged(FIELD_KEYS.originationLtv, origLtv ?? '');
-    } else {
-      writeIfChanged(FIELD_KEYS.originationLtv, '');
-    }
+    // Origination LTV — now user-editable; no auto-calc.
+
 
     // Principal Paid = Loan Amount − Current Principal Balance (derived)
     if (
