@@ -284,7 +284,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  No attachments yet
+                  No attachments yet. Click Upload to add one.
                 </TableCell>
               </TableRow>
             ) : filtered.map(att => (
