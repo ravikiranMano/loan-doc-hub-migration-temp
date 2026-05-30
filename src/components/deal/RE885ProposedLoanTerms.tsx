@@ -30,6 +30,10 @@ const FK = {
   viii_rate_increase_months: 'origination_fees.re885_viii_rate_increase_months',
   ix_payment_end_months: 'origination_fees.re885_ix_payment_end_months',
   ix_payment_end_pct: 'origination_fees.re885_ix_payment_end_pct',
+  // Section X – Balloon Payment
+  x_balloon_has: 'origination_fees.re885_x_balloon_has',
+  x_balloon_amount: 'origination_fees.re885_x_balloon_amount',
+  x_balloon_due_months: 'origination_fees.re885_x_balloon_due_months',
   xi_neg_amort_balance: 'origination_fees.re885_xi_neg_amort_balance',
   impound_county_taxes: 'origination_fees.re885_impound_county_taxes',
   impound_hazard_ins: 'origination_fees.re885_impound_hazard_ins',
