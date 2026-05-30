@@ -674,8 +674,8 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('903', 'Hazard Insurance Premiums', { others: FIELD_KEYS.hazardInsurancePremiums_others, broker: FIELD_KEYS.hazardInsurancePremiums_broker, apr: FIELD_KEYS.hazardInsurancePremiums_apr, paidToCompany: FIELD_KEYS.hazardInsurancePremiums_paid_to_company }, undefined, undefined, FIELD_KEYS.hazardInsurancePremiums_d)}
         {renderFeeRow('904', 'County Property Taxes', { others: FIELD_KEYS.countyPropertyTaxes_others, broker: FIELD_KEYS.countyPropertyTaxes_broker, apr: FIELD_KEYS.countyPropertyTaxes_apr, paidToCompany: FIELD_KEYS.countyPropertyTaxes_paid_to_company }, undefined, undefined, FIELD_KEYS.countyPropertyTaxes_d)}
         {renderFeeRow('905', 'VA Funding Fee', { others: FIELD_KEYS.vaFundingFee_others, broker: FIELD_KEYS.vaFundingFee_broker, apr: FIELD_KEYS.vaFundingFee_apr, paidToCompany: FIELD_KEYS.vaFundingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.vaFundingFee_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker, apr: FIELD_KEYS.hud900_custom1_apr, paidToCompany: FIELD_KEYS.hud900_custom1_paid_to_company }, FIELD_KEYS.hud900_custom1_description)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom2_others, broker: FIELD_KEYS.hud900_custom2_broker, apr: FIELD_KEYS.hud900_custom2_apr, paidToCompany: FIELD_KEYS.hud900_custom2_paid_to_company }, FIELD_KEYS.hud900_custom2_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker, apr: FIELD_KEYS.hud900_custom1_apr, paidToCompany: FIELD_KEYS.hud900_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom1_description)}
+        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom2_others, broker: FIELD_KEYS.hud900_custom2_broker, apr: FIELD_KEYS.hud900_custom2_apr, paidToCompany: FIELD_KEYS.hud900_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom2_description)}
       </div>
 
       {/* 1000 Reserves Deposited with Lender or Other */}
