@@ -437,7 +437,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
 
                 {renderInlineSelect('propertyType', 'Property Type', PROPERTY_TYPE_OPTIONS, 'Select type')}
                 {renderInlineSelect('occupancy', 'Occupancy', OCCUPANCY_OPTIONS, 'Select')}
-                {renderInlineField('yearBuilt', 'Year Built', 'date')}
+                {renderInlineField('yearBuilt', 'Year Built')}
                 {renderInlineField('squareFeet', 'Square Feet')}
                 {renderInlineSelect('constructionType', 'Type of Construction', CONSTRUCTION_TYPES, 'Select...')}
                 {renderInlineSelect('zoning', 'Zoning', ZONING_OPTIONS, 'Select...')}
