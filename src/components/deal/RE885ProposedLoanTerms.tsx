@@ -75,6 +75,13 @@ interface RE885Props {
   upstreamLoanTermUnit?: string;
   section800Total?: number;
   liensPayoffTotal?: number;
+  // Loan tab → Article 7 (Pre-payment Penalty)
+  upstreamPrepayEnabled?: boolean;
+  upstreamPrepayPenaltyMonths?: string;
+  upstreamPrepayGreaterThanPct?: string;
+  upstreamPrepayFirstYears?: string;
+  // Loan tab → Limited / No Documentation
+  upstreamLimitedNoDoc?: boolean;
 }
 
 const CurrencyInput: React.FC<{
