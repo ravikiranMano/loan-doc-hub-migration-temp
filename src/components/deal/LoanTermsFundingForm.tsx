@@ -12,31 +12,38 @@ import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
 
 /**
- * Recompute monthly payment for every lender row using Decimal arithmetic
- * (no native floating point). Each lender's payment is independent and
- * uses the standard amortization formula:
- *   Payment_i = P_i × [r(1+r)^n] / [(1+r)^n − 1]
- * where P_i = originalAmount_i, r = lenderRate_i / 100 / 12,
- *       n = remainingPayments (loan term months).
- * When n <= 0 (no term provided), falls back to interest-only (P × r).
- * Any sub-cent rounding remainder between the exact total and the sum of
- * rounded shares is assigned to the single lender flagged with
- * `roundingAdjustment` (mutual exclusivity is enforced elsewhere).
- * Guarantees every row — including the last — has its payment persisted.
+ * Recompute the persisted per-lender Payment for every funding row using
+ * the canonical platform formula (matches LoanFundingGrid display and
+ * AddFundingModal):
+ *
+ *   ProRata_i      = originalAmount_i ÷ loanPrincipal × 100
+ *   Lender Payment_i = (ProRata_i ÷ 100) × Borrower Regular P&I
+ *
+ * Rate (Note/Lender) is NOT used here — rates only drive interest accrual.
+ * Sub-cent rounding drift between the exact total and the sum of rounded
+ * shares is absorbed by the single lender flagged `roundingAdjustment`
+ * (mutual exclusivity enforced elsewhere). Decimal.js throughout — no
+ * native floating point on financial math.
  */
-const recomputeLenderPayments = (records: FundingRecord[], remainingPayments: number, noteRate: string = ''): FundingRecord[] => {
+const recomputeLenderPayments = (
+  records: FundingRecord[],
+  loanPrincipalRaw: string,
+  regularPIRaw: string,
+): FundingRecord[] => {
   if (!records.length) return records;
-  const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
+  const principal = new Decimal(parseFloat((loanPrincipalRaw || '').replace(/[$,]/g, '')) || 0);
+  const regPI = new Decimal(parseFloat((regularPIRaw || '').replace(/[$,]/g, '')) || 0);
+  if (principal.lte(0) || regPI.lte(0)) {
+    // Without a principal or scheduled P&I we can't split — leave payments untouched.
+    return records;
+  }
   const exact = records.map(r => {
-    // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
-    const fundingAmount = r.originalAmount || 0;
-    const rate = noteRateNum > 0 ? noteRateNum : (r.lenderRate || 0);
-    const monthly = (fundingAmount * (rate / 100)) / 12;
-    return new Decimal(monthly || 0);
+    const orig = new Decimal(r.originalAmount || 0);
+    return orig.div(principal).mul(regPI);
   });
-  const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
+  const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
   const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
   const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
   const diff = sumExact.minus(sumRounded);
   const adjIdx = records.findIndex(r => r.roundingAdjustment);
@@ -610,7 +617,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], remainingPayments, noteRate);
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], loanPrincipalBalance, totalPayment);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
     // Ensure newly added record is visible by jumping to the page that contains it.
@@ -696,7 +703,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       if (record.id === id) return { ...record, ...updates };
       if (enablingRounding && record.roundingAdjustment) return { ...record, roundingAdjustment: false };
       return record;
-    }), remainingPayments, noteRate);
+    }), loanPrincipalBalance, totalPayment);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
