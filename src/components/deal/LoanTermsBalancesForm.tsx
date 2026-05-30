@@ -577,7 +577,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                       Apply to Payment<br />Parameters
                     </Label>
                     <div className="flex-1 space-y-1.5">
-                      <div className="flex flex-col gap-1.5 w-40">
+                      <div className="flex flex-col gap-1.5 w-full">
+
                         {/* Amount ($) */}
                         <div className="relative w-full">
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
