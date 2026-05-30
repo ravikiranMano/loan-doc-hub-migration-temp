@@ -490,6 +490,8 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'loan_terms.override_funds_held': 'ln_p_overrideFundsHeld',
   'loan_terms.short_payment_handling': 'ln_p_shortPaymenHand',
   'loan_terms.apply_to_payment_parameters': 'ln_p_applyToPaymenParam',
+  'loan_terms.apply_to_payment_amount': 'ln_p_applyToPaymentAmount',
+  'loan_terms.apply_to_payment_percent': 'ln_p_applyToPaymentPercent',
   'loan_terms.apply_short_payment': 'ln_p_applyShortPaymen',
   'loan_terms.unpaid_interest_processing': 'ln_p_unpaidIntereProc',
   'loan_terms.pay_automatically': 'ln_p_payAutomati',
