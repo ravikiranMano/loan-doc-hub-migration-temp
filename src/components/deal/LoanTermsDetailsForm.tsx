@@ -675,48 +675,8 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
           {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
-          {(() => {
-            const key = 'loan_terms.first_payment';
-            const stored = getValue(key) || '';
-            // Migrate legacy yyyy-MM-dd display to day-of-month
-            const isoMatch = /^\d{4}-\d{2}-(\d{2})$/.exec(stored);
-            const display = isoMatch ? String(parseInt(isoMatch[1], 10)) : stored;
-            const num = display === '' ? NaN : parseInt(display, 10);
-            const invalid = display !== '' && (isNaN(num) || num < 1 || num > 31 || !/^\d+$/.test(display));
-            return (
-              <DirtyFieldWrapper fieldKey={key}>
-                <div className="flex items-start gap-2">
-                  <Label className="w-[130px] shrink-0 text-xs pt-2">First Payment Due</Label>
-                  <div className="flex-1">
-                    <Input
-                      id={key}
-                      type="text"
-                      inputMode="numeric"
-                      value={display}
-                      onChange={(e) => {
-                        const cleaned = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
-                        setValue(key, cleaned);
-                      }}
-                      onBlur={() => {
-                        const v = (getValue(key) || '').replace(/\D/g, '');
-                        if (!v) { setValue(key, ''); return; }
-                        const n = parseInt(v, 10);
-                        if (isNaN(n) || n < 1 || n > 31) { setValue(key, ''); return; }
-                        setValue(key, String(n));
-                      }}
-                      disabled={disabled}
-                      className={cn('h-8 text-xs flex-1', invalid && 'border-destructive focus-visible:ring-destructive')}
-                      placeholder="1-31"
-                      maxLength={2}
-                    />
-                    {invalid && (
-                      <p className="text-[10px] text-destructive mt-0.5">First Payment Due must be a whole number between 1 and 31.</p>
-                    )}
-                  </div>
-                </div>
-              </DirtyFieldWrapper>
-            );
-          })()}
+          {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
+
           {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
