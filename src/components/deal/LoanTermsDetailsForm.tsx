@@ -319,7 +319,38 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
-  const ManualDateInput: React.FC<{ fieldKey: string; label: string }> = ({ fieldKey, label }) => {
+  const validateMaturityDate = (rawText: string, storedIso: string): string | null => {
+    const trimmed = (rawText || '').trim();
+    if (!trimmed) return 'Maturity Date is required.';
+    const parsed = parse(trimmed, 'MM/dd/yyyy', new Date());
+    if (!isValid(parsed) || format(parsed, 'MM/dd/yyyy') !== trimmed) {
+      return 'Please enter a valid Maturity Date.';
+    }
+    // Future date (compare by date only)
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (parsed <= today) return 'Maturity Date must be a future date.';
+
+    const noteDate = safeParseDateStr(getValue(FIELD_KEYS.origination));
+    if (noteDate && parsed <= noteDate) return 'Maturity Date must be later than the Note Date.';
+
+    const firstPayment = safeParseDateStr(getValue('loan_terms.first_payment'));
+    if (firstPayment && parsed <= firstPayment) return 'Maturity Date must be later than the First Payment Due Date.';
+
+    // Max term: 480 months from Note Date (or today as fallback)
+    const baseForTerm = noteDate || today;
+    const maxAllowed = new Date(baseForTerm);
+    maxAllowed.setMonth(maxAllowed.getMonth() + 480);
+    if (parsed > maxAllowed) return 'Loan term exceeds the maximum allowed duration.';
+
+    return null;
+  };
+
+  const ManualDateInput: React.FC<{
+    fieldKey: string;
+    label: string;
+    validate?: (rawText: string, storedIso: string) => string | null;
+    required?: boolean;
+  }> = ({ fieldKey, label, validate, required }) => {
     const stored = getValue(fieldKey);
     const display = (() => {
       const d = safeParseDateStr(stored);
@@ -327,49 +358,78 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     })();
     const [text, setText] = React.useState(display);
     React.useEffect(() => { setText(display); }, [stored]);
+    const error = validationErrors[fieldKey];
+    const runValidate = (val: string, iso: string) => {
+      if (!validate) return;
+      setValidationErrors(prev => ({ ...prev, [fieldKey]: validate(val, iso) }));
+    };
     const handleChange = (raw: string) => {
-      // Allow digits and slashes; auto-insert slashes after MM and DD
-      let v = raw.replace(/[^\d/]/g, '').slice(0, 10);
-      // Strip then re-format
-      const digits = v.replace(/\D/g, '').slice(0, 8);
+      const digits = raw.replace(/\D/g, '').slice(0, 8);
       let out = digits;
       if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
       else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
       setText(out);
+      if (out.length === 10) {
+        const parsed = parse(out, 'MM/dd/yyyy', new Date());
+        if (isValid(parsed)) {
+          const iso = format(parsed, 'yyyy-MM-dd');
+          if (iso !== stored) setValue(fieldKey, iso);
+          runValidate(out, iso);
+          return;
+        }
+      }
+      runValidate(out, stored);
     };
     const handleBlur = () => {
-      if (!text.trim()) { if (stored) setValue(fieldKey, ''); return; }
+      if (!text.trim()) {
+        if (stored) setValue(fieldKey, '');
+        runValidate('', '');
+        return;
+      }
       const parsed = parse(text, 'MM/dd/yyyy', new Date());
       if (isValid(parsed)) {
         const iso = format(parsed, 'yyyy-MM-dd');
         if (iso !== stored) setValue(fieldKey, iso);
-        setText(format(parsed, 'MM/dd/yyyy'));
+        const formatted = format(parsed, 'MM/dd/yyyy');
+        setText(formatted);
+        runValidate(formatted, iso);
       } else {
-        setText(display);
+        runValidate(text, stored);
       }
     };
     return (
       <DirtyFieldWrapper fieldKey={fieldKey}>
-        <div className="flex items-center gap-2">
-          <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
-          <Input
-            value={text}
-            onChange={(e) => handleChange(e.target.value)}
-            onBlur={handleBlur}
-            placeholder="MM/DD/YYYY"
-            inputMode="numeric"
-            maxLength={10}
-            disabled={disabled}
-            className="h-8 text-xs flex-1"
-          />
+        <div className="flex items-start gap-2">
+          <Label className="w-[130px] shrink-0 text-xs pt-1.5">
+            {label}{required && <span className="text-destructive ml-0.5">*</span>}
+          </Label>
+          <div className="flex-1">
+            <Input
+              value={text}
+              onChange={(e) => handleChange(e.target.value)}
+              onBlur={handleBlur}
+              placeholder="MM/DD/YYYY"
+              inputMode="numeric"
+              maxLength={10}
+              disabled={disabled}
+              className={cn('h-8 text-xs w-full', error && 'border-destructive')}
+              aria-invalid={!!error}
+            />
+            {error && <p className="text-destructive text-[10px] mt-0.5">{error}</p>}
+          </div>
         </div>
       </DirtyFieldWrapper>
     );
   };
 
-  const renderManualDateField = (fieldKey: string, label: string) => (
-    <ManualDateInput fieldKey={fieldKey} label={label} />
+  const renderManualDateField = (
+    fieldKey: string,
+    label: string,
+    opts?: { validate?: (rawText: string, storedIso: string) => string | null; required?: boolean }
+  ) => (
+    <ManualDateInput fieldKey={fieldKey} label={label} validate={opts?.validate} required={opts?.required} />
   );
+
 
   const renderInlineField = (fieldKey: string, label: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
@@ -616,7 +676,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
           {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
-          {renderManualDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
+          {renderManualDateField(FIELD_KEYS.maturityDate, 'Maturity Date', { validate: validateMaturityDate, required: true })}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
           {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
