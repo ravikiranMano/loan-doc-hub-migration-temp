@@ -319,6 +319,58 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  const ManualDateInput: React.FC<{ fieldKey: string; label: string }> = ({ fieldKey, label }) => {
+    const stored = getValue(fieldKey);
+    const display = (() => {
+      const d = safeParseDateStr(stored);
+      return d ? format(d, 'MM/dd/yyyy') : stored || '';
+    })();
+    const [text, setText] = React.useState(display);
+    React.useEffect(() => { setText(display); }, [stored]);
+    const handleChange = (raw: string) => {
+      // Allow digits and slashes; auto-insert slashes after MM and DD
+      let v = raw.replace(/[^\d/]/g, '').slice(0, 10);
+      // Strip then re-format
+      const digits = v.replace(/\D/g, '').slice(0, 8);
+      let out = digits;
+      if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+      else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      setText(out);
+    };
+    const handleBlur = () => {
+      if (!text.trim()) { if (stored) setValue(fieldKey, ''); return; }
+      const parsed = parse(text, 'MM/dd/yyyy', new Date());
+      if (isValid(parsed)) {
+        const iso = format(parsed, 'yyyy-MM-dd');
+        if (iso !== stored) setValue(fieldKey, iso);
+        setText(format(parsed, 'MM/dd/yyyy'));
+      } else {
+        setText(display);
+      }
+    };
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-center gap-2">
+          <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
+          <Input
+            value={text}
+            onChange={(e) => handleChange(e.target.value)}
+            onBlur={handleBlur}
+            placeholder="MM/DD/YYYY"
+            inputMode="numeric"
+            maxLength={10}
+            disabled={disabled}
+            className="h-8 text-xs flex-1"
+          />
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
+  const renderManualDateField = (fieldKey: string, label: string) => (
+    <ManualDateInput fieldKey={fieldKey} label={label} />
+  );
+
   const renderInlineField = (fieldKey: string, label: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
@@ -564,7 +616,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
           {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
-          {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity')}
+          {renderManualDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
           {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
