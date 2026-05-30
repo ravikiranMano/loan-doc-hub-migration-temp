@@ -887,6 +887,15 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
             <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold bg-muted/50" />
           </div>
         </div>
+        <div className="flex items-center gap-2 py-1">
+          <div className="text-sm font-semibold text-foreground flex-1" title="Sum of Paid to Others + Paid to Broker across all rows where 'Include in APR' is checked">
+            APR Total <span className="text-xs font-normal text-muted-foreground">(checked items)</span>
+          </div>
+          <div className="relative w-28">
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+            <Input inputMode="decimal" value={formatCurrencyDisplay(aprTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 bg-muted/50" />
+          </div>
+        </div>
       </div>
 
 
