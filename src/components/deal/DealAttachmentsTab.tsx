@@ -90,6 +90,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewAtt, setPreviewAtt] = useState<AttachmentMeta | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AttachmentMeta | null>(null);
   const [uploadForm, setUploadForm] = useState<{ file: File | null; category: string; description: string }>({
     file: null,
     category: 'Loan Documents',
