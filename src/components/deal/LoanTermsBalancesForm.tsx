@@ -329,11 +329,27 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     </DirtyFieldWrapper>
   );
 
-  // Numeric day-of-month input (1-31). Used for Payment Due Date, First Payment Due, and Next Due Date.
-  const renderDayNumberField = (key: string, label: string) => {
-    const raw = getValue(key) || '';
-    const num = raw === '' ? NaN : parseInt(raw, 10);
-    const invalid = raw !== '' && (isNaN(num) || num < 1 || num > 31 || !/^\d+$/.test(raw));
+  // Manual numeric MM/DD/YYYY entry. Stored as 'yyyy-MM-dd' (matching date pickers).
+  // Used for Payment Due Date, First Payment Due, and Next Due Date.
+  const renderManualDateField = (key: string, label: string) => {
+    const stored = getValue(key) || '';
+    // Display value = MM/DD/YYYY built from stored yyyy-MM-dd, or pass-through if user is mid-typing.
+    let display = '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stored)) {
+      const [y, m, d] = stored.split('-');
+      display = `${m}/${d}/${y}`;
+    } else {
+      display = stored; // mid-typing buffer (already MM/DD/YYYY-ish)
+    }
+    const invalid = display.length === 10 && !/^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(display);
+
+    const formatWithSlashes = (digits: string): string => {
+      const d = digits.slice(0, 8);
+      if (d.length <= 2) return d;
+      if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+      return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+    };
+
     return (
       <DirtyFieldWrapper fieldKey={key}>
         <div className="flex items-start gap-3">
@@ -343,25 +359,35 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               id={key}
               type="text"
               inputMode="numeric"
-              value={raw}
+              value={display}
               onChange={(e) => {
-                const cleaned = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
-                setValue(key, cleaned);
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+                const masked = formatWithSlashes(digits);
+                if (masked.length === 10) {
+                  const m = masked.slice(0, 2);
+                  const d = masked.slice(3, 5);
+                  const y = masked.slice(6, 10);
+                  // Persist as yyyy-MM-dd when complete; otherwise persist the partial mask so React stays in sync.
+                  setValue(key, `${y}-${m}-${d}`);
+                } else {
+                  setValue(key, masked);
+                }
               }}
               onBlur={() => {
-                const v = getValue(key);
+                const v = getValue(key) || '';
                 if (!v) return;
-                const n = parseInt(v, 10);
-                if (isNaN(n) || n < 1 || n > 31) return;
-                setValue(key, String(n));
+                // If user left a partial entry, clear it so we don't store garbage.
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                  setValue(key, '');
+                }
               }}
               disabled={disabled}
               className={cn('h-8 text-sm w-full', invalid && 'border-destructive focus-visible:ring-destructive')}
-              placeholder="1-31"
-              maxLength={2}
+              placeholder="MM/DD/YYYY"
+              maxLength={10}
             />
             {invalid && (
-              <p className="text-[10px] text-destructive mt-0.5">{label} must be a whole number between 1 and 31.</p>
+              <p className="text-[10px] text-destructive mt-0.5">{label} must be a valid MM/DD/YYYY date.</p>
             )}
           </div>
         </div>
@@ -918,12 +944,12 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {renderDayNumberField(FIELD_KEYS.dayDue, "Payment Due Date")}
+            {renderManualDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
 
-            {renderDayNumberField(FIELD_KEYS.firstPayment, "First Payment Due")}
+            {renderManualDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
             {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
             {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
-            {renderDayNumberField(FIELD_KEYS.nextPayment, "Next Due Date")}
+            {renderManualDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
             {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
