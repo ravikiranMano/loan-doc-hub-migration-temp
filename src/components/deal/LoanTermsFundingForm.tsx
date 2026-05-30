@@ -703,7 +703,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       if (record.id === id) return { ...record, ...updates };
       if (enablingRounding && record.roundingAdjustment) return { ...record, roundingAdjustment: false };
       return record;
-    }), remainingPayments, noteRate);
+    }), loanPrincipalBalance, totalPayment);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
