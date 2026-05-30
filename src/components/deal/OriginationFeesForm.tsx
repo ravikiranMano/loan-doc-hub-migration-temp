@@ -949,6 +949,11 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         upstreamLoanTermUnit={loanTermUnitUpstream}
         section800Total={section800Total}
         liensPayoffTotal={liensPayoffTotal}
+        upstreamPrepayEnabled={values['loan_terms.penalties.prepayment.enabled'] === 'true'}
+        upstreamPrepayPenaltyMonths={values['loan_terms.penalties.prepayment.penalty_months'] || ''}
+        upstreamPrepayGreaterThanPct={values['loan_terms.penalties.prepayment.greater_than'] || ''}
+        upstreamPrepayFirstYears={values['loan_terms.penalties.prepayment.first_years'] || ''}
+        upstreamLimitedNoDoc={values['loan_terms.limited_no_doc'] === 'true'}
       />
 
     </div>

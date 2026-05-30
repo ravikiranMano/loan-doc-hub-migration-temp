@@ -42,7 +42,25 @@ const FK = {
   impound_other: 'origination_fees.re885_impound_other',
   impound_other_desc: 'origination_fees.re885_impound_other_desc',
   impound_approx_amount: 'origination_fees.re885_impound_approx_amount',
+  // Section XVII – Prepayment Penalty (seeded from Loan → Article 7)
+  xvii_prepay_has: 'origination_fees.re885_xvii_prepay_has',
+  xvii_prepay_amount: 'origination_fees.re885_xvii_prepay_amount',
+  xvii_prepay_term_months: 'origination_fees.re885_xvii_prepay_term_months',
+  xvii_prepay_pct: 'origination_fees.re885_xvii_prepay_pct',
+  // Section XVIII – Documentation Type (seeded from Loan → Limited/No Doc)
+  xviii_doc_type: 'origination_fees.re885_xviii_doc_type',
+  xviii_doc_type_other: 'origination_fees.re885_xviii_doc_type_other',
 };
+
+const DOC_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'full', label: 'Full Documentation' },
+  { value: 'limited', label: 'Limited Documentation' },
+  { value: 'none', label: 'No Documentation' },
+  { value: 'stated_income', label: 'Stated Income' },
+  { value: 'sisa', label: 'SISA (Stated Income / Stated Assets)' },
+  { value: 'nina', label: 'NINA (No Income / No Assets)' },
+  { value: 'other', label: 'Other' },
+];
 
 interface RE885Props {
   getValue: (key: string) => string;
@@ -57,6 +75,13 @@ interface RE885Props {
   upstreamLoanTermUnit?: string;
   section800Total?: number;
   liensPayoffTotal?: number;
+  // Loan tab → Article 7 (Pre-payment Penalty)
+  upstreamPrepayEnabled?: boolean;
+  upstreamPrepayPenaltyMonths?: string;
+  upstreamPrepayGreaterThanPct?: string;
+  upstreamPrepayFirstYears?: string;
+  // Loan tab → Limited / No Documentation
+  upstreamLimitedNoDoc?: boolean;
 }
 
 const CurrencyInput: React.FC<{
@@ -98,6 +123,11 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   upstreamLoanTermUnit = '',
   section800Total = 0,
   liensPayoffTotal = 0,
+  upstreamPrepayEnabled = false,
+  upstreamPrepayPenaltyMonths = '',
+  upstreamPrepayGreaterThanPct = '',
+  upstreamPrepayFirstYears = '',
+  upstreamLimitedNoDoc = false,
 }) => {
   const isFixed = getBoolValue(FK.rate_type_fixed);
   const isAdjustable = getBoolValue(FK.rate_type_adjustable);
@@ -128,6 +158,26 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
       setValue(FK.loan_term_unit, upstreamLoanTermUnit);
     }
   }, [upstreamLoanTermUnit]);
+
+  // ─── Seed Section XVII (Prepayment Penalty) from Loan → Article 7 (only if untouched)
+  React.useEffect(() => {
+    if (getValue(FK.xvii_prepay_has) === '' && getValue(FK.xvii_prepay_amount) === '' &&
+        getValue(FK.xvii_prepay_term_months) === '' && getValue(FK.xvii_prepay_pct) === '') {
+      setBoolValue(FK.xvii_prepay_has, upstreamPrepayEnabled);
+      if (upstreamPrepayEnabled) {
+        if (upstreamPrepayPenaltyMonths) setValue(FK.xvii_prepay_term_months, String(upstreamPrepayPenaltyMonths));
+        if (upstreamPrepayGreaterThanPct) setValue(FK.xvii_prepay_pct, String(upstreamPrepayGreaterThanPct));
+      }
+    }
+  }, [upstreamPrepayEnabled, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
+
+  // ─── Seed Section XVIII (Documentation Type) from Loan → Limited/No Doc (only if untouched)
+  React.useEffect(() => {
+    if (!getValue(FK.xviii_doc_type)) {
+      setValue(FK.xviii_doc_type, upstreamLimitedNoDoc ? 'limited' : 'full');
+    }
+  }, [upstreamLimitedNoDoc]);
+
 
 
   // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
@@ -616,10 +666,10 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         </div>
       </div>
 
-      {/* ─── Impound (Escrow) Account ─── */}
+      {/* ─── XIV. Impound (Escrow) Account ─── */}
       <div className="space-y-0">
         <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
-          <span className="text-xs font-bold text-foreground">Impound (Escrow) Account</span>
+          <span className="text-xs font-bold text-foreground">XIV. Impound (Escrow) Account</span>
         </div>
         <div className="px-3 py-3 space-y-3 border-b border-border/30">
           <div className="flex items-start gap-1 flex-wrap">
@@ -687,6 +737,116 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             </div>
             <span className="text-xs text-foreground">per year.</span>
           </div>
+        </div>
+      </div>
+
+      {/* ─── XVII. Prepayment Penalty (from Loan → Article 7) ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">XVII. Prepayment Penalty</span>
+        </div>
+        <div className="px-3 py-1 text-[10px] italic text-muted-foreground border-b border-border/30">
+          Auto-populated from Loan → Article 7 (Pre-payment Penalty). User can override.
+        </div>
+        <div className={ROW}>
+          <span className={LBL}>Does this loan contain a prepayment penalty?</span>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getBoolValue(FK.xvii_prepay_has)}
+                onCheckedChange={(c) => setBoolValue(FK.xvii_prepay_has, !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">Yes</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={!getBoolValue(FK.xvii_prepay_has)}
+                onCheckedChange={(c) => { if (c) setBoolValue(FK.xvii_prepay_has, false); }}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">No</span>
+            </label>
+          </div>
+        </div>
+        {getBoolValue(FK.xvii_prepay_has) && (
+          <>
+            <div className={ROW}>
+              <span className={LBL}>Penalty Amount</span>
+              <div className={FIELD_W}>
+                <CurrencyInput
+                  value={getValue(FK.xvii_prepay_amount)}
+                  onChange={(v) => setValue(FK.xvii_prepay_amount, v)}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+            <div className={ROW}>
+              <span className={LBL}>Penalty Period (months)</span>
+              <div className={FIELD_W}>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={getValue(FK.xvii_prepay_term_months)}
+                  onChange={(e) => setValue(FK.xvii_prepay_term_months, e.target.value)}
+                  disabled={disabled}
+                  placeholder="0"
+                  className="h-8 text-xs text-right"
+                />
+              </div>
+            </div>
+            <div className={ROW}>
+              <span className={LBL}>Penalty % of outstanding balance</span>
+              <div className={FIELD_W}>
+                <div className="relative">
+                  <Input
+                    inputMode="decimal"
+                    value={getValue(FK.xvii_prepay_pct)}
+                    onChange={(e) => setValue(FK.xvii_prepay_pct, sanitizeInterestInput(e.target.value))}
+                    onBlur={() => { const v = normalizeInterestOnBlur(getValue(FK.xvii_prepay_pct), 3); if (v !== getValue(FK.xvii_prepay_pct)) setValue(FK.xvii_prepay_pct, v); }}
+                    disabled={disabled}
+                    placeholder="0.00"
+                    className="h-8 text-xs text-right pr-5"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">%</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ─── XVIII. Loan Documentation Type (from Loan → Limited/No Doc) ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">XVIII. Loan Documentation Type</span>
+        </div>
+        <div className="px-3 py-1 text-[10px] italic text-muted-foreground border-b border-border/30">
+          Auto-populated from Loan → Limited / No Documentation. User can override.
+        </div>
+        <div className="px-3 py-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/30">
+          {DOC_TYPE_OPTIONS.map(opt => (
+            <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getValue(FK.xviii_doc_type) === opt.value}
+                onCheckedChange={(c) => { if (c) setValue(FK.xviii_doc_type, opt.value); }}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">{opt.label}</span>
+            </label>
+          ))}
+          {getValue(FK.xviii_doc_type) === 'other' && (
+            <Input
+              value={getValue(FK.xviii_doc_type_other)}
+              onChange={(e) => setValue(FK.xviii_doc_type_other, e.target.value)}
+              disabled={disabled}
+              placeholder="Specify..."
+              className="h-7 text-xs w-40"
+            />
+          )}
         </div>
       </div>
     </div>
