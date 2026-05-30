@@ -29,6 +29,7 @@ import { ChargesSectionContent } from "@/components/deal/ChargesSectionContent";
 import { OriginationFeesSectionContent } from "@/components/deal/OriginationFeesSectionContent";
 import { NotesSectionContent } from "@/components/deal/NotesSectionContent";
 import { EventJournalViewer } from "@/components/deal/EventJournalViewer";
+import DealAttachmentsTab from "@/components/deal/DealAttachmentsTab";
 
 import { ParticipantsSectionContent } from "@/components/deal/ParticipantsSectionContent";
 import { logDealUpdated, logDealMarkedReady, logDealRevertedToDraft } from "@/hooks/useActivityLog";
