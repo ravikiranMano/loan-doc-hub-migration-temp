@@ -944,12 +944,12 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {renderDayNumberField(FIELD_KEYS.dayDue, "Payment Due Date")}
+            {renderManualDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
 
-            {renderDayNumberField(FIELD_KEYS.firstPayment, "First Payment Due")}
+            {renderManualDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
             {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
             {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
-            {renderDayNumberField(FIELD_KEYS.nextPayment, "Next Due Date")}
+            {renderManualDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
             {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
