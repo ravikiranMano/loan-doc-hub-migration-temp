@@ -148,8 +148,34 @@ export const ContactBrokerDetailForm: React.FC<Props> = ({ broker, onSave, onCan
           <EmailInput value={form.repEmail} onValueChange={(v) => set('repEmail', v)} />
         </div>
         <div>
-          <Label>License</Label>
-          <Input value={form.repLicense} onChange={(e) => set('repLicense', e.target.value)} />
+          <Label>License Number</Label>
+          {(() => {
+            const raw = form.repLicense || '';
+            const VALID = /^[A-Za-z0-9\- ]{1,50}$/;
+            const trimmed = raw.trim();
+            let error = '';
+            if (raw.length > 50) error = 'License Number cannot exceed 50 characters.';
+            else if (raw.length > 0 && (trimmed.length === 0 || !VALID.test(raw))) error = 'Please enter a valid license number.';
+            return (
+              <>
+                <Input
+                  value={raw}
+                  maxLength={50}
+                  onChange={(e) => {
+                    const filtered = e.target.value.replace(/[^A-Za-z0-9\- ]/g, '').slice(0, 50);
+                    set('repLicense', filtered);
+                  }}
+                  onBlur={(e) => {
+                    const t = e.target.value.trim();
+                    if (t !== e.target.value) set('repLicense', t);
+                  }}
+                  aria-invalid={!!error}
+                  className={error ? 'border-destructive' : ''}
+                />
+                {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+              </>
+            );
+          })()}
         </div>
       </div>
 
