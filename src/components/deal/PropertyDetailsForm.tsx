@@ -629,12 +629,19 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={formatLtv(getFieldValue(FIELD_KEYS.originationLtv)) || '—'}
-                  readOnly
+                  value={getFieldValue(FIELD_KEYS.originationLtv)}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/[^0-9.]/g, '');
+                    onValueChange(FIELD_KEYS.originationLtv, cleaned);
+                  }}
                   disabled={disabled}
-                  className="h-7 text-xs bg-muted/40"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="h-7 text-xs pr-6"
                 />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
+
             </div>
           </DirtyFieldWrapper>
           {(estValueInvalid || loanAmountInvalid) && (
