@@ -833,23 +833,24 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('1302', 'Pest Inspection', { others: FIELD_KEYS.pestInspection_others, broker: FIELD_KEYS.pestInspection_broker, apr: FIELD_KEYS.pestInspection_apr, paidToCompany: FIELD_KEYS.pestInspection_paid_to_company }, undefined, undefined, FIELD_KEYS.pestInspection_d)}
       </div>
 
-      {/* Subtotal and Total */}
+      {/* Subtotal and Total (auto-computed, read-only) */}
       <div className="space-y-1 pt-4 border-t-2 border-foreground">
         <div className="flex items-center gap-2 py-1">
           <div className="text-sm font-semibold text-foreground flex-1">Subtotal</div>
           <div className="relative w-28">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
-            <Input inputMode="decimal" value={getValue(FIELD_KEYS.subtotal_j)} onChange={(e) => setValue(FIELD_KEYS.subtotal_j, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(FIELD_KEYS.subtotal_j, val))} onBlur={() => { const raw = getValue(FIELD_KEYS.subtotal_j); if (raw) setValue(FIELD_KEYS.subtotal_j, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(FIELD_KEYS.subtotal_j); if (raw) setValue(FIELD_KEYS.subtotal_j, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-7 text-xs text-right pl-5" />
+            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 bg-muted/50" />
           </div>
         </div>
         <div className="flex items-center gap-2 py-1">
           <div className="text-sm font-bold text-foreground flex-1">Total</div>
           <div className="relative w-28">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold pointer-events-none">$</span>
-            <Input inputMode="decimal" value={getValue(FIELD_KEYS.total_j)} onChange={(e) => setValue(FIELD_KEYS.total_j, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(FIELD_KEYS.total_j, val))} onBlur={() => { const raw = getValue(FIELD_KEYS.total_j); if (raw) setValue(FIELD_KEYS.total_j, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(FIELD_KEYS.total_j); if (raw) setValue(FIELD_KEYS.total_j, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold" />
+            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold bg-muted/50" />
           </div>
         </div>
       </div>
+
 
       {/* Compensation to Broker */}
       <div className="space-y-0">
