@@ -16,8 +16,6 @@ import { useDirtyFields } from '@/contexts/DirtyFieldsContext';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
 
-/** Auto-format MM/DD/YYYY: digits only, insert slashes at positions 2 and 5. */
-function maskDateInput(raw: string): string {
 /**
  * Mask raw input toward MM/DD/YYYY without fighting the user mid-edit.
  * - Keeps only digits and `/`.
