@@ -75,6 +75,17 @@ interface RE885Props {
   upstreamLoanTermUnit?: string;
   /** Loan tab → Rate Structure (e.g. 'frm_fixed_rate' | 'arm_adjustable_rate' | 'gtm_graduated_terms') */
   upstreamRateStructure?: string;
+  /** Loan tab → Loan Type → Variable / ARM checkbox */
+  upstreamVariableArm?: boolean;
+  /** Loan tab → Current Rate (Section V — Fully Indexed) */
+  upstreamCurrentRate?: number;
+  /** Loan tab → Regular P&I (Section VII Min Monthly Payment, preferred over computed) */
+  upstreamRegularPI?: number;
+  /** Loan tab → Loan Type → Balloon Payment + Estimated Balloon */
+  upstreamBalloonEnabled?: boolean;
+  upstreamBalloonAmount?: number;
+  /** Loan tab → Penalties → Default Interest flat rate (Section VIII rate-increase %) */
+  upstreamDefaultInterestRate?: number;
   section800Total?: number;
   liensPayoffTotal?: number;
   // Loan tab → Article 7 (Pre-payment Penalty)
@@ -124,6 +135,12 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   upstreamLoanTermValue = '',
   upstreamLoanTermUnit = '',
   upstreamRateStructure = '',
+  upstreamVariableArm = false,
+  upstreamCurrentRate = 0,
+  upstreamRegularPI = 0,
+  upstreamBalloonEnabled = false,
+  upstreamBalloonAmount = 0,
+  upstreamDefaultInterestRate = 0,
   section800Total = 0,
   liensPayoffTotal = 0,
   upstreamPrepayEnabled = false,
@@ -170,34 +187,64 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   }, [upstreamLoanTermUnit]);
 
   // ─── Seed Section III rate type (Fixed / Adjustable) from Loan → Rate Structure
-  // Only when neither checkbox has been chosen yet (both false).
+  // or Loan → Loan Type → Variable/ARM. Only when neither checkbox has been chosen.
   React.useEffect(() => {
-    if (!upstreamRateStructure) return;
+    if (!upstreamRateStructure && !upstreamVariableArm) return;
     const alreadyChosen = getBoolValue(FK.rate_type_fixed) || getBoolValue(FK.rate_type_adjustable);
     if (alreadyChosen) return;
-    if (upstreamRateStructure === 'frm_fixed_rate') {
-      setBoolValue(FK.rate_type_fixed, true);
-      setBoolValue(FK.rate_type_adjustable, false);
-    } else if (
+    const adjustable =
+      upstreamVariableArm ||
       upstreamRateStructure === 'arm_adjustable_rate' ||
-      upstreamRateStructure === 'gtm_graduated_terms'
-    ) {
+      upstreamRateStructure === 'gtm_graduated_terms';
+    if (adjustable) {
       setBoolValue(FK.rate_type_adjustable, true);
       setBoolValue(FK.rate_type_fixed, false);
+    } else if (upstreamRateStructure === 'frm_fixed_rate') {
+      setBoolValue(FK.rate_type_fixed, true);
+      setBoolValue(FK.rate_type_adjustable, false);
     }
-  }, [upstreamRateStructure]);
+  }, [upstreamRateStructure, upstreamVariableArm]);
+
+  // ─── Seed Section V Fully Indexed Rate from Loan → Current Rate (adjustable only)
+  React.useEffect(() => {
+    if (upstreamCurrentRate > 0 && isEmptyOrZero(getValue(FK.v_fully_indexed_rate))) {
+      setValue(FK.v_fully_indexed_rate, upstreamCurrentRate.toFixed(4));
+    }
+  }, [upstreamCurrentRate]);
+
+  // ─── Seed Section VIII rate-increase % from Loan → Penalties → Default Interest flat rate
+  React.useEffect(() => {
+    if (upstreamDefaultInterestRate > 0 && isEmptyOrZero(getValue(FK.viii_rate_increase_pct))) {
+      setValue(FK.viii_rate_increase_pct, upstreamDefaultInterestRate.toFixed(4));
+    }
+  }, [upstreamDefaultInterestRate]);
+
+  // ─── Seed Section X Balloon from Loan → Loan Type → Balloon Payment
+  React.useEffect(() => {
+    // Only seed when user hasn't touched it (both flag and amount untouched).
+    const hasFlag = getValue(FK.x_balloon_has);
+    if (hasFlag === '' && isEmptyOrZero(getValue(FK.x_balloon_amount))) {
+      setBoolValue(FK.x_balloon_has, !!upstreamBalloonEnabled);
+      if (upstreamBalloonEnabled && upstreamBalloonAmount > 0) {
+        setValue(FK.x_balloon_amount, formatCurrencyDisplay(upstreamBalloonAmount.toFixed(2)));
+      }
+    }
+  }, [upstreamBalloonEnabled, upstreamBalloonAmount]);
 
   // ─── Seed Section XVII (Prepayment Penalty) from Loan → Article 7 (only if untouched)
+  // Per spec: penalty term in months = first_years × 12; falls back to penalty_months when years absent.
   React.useEffect(() => {
     if (getValue(FK.xvii_prepay_has) === '' && getValue(FK.xvii_prepay_amount) === '' &&
         getValue(FK.xvii_prepay_term_months) === '' && getValue(FK.xvii_prepay_pct) === '') {
       setBoolValue(FK.xvii_prepay_has, upstreamPrepayEnabled);
       if (upstreamPrepayEnabled) {
-        if (upstreamPrepayPenaltyMonths) setValue(FK.xvii_prepay_term_months, String(upstreamPrepayPenaltyMonths));
+        const years = parseNumber(upstreamPrepayFirstYears);
+        const months = years > 0 ? years * 12 : parseNumber(upstreamPrepayPenaltyMonths);
+        if (months > 0) setValue(FK.xvii_prepay_term_months, String(months));
         if (upstreamPrepayGreaterThanPct) setValue(FK.xvii_prepay_pct, String(upstreamPrepayGreaterThanPct));
       }
     }
-  }, [upstreamPrepayEnabled, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
+  }, [upstreamPrepayEnabled, upstreamPrepayFirstYears, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
 
   // ─── Seed Section XVIII (Documentation Type) from Loan → Limited/No Doc (only if untouched)
   React.useEffect(() => {
@@ -244,12 +291,15 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
   }, [subtotal]);
 
-  // ─── Section VII: auto Minimum Monthly Payment from Loan tab
-  // Standard amortization: P × r(1+r)^n / ((1+r)^n − 1)  where r = annualRate/12, n = termMonths.
-  // Adjustable section is disabled when Fixed Rate is checked, but the spec says VII should
-  // still display the calculated minimum monthly payment for the proposed loan, so we always
-  // compute and write — user can override afterwards.
+  // ─── Section VII: Minimum Monthly Payment
+  // Priority per spec:
+  //   1) Use Regular P&I from Terms & Balances when present (> 0)
+  //   2) Otherwise compute via standard amortization formula
+  //      P × r(1+r)^n / ((1+r)^n − 1), r = annualRate/12, n = termMonths
   const minMonthlyPayment = useMemo(() => {
+    if (upstreamRegularPI > 0) {
+      return Math.round(upstreamRegularPI * 100) / 100;
+    }
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount)) || upstreamLoanAmount;
     const annualRate = parseNumber(getValue(FK.interest_rate)) || upstreamInterestRate;
     const termRaw = parseNumber(getValue(FK.loan_term_value)) || parseNumber(upstreamLoanTermValue);
@@ -263,6 +313,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     if (!Number.isFinite(pmt) || pmt <= 0) return 0;
     return Math.round(pmt * 100) / 100;
   }, [
+    upstreamRegularPI,
     getValue(FK.proposed_loan_amount),
     getValue(FK.interest_rate),
     getValue(FK.loan_term_value),

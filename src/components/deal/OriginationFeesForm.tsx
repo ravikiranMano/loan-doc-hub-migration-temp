@@ -524,11 +524,12 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     if (getValue(FIELD_KEYS.coPropertyTaxes_total) !== next) setValue(FIELD_KEYS.coPropertyTaxes_total, next);
   }, [values[FIELD_KEYS.coPropertyTaxes_months], values[FIELD_KEYS.coPropertyTaxes_perMonth]]);
 
-  // ─── Upstream loan values (read from Loan tab) — widened fallback chain
+  // ─── Upstream loan values (read from Loan tab)
+  // Spec: RE 885 Section I MUST use Original Amount — never Principal Balance.
   const loanAmountUpstream = parseNumber(
-    values['loan_terms.loan_amount']
+    values['loan_terms.original_amount']
+      || values['loan_terms.loan_amount']
       || values['loan_terms.original_loan_amount']
-      || values['loan_terms.original_amount']
       || values['loan_terms.principal']
       || ''
   );
@@ -538,18 +539,23 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
       || values['loan_terms.interest_rate']
       || ''
   );
-  // Loan term value + unit from Loan tab (best-effort fallback chain)
+  // Loan term: derive from Terms & Balances → Number of Payments + Payment Frequency.
   const loanTermValueUpstream =
-    values['loan_terms.loan_term']
+    values['loan_terms.number_of_payments']
+    || values['loan_terms.loan_term']
     || values['loan_terms.term']
     || values['loan_terms.term_months']
     || values['loan_terms.term_years']
     || values['loan_terms.amortization_term']
     || '';
+  const paymentFrequencyUpstream = (values['loan_terms.payment_frequency'] || '').toLowerCase();
   const loanTermUnitUpstream =
     values['loan_terms.loan_term_unit']
     || values['loan_terms.term_unit']
-    || (values['loan_terms.term_months'] ? 'months' : values['loan_terms.term_years'] ? 'years' : '');
+    || (paymentFrequencyUpstream.includes('year') ? 'years'
+        : paymentFrequencyUpstream ? 'months'
+        : (values['loan_terms.term_years'] ? 'years' : 'months'));
+
 
   // ─── 901 Prepaid Interest: per-day = loan_amount × (rate/100/365); row total = days × per-day
   const perDayAuto = loanAmountUpstream > 0 && loanRateUpstream > 0
@@ -948,6 +954,12 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         upstreamLoanTermValue={loanTermValueUpstream}
         upstreamLoanTermUnit={loanTermUnitUpstream}
         upstreamRateStructure={values['loan_terms.rate_structure'] || ''}
+        upstreamVariableArm={values['loan_terms.variable_arm'] === 'true'}
+        upstreamCurrentRate={parseNumber(values['loan_terms.current_rate'] || '')}
+        upstreamRegularPI={parseNumber(values['loan_terms.regular_payment'] || '')}
+        upstreamBalloonEnabled={values['loan_terms.balloon_payment'] === 'true'}
+        upstreamBalloonAmount={parseNumber(values['loan_terms.estimated_balloon_payment'] || values['loan_terms.balloon_payment_amount'] || '')}
+        upstreamDefaultInterestRate={parseNumber(values['loan_terms.penalties.default_interest.flat_rate'] || '')}
         section800Total={section800Total}
         liensPayoffTotal={liensPayoffTotal}
         upstreamPrepayEnabled={values['loan_terms.penalties.prepayment.enabled'] === 'true'}
