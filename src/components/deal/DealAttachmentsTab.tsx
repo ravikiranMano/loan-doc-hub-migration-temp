@@ -284,7 +284,17 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  No attachments yet. Click Upload to add one.
+                  <div>No attachments yet.</div>
+                  {!disabled && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="mt-1 h-auto p-0 text-primary"
+                      onClick={() => setShowUploadModal(true)}
+                    >
+                      Click here to upload one
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ) : filtered.map(att => (
