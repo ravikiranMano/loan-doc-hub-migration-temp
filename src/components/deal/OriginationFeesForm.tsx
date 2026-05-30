@@ -502,28 +502,54 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     return isNaN(num) ? 0 : num;
   };
 
-  // Calculate insurance totals for 1000 section
+  // Calculate insurance totals for 1000 section (clears when months or per-month go to zero)
   useEffect(() => {
     const m = parseNumber(getValue(FIELD_KEYS.hazardInsurance_months));
     const p = parseNumber(getValue(FIELD_KEYS.hazardInsurance_perMonth));
-    if (m * p > 0) setValue(FIELD_KEYS.hazardInsurance_total, (m * p).toFixed(2));
+    const next = m > 0 && p > 0 ? formatCurrencyDisplay((m * p).toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.hazardInsurance_total) !== next) setValue(FIELD_KEYS.hazardInsurance_total, next);
   }, [values[FIELD_KEYS.hazardInsurance_months], values[FIELD_KEYS.hazardInsurance_perMonth]]);
 
   useEffect(() => {
     const m = parseNumber(getValue(FIELD_KEYS.mortgageInsurance_months));
     const p = parseNumber(getValue(FIELD_KEYS.mortgageInsurance_perMonth));
-    if (m * p > 0) setValue(FIELD_KEYS.mortgageInsurance_total, (m * p).toFixed(2));
+    const next = m > 0 && p > 0 ? formatCurrencyDisplay((m * p).toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.mortgageInsurance_total) !== next) setValue(FIELD_KEYS.mortgageInsurance_total, next);
   }, [values[FIELD_KEYS.mortgageInsurance_months], values[FIELD_KEYS.mortgageInsurance_perMonth]]);
 
   useEffect(() => {
     const m = parseNumber(getValue(FIELD_KEYS.coPropertyTaxes_months));
     const p = parseNumber(getValue(FIELD_KEYS.coPropertyTaxes_perMonth));
-    if (m * p > 0) setValue(FIELD_KEYS.coPropertyTaxes_total, (m * p).toFixed(2));
+    const next = m > 0 && p > 0 ? formatCurrencyDisplay((m * p).toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.coPropertyTaxes_total) !== next) setValue(FIELD_KEYS.coPropertyTaxes_total, next);
   }, [values[FIELD_KEYS.coPropertyTaxes_months], values[FIELD_KEYS.coPropertyTaxes_perMonth]]);
 
-  // ─── Upstream loan values (read from Loan tab)
-  const loanAmountUpstream = parseNumber(values['loan_terms.loan_amount'] || values['loan_terms.original_amount'] || '');
-  const loanRateUpstream = parseNumber(values['loan_terms.note_rate'] || values['loan_terms.current_rate'] || '');
+  // ─── Upstream loan values (read from Loan tab) — widened fallback chain
+  const loanAmountUpstream = parseNumber(
+    values['loan_terms.loan_amount']
+      || values['loan_terms.original_loan_amount']
+      || values['loan_terms.original_amount']
+      || values['loan_terms.principal']
+      || ''
+  );
+  const loanRateUpstream = parseNumber(
+    values['loan_terms.note_rate']
+      || values['loan_terms.current_rate']
+      || values['loan_terms.interest_rate']
+      || ''
+  );
+  // Loan term value + unit from Loan tab (best-effort fallback chain)
+  const loanTermValueUpstream =
+    values['loan_terms.loan_term']
+    || values['loan_terms.term']
+    || values['loan_terms.term_months']
+    || values['loan_terms.term_years']
+    || values['loan_terms.amortization_term']
+    || '';
+  const loanTermUnitUpstream =
+    values['loan_terms.loan_term_unit']
+    || values['loan_terms.term_unit']
+    || (values['loan_terms.term_months'] ? 'months' : values['loan_terms.term_years'] ? 'years' : '');
 
   // ─── 901 Prepaid Interest: per-day = loan_amount × (rate/100/365); row total = days × per-day
   const perDayAuto = loanAmountUpstream > 0 && loanRateUpstream > 0
