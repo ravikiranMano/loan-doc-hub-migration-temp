@@ -1,71 +1,99 @@
-## Goal
+# Loan Details — V3 Spec Restructure
 
-Replicate the Lender ID edit/uniqueness/cascade pattern (already shipped) for Broker and Borrower IDs.
+All changes are scoped to `src/components/deal/LoanTermsDetailsForm.tsx`. No existing field keys, save bindings, validation, or document-generation paths change. No edits to `fieldKeyMap.ts`, `legacyKeyMap.ts`, edge functions, or templates.
 
-Format rules:
-- Broker: `BR-\d{4,}` (e.g. `BR-00020`)
-- Borrower: `B-\d{4,}` (e.g. `B-00043`)
-- Uniqueness is scoped per `contact_type` (a Broker ID may coexist with a Borrower ID that has the same numeric portion, but never two Brokers with the same ID).
+## 1. Section header renames
 
-## Scope of changes
+- `Loan Type (can be multiple)` → `Loan Categories (can be multiple)`
+- `Status Categories (can be multiple)` → `Loan Status (can be multiple)`
 
-### 1. Uniqueness validation (per type)
+## 2. Details column — reorder + insert
 
-`src/hooks/useContactsCrud.ts` — extend the existing `updateContact` duplicate check (already used for Lenders) so it scopes to the contact's own `contact_type`:
-- Pre-check: `select id from contacts where contact_id = $newContactId and contact_type = $contactType and id <> $id limit 1`
-- On hit, return `{ ok: false, duplicateId: true }` → inline error in the form.
-- Keep the existing Postgres `23505` fallback for race conditions; surface the same per-type message.
+Render order in the Details column (left grid column):
 
-The DB `contacts.contact_id` UNIQUE constraint is global, which is stricter than required but doesn't block us; the UI message stays per-type ("This Broker ID already exists…" / "This Borrower ID already exists…").
+1. Company ID
+2. Previous Loan Number
+3. Parent Account (move account-checkbox row up here)
+4. Child Account
+5. Lien Position
+6. Loan Code
+7. **Project Number** (NEW — `loan.project_number`, plain text via `renderInlineField`)
+8. Assigned CSR
+9. Originating Vendor
+10. Original Loan Amount
+11. **Loan Purpose** (moved here — keep same key `FIELD_KEYS.loanPurpose`, render with existing `renderInlineSelect`. Remove from Terms column.)
+12. Recording Date
+13. Recording Number
+14. Boarding Date
+15. Maturity / DIF
+16. **Paid Off / Closed** (NEW — `loan.paid_off_date`, date via `renderInlineDateField`)
+17. Loan Number (kept; below V3 fields)
+18. Origination Date (kept)
+19. Previous Account Number (kept)
+20. Overpayments Applied To (kept)
+21. Related Party Search (kept)
 
-### 2. Editable ID field + format validation
+Loan Purpose is removed from the Terms column only; all other Terms column fields stay exactly as-is.
 
-**Broker** — `src/components/deal/BrokerInfoForm.tsx`:
-- Make the `Broker ID` input editable (currently displays `BR-00020`).
-- Uppercase + trim on change; inline regex check `/^BR-\d{4,}$/`.
-- Accept new `brokerIdError` prop for server-side duplicate message; render under the field.
+## 3. Loan Categories — append & reorder
 
-**Borrower** — there is no `BorrowerInfoForm.tsx`. The Borrower detail page renders the form fields directly inside `ContactBorrowerDetailLayout.tsx` (the `Borrower ID` input visible in screenshot 1). Make that specific input editable with the same logic, regex `/^B-\d{4,}$/`, and a local `borrowerIdError` state.
+Final order in the renamed Loan Categories column:
 
-### 3. Persist + cascade on save
+Owner Occupied, Multi-lender, Seller Carry, AITD / Wrap, Rehab / Construction, Variable / ARM, RESPA / Consumer, Unsecured, Cross Collateral, Limited / No Documentation, Balloon Payment, Subordination Provision, Pass Through, **Section 32** (NEW `loan.type_section32`), **Article 7** (NEW `loan.type_article7`), Transfer In (moved from Status), Document Prep (moved from Status), Military SCRA (moved from Status), **On Pull** (NEW `loan.type_on_pull`, label rendered with `text-green-600` / matching green token).
 
-**`src/components/contacts/broker-detail/ContactBrokerDetailLayout.tsx`** and **`src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx`**:
-- Mirror the Lender layout pattern:
-  - Local `contact` state so the header (`Broker — BR-00020` / `Borrower — B-00043`) updates immediately after save.
-  - In `handleSave`, detect ID rename, validate format, call `updateContact(id, payload, { newContactId })`.
-  - On duplicate, set the inline error and abort.
-  - On success: call `updateContactId(id, newContactId, fullName?)` from `ContactWorkspaceContext` (already exists) to rewrite the open tab label, and dispatch `window.dispatchEvent(new CustomEvent('contact-id-renamed', { detail: { contactDbId, oldContactId, newContactId, contactType } }))`.
+Moved checkboxes keep their original keys (`FIELD_KEYS.transferIn`, `FIELD_KEYS.documentPrep`, `FIELD_KEYS.statusMilitarySCRA`) — only their visual placement changes.
 
-### 4. Grid + Participants cascade
+## 4. Loan Status column
 
-- **Brokers grid** (`src/pages/contacts/ContactBrokersPage.tsx`) and **Borrowers grid** (`src/pages/contacts/ContactBorrowersPage.tsx`): after a successful rename in the detail layout's save flow, call the page's `crud.fetchContacts` (same hook already used for Lenders) so the grid reflects the new ID.
-- **Participants grid** (`src/components/deal/ParticipantsSectionContent.tsx`): the existing `contact-id-renamed` listener already calls `fetchParticipants()` — no change needed; it fires for any contact type.
-- **Loan-file ID search components** (`BrokerIdSearch`, equivalent borrower search): they read live from `contacts`, so the next dropdown open shows the new ID. No code change.
+After moving Transfer In / Document Prep / Military SCRA out, the column contains:
 
-### 5. Tab label + breadcrumbs
+- Loan Status dropdown (new options array — see §5)
+- Hold Reason (conditional)
+- Closed Reason (conditional)
+- Bankruptcy, Foreclosure, Modification, Forbearance, Litigation (kept)
+- Assignment (kept — not in V3 but preserved)
 
-`ContactWorkspaceContext.updateContactId` (already added for Lenders) is type-agnostic and will update both Broker and Borrower tab labels in `WorkspaceTabBar`. No new context work required.
+Then a new sub-header `Send:` followed by 4 rows (checkbox + label + read-only Last Sent date) using new keys:
 
-## Out of scope
+| Checkbox | Last Sent |
+|---|---|
+| `loan.send_coupon_book` | `loan.send_coupon_book_last_sent` |
+| `loan.send_pmt_statement` | `loan.send_pmt_statement_last_sent` |
+| `loan.send_late_notice` | `loan.send_late_notice_last_sent` |
+| `loan.send_balloon_notice` | `loan.send_balloon_notice_last_sent` |
 
-- No DB migration. The global UNIQUE on `contacts.contact_id` already prevents true duplicates; per-type messaging is enforced in the UI layer.
-- No historical backfill of any denormalized ID strings stored in `deal_section_values` JSONB; downstream views read live from `contacts` via joins.
-- No changes to Additional Guarantor / Authorized Party / Lender (already done) ID editing.
-- No changes to `generate_contact_id` RPC.
+Last Sent rendered as a small `<Input readOnly disabled>` showing formatted date (blank when empty). Not user-editable.
 
-## Acceptance
+Then two read-only count fields below:
 
-- Editing `BR-00020` → `BR-09999` (or `B-00043` → `B-09999`) and saving:
-  - Updates the detail header, the open workspace tab, the Brokers/Borrowers grid, and the Participants grid on any open loan file.
-  - Persists to `contacts.contact_id`.
-- Saving a duplicate within the same type shows the inline error and blocks the save.
-- Saving an invalid format (e.g. `BR-12` or `BORROWER1`) shows the format error and blocks the save.
+- **NSF Previous 12 Months** — `loan.nsf_prev_12mo` (read-only number input, label + small box)
+- **30-days Plus** — `loan.thirty_days_plus` (same style)
 
-## Files to edit
+Values are surfaced as-is from `values[...]`; system-population happens elsewhere — UI is display-only.
 
-- `src/hooks/useContactsCrud.ts` — scope duplicate pre-check by `contact_type`.
-- `src/components/deal/BrokerInfoForm.tsx` — editable Broker ID + inline validation.
-- `src/components/contacts/broker-detail/ContactBrokerDetailLayout.tsx` — save flow, local header state, tab update, rename event.
-- `src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx` — editable Borrower ID input + same save flow.
-- `src/pages/contacts/ContactBrokersPage.tsx` — refetch on successful rename.
-- `src/pages/contacts/ContactBorrowersPage.tsx` — refetch on successful rename.
+## 5. Conditional Loan Status logic
+
+Replace `LOAN_STATUS_OPTIONS` / `HOLD_REASON_OPTIONS` / `CLOSED_REASON_OPTIONS` with the exact V3 sets:
+
+- Loan Status: `Active`, `Hold`, `Closed` (blank handled by Select placeholder)
+- Hold Reason: `Document Needed`, `Fraud / Red Flag`, `Pending Payoff`, `Occupancy Concern`, `Pending Workout`, `Other`
+- Closed Reason: `Paid`, `Transfer Out (Customer)`, `Transfer Out (Company)`, `Dead`, `Charged Off`, `Other`
+
+Behaviour:
+
+- Render Hold Reason only when `loanStatus === 'hold'`; render Closed Reason only when `loanStatus === 'closed'`; otherwise hide.
+- On `loanStatus` change via the Select, if new value ≠ `hold` clear `holdReason` (`onValueChange(holdReasonKey, '')`); if new value ≠ `closed` clear `closedReason`. Blank/`Active` clears both.
+- On initial load the existing saved value drives which conditional is visible — no extra state needed.
+
+Existing field keys (`FIELD_KEYS.loanStatus`, `holdReason`, `closedReason`) are reused so persistence, doc-gen, and historical data are untouched.
+
+## 6. Out of scope / untouched
+
+- `src/lib/fieldKeyMap.ts`, `legacyKeyMap.ts`, field_dictionary, edge functions, template tag-parser, formatting helpers.
+- All Terms column fields except Loan Purpose (which only moves columns).
+- LoanTermsBalancesForm and any other tab.
+- Styling tokens — all new controls reuse existing `renderInline*` helpers and checkbox styles.
+
+## Acceptance verification
+
+After build, visually confirm: new field order, renamed headers, moved checkboxes, new Section 32 / Article 7 / On Pull (green) / Project Number / Paid Off / Closed / Send block / NSF / 30-days Plus render; Loan Status conditional show/hide + clear-on-change works; existing fields still save/load.
