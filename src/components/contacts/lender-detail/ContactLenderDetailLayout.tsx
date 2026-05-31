@@ -112,6 +112,12 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
         || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim()
         || contact.full_name;
       contactWs?.updateContactId(contact.id, requestedId, fullName);
+      // Notify open deal grids (Participants, Lenders, etc.) to refetch
+      try {
+        window.dispatchEvent(new CustomEvent('contact-id-renamed', {
+          detail: { contactDbId: contact.id, oldContactId: contact.contact_id, newContactId: requestedId },
+        }));
+      } catch { /* ignore */ }
     }
     setInitialValues({ ...values });
     setLenderIdError('');
