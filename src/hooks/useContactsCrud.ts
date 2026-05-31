@@ -173,21 +173,24 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
         }
       });
 
-      // Handle optional Lender/contact ID rename with uniqueness check
+      // Handle optional contact ID rename with per-type uniqueness check
       const requestedNewId = (opts?.newContactId || '').trim().toUpperCase();
       const currentContactId = (existing?.contact_id || '').trim();
       const willRenameId = !!requestedNewId && requestedNewId !== currentContactId;
+      const typeLabel = contactType.charAt(0).toUpperCase() + contactType.slice(1).replace(/_/g, ' ');
+      const dupMsg = `This ${typeLabel} ID already exists. Please enter a unique ID.`;
       if (willRenameId) {
         const { data: dup, error: dupErr } = await supabase
           .from('contacts')
           .select('id')
           .eq('contact_id', requestedNewId)
+          .eq('contact_type', contactType)
           .neq('id', id)
           .limit(1)
           .maybeSingle();
         if (dupErr) throw dupErr;
         if (dup) {
-          toast.error('This Lender ID already exists. Please enter a unique ID.');
+          toast.error(dupMsg);
           return false;
         }
       }
@@ -214,7 +217,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
       if (error) {
         // 23505 = unique_violation (race condition safety net)
         if ((error as any).code === '23505') {
-          toast.error('This Lender ID already exists. Please enter a unique ID.');
+          toast.error(dupMsg);
           return false;
         }
         throw error;

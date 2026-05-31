@@ -1,57 +1,71 @@
 ## Goal
 
-Allow the Lender ID on the Lender Info page to be edited, validate it is unique across all contacts, and make sure the new ID shows up everywhere it is displayed (Lender grid, Participants grid, open workspace tab, page header, etc.).
+Replicate the Lender ID edit/uniqueness/cascade pattern (already shipped) for Broker and Borrower IDs.
 
-## Current state
+Format rules:
+- Broker: `BR-\d{4,}` (e.g. `BR-00020`)
+- Borrower: `B-\d{4,}` (e.g. `B-00043`)
+- Uniqueness is scoped per `contact_type` (a Broker ID may coexist with a Borrower ID that has the same numeric portion, but never two Brokers with the same ID).
 
-- `contacts.contact_id` (e.g. `L-00055`) is the canonical Lender ID and already has a DB-level `UNIQUE` constraint.
-- On the **Lender Info** screen (`src/components/deal/LenderInfoForm.tsx`, used by `ContactLenderDetailLayout.tsx`), the Lender ID input is bound to a JSONB key `lender.lender_id`. The save path (`useContactsCrud.updateContact`) writes that key into `contact_data` but **never updates `contacts.contact_id`**, so today edits silently do nothing to the canonical ID.
-- All downstream views read the live canonical ID:
-  - Lenders grid (`ContactLendersPage`) selects `contact_id` from `contacts`.
-  - Participants grid (`ParticipantsSectionContent`) joins `deal_participants.contact_id` (uuid → `contacts.id`) and shows `contacts.contact_id` as `contact_id_display`.
-  - Lender detail header (`ContactLenderDetailLayout`) shows `contact.contact_id`.
-  - Workspace tab label is cached in `sessionStorage` via `ContactWorkspaceContext.OpenContact.contactId` and must be refreshed after a successful rename.
+## Scope of changes
 
-So the real fix is: actually persist the new ID to `contacts.contact_id`, guard it with uniqueness + format validation, and refresh the in-memory caches (open tab + parent list) so visible labels update without a reload.
+### 1. Uniqueness validation (per type)
 
-## Changes
+`src/hooks/useContactsCrud.ts` — extend the existing `updateContact` duplicate check (already used for Lenders) so it scopes to the contact's own `contact_type`:
+- Pre-check: `select id from contacts where contact_id = $newContactId and contact_type = $contactType and id <> $id limit 1`
+- On hit, return `{ ok: false, duplicateId: true }` → inline error in the form.
+- Keep the existing Postgres `23505` fallback for race conditions; surface the same per-type message.
 
-### 1. Lender Info input — make editable + inline validation
-File: `src/components/deal/LenderInfoForm.tsx`
+The DB `contacts.contact_id` UNIQUE constraint is global, which is stricter than required but doesn't block us; the UI message stays per-type ("This Broker ID already exists…" / "This Borrower ID already exists…").
 
-- Remove any disabled state on the Lender ID input; allow typing.
-- Normalize on change: uppercase, strip spaces. Enforce format `L-#####` (regex `^L-\d{4,}$`) — show inline helper text under the field when invalid.
-- Track an `idError` state surfaced under the input in destructive color; block parent save by writing the error into a shared ref / via the existing form-level validation hook the page already uses.
+### 2. Editable ID field + format validation
 
-### 2. Persist Lender ID + uniqueness check on save
-Files:
-- `src/components/contacts/lender-detail/ContactLenderDetailLayout.tsx` (caller)
-- `src/hooks/useContactsCrud.ts` (`updateContact`)
+**Broker** — `src/components/deal/BrokerInfoForm.tsx`:
+- Make the `Broker ID` input editable (currently displays `BR-00020`).
+- Uppercase + trim on change; inline regex check `/^BR-\d{4,}$/`.
+- Accept new `brokerIdError` prop for server-side duplicate message; render under the field.
 
-- In `ContactLenderDetailLayout.handleSave`, read the edited `lender.lender_id` from `values`, trim/uppercase, and pass it as a separate argument (e.g. `updateContact(id, contactData, { newContactId })`).
-- In `updateContact`:
-  - If `newContactId` is provided and differs from the current row's `contact_id`:
-    - Pre-check: `select id from contacts where contact_id = $newContactId and id <> $id limit 1`. If a row exists, toast + return `false` with reason `"This Lender ID already exists. Please enter a unique ID."` — surfaced inline by the form.
-    - Include `contact_id: newContactId` in the `update({...})` payload.
-    - Wrap the update; if it fails with Postgres `23505` (unique violation) treat it as the same duplicate error (race-safe fallback).
-- Return a structured result (`{ ok: boolean; duplicateId?: boolean; newContactId?: string }`) so the layout can show the inline error on the Lender ID field instead of (or in addition to) the toast.
+**Borrower** — there is no `BorrowerInfoForm.tsx`. The Borrower detail page renders the form fields directly inside `ContactBorrowerDetailLayout.tsx` (the `Borrower ID` input visible in screenshot 1). Make that specific input editable with the same logic, regex `/^B-\d{4,}$/`, and a local `borrowerIdError` state.
 
-### 3. Cascade the new ID to visible UI
+### 3. Persist + cascade on save
 
-- **Lender Detail header** (`ContactLenderDetailLayout`): after a successful save with a renamed ID, update local `contact.contact_id` (lift state or refetch the single contact row) so `Lender — {contact.contact_id}` re-renders.
-- **Open workspace tab**: extend `ContactWorkspaceContext` with a `updateContactId(id, newContactId, fullName?)` helper that rewrites the matching entry in `openContacts` (and persists to sessionStorage). Call it from `ContactLenderDetailLayout` after a successful rename so the tab label `L-XXXXX · Name` updates immediately.
-- **Lenders grid** (`ContactLendersPage`): the page already lists contacts from state. After `handleSave` resolves, refetch via the existing `crud.fetchContacts` call (or update the row in place using the returned `newContactId`) so the row reflects the new ID without a reload.
-- **Participants grid** (`ParticipantsSectionContent`): no code change needed — it joins on `contacts.id` and reads `contacts.contact_id` live, so the next render/refetch picks up the rename automatically. Just ensure a refetch is triggered (already happens on tab switch / focus); no additional cascade write is required because no other table stores the human Lender ID as data.
+**`src/components/contacts/broker-detail/ContactBrokerDetailLayout.tsx`** and **`src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx`**:
+- Mirror the Lender layout pattern:
+  - Local `contact` state so the header (`Broker — BR-00020` / `Borrower — B-00043`) updates immediately after save.
+  - In `handleSave`, detect ID rename, validate format, call `updateContact(id, payload, { newContactId })`.
+  - On duplicate, set the inline error and abort.
+  - On success: call `updateContactId(id, newContactId, fullName?)` from `ContactWorkspaceContext` (already exists) to rewrite the open tab label, and dispatch `window.dispatchEvent(new CustomEvent('contact-id-renamed', { detail: { contactDbId, oldContactId, newContactId, contactType } }))`.
 
-### 4. Acceptance verification
+### 4. Grid + Participants cascade
 
-- Editing `L-00055` → `L-09999` and saving:
-  - Shows the new ID in the page header, in the Lenders grid row, in the open tab label `L-09999 · John Andersan`, and in any Participants grid that lists this lender (after its normal refetch).
-  - Saving a value that matches another lender's ID blocks the save and shows `"This Lender ID already exists. Please enter a unique ID."` inline under the field.
-  - Invalid format (empty, lowercase, missing prefix) shows inline format error and blocks save.
+- **Brokers grid** (`src/pages/contacts/ContactBrokersPage.tsx`) and **Borrowers grid** (`src/pages/contacts/ContactBorrowersPage.tsx`): after a successful rename in the detail layout's save flow, call the page's `crud.fetchContacts` (same hook already used for Lenders) so the grid reflects the new ID.
+- **Participants grid** (`src/components/deal/ParticipantsSectionContent.tsx`): the existing `contact-id-renamed` listener already calls `fetchParticipants()` — no change needed; it fires for any contact type.
+- **Loan-file ID search components** (`BrokerIdSearch`, equivalent borrower search): they read live from `contacts`, so the next dropdown open shows the new ID. No code change.
+
+### 5. Tab label + breadcrumbs
+
+`ContactWorkspaceContext.updateContactId` (already added for Lenders) is type-agnostic and will update both Broker and Borrower tab labels in `WorkspaceTabBar`. No new context work required.
 
 ## Out of scope
 
-- No DB migration — the `UNIQUE (contact_id)` constraint already exists.
-- No changes to Borrower/Broker ID editing (same pattern can be applied later if requested).
-- No backfill of historical denormalized strings (none found that store the human Lender ID outside `contacts.contact_id`).
+- No DB migration. The global UNIQUE on `contacts.contact_id` already prevents true duplicates; per-type messaging is enforced in the UI layer.
+- No historical backfill of any denormalized ID strings stored in `deal_section_values` JSONB; downstream views read live from `contacts` via joins.
+- No changes to Additional Guarantor / Authorized Party / Lender (already done) ID editing.
+- No changes to `generate_contact_id` RPC.
+
+## Acceptance
+
+- Editing `BR-00020` → `BR-09999` (or `B-00043` → `B-09999`) and saving:
+  - Updates the detail header, the open workspace tab, the Brokers/Borrowers grid, and the Participants grid on any open loan file.
+  - Persists to `contacts.contact_id`.
+- Saving a duplicate within the same type shows the inline error and blocks the save.
+- Saving an invalid format (e.g. `BR-12` or `BORROWER1`) shows the format error and blocks the save.
+
+## Files to edit
+
+- `src/hooks/useContactsCrud.ts` — scope duplicate pre-check by `contact_type`.
+- `src/components/deal/BrokerInfoForm.tsx` — editable Broker ID + inline validation.
+- `src/components/contacts/broker-detail/ContactBrokerDetailLayout.tsx` — save flow, local header state, tab update, rename event.
+- `src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx` — editable Borrower ID input + same save flow.
+- `src/pages/contacts/ContactBrokersPage.tsx` — refetch on successful rename.
+- `src/pages/contacts/ContactBorrowersPage.tsx` — refetch on successful rename.
