@@ -390,14 +390,30 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return v !== undefined ? v : (Number(record.pctOwned) || 0);
   };
 
-  // Per-lender Payment (GROSS): Pro Rata × Regular P&I. Calculated independently
-  // for every lender via .map (no shared scope, no early break). Banker's
-  // rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
+  // Per-lender Payment (GROSS): each lender's share of the borrower Regular P&I,
+  // scaled by that lender's own rate (Lender Rate ÷ Note Rate). This is
+  // equivalent to:  lenderFundedAmount × lenderRate × accrualFraction
+  // because Regular P&I = loanPrincipal × noteRate × accrualFraction. When a
+  // lender's Lender Rate equals the Note Rate the result is unchanged.
+  // The Note Rate − Lender Rate gap is the servicing/broker spread and is
+  // surfaced in the Servicing / Broker income lines downstream (not lost).
+  // Banker's rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
+  const noteRateForPaymentDec = React.useMemo(
+    () => new Decimal(parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0),
+    [noteRate]
+  );
   const computedPaymentsArr = React.useMemo(() => {
     if (!fundingRecords.length) return [] as number[];
-    const exact = fundingRecords.map((_, i) => {
+    const useRateScaling = noteRateForPaymentDec.gt(0);
+    const exact = fundingRecords.map((r, i) => {
       const pct = computedPctOwnedArr[i] ?? 0;
-      return new Decimal(pct).div(100).mul(regularPIDec);
+      const base = new Decimal(pct).div(100).mul(regularPIDec);
+      if (!useRateScaling) return base;
+      const lr = Number(r.lenderRate);
+      if (!Number.isFinite(lr) || lr <= 0) return base; // no lender rate → fall back to note rate
+      const lenderRateDec = new Decimal(lr);
+      if (lenderRateDec.equals(noteRateForPaymentDec)) return base;
+      return base.mul(lenderRateDec).div(noteRateForPaymentDec);
     });
     const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
     const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
@@ -409,7 +425,7 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
       rounded[adjIdx] = rounded[adjIdx].plus(diff);
     }
     return rounded.map(d => d.toNumber());
-  }, [fundingRecords, computedPctOwnedArr, regularPIDec]);
+  }, [fundingRecords, computedPctOwnedArr, regularPIDec, noteRateForPaymentDec]);
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const i = recordIndexMap.get(record);
