@@ -113,6 +113,7 @@ interface LenderInfoFormProps {
   showValidation?: boolean;
   disabled?: boolean;
   calculationResults?: Record<string, CalculationResult>;
+  lenderIdError?: string;
 }
 
 export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
