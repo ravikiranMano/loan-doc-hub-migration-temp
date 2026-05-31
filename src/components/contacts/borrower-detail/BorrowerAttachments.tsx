@@ -267,7 +267,7 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
     { accessorKey: 'file_type', header: 'File Type', cell: ({ row }) => row.original.file_type || '—' },
     { accessorKey: 'file_size', header: 'File Size' },
     { accessorKey: 'uploader_name', header: 'Uploaded By' },
-    { accessorKey: 'uploaded_at', header: 'Uploaded Date', cell: ({ row }) => new Date(row.original.uploaded_at).toLocaleDateString() },
+    { accessorKey: 'uploaded_at', header: 'Uploaded Date', cell: ({ row }) => fmtUploadedDate(row.original.uploaded_at) },
     { accessorKey: 'version_number', header: 'Version', cell: ({ row }) => `v${row.original.version_number}` },
     {
       id: 'actions',
