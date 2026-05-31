@@ -974,8 +974,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </div>
             </div>
           </DirtyFieldWrapper>
-          {renderInlineField(TERMS_KEYS.interestSplit, 'Interest Split')}
-          {renderInlineCurrencyField(TERMS_KEYS.unearnedDiscountBalance, 'Unearned Discount Balance')}
 
         </div>
 
