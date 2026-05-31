@@ -81,9 +81,9 @@ const LOAN_STATUS_OPTIONS = [
   { value: 'closed', label: 'Closed' },
 ];
 const HOLD_REASON_OPTIONS = [
-  { value: 'w9_document_needed', label: 'W-9 / Document Needed' },
+  { value: 'w9_document_needed', label: 'Document Needed' },
   { value: 'fraud_red_flag', label: 'Fraud / Red Flag' },
-  { value: 'payment_issue', label: 'Payment Issue' },
+  { value: 'payment_issue', label: 'Pending Payoff' },
   { value: 'occupancy_concern', label: 'Occupancy Concern' },
   { value: 'pending_workout', label: 'Pending Workout' },
   { value: 'other', label: 'Other' },
@@ -93,7 +93,6 @@ const CLOSED_REASON_OPTIONS = [
   { value: 'transfer_out_customer', label: 'Transfer Out (Customer)' },
   { value: 'transfer_out_company', label: 'Transfer Out (Company)' },
   { value: 'dead', label: 'Dead' },
-  { value: 'reo', label: 'REO' },
   { value: 'charged_off', label: 'Charged Off' },
   { value: 'other', label: 'Other' },
 ];
@@ -780,27 +779,28 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Details</h3>
           {renderInlineField(FIELD_KEYS.companyId, 'Company ID')}
-          {renderValidatedField(FIELD_KEYS.loanNumber, 'Loan Number', 'loanNumber', 14)}
           {renderInlineField(FIELD_KEYS.previousLoanNumber, 'Previous Loan Number')}
-          {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
-          {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
-          {renderInlineSelect(FIELD_KEYS.originatingVendor, 'Originating Vendor', brokerOptions, 'Select Originating Vendor')}
-          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Loan Amount')}
-          {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
-          {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
-          {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
-          {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
-          {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
-          
-
-          {renderMaturityDateField(FIELD_KEYS.maturityDate, 'Maturity / DIF')}
-          {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
-          {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
-          {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
-          <div className="pt-2">
+          <div className="pt-1">
             {renderAccountRow(FIELD_KEYS.parentAccount, FIELD_KEYS.parentAccountValue, 'Parent Account')}
           </div>
           {renderAccountRow(FIELD_KEYS.childAccount, FIELD_KEYS.childAccountValue, 'Child Account')}
+          {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
+          {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
+          {renderInlineField('loan.project_number', 'Project Number')}
+          {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
+          {renderInlineSelect(FIELD_KEYS.originatingVendor, 'Originating Vendor', brokerOptions, 'Select Originating Vendor')}
+          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Loan Amount')}
+          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
+          {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
+          {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
+          {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
+          {renderMaturityDateField(FIELD_KEYS.maturityDate, 'Maturity / DIF')}
+          {renderInlineDateField('loan.paid_off_date', 'Paid Off / Closed')}
+          {renderValidatedField(FIELD_KEYS.loanNumber, 'Loan Number', 'loanNumber', 14)}
+          {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
+          {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
+          {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
+          {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
         </div>
 
         {/* Terms Column */}
@@ -855,10 +855,9 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </DirtyFieldWrapper>
             );
           })()}
-          
+
           {(() => {
             const rs = getValue(FIELD_KEYS.rateStructure);
-            const note = getValue('loan_terms.note_rate');
             const cur = getValue('loan_terms.current_rate');
             let hint = '';
             if (rs === 'frm_fixed_rate') hint = 'Auto: Note Rate';
@@ -883,7 +882,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </DirtyFieldWrapper>
             );
           })()}
-          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
           {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
           {getValue(FIELD_KEYS.rateStructure) === 'other' && (
             renderInlineField(FIELD_KEYS.rateStructureOther, 'Other (specify)')
@@ -891,13 +889,12 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
           {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
           {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
-          
           {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
         </div>
 
-        {/* Loan Type Column */}
+        {/* Loan Categories Column */}
         <div className="space-y-1.5">
-          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Type (can be multiple)</h3>
+          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Categories (can be multiple)</h3>
           {renderInlineCheckbox(FIELD_KEYS.ownerOccupied, 'Owner Occupied')}
           {renderInlineCheckbox(FIELD_KEYS.multiLender, 'Multi-lender')}
           {renderInlineCheckbox(FIELD_KEYS.sellerCarry, 'Seller Carry')}
@@ -911,24 +908,128 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineCheckbox(FIELD_KEYS.balloonPayment, 'Balloon Payment')}
           {renderInlineCheckbox(FIELD_KEYS.subordinationProvision, 'Subordination Provision')}
           {renderInlineCheckbox(FIELD_KEYS.passThrough, 'Pass Through')}
+          {renderInlineCheckbox('loan.type_section32', 'Section 32')}
+          {renderInlineCheckbox('loan.type_article7', 'Article 7')}
+          {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
+          {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
+          {renderInlineCheckbox(FIELD_KEYS.statusMilitarySCRA, 'Military SCRA')}
+          <DirtyFieldWrapper fieldKey="loan.type_on_pull">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="loan.type_on_pull"
+                checked={getBoolValue('loan.type_on_pull')}
+                onCheckedChange={(c) => setBoolValue('loan.type_on_pull', !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <Label htmlFor="loan.type_on_pull" className="font-normal cursor-pointer text-xs text-green-600">On Pull</Label>
+            </div>
+          </DirtyFieldWrapper>
         </div>
 
-        {/* Status Categories Column */}
+        {/* Loan Status Column */}
         <div className="space-y-1.5">
-          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Status Categories (can be multiple)</h3>
-          {renderInlineSelect(FIELD_KEYS.loanStatus, 'Loan Status', LOAN_STATUS_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.holdReason, 'Hold Reason', HOLD_REASON_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.closedReason, 'Closed Reason', CLOSED_REASON_OPTIONS, 'Select')}
-          {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
-          {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
+          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Status (can be multiple)</h3>
+          {(() => {
+            const status = getValue(FIELD_KEYS.loanStatus);
+            return (
+              <>
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.loanStatus}>
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[130px] shrink-0 text-xs">Loan Status</Label>
+                    <Select
+                      value={status}
+                      onValueChange={(value) => {
+                        setValue(FIELD_KEYS.loanStatus, value);
+                        if (value !== 'hold' && getValue(FIELD_KEYS.holdReason)) {
+                          setValue(FIELD_KEYS.holdReason, '');
+                        }
+                        if (value !== 'closed' && getValue(FIELD_KEYS.closedReason)) {
+                          setValue(FIELD_KEYS.closedReason, '');
+                        }
+                      }}
+                      disabled={disabled}
+                    >
+                      <SelectTrigger className="h-8 text-xs flex-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>
+                        {LOAN_STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DirtyFieldWrapper>
+                {status === 'hold' && renderInlineSelect(FIELD_KEYS.holdReason, 'Hold Reason', HOLD_REASON_OPTIONS, 'Select')}
+                {status === 'closed' && renderInlineSelect(FIELD_KEYS.closedReason, 'Closed Reason', CLOSED_REASON_OPTIONS, 'Select')}
+              </>
+            );
+          })()}
           {renderInlineCheckbox(FIELD_KEYS.statusBankruptcy, 'Bankruptcy')}
           {renderInlineCheckbox(FIELD_KEYS.statusForeclosure, 'Foreclosure')}
           {renderInlineCheckbox(FIELD_KEYS.statusModification, 'Modification')}
           {renderInlineCheckbox(FIELD_KEYS.statusForbearance, 'Forbearance')}
           {renderInlineCheckbox(FIELD_KEYS.statusAssignment, 'Assignment')}
           {renderInlineCheckbox(FIELD_KEYS.statusLitigation, 'Litigation')}
-          {renderInlineCheckbox(FIELD_KEYS.statusMilitarySCRA, 'Military SCRA')}
+
+          {/* Send block */}
+          <div className="pt-3">
+            <h4 className="font-semibold text-xs text-foreground mb-2">Send:</h4>
+            {[
+              { label: 'Coupon Book', cb: 'loan.send_coupon_book', ls: 'loan.send_coupon_book_last_sent' },
+              { label: 'Payment Statement', cb: 'loan.send_pmt_statement', ls: 'loan.send_pmt_statement_last_sent' },
+              { label: 'Late Notice', cb: 'loan.send_late_notice', ls: 'loan.send_late_notice_last_sent' },
+              { label: 'Balloon / DIF Notice', cb: 'loan.send_balloon_notice', ls: 'loan.send_balloon_notice_last_sent' },
+            ].map(row => {
+              const lastSentRaw = getValue(row.ls);
+              const lastSentDisplay = (() => {
+                const d = safeParseDateStr(lastSentRaw);
+                return d ? format(d, 'MM/dd/yyyy') : lastSentRaw || '';
+              })();
+              return (
+                <div key={row.cb} className="flex items-center gap-2 mb-1.5">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <Checkbox
+                      id={row.cb}
+                      checked={getBoolValue(row.cb)}
+                      onCheckedChange={(c) => setBoolValue(row.cb, !!c)}
+                      disabled={disabled}
+                      className="h-3.5 w-3.5"
+                    />
+                    <Label htmlFor={row.cb} className="font-normal cursor-pointer text-xs flex-1">{row.label}</Label>
+                  </div>
+                  <Input
+                    value={lastSentDisplay}
+                    readOnly
+                    disabled
+                    placeholder="Last Sent"
+                    className="h-8 text-xs w-[110px] bg-muted/40"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* NSF / 30-days Plus */}
+          <div className="pt-2 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Label className="flex-1 text-xs">NSF Previous 12 Months</Label>
+              <Input
+                value={getValue('loan.nsf_prev_12mo')}
+                readOnly
+                disabled
+                className="h-8 text-xs w-[110px] bg-muted/40"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="flex-1 text-xs">30-days Plus</Label>
+              <Input
+                value={getValue('loan.thirty_days_plus')}
+                readOnly
+                disabled
+                className="h-8 text-xs w-[110px] bg-muted/40"
+              />
+            </div>
+          </div>
         </div>
+
       </div>
 
       {/* Adjustable / Graduated Loan Details - shown for ARM or GTM */}
