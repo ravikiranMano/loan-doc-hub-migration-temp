@@ -161,24 +161,14 @@ export const LienModal: React.FC<LienModalProps> = ({ open, onOpenChange, lien, 
       return (
         <div className="flex items-center gap-2">
           <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
-          <Popover open={datePickerStates[field] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [field]: open }))}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground', forceDisabled && 'opacity-50 cursor-not-allowed')} disabled={forceDisabled}>
-                {val && safeParseDateStr(val) ? format(safeParseDateStr(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar
-                mode="single"
-                selected={safeParseDateStr(val)}
-                onSelect={(date) => { if (date) handleChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-                onClear={() => { handleChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-                onToday={() => { handleChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+          <div className={cn('flex-1', forceDisabled && 'opacity-50 cursor-not-allowed')}>
+            <TypableDateField
+              value={String(val || '')}
+              onChange={(iso) => handleChange(field, iso)}
+              disabled={forceDisabled}
+              inputClassName="h-7 text-xs"
+            />
+          </div>
         </div>
       );
     }
