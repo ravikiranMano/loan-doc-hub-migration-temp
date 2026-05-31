@@ -284,7 +284,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   };
 
   const [datePickerStates, setDatePickerStates] = useState<Record<string, boolean>>({});
-  const [maturityText, setMaturityText] = useState<string>('');
+  const [maturityText, setMaturityText] = useState<string | null>(null);
   const [maturityTouched, setMaturityTouched] = useState<boolean>(false);
 
   const safeParseDateStr = (val: string): Date | undefined => {
