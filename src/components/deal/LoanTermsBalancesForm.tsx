@@ -1202,16 +1202,16 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Balances</h3>
           <div className="space-y-2">
             {renderCurrencyField(FIELD_KEYS.principal, "Principal Balance")}
-            {renderCurrencyField(FIELD_KEYS.unpaidLateCharges, "Unpaid Late Charges")}
-            {renderCurrencyField(FIELD_KEYS.accruedLateCharges, "Accrued Late Charges")}
-            {renderCurrencyField(FIELD_KEYS.unpaidInterest, "Unpaid Interest")}
-            {renderCurrencyField(FIELD_KEYS.accruedInterest, "Accrued Interest")}
-            {renderCurrencyField(FIELD_KEYS.interestGuarantee, "Interest Guarantee")}
-            {renderCurrencyField(FIELD_KEYS.unpaidDefaultInterest, "Unpaid Default Interest")}
-            {renderCurrencyField(FIELD_KEYS.accruedDefaultInterest, "Accrued Default Interest")}
-            {renderCurrencyField(FIELD_KEYS.chargesOwed, "Charges Owed")}
-            {renderCurrencyField(FIELD_KEYS.chargesInterest, "Interest on Charges Owed")}
-            {renderCurrencyField(FIELD_KEYS.unpaidOther, "Unpaid Other Payments")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidLateCharges, "Unpaid Late Charges")}
+            {renderEditableBalanceField(FIELD_KEYS.accruedLateCharges, "Accrued Late Charges")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidInterest, "Unpaid Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.accruedInterest, "Accrued Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.interestGuarantee, "Interest Guarantee")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidDefaultInterest, "Unpaid Default Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.accruedDefaultInterest, "Accrued Default Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.chargesOwed, "Charges Owed")}
+            {renderEditableBalanceField(FIELD_KEYS.chargesInterest, "Interest on Charges Owed")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidOther, "Unpaid Other Payments")}
             {renderReadOnlyCurrencyField(
               calculatedAmountToReinstate,
               "Amount to Reinstate",
