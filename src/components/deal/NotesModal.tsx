@@ -411,6 +411,7 @@ export const NotesModal: React.FC<NotesModalProps> = ({
                     </div>
                   </PopoverContent>
                 </Popover>
+                </div>
               </div>
             </div>
 
