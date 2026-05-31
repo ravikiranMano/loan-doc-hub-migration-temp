@@ -1,49 +1,70 @@
-## Prompt 1 — Loan Details: On Pull style + reorder Terms fields
+## Root cause
 
-**File:** `src/components/deal/LoanTermsDetailsForm.tsx`
+`DateMaskedInput` inside `src/components/deal/DealFieldInput.tsx` (lines 56–72) keeps its own local `typed` state for the visible MM/DD/YYYY text and only re-syncs to the upstream `displayValue` when the input is **not** focused:
 
-### Change 1 — On Pull label style (line 929)
-Remove the green color classes so On Pull matches Military SCRA exactly.
-- Replace `className="font-semibold cursor-pointer text-xs text-green-600 dark:text-green-500"` with the same className used by other checkbox labels (matches Military SCRA's `renderInlineCheckbox` output).
-- Switch the whole block from the inline custom render to `renderInlineCheckbox(NEW_KEYS.typeOnPull, 'On Pull')` to guarantee identical style (same helper, same classes, same DirtyFieldWrapper).
+```ts
+const [typed, setTyped] = useState<string>(displayValue);
+React.useEffect(() => {
+  if (document.activeElement !== inputRef.current) {
+    setTyped(displayValue);
+    setTypedError(false);
+  }
+}, [displayValue]);
+```
 
-### Change 2 — Move the 5 dropdowns from Loan Status column → Loan Categories column, directly after Current Rate
-Currently (lines 1099–1110) `Rate Structure`, `Amortization`, `Interest Calculation`, `Calculation Period`, `Processing Unpaid Interest` are rendered at the bottom of the **Loan Status** column.
+Repro path that breaks:
+1. User types `06/15/2026` into the input → input has focus, `typed = "06/15/2026"`, canonical is saved.
+2. User clicks the calendar icon and picks `11/03/2024`.
+3. The text input often retains focus (the popover trigger is a sibling button, and React’s Popover doesn’t blur the input). `handleDateSelect` runs, parent `value` becomes `2024-11-03`, so `displayValue` recomputes to `11/03/2024`.
+4. The sync effect fires but `document.activeElement === inputRef.current`, so it bails. `typed` stays `06/15/2026`. Storage is correct; only the visible text is stale — exactly the reported symptom.
 
-- **Remove** that block (lines 1099–1110) from the Loan Status column.
-- **Insert** the same 5 `renderInlineSelect(...)` calls in the **Loan Categories** column immediately after the Current Rate block (after line 976, before the column's closing `</div>` at line 978), in this exact order:
-  1. Rate Structure
-  2. Amortization
-  3. Interest Calculation
-  4. Calculation Period
-  5. Processing Unpaid Interest
+`TypableDateField` (`src/components/ui/typable-date-field.tsx`) has the identical focus-gated sync (lines 116–121) but its calendar `onSelect` calls `setTyped(format(...))` explicitly, so it’s safer. We’ll harden it the same way for parity.
 
-No props, no keys, no option lists, no validators changed. Save/load bindings (`FIELD_KEYS.rateStructure`, `.amortization`, `.interestCalculation`, `.calculationPeriod`, `.processingUnpaidInterest`) are reused as-is. The downstream conditional "Adjustable / Graduated Loan Details" block keeps working because it reads `getValue(FIELD_KEYS.rateStructure)`.
+## Fix
 
----
+Distinguish **“user is typing”** from **“value changed externally”** instead of using focus as the gate.
 
-## Prompt 2 — Escrow Impound: Remove Loan Purpose
+Track the canonical value last produced by *our own* keystroke handler. Any other change to the upstream canonical value is, by definition, external (calendar pick, Clear, Today, record load, programmatic reset) and must overwrite `typed` even when the input is focused.
 
-**Confirmed safe**: The two Loan Purpose fields are stored under **different keys** in `field_dictionary`:
-- Loan Details → `ln_p_loanPurpos` (section `loan_terms`) — **kept**
-- Escrow Impound → `es_p_loanPurpos` (section `escrow`) — **hidden from this screen**
+### `src/components/deal/DealFieldInput.tsx` — `DateMaskedInput`
 
-**File:** `src/components/deal/EscrowImpoundForm.tsx`
+- Add `lastSelfCanonicalRef = useRef<string | null>(null)`.
+- In `handleTextChange`, when calling `onChangeCanonical(...)`, set `lastSelfCanonicalRef.current = <value just pushed up>` (both the empty-string branch and the parsed-date branch).
+- Replace the sync effect so it depends on the canonical `value` (not just `displayValue`) and re-syncs whenever the incoming canonical value differs from what we last pushed up ourselves:
+  ```ts
+  React.useEffect(() => {
+    if (value !== lastSelfCanonicalRef.current) {
+      // External change: calendar pick, Clear, Today, parent reset.
+      setTyped(displayValue);
+      setTypedError(false);
+      lastSelfCanonicalRef.current = value;
+    }
+  }, [value, displayValue]);
+  ```
+- Initialize `lastSelfCanonicalRef.current = value` on mount so the first user keystroke isn’t treated as external.
 
-- Extend the existing field-filter pattern (the same approach already used for `frequencyField` and `isHiddenDuplicate`) to also drop `es_p_loanPurpos` from `remainingFields` before it's passed to `DealSectionTab`. Add the key to a small `HIDDEN_KEYS` set and exclude in the filter.
-- Layout is a 2-col grid — removing one cell reflows cleanly with no empty slot.
-- No data migration, no dictionary edits, no impact on Loan Details Loan Purpose.
+This guarantees calendar Select / Clear / Today / record-load always refresh the full MM/DD/YYYY, while keystrokes never clobber the user’s in-progress text or reset the caret (the existing `requestAnimationFrame` caret-restore stays intact and only runs inside `handleTextChange`).
 
----
+### `src/components/ui/typable-date-field.tsx` — `TypableDateField`
+
+Apply the same `lastSelfCanonicalRef` pattern to the effect at lines 116–121:
+
+- In `handleChange`, set `lastSelfCanonicalRef.current` to whatever it passes to `onChange` (`''` on clear, `formatDateOnly(parsed)` on full 8-digit commit).
+- In `commit` (blur), do the same on success.
+- In the sync effect, re-sync `typed` from `upstreamDisplay` whenever `value !== lastSelfCanonicalRef.current`, regardless of focus.
+- Leave the existing `useLayoutEffect` caret-restore alone (it only runs when `pendingCaretRef.current != null`, which is set only by keystrokes — external syncs won’t trigger it, so no caret jump).
 
 ## Out of scope
-- No field-dictionary changes, no migrations, no save flow / persistence / validation changes.
-- No edge-function / document-generation changes (no template tag uses `es_p_loanPurpos` for output — the field merely persists; existing values, if any, remain in `deal_section_values` untouched).
-- No other field, label, color, or layout altered.
+
+- No changes to `dateOnly.ts`, storage format, calendar UI, or parent forms.
+- No data/merge/save logic changes.
+- `PropertyLiensForm`’s read-only popover trigger (no manual typing) doesn’t exhibit the bug; no change needed.
 
 ## Verification
-1. Loan Details → On Pull renders identical to Military SCRA (same neutral text color, same weight, same checkbox size).
-2. Loan Categories column order below the checkboxes: Day Due → Current Rate → Rate Structure → Amortization → Interest Calculation → Calculation Period → Processing Unpaid Interest, with no gap.
-3. Loan Status column no longer shows those 5 dropdowns; existing NSF / 30-days Plus stay in place.
-4. Change each of the 5 dropdowns → Save Draft → reload → values persist (same keys as before).
-5. Escrow Impound: Loan Purpose row gone, neighboring fields reflow with no empty cell; Loan Details Loan Purpose still saves/loads normally.
+
+- Type `06/15/2026` → pick `11/03/2024` → field shows `11/03/2024` fully.
+- Pick → Clear → pick again → display always matches.
+- Today button updates display.
+- Load existing record → display matches stored value.
+- Typing: caret stays put, partials like `06/14/192` aren’t clobbered, no cursor jump to end.
+- Manual typing of full date still updates calendar selection (reverse direction unchanged).

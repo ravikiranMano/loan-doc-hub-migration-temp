@@ -61,15 +61,22 @@ const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
   const [typed, setTyped] = useState<string>(displayValue);
   const [typedError, setTypedError] = useState(false);
 
-  // Re-sync local typed text when the upstream value changes (e.g. calendar pick,
-  // Today/Clear, or parent reset) — only when the input isn't focused.
+  // Track the canonical value we ourselves last pushed up via onChangeCanonical.
+  // Any incoming `value` that differs from this ref is, by definition, an
+  // external change (calendar pick, Clear, Today, parent reset / record load)
+  // and must overwrite the visible text — even when the input has focus.
+  // Using focus as the gate (the previous approach) failed because clicking the
+  // calendar icon often left focus on the input, so calendar picks left the
+  // displayed text stale while the stored canonical updated correctly.
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const lastSelfCanonicalRef = React.useRef<string>(value);
   React.useEffect(() => {
-    if (document.activeElement !== inputRef.current) {
+    if (value !== lastSelfCanonicalRef.current) {
       setTyped(displayValue);
       setTypedError(false);
+      lastSelfCanonicalRef.current = value;
     }
-  }, [displayValue]);
+  }, [value, displayValue]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target as HTMLInputElement;
@@ -108,13 +115,16 @@ const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
 
     if (masked === '') {
       setTypedError(false);
+      lastSelfCanonicalRef.current = '';
       onChangeCanonical('');
       return;
     }
     const parsed = parseDisplayDate(masked);
     if (parsed) {
       setTypedError(false);
-      onChangeCanonical(formatDateOnly(parsed));
+      const canonical = formatDateOnly(parsed);
+      lastSelfCanonicalRef.current = canonical;
+      onChangeCanonical(canonical);
     }
     // Partial / not-yet-valid input: keep typing without error noise.
   };
