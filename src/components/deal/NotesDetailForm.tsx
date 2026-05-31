@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RichTextEditor } from './RichTextEditor';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { TypableDateField } from '@/components/ui/typable-date-field';
+import { parseDisplayDate, formatDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { NoteData, AttachmentMeta } from './NotesTableView';
