@@ -1,4 +1,11 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { format as formatDate } from 'date-fns';
+
+const fmtUploadedDate = (v?: string) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '—' : formatDate(d, 'MM/dd/yyyy');
+};
 import { Plus, Search, Trash2, Download, Loader2, Eye, Pencil, Upload, X, Filter, Columns, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -260,7 +267,7 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
     { accessorKey: 'file_type', header: 'File Type', cell: ({ row }) => row.original.file_type || '—' },
     { accessorKey: 'file_size', header: 'File Size' },
     { accessorKey: 'uploader_name', header: 'Uploaded By' },
-    { accessorKey: 'uploaded_at', header: 'Uploaded Date', cell: ({ row }) => new Date(row.original.uploaded_at).toLocaleDateString() },
+    { accessorKey: 'uploaded_at', header: 'Uploaded Date', cell: ({ row }) => fmtUploadedDate(row.original.uploaded_at) },
     { accessorKey: 'version_number', header: 'Version', cell: ({ row }) => `v${row.original.version_number}` },
     {
       id: 'actions',
@@ -314,7 +321,7 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
     'File Type': a.file_type || '',
     'File Size': a.file_size || '',
     'Uploaded By': a.uploader_name || '',
-    'Uploaded Date': new Date(a.uploaded_at).toLocaleDateString(),
+    'Uploaded Date': fmtUploadedDate(a.uploaded_at),
     Version: a.version_number,
   }));
 

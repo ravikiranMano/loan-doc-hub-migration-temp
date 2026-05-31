@@ -1,4 +1,11 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { format as formatDate } from 'date-fns';
+
+const fmtUploadedDate = (v?: string) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '—' : formatDate(d, 'MM/dd/yyyy');
+};
 import { Plus, Search, Trash2, Download, Loader2, Eye, Upload, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -301,7 +308,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
                 <TableCell><Badge variant="outline">{att.category}</Badge></TableCell>
                 <TableCell className="text-xs text-muted-foreground max-w-[260px] truncate">{att.description || '—'}</TableCell>
                 <TableCell className="text-xs">{att.uploader_name}</TableCell>
-                <TableCell className="text-xs">{new Date(att.uploaded_at).toLocaleDateString()}</TableCell>
+                <TableCell className="text-xs">{fmtUploadedDate(att.uploaded_at)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => handlePreview(att)} title="Preview">
