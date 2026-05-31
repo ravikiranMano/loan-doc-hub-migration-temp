@@ -173,6 +173,7 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
             values={values}
             onValueChange={handleValueChange}
             disabled={isReadOnly}
+            lenderIdError={lenderIdError}
           />
         );
       case 'authorized-party':
