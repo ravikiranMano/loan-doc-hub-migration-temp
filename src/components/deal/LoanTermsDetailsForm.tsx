@@ -914,24 +914,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
           {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
           {renderInlineCheckbox(FIELD_KEYS.statusMilitarySCRA, 'Military SCRA')}
-          {/* On Pull — green label per V3 spec */}
-          <DirtyFieldWrapper fieldKey={NEW_KEYS.typeOnPull}>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id={NEW_KEYS.typeOnPull}
-                checked={getBoolValue(NEW_KEYS.typeOnPull)}
-                onCheckedChange={(c) => setBoolValue(NEW_KEYS.typeOnPull, !!c)}
-                disabled={disabled}
-                className="h-3.5 w-3.5"
-              />
-              <Label
-                htmlFor={NEW_KEYS.typeOnPull}
-                className="font-semibold cursor-pointer text-xs text-green-600 dark:text-green-500"
-              >
-                On Pull
-              </Label>
-            </div>
-          </DirtyFieldWrapper>
+          {renderInlineCheckbox(NEW_KEYS.typeOnPull, 'On Pull')}
 
           {/* Terms fields — placed directly below On Pull per V3 spec.
               Storage keys mirror LOAN_TERMS_BALANCES_KEYS so save/load is identical. */}
@@ -974,6 +957,14 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </div>
             </div>
           </DirtyFieldWrapper>
+
+          {/* Terms dropdowns — moved here from Loan Status column per spec.
+              Same storage bindings, no functional change. */}
+          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
 
         </div>
 
