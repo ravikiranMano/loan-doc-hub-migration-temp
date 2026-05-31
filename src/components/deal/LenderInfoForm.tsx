@@ -359,28 +359,16 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 disabled={disabled}
               />
               <Label className="text-sm text-muted-foreground flex-1">Agreement on File</Label>
-              <Popover open={agreementDateOpen} onOpenChange={setAgreementDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn("h-7 text-xs w-[120px]", !getValue('servicingAgreementOnFileDate') && "text-muted-foreground")}
-                    disabled={disabled || !getBoolValue('servicingAgreementOnFile')}
-                  >
-                    {safeFormatDate(getValue('servicingAgreementOnFileDate'), 'MM/dd/yyyy') || 'Date'}
-                    <CalendarIcon className="ml-auto h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseDateStr(getValue('servicingAgreementOnFileDate'))}
-                    onSelect={(date) => { handleChange('servicingAgreementOnFileDate', date ? format(date, 'yyyy-MM-dd') : ''); setAgreementDateOpen(false); }}
-                    onClear={() => { handleChange('servicingAgreementOnFileDate', ''); setAgreementDateOpen(false); }}
-                    onToday={() => { handleChange('servicingAgreementOnFileDate', format(new Date(), 'yyyy-MM-dd')); setAgreementDateOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="w-[140px]">
+                <TypableDateField
+                  value={getValue('servicingAgreementOnFileDate') || ''}
+                  onChange={(iso) => handleChange('servicingAgreementOnFileDate', iso)}
+                  disabled={disabled || !getBoolValue('servicingAgreementOnFile')}
+                  inputClassName="h-7 text-xs"
+                  ariaLabel="Agreement on File date"
+                />
+              </div>
+
             </div>)}
 
             {wrapField('investorQuestionnaireDue', <div className="flex items-center gap-2">
