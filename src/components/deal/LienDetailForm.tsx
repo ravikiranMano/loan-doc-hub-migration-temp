@@ -557,17 +557,15 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
                     </div>
                   </DirtyFieldWrapper>
                   <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltLenderNotifiedDate} className="flex-1">
-                    <Popover open={!lenderNotifiedDisabled && (datePickerStates['sltLenderNotifiedDate'] || false)} onOpenChange={(open) => { if (lenderNotifiedDisabled) return; setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: open })); }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltLenderNotifiedDate && 'text-muted-foreground', lenderNotifiedDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || lenderNotifiedDisabled}>
-                          {lien.sltLenderNotifiedDate && safeParseDateStr(lien.sltLenderNotifiedDate) ? format(safeParseDateStr(lien.sltLenderNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
-                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltLenderNotifiedDate)} onSelect={(date) => { if (date) onChange('sltLenderNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onClear={() => { onChange('sltLenderNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onToday={() => { onChange('sltLenderNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <div className={cn(lenderNotifiedDisabled && 'opacity-50 cursor-not-allowed')}>
+                      <TypableDateField
+                        value={lien.sltLenderNotifiedDate || ''}
+                        onChange={(iso) => onChange('sltLenderNotifiedDate', iso)}
+                        disabled={disabled || lenderNotifiedDisabled}
+                        inputClassName="h-7 text-sm"
+                        placeholder="Date"
+                      />
+                    </div>
                   </DirtyFieldWrapper>
                 </div>
               </>
