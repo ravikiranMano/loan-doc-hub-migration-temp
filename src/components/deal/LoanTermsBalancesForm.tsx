@@ -382,7 +382,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
         <div className="space-y-3">
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Terms</h3>
           <div className="space-y-2">
-            {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Amount")}
+            {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Loan Amount")}
             {renderPercentField(FIELD_KEYS.noteRate, "Note Rate")}
 
             {/* Sold Rate with checkbox + single editable % field.
@@ -455,7 +455,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
             {/* Unearned Discount Balance */}
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>Unearned Disc. Bal.</Label>
+              <Label className={LABEL_CLASS}>Unearned Discount Balance</Label>
               <div className="relative flex-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
                 <Input
@@ -472,7 +472,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
             {/* Accrual Method */}
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>Accrual Method</Label>
+              <Label className={LABEL_CLASS}>UDB Accrual Method</Label>
               <Select
                 value={getValue(FIELD_KEYS.accrualMethod)}
                 onValueChange={(value) => setValue(FIELD_KEYS.accrualMethod, value)}
@@ -553,7 +553,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     className="h-3.5 w-3.5"
                   />
                   <Label htmlFor={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`} className="text-sm">
-                    Funding Holdback
+                    Initial Funding Holdback
                   </Label>
                 </div>
                 <p className="text-xs text-muted-foreground pl-5">Held By</p>
@@ -734,7 +734,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                       disabled={disabled}
                       className="h-3.5 w-3.5"
                     />
-                    <Label htmlFor={`${FIELD_KEYS.payAutomatically}-cb`} className="text-sm">Pay Automatically</Label>
+                    <Label htmlFor={`${FIELD_KEYS.payAutomatically}-cb`} className="text-sm">Pay Unpaid Automatically</Label>
                   </div>
                 </DirtyFieldWrapper>
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.calculateInterestOnInterest}>
@@ -820,7 +820,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   htmlFor={`${FIELD_KEYS.acceptPostMaturity}-cb`}
                   className="text-sm"
                 >
-                  Accept Post-maturity
+                  Accept Payments Post Maturity
                 </Label>
               </div>
 
@@ -853,7 +853,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                       className="h-3.5 w-3.5"
                     />
                     <Label htmlFor={`${FIELD_KEYS.overrideFundsHeld}-cb`} className="text-sm">
-                      Override Funds Held
+                      Override Hold Days
                     </Label>
                   </div>
                   <p className="text-xs text-muted-foreground pl-5">Hold Days</p>
@@ -876,7 +876,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Payments</h3>
           <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>No. of Payments</Label>
+              <Label className={LABEL_CLASS}>Number of Payments</Label>
               <Input
                 value={getValue(FIELD_KEYS.numberOfPayments)}
                 onChange={(e) => setValue(FIELD_KEYS.numberOfPayments, e.target.value.replace(/\D/g, ''))}
@@ -910,13 +910,13 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
 
 
-            {renderDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
+            {renderDateField(FIELD_KEYS.dayDue, "Payment Due DOM")}
 
             {renderDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
-            {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
+            {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Payment Received")}
             {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
-            {renderDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
-            {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
+            {renderDateField(FIELD_KEYS.nextPayment, "Next Payment Due")}
+            {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
 
@@ -971,7 +971,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline")}
                   onClick={() => setOtherSchedPmtsOpen(true)}
                 >
-                  Other Sched. Pmts
+                  Other Scheduled Payments
                 </Label>
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
@@ -1032,17 +1032,17 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
         <div className="space-y-3">
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Balances</h3>
           <div className="space-y-2">
-            {renderCurrencyField(FIELD_KEYS.principal, "Principal")}
+            {renderCurrencyField(FIELD_KEYS.principal, "Principal Balance")}
             {renderCurrencyField(FIELD_KEYS.unpaidLateCharges, "Unpaid Late Charges")}
             {renderCurrencyField(FIELD_KEYS.accruedLateCharges, "Accrued Late Charges")}
             {renderCurrencyField(FIELD_KEYS.unpaidInterest, "Unpaid Interest")}
             {renderCurrencyField(FIELD_KEYS.accruedInterest, "Accrued Interest")}
             {renderCurrencyField(FIELD_KEYS.interestGuarantee, "Interest Guarantee")}
-            {renderCurrencyField(FIELD_KEYS.unpaidDefaultInterest, "Unpaid Def. Interest")}
-            {renderCurrencyField(FIELD_KEYS.accruedDefaultInterest, "Accrued Def. Interest")}
+            {renderCurrencyField(FIELD_KEYS.unpaidDefaultInterest, "Unpaid Default Interest")}
+            {renderCurrencyField(FIELD_KEYS.accruedDefaultInterest, "Accrued Default Interest")}
             {renderCurrencyField(FIELD_KEYS.chargesOwed, "Charges Owed")}
-            {renderCurrencyField(FIELD_KEYS.chargesInterest, "Charges Interest")}
-            {renderCurrencyField(FIELD_KEYS.unpaidOther, "Unpaid Other")}
+            {renderCurrencyField(FIELD_KEYS.chargesInterest, "Interest on Charges Owed")}
+            {renderCurrencyField(FIELD_KEYS.unpaidOther, "Unpaid Other Payments")}
             {renderReadOnlyCurrencyField(
               calculatedAmountToReinstate,
               "Amount to Reinstate",
@@ -1084,7 +1084,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline")}
                   onClick={() => navigateToSubSection('trust_ledger')}
                 >
-                  Suspense Funds
+                  Suspense Balance
                 </Label>
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
@@ -1107,7 +1107,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               <div>
               {renderReadOnlyCurrencyField(
                 calculatedTotalBalanceDue,
-                "Total Balance Due",
+                "Total Amount Due",
                 cn(LABEL_CLASS, "text-primary font-medium"),
               )}
                 <p className="text-xs text-muted-foreground mt-0.5" style={{ paddingLeft: "0px" }}>
