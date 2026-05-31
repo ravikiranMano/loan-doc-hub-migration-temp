@@ -12,6 +12,7 @@ import { AlertCircle, CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
 import { getLicenseNumberError, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
@@ -224,28 +225,16 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               </div>
             </DirtyFieldWrapper>
             <DirtyFieldWrapper fieldKey={FIELD_KEYS.agreementOnFileDate}>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    disabled={disabled}
-                    className={cn('h-7 text-xs flex-1 justify-start font-normal', !getValue('agreementOnFileDate') && 'text-muted-foreground')}
-                  >
-                    <CalendarIcon className="mr-2 h-3 w-3" />
-                    {safeFormatAgreementDate(getValue('agreementOnFileDate')) || 'MM/DD/YYYY'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseAgreementDate(getValue('agreementOnFileDate'))}
-                    onSelect={(d) => handleChange('agreementOnFileDate', d ? format(d, 'yyyy-MM-dd') : '')}
-                    onClear={() => handleChange('agreementOnFileDate', '')}
-                    onToday={() => handleChange('agreementOnFileDate', format(new Date(), 'yyyy-MM-dd'))}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="flex-1">
+                <TypableDateField
+                  value={getValue('agreementOnFileDate') || ''}
+                  onChange={(iso) => handleChange('agreementOnFileDate', iso)}
+                  disabled={disabled}
+                  inputClassName="h-7 text-xs"
+                  ariaLabel="Agreement on File date"
+                />
+              </div>
+
             </DirtyFieldWrapper>
           </div>
         </div>

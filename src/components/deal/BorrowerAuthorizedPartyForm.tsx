@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { STATE_OPTIONS } from '@/lib/usStates';
@@ -122,31 +123,16 @@ export const BorrowerAuthorizedPartyForm: React.FC<BorrowerAuthorizedPartyFormPr
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.dateAuthorized}>
             <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[110px] text-left shrink-0">Date Authorized</Label>
-              <Popover open={dateOpen} onOpenChange={setDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={disabled}
-                    className={cn('h-7 text-sm flex-1 justify-start font-normal', !getValue('dateAuthorized') && 'text-muted-foreground')}
-                  >
-                    <CalendarIcon className="h-3.5 w-3.5 mr-2 opacity-60" />
-                    {getValue('dateAuthorized')
-                      ? formatDateOnly(parseDateOnly(getValue('dateAuthorized')), 'MM/dd/yyyy')
-                      : 'Date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-background z-50" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={parseDateOnly(getValue('dateAuthorized'))}
-                    onSelect={(date) => { handleChange('dateAuthorized', date ? formatDateOnly(date) : ''); setDateOpen(false); }}
-                    onClear={() => { handleChange('dateAuthorized', ''); setDateOpen(false); }}
-                    onToday={() => { handleChange('dateAuthorized', todayDateOnly()); setDateOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="flex-1">
+                <TypableDateField
+                  value={getValue('dateAuthorized') || ''}
+                  onChange={(iso) => handleChange('dateAuthorized', iso)}
+                  disabled={disabled}
+                  inputClassName="h-7 text-sm"
+                  ariaLabel="Date Authorized"
+                />
+              </div>
+
             </div>
           </DirtyFieldWrapper>
         </div>

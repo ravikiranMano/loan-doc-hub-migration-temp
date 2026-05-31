@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { EmailInput } from '@/components/ui/email-input';
@@ -296,28 +297,16 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
             <div className="flex items-center gap-2">
               <Checkbox id="borrower-agreementOnFile" checked={getBoolValue('agreementOnFile')} onCheckedChange={(checked) => handleChange('agreementOnFile', !!checked)} disabled={disabled} />
               <Label htmlFor="borrower-agreementOnFile" className="text-sm font-normal">Agreement on File</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    disabled={disabled}
-                    className={cn('h-7 text-sm w-[140px] justify-start font-normal', !getValue('agreementOnFileDate') && 'text-muted-foreground')}
-                  >
-                    <CalendarIcon className="mr-2 h-3 w-3" />
-                    {safeFormatAgreementDate(getValue('agreementOnFileDate')) || 'MM/DD/YYYY'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseAgreementDate(getValue('agreementOnFileDate'))}
-                    onSelect={(d) => handleChange('agreementOnFileDate', d ? format(d, 'yyyy-MM-dd') : '')}
-                    onClear={() => handleChange('agreementOnFileDate', '')}
-                    onToday={() => handleChange('agreementOnFileDate', format(new Date(), 'yyyy-MM-dd'))}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="w-[160px]">
+                <TypableDateField
+                  value={getValue('agreementOnFileDate') || ''}
+                  onChange={(iso) => handleChange('agreementOnFileDate', iso)}
+                  disabled={disabled}
+                  inputClassName="h-7 text-sm"
+                  ariaLabel="Agreement on File date"
+                />
+              </div>
+
             </div>
           </DirtyFieldWrapper>
         </div>
