@@ -206,15 +206,30 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-foreground border-b pb-2">Name</h3>
           <div className="space-y-3">
-            {wrapField('lenderId', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender ID</Label>
-              <Input
-                value={getValue('lenderId')}
-                onChange={(e) => handleChange('lenderId', e.target.value)}
-                disabled={disabled}
-                className="h-8"
-              />
-            </div>)}
+            {wrapField('lenderId', (() => {
+              const lenderIdVal = getValue('lenderId');
+              const formatError = lenderIdVal && !/^L-\d{4,}$/.test(lenderIdVal)
+                ? 'Lender ID must follow the format L-##### (e.g. L-00055).'
+                : '';
+              const displayError = lenderIdError || formatError;
+              return (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender ID</Label>
+                    <Input
+                      value={lenderIdVal}
+                      onChange={(e) => handleChange('lenderId', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      disabled={disabled}
+                      className={cn('h-8', displayError && 'border-destructive focus-visible:ring-destructive')}
+                      aria-invalid={!!displayError}
+                    />
+                  </div>
+                  {displayError && (
+                    <p className="text-xs text-destructive pl-[132px]">{displayError}</p>
+                  )}
+                </div>
+              );
+            })())}
 
             {wrapField('status', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Status</Label>
