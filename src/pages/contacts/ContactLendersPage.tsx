@@ -198,7 +198,7 @@ const ContactLendersPage: React.FC = () => {
     if (result && opts?.newContactId) {
       // Refresh the list + the selected detail view so the renamed Lender ID
       // shows up in the grid row and the detail header without a full reload.
-      await crud.fetchContacts();
+      await crud.refresh();
       setSelectedContact(prev => prev ? { ...prev, contact_id: opts.newContactId! } : prev);
     }
     return result;
