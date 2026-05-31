@@ -90,6 +90,8 @@ interface BorrowerPrimaryFormProps {
   calculationResults?: Record<string, CalculationResult>;
   /** When true, render Borrower ID as a contact lookup that pulls existing borrower data on select. */
   borrowerIdLookup?: boolean;
+  /** Server-side duplicate error for Borrower ID (rendered inline beneath the field). */
+  borrowerIdError?: string;
 }
 
 const InlineField = ({ label, children, labelWidth = 'min-w-[140px]', fieldKey }: { label: string; children: React.ReactNode; labelWidth?: string; fieldKey?: string }) => {
@@ -112,6 +114,7 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
   showValidation = false,
   disabled = false,
   borrowerIdLookup = false,
+  borrowerIdError,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => {
     return values[FIELD_KEYS[key]] || '';
