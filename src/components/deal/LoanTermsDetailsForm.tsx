@@ -791,7 +791,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
           {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
-          {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
+          
 
           {renderMaturityDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
@@ -855,18 +855,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </DirtyFieldWrapper>
             );
           })()}
-          {renderAdjPercentField('loan_terms.note_rate', 'Note Rate')}
-          {/* Sold Rate is a single source of truth shared with Terms & Balances.
-              Both screens read/write `loan_terms.sold_rate_company` (the value
-              users actually enter on Balances). `loan_terms.sold_rate` is kept
-              as a legacy fallback for older deals that wrote to that key, but
-              new writes go to sold_rate_company so the two screens stay in sync
-              and the funding modal sees one truthful value. */}
-          {renderAdjPercentFieldMirrored(
-            'loan_terms.sold_rate_company',
-            'loan_terms.sold_rate',
-            'Sold Rate'
-          )}
           
           {(() => {
             const rs = getValue(FIELD_KEYS.rateStructure);
@@ -895,8 +883,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </DirtyFieldWrapper>
             );
           })()}
-          {renderInlineField('loan_terms.interest_split', 'Interest Split')}
-          {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
           {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
           {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
           {getValue(FIELD_KEYS.rateStructure) === 'other' && (
@@ -905,7 +891,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
           {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
           {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
-          {renderInlineSelect('loan_terms.accrual_method', 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Select')}
+          
           {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
         </div>
 
