@@ -591,11 +591,11 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
             {/* Shortpay / Overpay Handling */}
             <div className="pt-2">
-              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Shortpay / Overpay Handling</h4>
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Short Pay / Over Pay</h4>
               <div className="space-y-2">
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.shortPaymentHandling}>
                   <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Short Payment Handling</Label>
+                    <Label className={LABEL_CLASS}>Short Pay Handling</Label>
                     <Select
                       value={getValue(FIELD_KEYS.shortPaymentHandling) || undefined}
                       onValueChange={(value) => setValue(FIELD_KEYS.shortPaymentHandling, value)}
