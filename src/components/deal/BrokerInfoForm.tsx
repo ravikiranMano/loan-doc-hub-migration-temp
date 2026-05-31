@@ -44,12 +44,14 @@ interface BrokerInfoFormProps {
   disabled?: boolean;
   values?: Record<string, string>;
   onValueChange?: (fieldKey: string, value: string) => void;
+  brokerIdError?: string;
 }
 
 export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({ 
   disabled = false,
   values = {},
   onValueChange,
+  brokerIdError,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => values[FIELD_KEYS[key]] || '';
   const getBoolValue = (key: keyof typeof FIELD_KEYS): boolean => values[FIELD_KEYS[key]] === 'true';
