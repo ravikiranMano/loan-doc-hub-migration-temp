@@ -620,38 +620,12 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentAmount}>
                   <div className="flex items-start gap-3">
                     <Label className={cn(LABEL_CLASS, "whitespace-normal leading-tight")}>
-                      Apply to Payment<br />Parameters
+                      Acceptance Parameters
                     </Label>
                     <div className="flex-1 space-y-1.5">
-                      <div className="flex flex-col gap-1.5 w-full">
-
-                        {/* Amount ($) */}
-                        <div className="relative w-full">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
-                          <Input
-                            id={FIELD_KEYS.applyToPaymentAmount}
-                            value={getValue(FIELD_KEYS.applyToPaymentAmount)}
-                            onChange={(e) => {
-                              const raw = e.target.value.replace(/[^0-9.]/g, '');
-                              if ((raw.match(/\./g) || []).length > 1) return;
-                              setValue(FIELD_KEYS.applyToPaymentAmount, raw);
-                              setValue(FIELD_KEYS.applyToPaymentParameters, 'dollar');
-                              const base = parseFloat(getValue(FIELD_KEYS.regularPayment) || '0');
-                              const amt = parseFloat(raw);
-                              if (!isNaN(amt) && base > 0) {
-                                setValue(FIELD_KEYS.applyToPaymentPercent, ((amt / base) * 100).toFixed(4));
-                              } else if (raw === '') {
-                                setValue(FIELD_KEYS.applyToPaymentPercent, '');
-                              }
-                            }}
-                            disabled={disabled}
-                            className="h-8 text-sm pl-6"
-                            placeholder="0.00"
-                            inputMode="decimal"
-                          />
-                        </div>
+                      <div className="flex items-center gap-2 w-full">
                         {/* Percent (%) */}
-                        <div className="relative w-full">
+                        <div className="relative flex-1">
                           <Input
                             id={FIELD_KEYS.applyToPaymentPercent}
                             value={getValue(FIELD_KEYS.applyToPaymentPercent)}
@@ -671,10 +645,36 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                             }}
                             disabled={disabled}
                             className="h-8 text-sm pr-6"
-                            placeholder="0.00"
+                            placeholder="XXX"
                             inputMode="decimal"
                           />
                           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">%</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">or</span>
+                        {/* Amount ($) */}
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+                          <Input
+                            id={FIELD_KEYS.applyToPaymentAmount}
+                            value={getValue(FIELD_KEYS.applyToPaymentAmount)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9.]/g, '');
+                              if ((raw.match(/\./g) || []).length > 1) return;
+                              setValue(FIELD_KEYS.applyToPaymentAmount, raw);
+                              setValue(FIELD_KEYS.applyToPaymentParameters, 'dollar');
+                              const base = parseFloat(getValue(FIELD_KEYS.regularPayment) || '0');
+                              const amt = parseFloat(raw);
+                              if (!isNaN(amt) && base > 0) {
+                                setValue(FIELD_KEYS.applyToPaymentPercent, ((amt / base) * 100).toFixed(4));
+                              } else if (raw === '') {
+                                setValue(FIELD_KEYS.applyToPaymentPercent, '');
+                              }
+                            }}
+                            disabled={disabled}
+                            className="h-8 text-sm pl-6"
+                            placeholder="XXX"
+                            inputMode="decimal"
+                          />
                         </div>
                       </div>
                       {(() => {
