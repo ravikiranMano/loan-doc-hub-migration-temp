@@ -724,24 +724,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             <div className="pt-2">
               <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Unpaid Interest Processing</h4>
               <div className="space-y-2">
-                <DirtyFieldWrapper fieldKey={FIELD_KEYS.unpaidInterestProcessing}>
-                  <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Processing</Label>
-                    <Select
-                      value={getValue(FIELD_KEYS.unpaidInterestProcessing) || undefined}
-                      onValueChange={(value) => setValue(FIELD_KEYS.unpaidInterestProcessing, value)}
-                      disabled={disabled}
-                    >
-                      <SelectTrigger className="h-8 text-sm flex-1">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pay_automatically">Pay Automatically</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </DirtyFieldWrapper>
+
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.payAutomatically}>
                   <div className="flex items-center gap-3">
                     <Checkbox
