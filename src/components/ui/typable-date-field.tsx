@@ -165,6 +165,7 @@ export const TypableDateField = React.forwardRef<HTMLInputElement, TypableDateFi
 
       if (masked === '') {
         setInvalid(false);
+        lastSelfCanonicalRef.current = '';
         onChange('');
         return;
       }
