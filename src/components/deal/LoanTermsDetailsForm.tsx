@@ -959,8 +959,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               />
             </div>
           </DirtyFieldWrapper>
-          {renderAdjPercentField(TERMS_KEYS.noteRate, 'Note Rate')}
-          {renderAdjPercentFieldMirrored(TERMS_KEYS.soldRateCompany, TERMS_KEYS.soldRate, 'Sold Rate')}
           <DirtyFieldWrapper fieldKey={TERMS_KEYS.currentRate}>
             <div className="flex items-center gap-2">
               <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
