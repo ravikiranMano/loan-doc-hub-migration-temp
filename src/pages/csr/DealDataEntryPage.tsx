@@ -517,11 +517,14 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
       fetchDeal();
       const missing = getMissingRequiredFields();
       if (missing.length > 0) {
+        const names = missing.slice(0, 5).map((f) => `${f.label} (${f.section})`).join(", ");
+        const more = missing.length > 5 ? `, +${missing.length - 5} more` : "";
         toast({
           title: "Saved with incomplete fields",
-          description: `${missing.length} required field${missing.length > 1 ? "s" : ""} still missing`,
+          description: `${missing.length} required field${missing.length > 1 ? "s" : ""} still missing: ${names}${more}`,
           variant: "default",
         });
+        console.warn("[Save] Missing required fields:", missing.map((f) => ({ label: f.label, key: f.field_key, section: f.section })));
       }
     }
   };
