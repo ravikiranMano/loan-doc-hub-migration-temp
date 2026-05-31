@@ -150,7 +150,32 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
         {/* Column 1 - Name + Broker or Representative */}
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Name</h3>
-          {renderInlineField('brokerId', 'Broker ID')}
+          {(() => {
+            const brokerIdVal = getValue('brokerId');
+            const formatError = brokerIdVal && !/^BR-\d{4,}$/.test(brokerIdVal)
+              ? 'Broker ID must follow the format BR-##### (e.g. BR-00020).'
+              : '';
+            const displayError = brokerIdError || formatError;
+            return (
+              <DirtyFieldWrapper fieldKey={FIELD_KEYS.brokerId}>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[100px] shrink-0 text-xs">Broker ID</Label>
+                    <Input
+                      value={brokerIdVal}
+                      onChange={(e) => handleChange('brokerId', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      disabled={disabled}
+                      className={cn('h-7 text-xs flex-1', displayError && 'border-destructive focus-visible:ring-destructive')}
+                      aria-invalid={!!displayError}
+                    />
+                  </div>
+                  {displayError && (
+                    <p className="text-[10px] text-destructive pl-[108px]">{displayError}</p>
+                  )}
+                </div>
+              </DirtyFieldWrapper>
+            );
+          })()}
           {renderInlineField('licenseeNameIfEntity', 'Licensee Name If Entity')}
           {renderLicenseField('license', 'License Number')}
 
