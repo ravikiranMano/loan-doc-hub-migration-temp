@@ -1035,19 +1035,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     );
   };
 
-  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, isOpen: boolean, setOpen: (v: boolean) => void, invalid = false) => (
-    <Popover open={isOpen} onOpenChange={setOpen} modal={false}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" className={cn('h-6 text-xs w-full justify-start text-left font-normal flex-1', !value && 'text-muted-foreground', invalid && 'border-destructive focus-visible:ring-destructive')}>
-          {value && !isNaN(value.getTime()) ? formatDateOnly(value, 'MM/dd/yyyy') : 'Date'}
-          <CalendarIcon className="ml-auto h-3 w-3" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-        <EnhancedCalendar mode="single" selected={value} onSelect={(d) => { onSelect(d); setOpen(false); }} onClear={() => { onSelect(undefined); setOpen(false); }} onToday={() => { onSelect(parseDateOnly(todayDateOnly())); setOpen(false); }} initialFocus />
-      </PopoverContent>
-    </Popover>
+  const renderDateField = (value: Date | undefined, onSelect: (d: Date | undefined) => void, _isOpen: boolean, _setOpen: (v: boolean) => void, invalid = false) => (
+    <TypableDateField
+      value={value && !isNaN(value.getTime()) ? formatDateOnly(value) : ''}
+      onChange={(iso) => onSelect(iso ? parseDateOnly(iso) : undefined)}
+      hasError={invalid}
+      inputClassName="h-6 text-xs"
+    />
   );
+
 
   // Required-field gating. Errors are computed from current formData and only
   // surfaced after the user clicks Update Funding (submitAttempted) so the
