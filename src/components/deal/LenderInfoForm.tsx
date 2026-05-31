@@ -123,6 +123,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
   showValidation = false,
   disabled = false,
   calculationResults = {},
+  lenderIdError,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => {
     return values[FIELD_KEYS[key]] || '';
