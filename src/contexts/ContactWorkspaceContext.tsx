@@ -117,12 +117,20 @@ export const ContactWorkspaceProvider: React.FC<{ children: ReactNode }> = ({ ch
   }, []);
   const getSaveFn = useCallback((id: string) => saveFnsRef.current[id], []);
 
+  const updateContactId = useCallback((id: string, newContactId: string, fullName?: string) => {
+    setOpenContacts(prev => prev.map(p => p.id === id
+      ? { ...p, contactId: newContactId, fullName: fullName ?? p.fullName }
+      : p,
+    ));
+  }, []);
+
   return (
     <ContactWorkspaceContext.Provider value={{
       openContacts, activeContactId,
       openContact, closeContact, switchToContact,
       setContactDirty, isContactDirty, isAtLimit,
       registerSaveFn, unregisterSaveFn, getSaveFn,
+      updateContactId,
     }}>
       {children}
     </ContactWorkspaceContext.Provider>
