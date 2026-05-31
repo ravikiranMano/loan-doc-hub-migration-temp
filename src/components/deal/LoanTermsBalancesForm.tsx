@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { FieldDefinition } from "@/hooks/useDealFields";
 import type { CalculationResult } from "@/lib/calculationEngine";
 import { DirtyFieldWrapper } from "./DirtyFieldWrapper";
+import { TypableDateField } from "@/components/ui/typable-date-field";
 import { sanitizeInterestInput, normalizeInterestOnBlur } from "@/lib/interestValidation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useDealNavigationOptional } from "@/contexts/DealNavigationContext";
@@ -307,27 +308,18 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     <DirtyFieldWrapper fieldKey={key}>
       <div className="flex items-center gap-3">
         <Label className={LABEL_CLASS}>{label}</Label>
-        <Popover open={datePickerStates[key] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [key]: open }))}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className={cn('h-8 text-sm flex-1 justify-start text-left font-normal', !getValue(key) && 'text-muted-foreground')} disabled={disabled}>
-              {getValue(key) && safeParseDateStr(getValue(key)) ? format(safeParseDateStr(getValue(key))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-            <EnhancedCalendar
-              mode="single"
-              selected={safeParseDateStr(getValue(key))}
-              onSelect={(date) => { if (date) setValue(key, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onClear={() => { setValue(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onToday={() => { setValue(key, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={getValue(key) || ''}
+            onChange={(v) => setValue(key, v)}
+            disabled={disabled}
+            ariaLabel={label}
+          />
+        </div>
       </div>
     </DirtyFieldWrapper>
   );
+
 
   // Numeric day-of-month entry (1-31). Used for Payment Due Date, First Payment Due,
   // and Next Due Date. Persists as the integer string (e.g. "15"). Migrates legacy
