@@ -80,10 +80,13 @@ const LOAN_STATUS_OPTIONS = [
   { value: 'hold', label: 'Hold' },
   { value: 'closed', label: 'Closed' },
 ];
+// Hold Reason values — preserve legacy value codes where labels are compatible
+// so previously saved data continues to display correctly. New code 'pending_payoff'
+// is added for V3 spec.
 const HOLD_REASON_OPTIONS = [
-  { value: 'w9_document_needed', label: 'W-9 / Document Needed' },
+  { value: 'w9_document_needed', label: 'Document Needed' },
   { value: 'fraud_red_flag', label: 'Fraud / Red Flag' },
-  { value: 'payment_issue', label: 'Payment Issue' },
+  { value: 'pending_payoff', label: 'Pending Payoff' },
   { value: 'occupancy_concern', label: 'Occupancy Concern' },
   { value: 'pending_workout', label: 'Pending Workout' },
   { value: 'other', label: 'Other' },
@@ -93,10 +96,29 @@ const CLOSED_REASON_OPTIONS = [
   { value: 'transfer_out_customer', label: 'Transfer Out (Customer)' },
   { value: 'transfer_out_company', label: 'Transfer Out (Company)' },
   { value: 'dead', label: 'Dead' },
-  { value: 'reo', label: 'REO' },
   { value: 'charged_off', label: 'Charged Off' },
   { value: 'other', label: 'Other' },
 ];
+
+// New V3 field keys — stored directly in deal_section_values JSONB,
+// no schema changes required.
+const NEW_KEYS = {
+  projectNumber: 'loan.project_number',
+  paidOffDate: 'loan.paid_off_date',
+  typeSection32: 'loan.type_section32',
+  typeArticle7: 'loan.type_article7',
+  typeOnPull: 'loan.type_on_pull',
+  sendCouponBook: 'loan.send_coupon_book',
+  sendCouponBookLastSent: 'loan.send_coupon_book_last_sent',
+  sendPmtStatement: 'loan.send_pmt_statement',
+  sendPmtStatementLastSent: 'loan.send_pmt_statement_last_sent',
+  sendLateNotice: 'loan.send_late_notice',
+  sendLateNoticeLastSent: 'loan.send_late_notice_last_sent',
+  sendBalloonNotice: 'loan.send_balloon_notice',
+  sendBalloonNoticeLastSent: 'loan.send_balloon_notice_last_sent',
+  nsfPrev12mo: 'loan.nsf_prev_12mo',
+  thirtyDaysPlus: 'loan.thirty_days_plus',
+} as const;
 
 // Validation configs
 type ValidationConfig = {
