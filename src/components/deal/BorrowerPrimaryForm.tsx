@@ -199,9 +199,25 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
                   }
                 }}
               />
-            ) : (
-              <Input value={getValue('borrowerId')} onChange={(e) => handleChange('borrowerId', e.target.value)} disabled={disabled} className="h-7 text-sm" />
-            )}
+            ) : (() => {
+              const borrowerIdVal = getValue('borrowerId');
+              const formatError = borrowerIdVal && !/^B-\d{4,}$/.test(borrowerIdVal)
+                ? 'Borrower ID must follow the format B-##### (e.g. B-00043).'
+                : '';
+              const displayError = borrowerIdError || formatError;
+              return (
+                <div className="flex flex-col gap-0.5">
+                  <Input
+                    value={borrowerIdVal}
+                    onChange={(e) => handleChange('borrowerId', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                    disabled={disabled}
+                    className={cn('h-7 text-sm', displayError && 'border-destructive focus-visible:ring-destructive')}
+                    aria-invalid={!!displayError}
+                  />
+                  {displayError && <p className="text-[10px] text-destructive">{displayError}</p>}
+                </div>
+              );
+            })()}
           </InlineField>
 
           <InlineField label="Borrower Type" fieldKey={FIELD_KEYS.borrowerType}>
