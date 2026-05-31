@@ -186,11 +186,21 @@ const ContactLendersPage: React.FC = () => {
     setModalOpen(false);
   }, [crud, isReadOnly]);
 
-  const handleSave = useCallback(async (id: string, contactData: Record<string, string>) => {
+  const handleSave = useCallback(async (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => {
     if (isReadOnly) {
       return false;
     }
-    const result = await crud.updateContact(id, contactData);
+    const result = await crud.updateContact(id, contactData, opts);
+    if (result && opts?.newContactId) {
+      // Refresh the list + the selected detail view so the renamed Lender ID
+      // shows up in the grid row and the detail header without a full reload.
+      await crud.fetchContacts();
+      setSelectedContact(prev => prev ? { ...prev, contact_id: opts.newContactId! } : prev);
+    }
     return result;
   }, [crud, isReadOnly]);
 
