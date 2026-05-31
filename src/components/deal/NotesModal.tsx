@@ -124,7 +124,7 @@ export const NotesModal: React.FC<NotesModalProps> = ({
   })() : undefined;
 
   const [asOfDateOpen, setAsOfDateOpen] = useState(false);
-  const upstreamAsOfDisplay = formData.asOfDate ? formatAsOfDisplay(formData.asOfDate) : '';
+  const upstreamAsOfDisplay = formData.asOfDate ? formatDateTimeDisplay(formData.asOfDate) : '';
   const [asOfTyped, setAsOfTyped] = useState(upstreamAsOfDisplay);
   const lastSelfAsOfRef = useRef(formData.asOfDate);
   useEffect(() => {
