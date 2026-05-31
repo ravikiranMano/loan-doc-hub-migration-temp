@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import { LenderIdSearch } from './LenderIdSearch';
 import { numericKeyDown, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
