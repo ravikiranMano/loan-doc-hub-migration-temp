@@ -452,7 +452,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Terms Column */}
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Terms</h3>
+          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Loan Terms</h3>
           <div className="space-y-2">
             {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Loan Amount")}
             {renderPercentField(FIELD_KEYS.noteRate, "Note Rate")}
