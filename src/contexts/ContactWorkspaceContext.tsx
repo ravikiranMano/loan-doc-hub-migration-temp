@@ -28,6 +28,7 @@ interface ContactWorkspaceState {
   registerSaveFn: (id: string, fn: () => Promise<boolean>) => void;
   unregisterSaveFn: (id: string) => void;
   getSaveFn: (id: string) => (() => Promise<boolean>) | undefined;
+  updateContactId: (id: string, newContactId: string, fullName?: string) => void;
 }
 
 const MAX_CONTACTS = 10;
