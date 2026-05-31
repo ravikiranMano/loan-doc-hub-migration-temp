@@ -354,13 +354,34 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                 placeholder="MM/DD/YYYY"
                 disabled={disabled}
                 onChange={(e) => {
-                  // Simple MM/DD/YYYY mask
-                  const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+                  const input = e.target as HTMLInputElement;
+                  const rawValue = input.value;
+                  const selStart = input.selectionStart ?? rawValue.length;
+                  // Count digits before caret in raw input
+                  const digitsBeforeCaret = rawValue.slice(0, selStart).replace(/\D/g, '').length;
+                  // Build masked string
+                  const digits = rawValue.replace(/\D/g, '').slice(0, 8);
                   let out = digits;
                   if (digits.length > 4) out = `${digits.slice(0,2)}/${digits.slice(2,4)}/${digits.slice(4)}`;
                   else if (digits.length > 2) out = `${digits.slice(0,2)}/${digits.slice(2)}`;
+                  // Map digitsBeforeCaret to position in masked output
+                  let newCaret = 0;
+                  let dCount = 0;
+                  while (newCaret < out.length && dCount < digitsBeforeCaret) {
+                    if (/\d/.test(out[newCaret])) dCount++;
+                    newCaret++;
+                  }
+                  // If next char is a slash and we just finished a digit group, step past it
+                  while (newCaret < out.length && out[newCaret] === '/' && dCount === digitsBeforeCaret && digitsBeforeCaret > 0 && (digitsBeforeCaret === 2 || digitsBeforeCaret === 4)) {
+                    newCaret++;
+                    break;
+                  }
                   setMaturityText(out);
                   setMaturityTouched(true);
+                  // Restore caret after React commits the value
+                  requestAnimationFrame(() => {
+                    try { input.setSelectionRange(newCaret, newCaret); } catch {}
+                  });
                   if (out.length === 10) commitText(out);
                 }}
                 onBlur={() => {
