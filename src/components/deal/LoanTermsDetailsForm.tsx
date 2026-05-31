@@ -25,10 +25,14 @@ interface LoanTermsDetailsFormProps {
   calculationResults?: Record<string, CalculationResult>;
 }
 
-import { LOAN_TERMS_DETAILS_KEYS } from '@/lib/fieldKeyMap';
+import { LOAN_TERMS_DETAILS_KEYS, LOAN_TERMS_BALANCES_KEYS } from '@/lib/fieldKeyMap';
 
 // Use central field key map
 const FIELD_KEYS = LOAN_TERMS_DETAILS_KEYS;
+// Terms field keys live on the Balances key map; reused here so the Loan Details
+// tab reads/writes the exact same storage location (placement-only change).
+const TERMS_KEYS = LOAN_TERMS_BALANCES_KEYS;
+
 
 const LIEN_POSITION_OPTIONS = [
   { value: '1st', label: '1st' }, { value: '2nd', label: '2nd' },
@@ -928,7 +932,55 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </Label>
             </div>
           </DirtyFieldWrapper>
+
+          {/* Terms fields — placed directly below On Pull per V3 spec.
+              Storage keys mirror LOAN_TERMS_BALANCES_KEYS so save/load is identical. */}
+          <DirtyFieldWrapper fieldKey={TERMS_KEYS.dayDue}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[130px] shrink-0 text-xs">Day Due</Label>
+              <Input
+                value={getValue(TERMS_KEYS.dayDue)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                  setValue(TERMS_KEYS.dayDue, digits);
+                }}
+                onBlur={() => {
+                  const v = getValue(TERMS_KEYS.dayDue);
+                  if (!v) return;
+                  const n = parseInt(v, 10);
+                  if (isNaN(n)) { setValue(TERMS_KEYS.dayDue, ''); return; }
+                  const clamped = Math.max(1, Math.min(31, n));
+                  setValue(TERMS_KEYS.dayDue, String(clamped));
+                }}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="1-31"
+                className="h-8 text-xs flex-1"
+              />
+            </div>
+          </DirtyFieldWrapper>
+          {renderAdjPercentField(TERMS_KEYS.noteRate, 'Note Rate')}
+          {renderAdjPercentFieldMirrored(TERMS_KEYS.soldRateCompany, TERMS_KEYS.soldRate, 'Sold Rate')}
+          <DirtyFieldWrapper fieldKey={TERMS_KEYS.currentRate}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
+              <div className="relative flex-1">
+                <Input
+                  value={getValue(TERMS_KEYS.currentRate) ? formatPercentDisplay(getValue(TERMS_KEYS.currentRate), 3) : ''}
+                  readOnly
+                  disabled
+                  className="h-8 text-xs pr-5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900"
+                  placeholder="0.00"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+              </div>
+            </div>
+          </DirtyFieldWrapper>
+          {renderInlineField(TERMS_KEYS.interestSplit, 'Interest Split')}
+          {renderInlineCurrencyField(TERMS_KEYS.unearnedDiscountBalance, 'Unearned Discount Balance')}
+
         </div>
+
 
         {/* Loan Status Column */}
         <div className="space-y-1.5">
@@ -1047,6 +1099,20 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             {renderReadOnlyNumberRow(NEW_KEYS.nsfPrev12mo, 'NSF Previous 12 Months')}
             {renderReadOnlyNumberRow(NEW_KEYS.thirtyDaysPlus, '30-days Plus')}
           </div>
+
+          {/* Terms dropdowns — placed directly below 30-days Plus per V3 spec.
+              Loan Purpose intentionally omitted here to avoid duplicating the
+              instance already present in the Details column. */}
+          <div className="space-y-1.5">
+            {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
+            {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
+            {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
+            {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
+            {renderInlineSelect(TERMS_KEYS.accrualMethod, 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Select')}
+            {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
+
+          </div>
+
         </div>
       </div>
 
