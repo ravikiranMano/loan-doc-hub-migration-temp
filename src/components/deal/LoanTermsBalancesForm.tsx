@@ -710,9 +710,9 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="apply_short_pay">Apply Short Pay</SelectItem>
+                        <SelectItem value="application">Application</SelectItem>
                         <SelectItem value="unpaid_interest">Unpaid Interest</SelectItem>
-                        <SelectItem value="add_to_principal">Add to Principal</SelectItem>
+                        <SelectItem value="principal">Principal</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
