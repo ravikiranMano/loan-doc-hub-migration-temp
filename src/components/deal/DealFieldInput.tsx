@@ -72,8 +72,40 @@ const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
   }, [displayValue]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const masked = maskDateInput(e.target.value, typed);
+    const input = e.target as HTMLInputElement;
+    const rawValue = input.value;
+    const rawCaret = input.selectionStart ?? rawValue.length;
+
+    // Count digits before the caret in the raw (pre-mask) input. The mask only
+    // inserts `/` separators, so digit-count is a stable anchor across formatting.
+    let digitsBeforeCaret = 0;
+    for (let i = 0; i < rawCaret && i < rawValue.length; i++) {
+      if (/\d/.test(rawValue[i])) digitsBeforeCaret++;
+    }
+
+    const masked = maskDateInput(rawValue, typed);
+
+    // Map digit-count back to a caret offset in the masked string. When the mask
+    // just auto-inserted a `/` immediately after the caret (forward typing past
+    // pos 2 or 5), advance past it so the user keeps typing the next group.
+    let newCaret = 0;
+    let seenDigits = 0;
+    while (newCaret < masked.length && seenDigits < digitsBeforeCaret) {
+      if (/\d/.test(masked[newCaret])) seenDigits++;
+      newCaret++;
+    }
+    const growing = rawValue.length > typed.length;
+    if (growing && masked[newCaret] === '/') newCaret++;
+
     setTyped(masked);
+
+    // Restore caret after React commits the controlled value.
+    requestAnimationFrame(() => {
+      if (document.activeElement === input) {
+        try { input.setSelectionRange(newCaret, newCaret); } catch { /* noop */ }
+      }
+    });
+
     if (masked === '') {
       setTypedError(false);
       onChangeCanonical('');
