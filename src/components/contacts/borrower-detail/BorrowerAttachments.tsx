@@ -321,7 +321,7 @@ const BorrowerAttachments: React.FC<{ borrowerId: string; contactDbId: string; d
     'File Type': a.file_type || '',
     'File Size': a.file_size || '',
     'Uploaded By': a.uploader_name || '',
-    'Uploaded Date': new Date(a.uploaded_at).toLocaleDateString(),
+    'Uploaded Date': fmtUploadedDate(a.uploaded_at),
     Version: a.version_number,
   }));
 
