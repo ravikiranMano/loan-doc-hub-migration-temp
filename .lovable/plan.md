@@ -1,71 +1,49 @@
-## Goal
+## Prompt 1 — Loan Details: On Pull style + reorder Terms fields
 
-Replicate the Lender ID edit/uniqueness/cascade pattern (already shipped) for Broker and Borrower IDs.
+**File:** `src/components/deal/LoanTermsDetailsForm.tsx`
 
-Format rules:
-- Broker: `BR-\d{4,}` (e.g. `BR-00020`)
-- Borrower: `B-\d{4,}` (e.g. `B-00043`)
-- Uniqueness is scoped per `contact_type` (a Broker ID may coexist with a Borrower ID that has the same numeric portion, but never two Brokers with the same ID).
+### Change 1 — On Pull label style (line 929)
+Remove the green color classes so On Pull matches Military SCRA exactly.
+- Replace `className="font-semibold cursor-pointer text-xs text-green-600 dark:text-green-500"` with the same className used by other checkbox labels (matches Military SCRA's `renderInlineCheckbox` output).
+- Switch the whole block from the inline custom render to `renderInlineCheckbox(NEW_KEYS.typeOnPull, 'On Pull')` to guarantee identical style (same helper, same classes, same DirtyFieldWrapper).
 
-## Scope of changes
+### Change 2 — Move the 5 dropdowns from Loan Status column → Loan Categories column, directly after Current Rate
+Currently (lines 1099–1110) `Rate Structure`, `Amortization`, `Interest Calculation`, `Calculation Period`, `Processing Unpaid Interest` are rendered at the bottom of the **Loan Status** column.
 
-### 1. Uniqueness validation (per type)
+- **Remove** that block (lines 1099–1110) from the Loan Status column.
+- **Insert** the same 5 `renderInlineSelect(...)` calls in the **Loan Categories** column immediately after the Current Rate block (after line 976, before the column's closing `</div>` at line 978), in this exact order:
+  1. Rate Structure
+  2. Amortization
+  3. Interest Calculation
+  4. Calculation Period
+  5. Processing Unpaid Interest
 
-`src/hooks/useContactsCrud.ts` — extend the existing `updateContact` duplicate check (already used for Lenders) so it scopes to the contact's own `contact_type`:
-- Pre-check: `select id from contacts where contact_id = $newContactId and contact_type = $contactType and id <> $id limit 1`
-- On hit, return `{ ok: false, duplicateId: true }` → inline error in the form.
-- Keep the existing Postgres `23505` fallback for race conditions; surface the same per-type message.
+No props, no keys, no option lists, no validators changed. Save/load bindings (`FIELD_KEYS.rateStructure`, `.amortization`, `.interestCalculation`, `.calculationPeriod`, `.processingUnpaidInterest`) are reused as-is. The downstream conditional "Adjustable / Graduated Loan Details" block keeps working because it reads `getValue(FIELD_KEYS.rateStructure)`.
 
-The DB `contacts.contact_id` UNIQUE constraint is global, which is stricter than required but doesn't block us; the UI message stays per-type ("This Broker ID already exists…" / "This Borrower ID already exists…").
+---
 
-### 2. Editable ID field + format validation
+## Prompt 2 — Escrow Impound: Remove Loan Purpose
 
-**Broker** — `src/components/deal/BrokerInfoForm.tsx`:
-- Make the `Broker ID` input editable (currently displays `BR-00020`).
-- Uppercase + trim on change; inline regex check `/^BR-\d{4,}$/`.
-- Accept new `brokerIdError` prop for server-side duplicate message; render under the field.
+**Confirmed safe**: The two Loan Purpose fields are stored under **different keys** in `field_dictionary`:
+- Loan Details → `ln_p_loanPurpos` (section `loan_terms`) — **kept**
+- Escrow Impound → `es_p_loanPurpos` (section `escrow`) — **hidden from this screen**
 
-**Borrower** — there is no `BorrowerInfoForm.tsx`. The Borrower detail page renders the form fields directly inside `ContactBorrowerDetailLayout.tsx` (the `Borrower ID` input visible in screenshot 1). Make that specific input editable with the same logic, regex `/^B-\d{4,}$/`, and a local `borrowerIdError` state.
+**File:** `src/components/deal/EscrowImpoundForm.tsx`
 
-### 3. Persist + cascade on save
+- Extend the existing field-filter pattern (the same approach already used for `frequencyField` and `isHiddenDuplicate`) to also drop `es_p_loanPurpos` from `remainingFields` before it's passed to `DealSectionTab`. Add the key to a small `HIDDEN_KEYS` set and exclude in the filter.
+- Layout is a 2-col grid — removing one cell reflows cleanly with no empty slot.
+- No data migration, no dictionary edits, no impact on Loan Details Loan Purpose.
 
-**`src/components/contacts/broker-detail/ContactBrokerDetailLayout.tsx`** and **`src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx`**:
-- Mirror the Lender layout pattern:
-  - Local `contact` state so the header (`Broker — BR-00020` / `Borrower — B-00043`) updates immediately after save.
-  - In `handleSave`, detect ID rename, validate format, call `updateContact(id, payload, { newContactId })`.
-  - On duplicate, set the inline error and abort.
-  - On success: call `updateContactId(id, newContactId, fullName?)` from `ContactWorkspaceContext` (already exists) to rewrite the open tab label, and dispatch `window.dispatchEvent(new CustomEvent('contact-id-renamed', { detail: { contactDbId, oldContactId, newContactId, contactType } }))`.
-
-### 4. Grid + Participants cascade
-
-- **Brokers grid** (`src/pages/contacts/ContactBrokersPage.tsx`) and **Borrowers grid** (`src/pages/contacts/ContactBorrowersPage.tsx`): after a successful rename in the detail layout's save flow, call the page's `crud.fetchContacts` (same hook already used for Lenders) so the grid reflects the new ID.
-- **Participants grid** (`src/components/deal/ParticipantsSectionContent.tsx`): the existing `contact-id-renamed` listener already calls `fetchParticipants()` — no change needed; it fires for any contact type.
-- **Loan-file ID search components** (`BrokerIdSearch`, equivalent borrower search): they read live from `contacts`, so the next dropdown open shows the new ID. No code change.
-
-### 5. Tab label + breadcrumbs
-
-`ContactWorkspaceContext.updateContactId` (already added for Lenders) is type-agnostic and will update both Broker and Borrower tab labels in `WorkspaceTabBar`. No new context work required.
+---
 
 ## Out of scope
+- No field-dictionary changes, no migrations, no save flow / persistence / validation changes.
+- No edge-function / document-generation changes (no template tag uses `es_p_loanPurpos` for output — the field merely persists; existing values, if any, remain in `deal_section_values` untouched).
+- No other field, label, color, or layout altered.
 
-- No DB migration. The global UNIQUE on `contacts.contact_id` already prevents true duplicates; per-type messaging is enforced in the UI layer.
-- No historical backfill of any denormalized ID strings stored in `deal_section_values` JSONB; downstream views read live from `contacts` via joins.
-- No changes to Additional Guarantor / Authorized Party / Lender (already done) ID editing.
-- No changes to `generate_contact_id` RPC.
-
-## Acceptance
-
-- Editing `BR-00020` → `BR-09999` (or `B-00043` → `B-09999`) and saving:
-  - Updates the detail header, the open workspace tab, the Brokers/Borrowers grid, and the Participants grid on any open loan file.
-  - Persists to `contacts.contact_id`.
-- Saving a duplicate within the same type shows the inline error and blocks the save.
-- Saving an invalid format (e.g. `BR-12` or `BORROWER1`) shows the format error and blocks the save.
-
-## Files to edit
-
-- `src/hooks/useContactsCrud.ts` — scope duplicate pre-check by `contact_type`.
-- `src/components/deal/BrokerInfoForm.tsx` — editable Broker ID + inline validation.
-- `src/components/contacts/broker-detail/ContactBrokerDetailLayout.tsx` — save flow, local header state, tab update, rename event.
-- `src/components/contacts/borrower-detail/ContactBorrowerDetailLayout.tsx` — editable Borrower ID input + same save flow.
-- `src/pages/contacts/ContactBrokersPage.tsx` — refetch on successful rename.
-- `src/pages/contacts/ContactBorrowersPage.tsx` — refetch on successful rename.
+## Verification
+1. Loan Details → On Pull renders identical to Military SCRA (same neutral text color, same weight, same checkbox size).
+2. Loan Categories column order below the checkboxes: Day Due → Current Rate → Rate Structure → Amortization → Interest Calculation → Calculation Period → Processing Unpaid Interest, with no gap.
+3. Loan Status column no longer shows those 5 dropdowns; existing NSF / 30-days Plus stay in place.
+4. Change each of the 5 dropdowns → Save Draft → reload → values persist (same keys as before).
+5. Escrow Impound: Loan Purpose row gone, neighboring fields reflow with no empty cell; Loan Details Loan Purpose still saves/loads normally.
