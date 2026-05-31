@@ -186,17 +186,14 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
         <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP[field] || `lien1.${field}`}>
           <div className="flex items-center gap-3">
             <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">{label}</Label>
-            <Popover open={datePickerStates[field] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [field]: open }))}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn('h-7 text-sm flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground', forceDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || forceDisabled}>
-                  {val && safeParseDateStr(val) ? format(safeParseDateStr(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                  <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                <EnhancedCalendar mode="single" selected={safeParseDateStr(val)} onSelect={(date) => { if (date) onChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { onChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { onChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
-              </PopoverContent>
-            </Popover>
+            <div className={cn('flex-1', forceDisabled && 'opacity-50 cursor-not-allowed')}>
+              <TypableDateField
+                value={String(val || '')}
+                onChange={(iso) => onChange(field, iso)}
+                disabled={disabled || forceDisabled}
+                inputClassName="h-7 text-sm"
+              />
+            </div>
           </div>
         </DirtyFieldWrapper>
       );
