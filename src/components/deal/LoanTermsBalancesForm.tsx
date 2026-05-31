@@ -977,6 +977,10 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             {renderDateField(FIELD_KEYS.nextPayment, "Next Payment Due")}
             {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
+            {/* Add to Regular Payment sub-section */}
+            <div className="pt-3">
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Add to Regular Payment</h4>
+            </div>
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
 
             {/* Servicing Fees - always currency, independent of Sales Tax */}
