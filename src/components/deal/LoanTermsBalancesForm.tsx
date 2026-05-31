@@ -139,37 +139,47 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     return loanAmount + oneMonthInterest;
   }, [values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
 
-  // Regular P & I Payment = sum of `regularPayment` across funding records.
-  // Mirrors the "Payment" column total shown at the bottom of the Funding grid.
-  // The amortization formula previously used here has been removed; the value
-  // is now sourced strictly from the saved funding records.
+  // Regular Payment (borrower scheduled installment) — INTEREST-ONLY on the
+  // FULL loan principal at the NOTE RATE, scaled by payment frequency.
+  // Always derived live and loan-scoped so values cannot bleed across loans
+  // or go stale when loan amount / note rate / frequency change.
+  // Formula: loanAmount × (noteRate% / 100) / periodsPerYear
   const computedRegularPayment = useMemo(() => {
-    const raw = values['loan_terms.funding_records'];
-    let records: any[] = [];
-    if (raw) {
-      try {
-        records = typeof raw === 'string' ? JSON.parse(raw) : (raw as any);
-      } catch {
-        records = [];
-      }
+    const loanAmount = parseNum(FIELD_KEYS.loanAmount);
+    const noteRate = parseNum(FIELD_KEYS.noteRate);
+    if (!isFinite(loanAmount) || !isFinite(noteRate) || loanAmount <= 0 || noteRate <= 0) {
+      return '';
     }
-    if (!Array.isArray(records) || records.length === 0) return '';
-    const sum = records.reduce((acc, r) => {
-      const v = parseFloat(String(r?.regularPayment ?? '').replace(/[$,]/g, ''));
-      return acc + (isNaN(v) ? 0 : v);
-    }, 0);
-    if (!isFinite(sum) || sum <= 0) return '';
-    return sum.toFixed(2);
-  }, [values['loan_terms.funding_records']]);
+    const freq = (getValue(FIELD_KEYS.paymentFrequency) || 'monthly').toLowerCase();
+    const periodsPerYear: Record<string, number> = {
+      monthly: 12,
+      bi_weekly: 26,
+      weekly: 52,
+      quarterly: 4,
+      annually: 1,
+      semi_annually: 2,
+    };
+    const periods = periodsPerYear[freq] ?? 12;
+    const payment = (loanAmount * (noteRate / 100)) / periods;
+    if (!isFinite(payment) || payment <= 0) return '';
+    return payment.toFixed(2);
+  }, [
+    values[FIELD_KEYS.loanAmount],
+    values[FIELD_KEYS.noteRate],
+    values[FIELD_KEYS.paymentFrequency],
+  ]);
 
-  // Auto-populate Regular P & I Payment from funding records ONLY when the
-  // field is empty. A persisted/user-entered value must never be overwritten,
-  // otherwise typing + save appears to do nothing (value reverts on re-render).
+  // Keep the stored Regular Payment in sync with its inputs. Overwrite any
+  // stale/cross-loan value whenever the live computation differs, so each loan
+  // always reflects its own (loanAmount × noteRate / freq) installment and
+  // recomputes when inputs change.
   useEffect(() => {
     if (disabled) return;
     if (computedRegularPayment === '') return;
     const current = (getValue(FIELD_KEYS.regularPayment) ?? '').toString().trim();
-    if (current === '') {
+    const currentNum = parseFloat(current.replace(/[$,]/g, ''));
+    const nextNum = parseFloat(computedRegularPayment);
+    if (current === '' || !isFinite(currentNum) || Math.abs(currentNum - nextNum) > 0.005) {
       setValue(FIELD_KEYS.regularPayment, computedRegularPayment);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
