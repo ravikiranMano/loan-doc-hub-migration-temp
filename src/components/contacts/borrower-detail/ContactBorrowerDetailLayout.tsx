@@ -29,7 +29,11 @@ import { useFormPermissions } from '@/hooks/useFormPermissions';
 interface ContactBorrowerDetailLayoutProps {
   contact: ContactRecord;
   onBack: () => void;
-  onSave: (id: string, contactData: Record<string, string>) => Promise<boolean>;
+  onSave: (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => Promise<boolean>;
   initialSection?: BorrowerSection;
   backLabel?: string;
   titlePrefix?: string;
