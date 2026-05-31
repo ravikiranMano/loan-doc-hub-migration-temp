@@ -695,11 +695,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </div>
             </div>
 
-            {/* Unpaid Interest Processing */}
-            <div className="pt-2">
-              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Unpaid Interest Processing</h4>
-              <div className="space-y-2">
-
+                {/* Pay Unpaid Automatically (was in Unpaid Interest Processing) */}
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.payAutomatically}>
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -724,123 +720,211 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     <Label htmlFor={`${FIELD_KEYS.calculateInterestOnInterest}-cb`} className="text-sm">Calculate Interest on Interest</Label>
                   </div>
                 </DirtyFieldWrapper>
-              </div>
-            </div>
 
-            {/* Accept Short, Post-maturity, Auto-post, Override - part of Interest Split section */}
-            <div className="space-y-2 pt-1">
-              {/* Accept Short Payments */}
-              <div>
+                {/* Accept Short Payments */}
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`}
+                          checked={isChecked(FIELD_KEYS.acceptShortPaymentsEnabled)}
+                          onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsEnabled)}
+                          disabled={disabled}
+                          className="h-3.5 w-3.5"
+                        />
+                        <Label htmlFor={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`} className="text-sm">
+                          Accept Short Payments
+                        </Label>
+                      </div>
+                    </div>
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">{isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '%' : '$'}</span>
+                      <Input
+                        value={
+                          isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
+                            ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
+                            : focusedCurrencyField === FIELD_KEYS.acceptShortPaymentsAmount
+                              ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
+                              : formatCurrencyDisplay(getValue(FIELD_KEYS.acceptShortPaymentsAmount))
+                        }
+                        onChange={(e) =>
+                          isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
+                            ? setValue(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
+                            : handleCurrencyChange(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
+                        }
+                        onFocus={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) setFocusedCurrencyField(FIELD_KEYS.acceptShortPaymentsAmount); }}
+                        onBlur={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) handleCurrencyBlur(FIELD_KEYS.acceptShortPaymentsAmount); }}
+                        disabled={disabled}
+                        className="h-8 text-sm pl-7"
+                        placeholder={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '-' : '0.00'}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pl-5 mt-0.5">
+                    <span className="text-xs text-muted-foreground">Or</span>
+                    <Checkbox
+                      id={`${FIELD_KEYS.acceptShortPaymentsOrPercent}-cb`}
+                      checked={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)}
+                      onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsOrPercent)}
+                      disabled={disabled}
+                      className="h-3.5 w-3.5"
+                    />
+                    <Label className="text-xs text-muted-foreground">Percent</Label>
+                  </div>
+                </div>
+
+                {/* Prepaid Payments (moved from Terms) */}
                 <div className="flex items-center gap-3">
                   <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
                     <div className="flex items-center gap-2">
                       <Checkbox
-                        id={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`}
-                        checked={isChecked(FIELD_KEYS.acceptShortPaymentsEnabled)}
-                        onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsEnabled)}
+                        id={`${FIELD_KEYS.prepaidPaymentsEnabled}-cb`}
+                        checked={isChecked(FIELD_KEYS.prepaidPaymentsEnabled)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.prepaidPaymentsEnabled)}
                         disabled={disabled}
                         className="h-3.5 w-3.5"
                       />
-                      <Label htmlFor={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`} className="text-sm">
-                        Accept Short Payments
+                      <Label htmlFor={`${FIELD_KEYS.prepaidPaymentsEnabled}-cb`} className="text-sm">
+                        Prepaid Payments
                       </Label>
                     </div>
+                    <p className="text-xs text-muted-foreground pl-5">Months</p>
                   </div>
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">{isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '%' : '$'}</span>
-                    <Input
-                      value={
-                        isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
-                          ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
-                          : focusedCurrencyField === FIELD_KEYS.acceptShortPaymentsAmount
-                            ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
-                            : formatCurrencyDisplay(getValue(FIELD_KEYS.acceptShortPaymentsAmount))
-                      }
-                      onChange={(e) =>
-                        isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
-                          ? setValue(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
-                          : handleCurrencyChange(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
-                      }
-                      onFocus={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) setFocusedCurrencyField(FIELD_KEYS.acceptShortPaymentsAmount); }}
-                      onBlur={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) handleCurrencyBlur(FIELD_KEYS.acceptShortPaymentsAmount); }}
+                  <Input
+                    value={getValue(FIELD_KEYS.prepaidPaymentsMonths)}
+                    onChange={(e) => setValue(FIELD_KEYS.prepaidPaymentsMonths, e.target.value)}
+                    disabled={disabled}
+                    className="h-8 text-sm flex-1"
+                  />
+                </div>
+
+                {/* Impounded Payments (moved from Terms) */}
+                <div className="flex items-center gap-3">
+                  <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${FIELD_KEYS.impoundedPaymentsEnabled}-cb`}
+                        checked={isChecked(FIELD_KEYS.impoundedPaymentsEnabled)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.impoundedPaymentsEnabled)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={`${FIELD_KEYS.impoundedPaymentsEnabled}-cb`} className="text-sm">
+                        Impounded Payments
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5">Months</p>
+                  </div>
+                  <Input
+                    value={getValue(FIELD_KEYS.impoundedPaymentsMonths)}
+                    onChange={(e) => setValue(FIELD_KEYS.impoundedPaymentsMonths, e.target.value)}
+                    disabled={disabled}
+                    className="h-8 text-sm flex-1"
+                  />
+                </div>
+
+                {/* Initial Funding Holdback (moved from Terms) */}
+                <div className="flex items-start gap-3">
+                  <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0 pt-1.5">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`}
+                        checked={isChecked(FIELD_KEYS.fundingHoldbackEnabled)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.fundingHoldbackEnabled)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`} className="text-sm">
+                        Initial Funding Holdback
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5">Held By</p>
+                  </div>
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                      <Input
+                        value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
+                        onChange={(e) => handleCurrencyChange(FIELD_KEYS.fundingHoldbackAmount, e.target.value)}
+                        onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
+                        onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
+                        disabled={disabled}
+                        className="h-8 text-sm pl-7 w-full"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <Select
+                      value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
+                      onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
                       disabled={disabled}
-                      className="h-8 text-sm pl-7"
-                      placeholder={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '-' : '0.00'}
-                    />
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="lender">Lender</SelectItem>
+                        <SelectItem value="company">Company</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 pl-5 mt-0.5">
-                  <span className="text-xs text-muted-foreground">Or</span>
+
+                {/* Accept Payments Post Maturity */}
+                <div className="flex items-center gap-3">
                   <Checkbox
-                    id={`${FIELD_KEYS.acceptShortPaymentsOrPercent}-cb`}
-                    checked={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)}
-                    onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsOrPercent)}
+                    id={`${FIELD_KEYS.acceptPostMaturity}-cb`}
+                    checked={isChecked(FIELD_KEYS.acceptPostMaturity)}
+                    onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptPostMaturity)}
                     disabled={disabled}
                     className="h-3.5 w-3.5"
                   />
-                  <Label className="text-xs text-muted-foreground">Percent</Label>
+                  <Label htmlFor={`${FIELD_KEYS.acceptPostMaturity}-cb`} className="text-sm">
+                    Accept Payments Post Maturity
+                  </Label>
                 </div>
-              </div>
 
-              {/* Accept Post-maturity */}
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id={`${FIELD_KEYS.acceptPostMaturity}-cb`}
-                  checked={isChecked(FIELD_KEYS.acceptPostMaturity)}
-                  onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptPostMaturity)}
-                  disabled={disabled}
-                  className="h-3.5 w-3.5"
-                />
-                <Label
-                  htmlFor={`${FIELD_KEYS.acceptPostMaturity}-cb`}
-                  className="text-sm"
-                >
-                  Accept Payments Post Maturity
-                </Label>
-              </div>
-
-              {/* Auto-post Enabled */}
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id={`${FIELD_KEYS.autoPostEnabled}-cb`}
-                  checked={isChecked(FIELD_KEYS.autoPostEnabled)}
-                  onCheckedChange={() => toggleCheck(FIELD_KEYS.autoPostEnabled)}
-                  disabled={disabled}
-                  className="h-3.5 w-3.5"
-                />
-                <Label
-                  htmlFor={`${FIELD_KEYS.autoPostEnabled}-cb`}
-                  className="text-sm"
-                >
-                  Auto-post Enabled
-                </Label>
-              </div>
-
-              {/* Override Funds Held - last in section */}
-              <div className="flex items-center gap-3">
-                <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={`${FIELD_KEYS.overrideFundsHeld}-cb`}
-                      checked={isChecked(FIELD_KEYS.overrideFundsHeld)}
-                      onCheckedChange={() => toggleCheck(FIELD_KEYS.overrideFundsHeld)}
-                      disabled={disabled}
-                      className="h-3.5 w-3.5"
-                    />
-                    <Label htmlFor={`${FIELD_KEYS.overrideFundsHeld}-cb`} className="text-sm">
-                      Override Hold Days
-                    </Label>
+                {/* Override Hold Days */}
+                <div className="flex items-center gap-3">
+                  <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${FIELD_KEYS.overrideFundsHeld}-cb`}
+                        checked={isChecked(FIELD_KEYS.overrideFundsHeld)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.overrideFundsHeld)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={`${FIELD_KEYS.overrideFundsHeld}-cb`} className="text-sm">
+                        Override Hold Days
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5">Hold Days</p>
                   </div>
-                  <p className="text-xs text-muted-foreground pl-5">Hold Days</p>
+                  <Input
+                    value={getValue(FIELD_KEYS.holdDays)}
+                    onChange={(e) => setValue(FIELD_KEYS.holdDays, e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => { if (!/\d/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
+                    disabled={disabled}
+                    className="h-8 text-sm flex-1"
+                    inputMode="numeric"
+                  />
                 </div>
-                <Input
-                  value={getValue(FIELD_KEYS.holdDays)}
-                  onChange={(e) => setValue(FIELD_KEYS.holdDays, e.target.value.replace(/\D/g, ''))}
-                  onKeyDown={(e) => { if (!/\d/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
-                  disabled={disabled}
-                  className="h-8 text-sm flex-1"
-                  inputMode="numeric"
-                />
+
+                {/* Auto-post Enabled */}
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id={`${FIELD_KEYS.autoPostEnabled}-cb`}
+                    checked={isChecked(FIELD_KEYS.autoPostEnabled)}
+                    onCheckedChange={() => toggleCheck(FIELD_KEYS.autoPostEnabled)}
+                    disabled={disabled}
+                    className="h-3.5 w-3.5"
+                  />
+                  <Label htmlFor={`${FIELD_KEYS.autoPostEnabled}-cb`} className="text-sm">
+                    Auto-post Enabled
+                  </Label>
+                </div>
               </div>
             </div>
           </div>
