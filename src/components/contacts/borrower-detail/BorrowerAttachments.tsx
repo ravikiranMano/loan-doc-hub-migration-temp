@@ -1,4 +1,11 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { format as formatDate } from 'date-fns';
+
+const fmtUploadedDate = (v?: string) => {
+  if (!v) return '—';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '—' : formatDate(d, 'MM/dd/yyyy');
+};
 import { Plus, Search, Trash2, Download, Loader2, Eye, Pencil, Upload, X, Filter, Columns, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
