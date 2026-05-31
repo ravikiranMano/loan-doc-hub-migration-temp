@@ -605,9 +605,10 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="do_not_accept">Do Not Accept</SelectItem>
-                        <SelectItem value="deposit_to_suspense">Deposit to Suspense</SelectItem>
-                        <SelectItem value="apply_to_payment">Apply to Payment</SelectItem>
+                        <SelectItem value="short_pay">Short Pay</SelectItem>
+                        <SelectItem value="reject">Reject</SelectItem>
+                        <SelectItem value="apply_to_suspense">Apply to Suspense</SelectItem>
+                        <SelectItem value="apply_to_regular_payment">Apply to Regular Payment</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -709,9 +710,9 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="apply_short_pay">Apply Short Pay</SelectItem>
+                        <SelectItem value="application">Application</SelectItem>
                         <SelectItem value="unpaid_interest">Unpaid Interest</SelectItem>
-                        <SelectItem value="add_to_principal">Add to Principal</SelectItem>
+                        <SelectItem value="principal">Principal</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -723,24 +724,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             <div className="pt-2">
               <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Unpaid Interest Processing</h4>
               <div className="space-y-2">
-                <DirtyFieldWrapper fieldKey={FIELD_KEYS.unpaidInterestProcessing}>
-                  <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Processing</Label>
-                    <Select
-                      value={getValue(FIELD_KEYS.unpaidInterestProcessing) || undefined}
-                      onValueChange={(value) => setValue(FIELD_KEYS.unpaidInterestProcessing, value)}
-                      disabled={disabled}
-                    >
-                      <SelectTrigger className="h-8 text-sm flex-1">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pay_automatically">Pay Automatically</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </DirtyFieldWrapper>
+
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.payAutomatically}>
                   <div className="flex items-center gap-3">
                     <Checkbox
