@@ -507,17 +507,14 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
                     </div>
                   </DirtyFieldWrapper>
                   <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltForeclosureDate} className="flex-1">
-                    <Popover open={!foreclosureDateDisabled && (datePickerStates['sltForeclosureDate'] || false)} onOpenChange={(open) => { if (foreclosureDateDisabled) return; setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: open })); }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltForeclosureDate && 'text-muted-foreground', foreclosureDateDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || foreclosureDateDisabled}>
-                          {lien.sltForeclosureDate && safeParseDateStr(lien.sltForeclosureDate) ? format(safeParseDateStr(lien.sltForeclosureDate)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltForeclosureDate)} onSelect={(date) => { if (date) onChange('sltForeclosureDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onClear={() => { onChange('sltForeclosureDate', ''); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onToday={() => { onChange('sltForeclosureDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <div className={cn(foreclosureDateDisabled && 'opacity-50 cursor-not-allowed')}>
+                      <TypableDateField
+                        value={lien.sltForeclosureDate || ''}
+                        onChange={(iso) => onChange('sltForeclosureDate', iso)}
+                        disabled={disabled || foreclosureDateDisabled}
+                        inputClassName="h-7 text-sm"
+                      />
+                    </div>
                   </DirtyFieldWrapper>
                 </div>
 
