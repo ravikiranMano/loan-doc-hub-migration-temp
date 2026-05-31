@@ -928,7 +928,53 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </Label>
             </div>
           </DirtyFieldWrapper>
+
+          {/* Terms fields — placed directly below On Pull per V3 spec */}
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.dayDue}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[130px] shrink-0 text-xs">Day Due</Label>
+              <Input
+                value={getValue(FIELD_KEYS.dayDue)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                  setValue(FIELD_KEYS.dayDue, digits);
+                }}
+                onBlur={() => {
+                  const v = getValue(FIELD_KEYS.dayDue);
+                  if (!v) return;
+                  const n = parseInt(v, 10);
+                  if (isNaN(n)) { setValue(FIELD_KEYS.dayDue, ''); return; }
+                  const clamped = Math.max(1, Math.min(31, n));
+                  setValue(FIELD_KEYS.dayDue, String(clamped));
+                }}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="1-31"
+                className="h-8 text-xs flex-1"
+              />
+            </div>
+          </DirtyFieldWrapper>
+          {renderAdjPercentField(FIELD_KEYS.noteRate, 'Note Rate')}
+          {renderAdjPercentFieldMirrored(FIELD_KEYS.soldRateCompany, FIELD_KEYS.soldRate, 'Sold Rate')}
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.currentRate}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
+              <div className="relative flex-1">
+                <Input
+                  value={getValue(FIELD_KEYS.currentRate) ? formatPercentDisplay(getValue(FIELD_KEYS.currentRate), 3) : ''}
+                  readOnly
+                  disabled
+                  className="h-8 text-xs pr-5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900"
+                  placeholder="0.00"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+              </div>
+            </div>
+          </DirtyFieldWrapper>
+          {renderInlineField(FIELD_KEYS.interestSplit, 'Interest Split')}
+          {renderInlineCurrencyField(FIELD_KEYS.unearnedDiscountBalance, 'Unearned Discount Balance')}
         </div>
+
 
         {/* Loan Status Column */}
         <div className="space-y-1.5">
