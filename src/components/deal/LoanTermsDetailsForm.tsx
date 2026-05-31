@@ -319,6 +319,108 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  // Maturity Date: typable MM/DD/YYYY input + calendar icon popover trigger.
+  // Keeps existing validation (validateMaturityDate) and stores yyyy-MM-dd.
+  const renderMaturityDateField = (fieldKey: string, label: string) => {
+    const stored = getValue(fieldKey);
+    const parsedStored = safeParseDateStr(stored);
+    const displayFromStored = parsedStored ? format(parsedStored, 'MM/dd/yyyy') : '';
+    const localText = maturityText ?? displayFromStored;
+    const error = showValidation || maturityTouched
+      ? validateMaturityDate(localText, stored)
+      : null;
+
+    const commitText = (raw: string) => {
+      const trimmed = (raw || '').trim();
+      if (!trimmed) { setValue(fieldKey, ''); return; }
+      const parsed = parse(trimmed, 'MM/dd/yyyy', new Date());
+      if (isValid(parsed) && format(parsed, 'MM/dd/yyyy') === trimmed) {
+        setValue(fieldKey, format(parsed, 'yyyy-MM-dd'));
+      }
+    };
+
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-start gap-2">
+          <Label className="w-[130px] shrink-0 text-xs pt-2">{label}</Label>
+          <div className="flex-1">
+            <div className="relative">
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={localText}
+                placeholder="MM/DD/YYYY"
+                disabled={disabled}
+                onChange={(e) => {
+                  // Simple MM/DD/YYYY mask
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+                  let out = digits;
+                  if (digits.length > 4) out = `${digits.slice(0,2)}/${digits.slice(2,4)}/${digits.slice(4)}`;
+                  else if (digits.length > 2) out = `${digits.slice(0,2)}/${digits.slice(2)}`;
+                  setMaturityText(out);
+                  setMaturityTouched(true);
+                  if (out.length === 10) commitText(out);
+                }}
+                onBlur={() => {
+                  setMaturityTouched(true);
+                  commitText(localText);
+                }}
+                className={cn('h-8 text-xs pr-9', error && 'border-destructive focus-visible:ring-destructive')}
+              />
+              <Popover
+                open={datePickerStates[fieldKey] || false}
+                onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label="Open calendar"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseDateStr(getValue(fieldKey))}
+                    onSelect={(date) => {
+                      if (date) {
+                        const iso = format(date, 'yyyy-MM-dd');
+                        setValue(fieldKey, iso);
+                        setMaturityText(format(date, 'MM/dd/yyyy'));
+                        setMaturityTouched(true);
+                      }
+                      setDatePickerStates(prev => ({ ...prev, [fieldKey]: false }));
+                    }}
+                    onClear={() => {
+                      setValue(fieldKey, '');
+                      setMaturityText('');
+                      setMaturityTouched(true);
+                      setDatePickerStates(prev => ({ ...prev, [fieldKey]: false }));
+                    }}
+                    onToday={() => {
+                      const t = new Date();
+                      setValue(fieldKey, format(t, 'yyyy-MM-dd'));
+                      setMaturityText(format(t, 'MM/dd/yyyy'));
+                      setMaturityTouched(true);
+                      setDatePickerStates(prev => ({ ...prev, [fieldKey]: false }));
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            {error && (
+              <p className="text-[10px] text-destructive mt-0.5">{error}</p>
+            )}
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   const validateMaturityDate = (rawText: string, storedIso: string): string | null => {
     const trimmed = (rawText || '').trim();
     if (!trimmed) return 'Maturity Date is required.';
