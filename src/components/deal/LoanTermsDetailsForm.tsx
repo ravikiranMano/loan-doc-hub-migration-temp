@@ -959,8 +959,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               />
             </div>
           </DirtyFieldWrapper>
-          {renderAdjPercentField(TERMS_KEYS.noteRate, 'Note Rate')}
-          {renderAdjPercentFieldMirrored(TERMS_KEYS.soldRateCompany, TERMS_KEYS.soldRate, 'Sold Rate')}
           <DirtyFieldWrapper fieldKey={TERMS_KEYS.currentRate}>
             <div className="flex items-center gap-2">
               <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
@@ -976,8 +974,6 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
               </div>
             </div>
           </DirtyFieldWrapper>
-          {renderInlineField(TERMS_KEYS.interestSplit, 'Interest Split')}
-          {renderInlineCurrencyField(TERMS_KEYS.unearnedDiscountBalance, 'Unearned Discount Balance')}
 
         </div>
 
@@ -1108,7 +1104,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
             {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
             {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
-            {renderInlineSelect(TERMS_KEYS.accrualMethod, 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Select')}
+            
             {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
 
           </div>
