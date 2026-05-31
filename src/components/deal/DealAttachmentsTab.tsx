@@ -301,7 +301,7 @@ const DealAttachmentsTab: React.FC<DealAttachmentsTabProps> = ({ dealId, disable
                 <TableCell><Badge variant="outline">{att.category}</Badge></TableCell>
                 <TableCell className="text-xs text-muted-foreground max-w-[260px] truncate">{att.description || '—'}</TableCell>
                 <TableCell className="text-xs">{att.uploader_name}</TableCell>
-                <TableCell className="text-xs">{new Date(att.uploaded_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}</TableCell>
+                <TableCell className="text-xs">{new Date(att.uploaded_at).toLocaleDateString()}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => handlePreview(att)} title="Preview">
