@@ -16,6 +16,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { format, parse, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { LienData } from './LiensTableView';
@@ -186,17 +187,14 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
         <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP[field] || `lien1.${field}`}>
           <div className="flex items-center gap-3">
             <Label className="text-sm text-muted-foreground min-w-[140px] text-left shrink-0">{label}</Label>
-            <Popover open={datePickerStates[field] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [field]: open }))}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className={cn('h-7 text-sm flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground', forceDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || forceDisabled}>
-                  {val && safeParseDateStr(val) ? format(safeParseDateStr(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                  <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                <EnhancedCalendar mode="single" selected={safeParseDateStr(val)} onSelect={(date) => { if (date) onChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { onChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { onChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
-              </PopoverContent>
-            </Popover>
+            <div className={cn('flex-1', forceDisabled && 'opacity-50 cursor-not-allowed')}>
+              <TypableDateField
+                value={String(val || '')}
+                onChange={(iso) => onChange(field, iso)}
+                disabled={disabled || forceDisabled}
+                inputClassName="h-7 text-sm"
+              />
+            </div>
           </div>
         </DirtyFieldWrapper>
       );
@@ -509,17 +507,14 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
                     </div>
                   </DirtyFieldWrapper>
                   <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltForeclosureDate} className="flex-1">
-                    <Popover open={!foreclosureDateDisabled && (datePickerStates['sltForeclosureDate'] || false)} onOpenChange={(open) => { if (foreclosureDateDisabled) return; setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: open })); }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltForeclosureDate && 'text-muted-foreground', foreclosureDateDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || foreclosureDateDisabled}>
-                          {lien.sltForeclosureDate && safeParseDateStr(lien.sltForeclosureDate) ? format(safeParseDateStr(lien.sltForeclosureDate)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltForeclosureDate)} onSelect={(date) => { if (date) onChange('sltForeclosureDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onClear={() => { onChange('sltForeclosureDate', ''); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} onToday={() => { onChange('sltForeclosureDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltForeclosureDate: false })); }} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <div className={cn(foreclosureDateDisabled && 'opacity-50 cursor-not-allowed')}>
+                      <TypableDateField
+                        value={lien.sltForeclosureDate || ''}
+                        onChange={(iso) => onChange('sltForeclosureDate', iso)}
+                        disabled={disabled || foreclosureDateDisabled}
+                        inputClassName="h-7 text-sm"
+                      />
+                    </div>
                   </DirtyFieldWrapper>
                 </div>
 
@@ -542,17 +537,15 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
                     </div>
                   </DirtyFieldWrapper>
                   <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltBorrowerNotifiedDate} className="flex-1">
-                    <Popover open={!borrowerNotifiedDisabled && (datePickerStates['sltBorrowerNotifiedDate'] || false)} onOpenChange={(open) => { if (borrowerNotifiedDisabled) return; setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: open })); }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltBorrowerNotifiedDate && 'text-muted-foreground', borrowerNotifiedDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || borrowerNotifiedDisabled}>
-                          {lien.sltBorrowerNotifiedDate && safeParseDateStr(lien.sltBorrowerNotifiedDate) ? format(safeParseDateStr(lien.sltBorrowerNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
-                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltBorrowerNotifiedDate)} onSelect={(date) => { if (date) onChange('sltBorrowerNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onClear={() => { onChange('sltBorrowerNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onToday={() => { onChange('sltBorrowerNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <div className={cn(borrowerNotifiedDisabled && 'opacity-50 cursor-not-allowed')}>
+                      <TypableDateField
+                        value={lien.sltBorrowerNotifiedDate || ''}
+                        onChange={(iso) => onChange('sltBorrowerNotifiedDate', iso)}
+                        disabled={disabled || borrowerNotifiedDisabled}
+                        inputClassName="h-7 text-sm"
+                        placeholder="Date"
+                      />
+                    </div>
                   </DirtyFieldWrapper>
                 </div>
 
@@ -564,17 +557,15 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
                     </div>
                   </DirtyFieldWrapper>
                   <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltLenderNotifiedDate} className="flex-1">
-                    <Popover open={!lenderNotifiedDisabled && (datePickerStates['sltLenderNotifiedDate'] || false)} onOpenChange={(open) => { if (lenderNotifiedDisabled) return; setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: open })); }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltLenderNotifiedDate && 'text-muted-foreground', lenderNotifiedDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || lenderNotifiedDisabled}>
-                          {lien.sltLenderNotifiedDate && safeParseDateStr(lien.sltLenderNotifiedDate) ? format(safeParseDateStr(lien.sltLenderNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
-                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltLenderNotifiedDate)} onSelect={(date) => { if (date) onChange('sltLenderNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onClear={() => { onChange('sltLenderNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} onToday={() => { onChange('sltLenderNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltLenderNotifiedDate: false })); }} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <div className={cn(lenderNotifiedDisabled && 'opacity-50 cursor-not-allowed')}>
+                      <TypableDateField
+                        value={lien.sltLenderNotifiedDate || ''}
+                        onChange={(iso) => onChange('sltLenderNotifiedDate', iso)}
+                        disabled={disabled || lenderNotifiedDisabled}
+                        inputClassName="h-7 text-sm"
+                        placeholder="Date"
+                      />
+                    </div>
                   </DirtyFieldWrapper>
                 </div>
               </>

@@ -20,6 +20,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { CalendarIcon, ChevronsUpDown, Check } from 'lucide-react';
 import { format, parse } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -412,21 +413,14 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       <DirtyFieldWrapper fieldKey={fieldKey}>
         <div className="flex items-center gap-2">
           <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
-          <Popover open={datePickerStates[fieldKey] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 w-full justify-start text-left font-normal text-xs', !val && 'text-muted-foreground')} disabled={disabled}>
-                {val && parseDate(val) ? format(parseDate(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={parseDate(val)}
-                onSelect={(date) => { if (date) onValueChange(fieldKey, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-                onClear={() => { onValueChange(fieldKey, ''); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-                onToday={() => { onValueChange(fieldKey, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-                initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={val || ''}
+              onChange={(iso) => onValueChange(fieldKey, iso)}
+              disabled={disabled}
+              inputClassName="h-7 text-xs"
+            />
+          </div>
         </div>
       </DirtyFieldWrapper>
     );

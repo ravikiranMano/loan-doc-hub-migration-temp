@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { ChevronsUpDown, Check } from 'lucide-react';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { format, parse } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ModalSaveConfirmation } from './ModalSaveConfirmation';
@@ -243,24 +244,13 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
       return (
         <div className="flex items-center gap-2">
           <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
-          <Popover open={datePickerStates[field] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [field]: open }))}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')}>
-                {val && parseDate(val) ? format(parseDate(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar
-                mode="single"
-                selected={parseDate(val)}
-                onSelect={(date) => { if (date) handleFieldChange(field, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-                onClear={() => { handleFieldChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-                onToday={() => { handleFieldChange(field, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [field]: false })); }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={val}
+              onChange={(iso) => handleFieldChange(field, iso)}
+              inputClassName="h-7 text-xs"
+            />
+          </div>
         </div>
       );
     }
