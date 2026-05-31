@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RichTextEditor } from './RichTextEditor';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { TypableDateField } from '@/components/ui/typable-date-field';
+import { parseDisplayDate, formatDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { NoteData, AttachmentMeta } from './NotesTableView';
@@ -56,6 +58,42 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const upstreamAsOfDisplay = formData?.asOfDate ? formatDateTimeDisplay(formData.asOfDate) : '';
+  const [asOfTyped, setAsOfTyped] = useState(upstreamAsOfDisplay);
+  const lastSelfAsOfRef = useRef<string | undefined>(formData?.asOfDate);
+  useEffect(() => {
+    if (formData?.asOfDate !== lastSelfAsOfRef.current) {
+      setAsOfTyped(upstreamAsOfDisplay);
+      lastSelfAsOfRef.current = formData?.asOfDate;
+    }
+  }, [formData?.asOfDate, upstreamAsOfDisplay]);
+
+  const commitAsOf = (text: string) => {
+    const t = (text || '').trim();
+    if (!t) {
+      lastSelfAsOfRef.current = '';
+      setFormData(prev => prev ? ({ ...prev, asOfDate: '' }) : prev);
+      return;
+    }
+    const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (m) {
+      const [, mm, dd, yyRaw, hh, mi, ss] = m;
+      const yy = yyRaw.length === 2 ? 2000 + parseInt(yyRaw, 10) : parseInt(yyRaw, 10);
+      const d = new Date(yy, parseInt(mm, 10) - 1, parseInt(dd, 10));
+      if (!isNaN(d.getTime())) {
+        const existing = formData?.asOfDate ? new Date(formData.asOfDate) : new Date();
+        d.setHours(hh != null ? parseInt(hh, 10) : (isNaN(existing.getTime()) ? new Date().getHours() : existing.getHours()));
+        d.setMinutes(mi != null ? parseInt(mi, 10) : (isNaN(existing.getTime()) ? new Date().getMinutes() : existing.getMinutes()));
+        d.setSeconds(ss != null ? parseInt(ss, 10) : (isNaN(existing.getTime()) ? new Date().getSeconds() : existing.getSeconds()));
+        const iso = d.toISOString();
+        lastSelfAsOfRef.current = iso;
+        setAsOfTyped(formatDateTimeDisplay(iso));
+        setFormData(prev => prev ? ({ ...prev, asOfDate: iso }) : prev);
+        return;
+      }
+    }
+    setAsOfTyped(upstreamAsOfDisplay);
+  };
 
   useEffect(() => {
     setFormData(note);
@@ -172,29 +210,25 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
   };
 
   const renderDatePickerField = (field: 'followupReminder' | 'completed' | 'assignedOn' | 'completedOn') => {
-    const rawVal = formData[field];
+    const rawVal = formData[field] as string;
     const dateObj = rawVal ? (() => { try { const d = new Date(rawVal); return isNaN(d.getTime()) ? undefined : d; } catch { return undefined; } })() : undefined;
-    const displayVal = dateObj ? format(dateObj, 'MM/dd/yyyy') : '';
+    const canonical = dateObj ? formatDateOnly(dateObj) : '';
     return (
-      <Popover modal={true}>
-        <PopoverTrigger asChild>
-          <div className="relative flex-1 cursor-pointer">
-            <Input value={displayVal} readOnly placeholder="MM/DD/YYYY" className="h-7 text-xs flex-1 pr-7 cursor-pointer" disabled={disabled} />
-            <CalendarIcon className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-          </div>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 pointer-events-auto z-[9999]" align="start">
-          <EnhancedCalendar
-            mode="single"
-            selected={dateObj}
-            onSelect={(d: Date | undefined) => {
-              setFormData(prev => prev ? ({ ...prev, [field]: d ? d.toISOString() : '' }) : prev);
-            }}
-            showClearToday={true}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
+      <TypableDateField
+        value={canonical}
+        disabled={disabled}
+        onChange={(c) => {
+          if (!c) {
+            setFormData(prev => prev ? ({ ...prev, [field]: '' }) : prev);
+            return;
+          }
+          const p = parseDisplayDate(c) || (() => { const [y, m, d] = c.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); })();
+          setFormData(prev => prev ? ({ ...prev, [field]: p.toISOString() }) : prev);
+        }}
+        className="flex-1"
+        inputClassName="h-7 text-xs"
+        buttonClassName="h-6 w-6"
+      />
     );
   };
 
@@ -235,17 +269,32 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-[100px] shrink-0 text-xs text-foreground">As Of</Label>
-          <Popover modal={true} open={asOfDateOpen} onOpenChange={setAsOfDateOpen}>
-            <PopoverTrigger asChild>
-              <div className="relative flex-1 cursor-pointer">
-                <Input value={formData.asOfDate ? formatAsOfDisplay(formData.asOfDate) : ''} readOnly placeholder="Select date..." className="h-7 text-xs flex-1 pr-7 cursor-pointer" disabled={disabled} />
-                <CalendarIcon className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-              </div>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 pointer-events-auto z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={asOfDateObj} onSelect={handleAsOfDateSelect} showClearToday={false} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="relative flex-1">
+            <Input
+              value={asOfTyped}
+              disabled={disabled}
+              onChange={(e) => setAsOfTyped(e.target.value)}
+              onBlur={() => commitAsOf(asOfTyped)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitAsOf(asOfTyped); } }}
+              placeholder="MM/DD/YYYY HH:MM:SS"
+              className="h-7 text-xs flex-1 pr-7"
+            />
+            <Popover modal={true} open={asOfDateOpen} onOpenChange={setAsOfDateOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label="Open calendar"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 pointer-events-auto z-[9999]" align="start">
+                <EnhancedCalendar mode="single" selected={asOfDateObj} onSelect={handleAsOfDateSelect} showClearToday={false} initialFocus />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       </div>
 
