@@ -932,7 +932,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
         {/* Payments Column */}
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Payments</h3>
+          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Payment Details</h3>
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <Label className={LABEL_CLASS}>Number of Payments</Label>
