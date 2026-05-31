@@ -565,29 +565,15 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   />
                   <Label className="text-xs">Agreement on File</Label>
                 </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn('h-7 text-xs flex-1 justify-start font-normal', !form['agreement_on_file_date'] && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                      {form['agreement_on_file_date']
-                        ? (() => { try { const d = parse(form['agreement_on_file_date'], 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'MM/dd/yyyy') : form['agreement_on_file_date']; } catch { return form['agreement_on_file_date']; } })()
-                        : 'MM/DD/YYYY'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                    <EnhancedCalendar
-                      mode="single"
-                      selected={form['agreement_on_file_date'] ? (() => { try { const d = parse(form['agreement_on_file_date'], 'yyyy-MM-dd', new Date()); return isValid(d) ? d : undefined; } catch { return undefined; } })() : undefined}
-                      onSelect={(d) => set('agreement_on_file_date', d ? format(d, 'yyyy-MM-dd') : '')}
-                      onClear={() => set('agreement_on_file_date', '')}
-                      onToday={() => set('agreement_on_file_date', format(new Date(), 'yyyy-MM-dd'))}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <div className="flex-1">
+                  <TypableDateField
+                    value={form['agreement_on_file_date'] || ''}
+                    onChange={(iso) => set('agreement_on_file_date', iso)}
+                    inputClassName="h-7 text-xs"
+                    ariaLabel="Agreement on File date"
+                  />
+                </div>
+
               </div>
             </div>
 
