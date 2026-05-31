@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import { LenderIdSearch } from './LenderIdSearch';
 import { numericKeyDown, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
@@ -389,30 +390,15 @@ export const FundingAdjustmentModal: React.FC<FundingAdjustmentModalProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <Label className="text-xs font-medium min-w-[130px]">As of Date</Label>
-                <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        'h-7 w-40 text-xs justify-start text-left font-normal',
-                        !asOfDate && 'text-muted-foreground'
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-3 w-3" />
-                      {asOfDate ? formatDateOnly(asOfDate, 'MM/dd/yyyy') : 'Select date'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                    <EnhancedCalendar
-                      mode="single"
-                      selected={asOfDate}
-                      onSelect={(date) => {
-                        setAsOfDate(date);
-                        setDatePickerOpen(false);
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
+                <div className="w-40">
+                  <TypableDateField
+                    value={asOfDate ? formatDateOnly(asOfDate) : ''}
+                    onChange={(iso) => setAsOfDate(iso ? parseDateOnly(iso) : undefined)}
+                    inputClassName="h-7 text-xs"
+                    ariaLabel="As of Date"
+                  />
+                </div>
+
               </div>
             </div>
           </div>
