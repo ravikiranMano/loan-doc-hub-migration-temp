@@ -1104,7 +1104,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
             {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
             {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
             {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
-            {renderInlineSelect(TERMS_KEYS.accrualMethod, 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Select')}
+            
             {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
 
           </div>
