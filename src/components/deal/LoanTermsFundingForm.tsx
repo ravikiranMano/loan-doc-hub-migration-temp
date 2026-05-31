@@ -25,10 +25,23 @@ import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
  * (mutual exclusivity enforced elsewhere). Decimal.js throughout — no
  * native floating point on financial math.
  */
+/**
+ * Canonical per-lender Payment formula (matches LoanFundingGrid display):
+ *   Lender Payment = (Original / Principal) × Regular P&I × (LenderRate / NoteRate)
+ *
+ * When a lender's Lender Rate matches the Note Rate (or no Lender Rate is set),
+ * the scaling factor is 1 and the result is the legacy pro-rata Payment.
+ * The Note Rate − Lender Rate gap is the servicing/broker spread and is
+ * surfaced downstream — never lost.
+ *
+ * Banker's rounding to 2dp; sub-cent drift is absorbed by the row flagged
+ * `roundingAdjustment` so the persisted total reconciles to the cent.
+ */
 const recomputeLenderPayments = (
   records: FundingRecord[],
   loanPrincipalRaw: string,
   regularPIRaw: string,
+  noteRateRaw: string,
 ): FundingRecord[] => {
   if (!records.length) return records;
   const principal = new Decimal(parseFloat((loanPrincipalRaw || '').replace(/[$,]/g, '')) || 0);
@@ -37,9 +50,17 @@ const recomputeLenderPayments = (
     // Without a principal or scheduled P&I we can't split — leave payments untouched.
     return records;
   }
+  const noteRateDec = new Decimal(parseFloat((noteRateRaw || '').toString().replace(/[%,]/g, '')) || 0);
+  const useRateScaling = noteRateDec.gt(0);
   const exact = records.map(r => {
     const orig = new Decimal(r.originalAmount || 0);
-    return orig.div(principal).mul(regPI);
+    const base = orig.div(principal).mul(regPI);
+    if (!useRateScaling) return base;
+    const lr = Number(r.lenderRate);
+    if (!Number.isFinite(lr) || lr <= 0) return base; // no lender rate → fall back to note rate
+    const lenderRateDec = new Decimal(lr);
+    if (lenderRateDec.equals(noteRateDec)) return base;
+    return base.mul(lenderRateDec).div(noteRateDec);
   });
   const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
   const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
@@ -617,7 +638,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], loanPrincipalBalance, totalPayment);
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], loanPrincipalBalance, totalPayment, noteRate);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
     // Ensure newly added record is visible by jumping to the page that contains it.
@@ -703,7 +724,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       if (record.id === id) return { ...record, ...updates };
       if (enablingRounding && record.roundingAdjustment) return { ...record, roundingAdjustment: false };
       return record;
-    }), loanPrincipalBalance, totalPayment);
+    }), loanPrincipalBalance, totalPayment, noteRate);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 
