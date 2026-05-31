@@ -115,13 +115,16 @@ const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
 
     if (masked === '') {
       setTypedError(false);
+      lastSelfCanonicalRef.current = '';
       onChangeCanonical('');
       return;
     }
     const parsed = parseDisplayDate(masked);
     if (parsed) {
       setTypedError(false);
-      onChangeCanonical(formatDateOnly(parsed));
+      const canonical = formatDateOnly(parsed);
+      lastSelfCanonicalRef.current = canonical;
+      onChangeCanonical(canonical);
     }
     // Partial / not-yet-valid input: keep typing without error noise.
   };
