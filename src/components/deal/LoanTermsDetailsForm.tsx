@@ -81,9 +81,9 @@ const LOAN_STATUS_OPTIONS = [
   { value: 'closed', label: 'Closed' },
 ];
 const HOLD_REASON_OPTIONS = [
-  { value: 'w9_document_needed', label: 'W-9 / Document Needed' },
+  { value: 'document_needed', label: 'Document Needed' },
   { value: 'fraud_red_flag', label: 'Fraud / Red Flag' },
-  { value: 'payment_issue', label: 'Payment Issue' },
+  { value: 'pending_payoff', label: 'Pending Payoff' },
   { value: 'occupancy_concern', label: 'Occupancy Concern' },
   { value: 'pending_workout', label: 'Pending Workout' },
   { value: 'other', label: 'Other' },
@@ -93,7 +93,6 @@ const CLOSED_REASON_OPTIONS = [
   { value: 'transfer_out_customer', label: 'Transfer Out (Customer)' },
   { value: 'transfer_out_company', label: 'Transfer Out (Company)' },
   { value: 'dead', label: 'Dead' },
-  { value: 'reo', label: 'REO' },
   { value: 'charged_off', label: 'Charged Off' },
   { value: 'other', label: 'Other' },
 ];
