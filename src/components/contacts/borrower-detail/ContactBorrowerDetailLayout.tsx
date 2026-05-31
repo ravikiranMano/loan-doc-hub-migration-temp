@@ -54,7 +54,7 @@ const SEND_FIELD_ALIASES: [string, string][] = [
 ];
 
 const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = ({
-  contact,
+  contact: contactProp,
   onBack,
   onSave,
   initialSection = 'borrower',
@@ -69,9 +69,16 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const isReadOnly = permissionsLoading || isFormViewOnly('borrower');
 
+  // Local contact copy so a successful Borrower ID rename updates the header
+  // and sub-components without waiting for a parent refetch.
+  const [contact, setContact] = useState<ContactRecord>(contactProp);
+  useEffect(() => { setContact(contactProp); }, [contactProp]);
+
+  const [borrowerIdError, setBorrowerIdError] = useState<string>('');
+
   const [values, setValues] = useState<Record<string, string>>(() => {
     const result: Record<string, string> = {};
-    Object.entries(contact.contact_data || {}).forEach(([key, value]) => {
+    Object.entries(contactProp.contact_data || {}).forEach(([key, value]) => {
       if (typeof value !== 'string') return;
       const needsPrefix = !NON_BORROWER_PREFIXES.some(p => key.startsWith(p)) && !key.startsWith('borrower.');
       result[needsPrefix ? `borrower.${key}` : key] = value;
@@ -83,7 +90,7 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
       }
     });
     if (!result['borrower.borrower_id']) {
-      result['borrower.borrower_id'] = contact.contact_id;
+      result['borrower.borrower_id'] = contactProp.contact_id;
     }
     return result;
   });
@@ -93,8 +100,9 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
 
   const handleValueChange = useCallback((fieldKey: string, value: string) => {
     if (isReadOnly) return;
+    if (fieldKey === 'borrower.borrower_id' && borrowerIdError) setBorrowerIdError('');
     setValues(prev => ({ ...prev, [fieldKey]: value }));
-  }, [isReadOnly]);
+  }, [isReadOnly, borrowerIdError]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (isReadOnly) return false;
