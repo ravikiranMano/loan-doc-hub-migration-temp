@@ -103,13 +103,19 @@ export const TypableDateField = React.forwardRef<HTMLInputElement, TypableDateFi
     // Pending caret restore (digit-index) — applied in useLayoutEffect.
     const pendingCaretRef = React.useRef<number | null>(null);
 
-    // Re-sync local typed text from upstream when not actively typing.
+    // Track the canonical value we ourselves last pushed up. Anything else is
+    // external (calendar pick, Clear, Today, parent reset) and must overwrite
+    // the visible text — regardless of focus. Using focus as the gate left the
+    // displayed text stale after a calendar pick when the input kept focus.
+    const lastSelfCanonicalRef = React.useRef<string>(value);
+
     React.useEffect(() => {
-      if (document.activeElement !== innerRef.current) {
+      if (value !== lastSelfCanonicalRef.current) {
         setTyped(upstreamDisplay);
         setInvalid(false);
+        lastSelfCanonicalRef.current = value;
       }
-    }, [upstreamDisplay]);
+    }, [value, upstreamDisplay]);
 
     // Synchronous caret restore — runs after commit, before paint. This is the
     // key to preventing the "jump to end" behavior on controlled inputs.
