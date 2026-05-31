@@ -785,7 +785,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
           {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
           {renderInlineSelect(FIELD_KEYS.originatingVendor, 'Originating Vendor', brokerOptions, 'Select Originating Vendor')}
-          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Balance')}
+          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Loan Amount')}
           {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
           {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
           {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
@@ -793,7 +793,7 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
           
 
-          {renderMaturityDateField(FIELD_KEYS.maturityDate, 'Maturity Date')}
+          {renderMaturityDateField(FIELD_KEYS.maturityDate, 'Maturity / DIF')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
           {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
