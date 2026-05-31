@@ -209,29 +209,24 @@ export const NotesModal: React.FC<NotesModalProps> = ({
   };
 
   const renderDatePickerField = (field: 'followupReminder' | 'completed' | 'assignedOn' | 'completedOn') => {
-    const rawVal = formData[field];
+    const rawVal = formData[field] as string;
     const dateObj = rawVal ? (() => { try { const d = new Date(rawVal); return isNaN(d.getTime()) ? undefined : d; } catch { return undefined; } })() : undefined;
-    const displayVal = dateObj ? format(dateObj, 'MM/dd/yyyy') : '';
+    const canonical = dateObj ? formatDateOnly(dateObj) : '';
     return (
-      <Popover modal={true}>
-        <PopoverTrigger asChild>
-          <div className="relative flex-1 cursor-pointer">
-            <Input value={displayVal} readOnly placeholder="MM/DD/YYYY" className="h-7 text-xs flex-1 pr-7 cursor-pointer" />
-            <CalendarIcon className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-          </div>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 pointer-events-auto z-[9999]" align="start">
-          <EnhancedCalendar
-            mode="single"
-            selected={dateObj}
-            onSelect={(d: Date | undefined) => {
-              setFormData(prev => ({ ...prev, [field]: d ? d.toISOString() : '' }));
-            }}
-            showClearToday={true}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
+      <TypableDateField
+        value={canonical}
+        onChange={(c) => {
+          if (!c) {
+            setFormData(prev => ({ ...prev, [field]: '' }));
+            return;
+          }
+          const p = parseDisplayDate(c) || (() => { const [y, m, d] = c.split('-').map(Number); return new Date(y, (m || 1) - 1, d || 1); })();
+          setFormData(prev => ({ ...prev, [field]: p.toISOString() }));
+        }}
+        className="flex-1"
+        inputClassName="h-7 text-xs"
+        buttonClassName="h-6 w-6"
+      />
     );
   };
 
