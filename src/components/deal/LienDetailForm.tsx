@@ -537,17 +537,15 @@ export const LienDetailForm: React.FC<LienDetailFormProps> = ({
                     </div>
                   </DirtyFieldWrapper>
                   <DirtyFieldWrapper fieldKey={DIRTY_KEY_MAP.sltBorrowerNotifiedDate} className="flex-1">
-                    <Popover open={!borrowerNotifiedDisabled && (datePickerStates['sltBorrowerNotifiedDate'] || false)} onOpenChange={(open) => { if (borrowerNotifiedDisabled) return; setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: open })); }}>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal', !lien.sltBorrowerNotifiedDate && 'text-muted-foreground', borrowerNotifiedDisabled && 'opacity-50 cursor-not-allowed')} disabled={disabled || borrowerNotifiedDisabled}>
-                          {lien.sltBorrowerNotifiedDate && safeParseDateStr(lien.sltBorrowerNotifiedDate) ? format(safeParseDateStr(lien.sltBorrowerNotifiedDate)!, 'MM/dd/yyyy') : 'Date'}
-                          <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                        <EnhancedCalendar mode="single" selected={safeParseDateStr(lien.sltBorrowerNotifiedDate)} onSelect={(date) => { if (date) onChange('sltBorrowerNotifiedDate', format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onClear={() => { onChange('sltBorrowerNotifiedDate', ''); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} onToday={() => { onChange('sltBorrowerNotifiedDate', format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, sltBorrowerNotifiedDate: false })); }} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <div className={cn(borrowerNotifiedDisabled && 'opacity-50 cursor-not-allowed')}>
+                      <TypableDateField
+                        value={lien.sltBorrowerNotifiedDate || ''}
+                        onChange={(iso) => onChange('sltBorrowerNotifiedDate', iso)}
+                        disabled={disabled || borrowerNotifiedDisabled}
+                        inputClassName="h-7 text-sm"
+                        placeholder="Date"
+                      />
+                    </div>
                   </DirtyFieldWrapper>
                 </div>
 
