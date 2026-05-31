@@ -58,6 +58,42 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const upstreamAsOfDisplay = formData?.asOfDate ? formatDateTimeDisplay(formData.asOfDate) : '';
+  const [asOfTyped, setAsOfTyped] = useState(upstreamAsOfDisplay);
+  const lastSelfAsOfRef = useRef<string | undefined>(formData?.asOfDate);
+  useEffect(() => {
+    if (formData?.asOfDate !== lastSelfAsOfRef.current) {
+      setAsOfTyped(upstreamAsOfDisplay);
+      lastSelfAsOfRef.current = formData?.asOfDate;
+    }
+  }, [formData?.asOfDate, upstreamAsOfDisplay]);
+
+  const commitAsOf = (text: string) => {
+    const t = (text || '').trim();
+    if (!t) {
+      lastSelfAsOfRef.current = '';
+      setFormData(prev => prev ? ({ ...prev, asOfDate: '' }) : prev);
+      return;
+    }
+    const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (m) {
+      const [, mm, dd, yyRaw, hh, mi, ss] = m;
+      const yy = yyRaw.length === 2 ? 2000 + parseInt(yyRaw, 10) : parseInt(yyRaw, 10);
+      const d = new Date(yy, parseInt(mm, 10) - 1, parseInt(dd, 10));
+      if (!isNaN(d.getTime())) {
+        const existing = formData?.asOfDate ? new Date(formData.asOfDate) : new Date();
+        d.setHours(hh != null ? parseInt(hh, 10) : (isNaN(existing.getTime()) ? new Date().getHours() : existing.getHours()));
+        d.setMinutes(mi != null ? parseInt(mi, 10) : (isNaN(existing.getTime()) ? new Date().getMinutes() : existing.getMinutes()));
+        d.setSeconds(ss != null ? parseInt(ss, 10) : (isNaN(existing.getTime()) ? new Date().getSeconds() : existing.getSeconds()));
+        const iso = d.toISOString();
+        lastSelfAsOfRef.current = iso;
+        setAsOfTyped(formatDateTimeDisplay(iso));
+        setFormData(prev => prev ? ({ ...prev, asOfDate: iso }) : prev);
+        return;
+      }
+    }
+    setAsOfTyped(upstreamAsOfDisplay);
+  };
 
   useEffect(() => {
     setFormData(note);
