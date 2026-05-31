@@ -207,6 +207,7 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
             values={values}
             onValueChange={handleValueChange}
               disabled={isReadOnly}
+            borrowerIdError={borrowerIdError}
           />
         );
       case 'co-borrower':
