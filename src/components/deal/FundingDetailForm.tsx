@@ -16,6 +16,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Button } from '@/components/ui/button';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import type { FundingFormData } from './AddFundingModal';
 import { LenderIdSearch } from './LenderIdSearch';
