@@ -1079,6 +1079,34 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             {renderCurrencyField(FIELD_KEYS.defaultInterest, "Default Interest")}
             {renderCurrencyField(FIELD_KEYS.totalPayment, "Total Payment")}
 
+            {/* Recast Payment — clickable link placeholder (action TBD with client) */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => { /* TODO: confirm Recast Payment workflow with client */ console.log('Recast Payment clicked'); }}
+                disabled={disabled}
+                className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline bg-transparent p-0 border-0 text-left")}
+              >
+                Recast Payment
+              </button>
+            </div>
+
+            {/* Certified Funds Only checkbox */}
+            <DirtyFieldWrapper fieldKey="loan.certified_funds_only">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="loan.certified_funds_only-cb"
+                  checked={isChecked("loan.certified_funds_only")}
+                  onCheckedChange={() => toggleCheck("loan.certified_funds_only")}
+                  disabled={disabled}
+                  className="h-3.5 w-3.5"
+                />
+                <Label htmlFor="loan.certified_funds_only-cb" className="text-sm">
+                  Certified Funds Only
+                </Label>
+              </div>
+            </DirtyFieldWrapper>
+
             {/* Overpayments Applied To */}
             <div className="pt-3">
               <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Overpayments Applied To</h4>
@@ -1086,6 +1114,84 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 {renderCurrencyField(FIELD_KEYS.overpaymentsUnpaidInterest, "Unpaid Interest")}
                 {renderCurrencyField(FIELD_KEYS.overpaymentsShortPayments, "Short Payments")}
                 {renderCurrencyField(FIELD_KEYS.overpaymentsProcessingUnpaidInterest, "Processing Unpaid Int.")}
+              </div>
+            </div>
+
+            {/* Action buttons — placeholders (wire actions with client confirmation) */}
+            <div className="pt-4 space-y-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Application action with client */ console.log('Application action'); }}
+                  disabled={disabled}
+                  className="bg-success text-success-foreground hover:bg-success/90"
+                >
+                  Application
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Unpaid Interest action with client */ console.log('Unpaid Interest action'); }}
+                  disabled={disabled}
+                  className="bg-success text-success-foreground hover:bg-success/90"
+                >
+                  Unpaid Interest
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Principal action with client */ console.log('Principal action'); }}
+                  disabled={disabled}
+                  className="bg-success text-success-foreground hover:bg-success/90"
+                >
+                  Principal
+                </Button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Short Pay action with client */ console.log('Short Pay action'); }}
+                  disabled={disabled}
+                  className="bg-accent text-accent-foreground hover:bg-accent/80"
+                >
+                  Short Pay
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Reject action with client */ console.log('Reject action'); }}
+                  disabled={disabled}
+                  className="bg-accent text-accent-foreground hover:bg-accent/80"
+                >
+                  Reject
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Apply to Suspense action with client */ console.log('Apply to Suspense action'); }}
+                  disabled={disabled}
+                  className="bg-accent text-accent-foreground hover:bg-accent/80"
+                >
+                  Apply to Suspense
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { /* TODO: confirm Apply to Regular Payment action with client */ console.log('Apply to Regular Payment action'); }}
+                  disabled={disabled}
+                  className="bg-accent text-accent-foreground hover:bg-accent/80"
+                >
+                  Apply to Regular Payment
+                </Button>
               </div>
             </div>
           </div>
