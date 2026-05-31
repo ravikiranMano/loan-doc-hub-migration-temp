@@ -299,24 +299,14 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
         <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
-        <Popover open={datePickerStates[fieldKey] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className={cn('h-8 text-xs flex-1 justify-start text-left font-normal', !getValue(fieldKey) && 'text-muted-foreground')} disabled={disabled}>
-              {(() => { const d = safeParseDateStr(getValue(fieldKey)); return d ? format(d, 'MM/dd/yyyy') : 'MM/DD/YYYY'; })()}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-            <EnhancedCalendar
-              mode="single"
-              selected={safeParseDateStr(getValue(fieldKey))}
-              onSelect={(date) => { if (date) setValue(fieldKey, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-              onClear={() => { setValue(fieldKey, ''); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-              onToday={() => { setValue(fieldKey, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={getValue(fieldKey) || ''}
+            onChange={(iso) => setValue(fieldKey, iso)}
+            disabled={disabled}
+            inputClassName="h-8 text-xs"
+          />
+        </div>
       </div>
     </DirtyFieldWrapper>
   );
