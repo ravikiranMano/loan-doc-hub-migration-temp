@@ -254,6 +254,78 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     );
   };
 
+  // Pencil-to-edit currency field: starts read-only with an inline edit icon
+  // to the left of the $ input. Clicking the pencil toggles edit mode for that
+  // field only. Blur or Enter exits edit mode; persistence uses the standard
+  // currency blur handler. Save semantics are identical to renderCurrencyField.
+  const [editableBalanceFields, setEditableBalanceFields] = useState<Set<string>>(new Set());
+  const isBalanceEditable = (key: string) => editableBalanceFields.has(key);
+  const enableBalanceEdit = (key: string) => {
+    setEditableBalanceFields(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    // Focus the input on next tick
+    setTimeout(() => {
+      const el = document.getElementById(key) as HTMLInputElement | null;
+      el?.focus();
+    }, 0);
+  };
+  const disableBalanceEdit = (key: string) => {
+    setEditableBalanceFields(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const renderEditableBalanceField = (key: string, label: string) => {
+    const editable = isBalanceEditable(key);
+    const isFocused = focusedCurrencyField === key;
+    const rawValue = getValue(key);
+    const displayValue = isFocused ? rawValue : formatCurrencyDisplay(rawValue);
+    return (
+      <DirtyFieldWrapper fieldKey={key}>
+        <div className="flex items-center gap-3">
+          <Label className={LABEL_CLASS}>{label}</Label>
+          <div className="flex items-center gap-1 flex-1">
+            <button
+              type="button"
+              onClick={() => (editable ? disableBalanceEdit(key) : enableBalanceEdit(key))}
+              disabled={disabled}
+              className="text-muted-foreground hover:text-foreground shrink-0 p-0.5"
+              title={editable ? "Lock field" : "Edit value"}
+              aria-label={`Edit ${label}`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+              <Input
+                id={key}
+                value={displayValue}
+                onChange={(e) => handleCurrencyChange(key, e.target.value)}
+                onFocus={() => setFocusedCurrencyField(key)}
+                onBlur={() => { handleCurrencyBlur(key); disableBalanceEdit(key); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                disabled={disabled}
+                readOnly={!editable}
+                className={cn("h-8 text-sm pl-7", !editable && "bg-muted/50 cursor-default")}
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   const [focusedPercentField, setFocusedPercentField] = useState<string | null>(null);
 
   const formatPercentDisplay = useCallback((val: string) => {
