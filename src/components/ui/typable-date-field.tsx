@@ -133,13 +133,16 @@ export const TypableDateField = React.forwardRef<HTMLInputElement, TypableDateFi
       const t = (text || '').trim();
       if (!t) {
         setInvalid(false);
+        lastSelfCanonicalRef.current = '';
         onChange('');
         return;
       }
       const p = parseDisplayDate(t);
       if (p) {
         setInvalid(false);
-        onChange(formatDateOnly(p));
+        const canonical = formatDateOnly(p);
+        lastSelfCanonicalRef.current = canonical;
+        onChange(canonical);
       } else {
         setInvalid(true);
       }
