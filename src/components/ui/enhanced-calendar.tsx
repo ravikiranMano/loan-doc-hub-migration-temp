@@ -38,6 +38,11 @@ function toSafeDate(v: unknown, fallback: Date): Date {
   return fallback;
 }
 
+function monthKey(v: unknown): string {
+  const d = toSafeDate(v, new Date(NaN));
+  return d instanceof Date && isValid(d) ? `${d.getFullYear()}-${d.getMonth()}` : "";
+}
+
 function EnhancedCalendar({
   className,
   classNames,
@@ -85,9 +90,17 @@ function EnhancedCalendar({
   );
 
   const [internalMonth, setInternalMonth] = React.useState<Date>(initialMonth);
+  const controlledMonthKey = React.useMemo(() => monthKey(controlledMonth), [controlledMonth]);
+  const lastControlledMonthKeyRef = React.useRef(controlledMonthKey);
   const [pickerView, setPickerView] = React.useState<"calendar" | "year" | "month">("calendar");
 
-  const displayMonth = toSafeDate(controlledMonth, internalMonth);
+  React.useEffect(() => {
+    if (!controlledMonthKey || controlledMonthKey === lastControlledMonthKeyRef.current) return;
+    setInternalMonth(toSafeDate(controlledMonth, internalMonth));
+    lastControlledMonthKeyRef.current = controlledMonthKey;
+  }, [controlledMonth, controlledMonthKey, internalMonth]);
+
+  const displayMonth = internalMonth;
 
   const handleMonthChange = (newMonth: Date) => {
     const safe = toSafeDate(newMonth, displayMonth);
