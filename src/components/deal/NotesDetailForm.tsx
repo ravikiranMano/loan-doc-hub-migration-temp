@@ -269,17 +269,32 @@ export const NotesDetailForm: React.FC<NotesDetailFormProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-[100px] shrink-0 text-xs text-foreground">As Of</Label>
-          <Popover modal={true} open={asOfDateOpen} onOpenChange={setAsOfDateOpen}>
-            <PopoverTrigger asChild>
-              <div className="relative flex-1 cursor-pointer">
-                <Input value={formData.asOfDate ? formatAsOfDisplay(formData.asOfDate) : ''} readOnly placeholder="Select date..." className="h-7 text-xs flex-1 pr-7 cursor-pointer" disabled={disabled} />
-                <CalendarIcon className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-              </div>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 pointer-events-auto z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={asOfDateObj} onSelect={handleAsOfDateSelect} showClearToday={false} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="relative flex-1">
+            <Input
+              value={asOfTyped}
+              disabled={disabled}
+              onChange={(e) => setAsOfTyped(e.target.value)}
+              onBlur={() => commitAsOf(asOfTyped)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitAsOf(asOfTyped); } }}
+              placeholder="MM/DD/YYYY HH:MM:SS"
+              className="h-7 text-xs flex-1 pr-7"
+            />
+            <Popover modal={true} open={asOfDateOpen} onOpenChange={setAsOfDateOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label="Open calendar"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 pointer-events-auto z-[9999]" align="start">
+                <EnhancedCalendar mode="single" selected={asOfDateObj} onSelect={handleAsOfDateSelect} showClearToday={false} initialFocus />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
       </div>
 
