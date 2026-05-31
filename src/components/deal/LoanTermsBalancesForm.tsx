@@ -699,7 +699,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 </DirtyFieldWrapper>
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyShortPayment}>
                   <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Apply Short Payment</Label>
+                    <Label className={LABEL_CLASS}>Short Payment Application</Label>
                     <Select
                       value={getValue(FIELD_KEYS.applyShortPayment) || undefined}
                       onValueChange={(value) => setValue(FIELD_KEYS.applyShortPayment, value)}
