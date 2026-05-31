@@ -25,10 +25,14 @@ interface LoanTermsDetailsFormProps {
   calculationResults?: Record<string, CalculationResult>;
 }
 
-import { LOAN_TERMS_DETAILS_KEYS } from '@/lib/fieldKeyMap';
+import { LOAN_TERMS_DETAILS_KEYS, LOAN_TERMS_BALANCES_KEYS } from '@/lib/fieldKeyMap';
 
 // Use central field key map
 const FIELD_KEYS = LOAN_TERMS_DETAILS_KEYS;
+// Terms field keys live on the Balances key map; reused here so the Loan Details
+// tab reads/writes the exact same storage location (placement-only change).
+const TERMS_KEYS = LOAN_TERMS_BALANCES_KEYS;
+
 
 const LIEN_POSITION_OPTIONS = [
   { value: '1st', label: '1st' }, { value: '2nd', label: '2nd' },
