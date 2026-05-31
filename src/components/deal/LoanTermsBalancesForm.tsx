@@ -692,8 +692,8 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     </Select>
                   </div>
                 </DirtyFieldWrapper>
-              </div>
-            </div>
+
+
 
                 {/* Pay Unpaid Automatically (was in Unpaid Interest Processing) */}
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.payAutomatically}>
