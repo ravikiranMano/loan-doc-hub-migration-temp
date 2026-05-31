@@ -151,33 +151,28 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
         </div>
         <div className="flex items-center gap-3">
           <Label className="text-sm text-muted-foreground min-w-[110px] text-left shrink-0">Funding Date</Label>
-          <Popover open={fundingDateOpen} onOpenChange={setFundingDateOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal flex-1', !fundingDate && 'text-muted-foreground')}>
-                {fundingDate ? formatDateOnly(fundingDate, 'MM/dd/yyyy') : 'Select date'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={fundingDate} onSelect={handleFundingDateChange} onClear={() => handleFundingDateChange(undefined)} onToday={() => handleFundingDateChange(parseDateOnly(formatDateOnly(new Date())))} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={fundingDate ? formatDateOnly(fundingDate) : ''}
+              onChange={(iso) => handleFundingDateChange(iso ? parseDateOnly(iso) : undefined)}
+              inputClassName="h-7 text-sm"
+              ariaLabel="Funding Date"
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <Label className="text-sm text-muted-foreground min-w-[110px] text-left shrink-0">Interest From</Label>
-          <Popover open={interestFromOpen} onOpenChange={setInterestFromOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal flex-1', !interestFromDate && 'text-muted-foreground')}>
-                {interestFromDate ? formatDateOnly(interestFromDate, 'MM/dd/yyyy') : 'Select date'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={interestFromDate} onSelect={handleInterestFromDateChange} onClear={() => handleInterestFromDateChange(undefined)} onToday={() => handleInterestFromDateChange(parseDateOnly(formatDateOnly(new Date())))} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={interestFromDate ? formatDateOnly(interestFromDate) : ''}
+              onChange={(iso) => handleInterestFromDateChange(iso ? parseDateOnly(iso) : undefined)}
+              inputClassName="h-7 text-sm"
+              ariaLabel="Interest From"
+            />
+          </div>
         </div>
+
       </div>
 
       {/* Rate Selection - hidden from UI, kept for calculation logic */}
