@@ -144,7 +144,11 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
     }
   }, [user, contactType, currentPage, searchQuery, fetchContacts]);
 
-  const updateContact = useCallback(async (id: string, contactData: Record<string, string>) => {
+  const updateContact = useCallback(async (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => {
     if (!user) return false;
     try {
       const normalizedContactData = contactType === 'broker' ? normalizeBrokerLicenseFields(contactData) : contactData;
@@ -157,7 +161,7 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
       // Preserve underscore-prefixed internal keys (e.g. _events_journal, _charges, _conversation_log, _trust_ledger)
       const { data: existing } = await supabase
         .from('contacts')
-        .select('contact_data')
+        .select('contact_data, contact_id')
         .eq('id', id)
         .single();
 
@@ -168,24 +172,53 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
           mergedData[key] = value;
         }
       });
-      
+
+      // Handle optional Lender/contact ID rename with uniqueness check
+      const requestedNewId = (opts?.newContactId || '').trim().toUpperCase();
+      const currentContactId = (existing?.contact_id || '').trim();
+      const willRenameId = !!requestedNewId && requestedNewId !== currentContactId;
+      if (willRenameId) {
+        const { data: dup, error: dupErr } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('contact_id', requestedNewId)
+          .neq('id', id)
+          .limit(1)
+          .maybeSingle();
+        if (dupErr) throw dupErr;
+        if (dup) {
+          toast.error('This Lender ID already exists. Please enter a unique ID.');
+          return false;
+        }
+      }
+
+      const updatePayload: Record<string, any> = {
+        full_name: fullName,
+        first_name: normalizedContactData.first_name || '',
+        last_name: normalizedContactData.last_name || '',
+        email: normalizedContactData.email || '',
+        phone: normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '',
+        city: normalizedContactData.city || normalizedContactData['address.city'] || normalizedContactData['primary_address.city'] || '',
+        state: normalizedContactData.state || normalizedContactData['address.state'] || normalizedContactData['primary_address.state'] || '',
+        company: normalizedContactData.company || '',
+        contact_data: mergedData,
+        updated_at: new Date().toISOString(),
+      };
+      if (willRenameId) updatePayload.contact_id = requestedNewId;
+
       const { error } = await supabase
         .from('contacts')
-        .update({
-          full_name: fullName,
-          first_name: normalizedContactData.first_name || '',
-          last_name: normalizedContactData.last_name || '',
-          email: normalizedContactData.email || '',
-          phone: normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '',
-          city: normalizedContactData.city || normalizedContactData['address.city'] || normalizedContactData['primary_address.city'] || '',
-          state: normalizedContactData.state || normalizedContactData['address.state'] || normalizedContactData['primary_address.state'] || '',
-          company: normalizedContactData.company || '',
-          contact_data: mergedData,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        // 23505 = unique_violation (race condition safety net)
+        if ((error as any).code === '23505') {
+          toast.error('This Lender ID already exists. Please enter a unique ID.');
+          return false;
+        }
+        throw error;
+      }
 
       // Sync updated contact fields back to any linked deal_participants
       const phoneValue = normalizedContactData.phone || normalizedContactData['phone.cell'] || normalizedContactData['phone.mobile'] || normalizedContactData['phone.home'] || normalizedContactData['phone.work'] || '';
