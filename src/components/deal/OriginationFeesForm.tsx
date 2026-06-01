@@ -657,20 +657,50 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     if (getValue(FIELD_KEYS.total_j) !== f) setValue(FIELD_KEYS.total_j, f);
   }, [grandTotal]);
 
-  // ─── Auto-fill Payment to Existing Liens from Properties tab
+  // ─── Auto-fill Payment to Existing Liens from the Lien Management data.
+  // Source of truth: lien{N}.* (NOT property{N}.lien_*). A lien flows into the
+  // RE 885 deductions ONLY when it is BOTH:
+  //   - Condition = "Existing – Payoff"  (lien{N}.existing_payoff === 'true')
+  //   - "Will Be Paid By This Loan" = TRUE  (lien{N}.paid_by_loan === 'true')
+  // Label uses the actual Lien Holder name; amount uses Current Balance.
+  // The lien-key signature is JSON.stringified so collection changes (add /
+  // remove / edit holder / toggle flags) re-trigger the effect.
+  const lienKeysSignature = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const k of Object.keys(values)) {
+      const m = k.match(/^(lien\d+)\.(holder|current_balance|existing_payoff|paid_by_loan)$/);
+      if (m) out[k] = values[k] || '';
+    }
+    return JSON.stringify(out);
+  }, [values]);
+
   useEffect(() => {
     const lienSlots = [
       { labelKey: FIELD_KEYS.existingLien1_label, amtKey: FIELD_KEYS.existingLien1_d },
       { labelKey: FIELD_KEYS.existingLien2_label, amtKey: FIELD_KEYS.existingLien2_d },
       { labelKey: FIELD_KEYS.existingLien3_label, amtKey: FIELD_KEYS.existingLien3_d },
     ];
+    const prefixes = new Set<string>();
+    Object.keys(values).forEach(k => {
+      const m = k.match(/^(lien\d+)\./);
+      if (m) prefixes.add(m[1]);
+    });
+    const sortedPrefixes = Array.from(prefixes).sort(
+      (a, b) => parseInt(a.replace('lien', ''), 10) - parseInt(b.replace('lien', ''), 10)
+    );
     const collected: { label: string; amount: number }[] = [];
-    for (let p = 1; p <= 10 && collected.length < lienSlots.length; p++) {
-      const holder = values[`property${p}.lien_holder`] || '';
-      const balance = parseNumber(values[`property${p}.lien_current_balance`] || values[`property${p}.lien_original_balance`] || '');
-      if (holder || balance > 0) {
-        collected.push({ label: holder || `Property ${p} Lien`, amount: balance });
-      }
+    for (const prefix of sortedPrefixes) {
+      const isPayoff = values[`${prefix}.existing_payoff`] === 'true';
+      const paidByLoan = values[`${prefix}.paid_by_loan`] === 'true';
+      if (!isPayoff || !paidByLoan) continue;
+      const holder = (values[`${prefix}.holder`] || '').trim();
+      const balance = parseNumber(values[`${prefix}.current_balance`] || '');
+      if (!holder && !(balance > 0)) continue;
+      collected.push({
+        label: holder || `Lien ${prefix.replace('lien', '')}`,
+        amount: balance,
+      });
+      if (collected.length >= lienSlots.length) break;
     }
     lienSlots.forEach((slot, i) => {
       const entry = collected[i];
@@ -679,11 +709,7 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
       if (getValue(slot.labelKey) !== lbl) setValue(slot.labelKey, lbl);
       if (getValue(slot.amtKey) !== amt) setValue(slot.amtKey, amt);
     });
-  }, [
-    values['property1.lien_holder'], values['property1.lien_current_balance'], values['property1.lien_original_balance'],
-    values['property2.lien_holder'], values['property2.lien_current_balance'], values['property2.lien_original_balance'],
-    values['property3.lien_holder'], values['property3.lien_current_balance'], values['property3.lien_original_balance'],
-  ]);
+  }, [lienKeysSignature]);
 
   const liensPayoffTotal = parseNumber(getValue(FIELD_KEYS.existingLien1_d))
     + parseNumber(getValue(FIELD_KEYS.existingLien2_d))
