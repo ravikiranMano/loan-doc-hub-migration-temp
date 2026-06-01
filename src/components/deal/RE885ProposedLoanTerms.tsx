@@ -20,6 +20,12 @@ const FK = {
   additional_obligation_1_lineno: 'origination_fees.re885_additional_obligation_1_lineno',
   additional_obligation_2_lineno: 'origination_fees.re885_additional_obligation_2_lineno',
   liens_payoff_lineno: 'origination_fees.re885_liens_payoff_lineno',
+  // Manual overrides for the three computed-display rows (Initial Fees,
+  // Existing Liens, Subtotal). When non-empty, the typed value wins; the
+  // small "×" button clears it and reverts to the auto value.
+  initial_fees_page1_override: 'origination_fees.re885_initial_fees_page1_override',
+  liens_payoff_override: 'origination_fees.re885_liens_payoff_override',
+  subtotal_deductions_override: 'origination_fees.re885_subtotal_deductions_override',
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
@@ -349,13 +355,26 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [upstreamLimitedNoDoc]);
 
-  // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
+  // ─── Initial Commissions/Fees (Page 1): auto-track Section 800 total UNLESS
+  // the user has typed a manual override. Override wins until the × is clicked.
+  const initialFeesOverrideRaw = getValue(FK.initial_fees_page1_override);
+  const initialFeesHasOverride =
+    initialFeesOverrideRaw !== '' && Number.isFinite(parseNumber(initialFeesOverrideRaw));
   React.useEffect(() => {
+    if (initialFeesHasOverride) return;
     const formatted = formatCurrencyDisplay(section800Total.toFixed(2));
     if (getValue(FK.initial_fees_page1) !== formatted) {
       setValue(FK.initial_fees_page1, formatted);
     }
-  }, [section800Total]);
+  }, [section800Total, initialFeesHasOverride]);
+  // Mirror an active override into the persisted value used by the subtotal sum.
+  React.useEffect(() => {
+    if (!initialFeesHasOverride) return;
+    const formatted = formatCurrencyDisplay(parseNumber(initialFeesOverrideRaw).toFixed(2));
+    if (getValue(FK.initial_fees_page1) !== formatted) {
+      setValue(FK.initial_fees_page1, formatted);
+    }
+  }, [initialFeesOverrideRaw, initialFeesHasOverride]);
 
   // ─── Seed "Payment of Other Obligations" from the Loan Documentation Fee
   // (HUD-1 line 812 _d) only when the RE 885 field is empty/zero, mirroring
@@ -366,26 +385,40 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [loanDocFeeTotal]);
 
+  // Existing-lien payoff: override wins, else use upstream liensPayoffTotal.
+  const liensOverrideRaw = getValue(FK.liens_payoff_override);
+  const liensHasOverride =
+    liensOverrideRaw !== '' && Number.isFinite(parseNumber(liensOverrideRaw));
+  const effectiveLiensPayoff = liensHasOverride
+    ? parseNumber(liensOverrideRaw)
+    : (liensPayoffTotal || 0);
+
   // Auto-calculate subtotal of deductions.
   // Per spec (Bug 2): existing-lien payoff(s) where Condition = "Existing –
   // Payoff" AND "Will Be Paid By This Loan" = TRUE MUST flow into the RE 885
   // deductions and reduce Estimated Cash at Closing. liensPayoffTotal is
   // computed upstream from the Lien Management data and passed in as a prop.
-  const subtotal = useMemo(() => {
+  const computedSubtotal = useMemo(() => {
     const fees = parseNumber(getValue(FK.initial_fees_page1));
     const otherObl = parseNumber(getValue(FK.other_obligations));
     const insurance = parseNumber(getValue(FK.credit_life_insurance));
     const add1 = parseNumber(getValue(FK.additional_obligation_1));
     const add2 = parseNumber(getValue(FK.additional_obligation_2));
-    return fees + otherObl + insurance + add1 + add2 + (liensPayoffTotal || 0);
+    return fees + otherObl + insurance + add1 + add2 + effectiveLiensPayoff;
   }, [
     getValue(FK.initial_fees_page1),
     getValue(FK.other_obligations),
     getValue(FK.credit_life_insurance),
     getValue(FK.additional_obligation_1),
     getValue(FK.additional_obligation_2),
-    liensPayoffTotal,
+    effectiveLiensPayoff,
   ]);
+
+  // Subtotal override wins over the live sum.
+  const subtotalOverrideRaw = getValue(FK.subtotal_deductions_override);
+  const subtotalHasOverride =
+    subtotalOverrideRaw !== '' && Number.isFinite(parseNumber(subtotalOverrideRaw));
+  const subtotal = subtotalHasOverride ? parseNumber(subtotalOverrideRaw) : computedSubtotal;
 
   // Auto-calculate cash at closing: loan amount − subtotal deductions.
   // computedCashAtClosing is the legally-correct derived figure; cashAtClosing
@@ -399,7 +432,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   const hasOverride = overrideRaw !== '' && Number.isFinite(parseNumber(overrideRaw));
   const cashAtClosing = hasOverride ? parseNumber(overrideRaw) : computedCashAtClosing;
 
-  // Persist subtotal
+  // Persist subtotal (the effective value — override or computed).
   React.useEffect(() => {
     const f = formatCurrencyDisplay(subtotal.toFixed(2));
     if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
@@ -525,8 +558,29 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             aria-label="Line number"
           />
           <span className={LBL}>Initial Commissions, Fees, Costs and Expenses Summarized on Page 1</span>
-          <div className={FIELD_W}>
-            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={() => {}} readOnly disabled />
+          <div className={`${FIELD_W} relative`}>
+            <CurrencyInput
+              value={
+                initialFeesHasOverride
+                  ? formatCurrencyDisplay(parseNumber(initialFeesOverrideRaw).toFixed(2))
+                  : getValue(FK.initial_fees_page1)
+              }
+              onChange={(v) => setValue(FK.initial_fees_page1_override, v)}
+              disabled={disabled}
+              className={initialFeesHasOverride ? 'pr-6' : ''}
+            />
+            {initialFeesHasOverride && (
+              <button
+                type="button"
+                onClick={() => setValue(FK.initial_fees_page1_override, '')}
+                disabled={disabled}
+                aria-label="Clear manual override"
+                title="Clear manual override"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
 
@@ -597,7 +651,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
 
         {/* Existing-lien payoff(s) flowed from Lien Management. Included in
             the Subtotal of All Deductions (Bug 2). */}
-        {liensPayoffTotal > 0 && (
+        {(liensPayoffTotal > 0 || liensHasOverride) && (
           <div className={ROW}>
             <Input
               value={getValue(FK.liens_payoff_lineno)}
@@ -608,8 +662,29 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
               aria-label="Line number"
             />
             <span className={`${LBL} italic`}>Payment of Existing Liens (from Lien Management)</span>
-            <div className={FIELD_W}>
-              <CurrencyInput value={formatCurrencyDisplay(liensPayoffTotal.toFixed(2))} onChange={() => {}} readOnly disabled />
+            <div className={`${FIELD_W} relative`}>
+              <CurrencyInput
+                value={
+                  liensHasOverride
+                    ? formatCurrencyDisplay(parseNumber(liensOverrideRaw).toFixed(2))
+                    : formatCurrencyDisplay(liensPayoffTotal.toFixed(2))
+                }
+                onChange={(v) => setValue(FK.liens_payoff_override, v)}
+                disabled={disabled}
+                className={liensHasOverride ? 'pr-6' : ''}
+              />
+              {liensHasOverride && (
+                <button
+                  type="button"
+                  onClick={() => setValue(FK.liens_payoff_override, '')}
+                  disabled={disabled}
+                  aria-label="Clear manual override"
+                  title="Clear manual override"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+                >
+                  ×
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -617,8 +692,29 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         {/* Subtotal */}
         <div className="flex items-center justify-between gap-4 py-2 border-t border-foreground/30 border-b border-border/30">
           <span className="text-xs font-bold text-foreground flex-1">Subtotal of All Deductions</span>
-          <div className={FIELD_W}>
-            <CurrencyInput value={subtotal > 0 ? formatCurrencyDisplay(subtotal.toFixed(2)) : ''} onChange={() => {}} readOnly disabled />
+          <div className={`${FIELD_W} relative`}>
+            <CurrencyInput
+              value={
+                subtotalHasOverride
+                  ? formatCurrencyDisplay(parseNumber(subtotalOverrideRaw).toFixed(2))
+                  : (subtotal > 0 ? formatCurrencyDisplay(subtotal.toFixed(2)) : '')
+              }
+              onChange={(v) => setValue(FK.subtotal_deductions_override, v)}
+              disabled={disabled}
+              className={subtotalHasOverride ? 'pr-6' : ''}
+            />
+            {subtotalHasOverride && (
+              <button
+                type="button"
+                onClick={() => setValue(FK.subtotal_deductions_override, '')}
+                disabled={disabled}
+                aria-label="Clear manual override"
+                title="Clear manual override"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
 
