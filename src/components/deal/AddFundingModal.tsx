@@ -29,7 +29,7 @@ import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { TypableDateField } from '@/components/ui/typable-date-field';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, computeAmortizedPayment, Decimal, formatPercentDisplay, formatPercentByFieldKey } from '@/lib/precisionFormat';
-import { computeLenderRowPaymentExact, LenderPaymentInputsMissingError } from '@/lib/lenderPaymentFormula';
+import { computeLenderRow } from '@/lib/lenderPaymentFormula';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -583,14 +583,12 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     prevCurrentBalanceRef.current = formData.currentBalance;
   }, [formData.currentBalance, formData.fundingAmount, formData.baseFee]);
 
-  // Lender Payment preview (per-lender share of borrower's scheduled P&I):
-  //   Lender Payment = (originalAmount / loanPrincipal) × Regular P&I × (lenderRate / noteRate)
-  // Uses the canonical helper in src/lib/lenderPaymentFormula.ts so the
-  // preview matches what the grid displays and what gets persisted on save.
+  // Lender Payment preview — Model A (per-row daily accrual):
+  //   payment = originalAmount × (effectiveLenderRate / 100) × days / 360
+  // Days = daysBetween(fundingDate, interestFrom). Computed via the canonical
+  // helper in src/lib/lenderPaymentFormula.ts so preview matches grid + persist.
   React.useEffect(() => {
     const fundingAmount = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-    // Resolve the row's effective Lender Rate the same way handleSubmit does
-    // (override → modal lender rate → sold/lender/note rateSelection → note rate).
     const overrideVal = parseFloat((formData.lenderRateOverrideValue || '').replace(/[%,]/g, '')) || 0;
     const modalLR = parseFloat((formData.lenderRate || '').toString().replace(/[%,]/g, '')) || 0;
     const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
@@ -604,25 +602,20 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
       lr = v > 0 ? v : noteRateNum;
     } else lr = noteRateNum;
 
-    const principal =
-      parseFloat((loanPrincipalBalance || '').toString().replace(/[$,]/g, '')) ||
-      parseFloat((loanAmount || '').toString().replace(/[$,]/g, '')) ||
-      0;
-
-    try {
-      const exact = computeLenderRowPaymentExact(
-        { originalAmount: fundingAmount, lenderRate: lr },
-        { loanPrincipal: principal, regularPI: totalPayment, noteRate: noteRate },
-      );
-      const share = exact.gt(0)
-        ? exact.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toFixed(2)
-        : '';
-      if (share !== formData.regularPayment) {
-        setFormData(prev => ({ ...prev, regularPayment: share }));
-      }
-    } catch (err) {
-      if (!(err instanceof LenderPaymentInputsMissingError)) throw err;
-      // Missing loan-level inputs — leave the preview field unchanged.
+    const result = computeLenderRow(
+      {
+        originalAmount: fundingAmount,
+        lenderRate: lr,
+        fundingDate: formData.fundingDate || '',
+        interestFrom: formData.interestFrom || '',
+      },
+      { noteRate: noteRateNum || undefined, dayCountBasis: 360 },
+    );
+    const share = result.status === 'ok' && result.payment > 0
+      ? result.payment.toFixed(2)
+      : '';
+    if (share !== formData.regularPayment) {
+      setFormData(prev => ({ ...prev, regularPayment: share }));
     }
   }, [
     formData.fundingAmount,
@@ -631,11 +624,10 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     formData.lenderRateOverrideValue,
     formData.rateSelection,
     formData.rateLenderValue,
-    totalPayment,
+    formData.fundingDate,
+    formData.interestFrom,
     noteRate,
     soldRate,
-    loanPrincipalBalance,
-    loanAmount,
   ]);
 
 

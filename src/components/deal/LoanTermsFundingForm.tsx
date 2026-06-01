@@ -10,41 +10,40 @@ import type { FundingFormData } from './AddFundingModal';
 import { resolveLegacyKey } from '@/lib/legacyKeyMap';
 import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
-import { computeLenderPaymentsRoundedSafe } from '@/lib/lenderPaymentFormula';
+import { computeLenderRows } from '@/lib/lenderPaymentFormula';
 
 /**
- * Recompute the persisted per-lender Payment for every funding row using
- * the canonical platform formula (see src/lib/lenderPaymentFormula.ts):
+ * Recompute persisted per-lender Payment + servicerIncome for every funding
+ * row using Model A (per-row daily accrual). See src/lib/lenderPaymentFormula.ts.
  *
- *   Lender Payment_i = (originalAmount_i / loanPrincipal)
- *                      × Borrower Regular P&I
- *                      × (effectiveLenderRate_i / noteRate)
+ *   payment_i        = originalAmount_i × (lenderRate_i / 100) × days_i / 360
+ *   servicerIncome_i = originalAmount_i × ((noteRate − lenderRate_i)/100) × days_i / 360
  *
- * When loan-level inputs (principal / regular P&I / note rate) are missing,
- * the helper returns null and we leave persisted payments untouched rather
- * than silently writing Note-Rate values.
+ * Rows whose dates are missing/corrupted keep their stored values untouched
+ * (helper status !== 'ok' → we skip that row to avoid writing $0 over a
+ * legitimate value that the user simply hasn't fixed the dates for yet).
  */
 const recomputeLenderPayments = (
   records: FundingRecord[],
-  loanPrincipalRaw: string,
-  regularPIRaw: string,
+  _loanPrincipalRaw: string,
+  _regularPIRaw: string,
   noteRateRaw: string,
 ): FundingRecord[] => {
   if (!records.length) return records;
-  const rounded = computeLenderPaymentsRoundedSafe(records, {
-    loanPrincipal: loanPrincipalRaw,
-    regularPI: regularPIRaw,
-    noteRate: noteRateRaw,
+  const noteRateNum = parseFloat((noteRateRaw || '').toString().replace(/[%,]/g, '')) || 0;
+  const results = computeLenderRows(records, {
+    noteRate: noteRateNum || undefined,
+    dayCountBasis: 360,
   });
-  if (rounded === null) {
-    if (typeof console !== 'undefined') {
-      console.warn(
-        '[LoanTermsFundingForm] recomputeLenderPayments skipped: missing loanPrincipal/regularPI/noteRate. Persisted payments left unchanged.',
-      );
-    }
-    return records;
-  }
-  return records.map((r, i) => ({ ...r, regularPayment: rounded[i] }));
+  return records.map((r, i) => {
+    const res = results[i];
+    if (res.status !== 'ok') return r;
+    return {
+      ...r,
+      regularPayment: res.payment,
+      servicerIncome: res.servicerIncome,
+    } as FundingRecord;
+  });
 };
 
 /** Strip commas/$ from a string before parseFloat so formatted values like "3,423.00" parse correctly */
@@ -355,22 +354,33 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   useEffect(() => {
     if (!fundingRecords.length) return;
     const handle = setTimeout(() => {
-      const rounded = computeLenderPaymentsRoundedSafe(fundingRecords, {
-        loanPrincipal: loanPrincipalBalance,
-        regularPI: totalPayment,
-        noteRate: noteRate,
+      const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
+      const results = computeLenderRows(fundingRecords, {
+        noteRate: noteRateNum || undefined,
+        dayCountBasis: 360,
       });
-      if (rounded === null) return; // missing inputs — leave stored values alone
       let drift = false;
       for (let i = 0; i < fundingRecords.length; i++) {
-        const stored = Number(fundingRecords[i].regularPayment) || 0;
-        if (Math.abs(stored - rounded[i]) > 0.005) {
+        if (results[i].status !== 'ok') continue;
+        const storedPay = Number(fundingRecords[i].regularPayment) || 0;
+        const storedSvc = Number((fundingRecords[i] as any).servicerIncome) || 0;
+        if (
+          Math.abs(storedPay - results[i].payment) > 0.005 ||
+          Math.abs(storedSvc - results[i].servicerIncome) > 0.005
+        ) {
           drift = true;
           break;
         }
       }
       if (!drift) return;
-      const updated = fundingRecords.map((r, i) => ({ ...r, regularPayment: rounded[i] }));
+      const updated = fundingRecords.map((r, i) => {
+        if (results[i].status !== 'ok') return r;
+        return {
+          ...r,
+          regularPayment: results[i].payment,
+          servicerIncome: results[i].servicerIncome,
+        } as FundingRecord;
+      });
       const json = JSON.stringify(updated);
       if (lastPaymentSyncRef.current === json) return;
       lastPaymentSyncRef.current = json;
@@ -378,7 +388,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
     }, 400);
     return () => clearTimeout(handle);
-  }, [fundingRecords, loanPrincipalBalance, totalPayment, noteRate, dealId, onValueChange]);
+  }, [fundingRecords, noteRate, dealId, onValueChange]);
 
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
   // No longer normalized to 100% — when the loan is partially funded the total
