@@ -391,30 +391,34 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return v !== undefined ? v : (Number(record.pctOwned) || 0);
   };
 
-  // Per-lender Payment (GROSS): each lender's share of the borrower Regular P&I,
-  // scaled by that lender's own rate (Lender Rate ÷ Note Rate). Computed via
-  // the single canonical helper in `src/lib/lenderPaymentFormula.ts` — no
-  // inline formula here, and no silent fallback when noteRate is missing
-  // (the helper returns null in that case and we leave display values at 0
-  // rather than rendering an implicit Note-Rate amount).
-  const computedPaymentsArr = React.useMemo(() => {
-    if (!fundingRecords.length) return [] as number[];
-    const rounded = computeLenderPaymentsRoundedSafe(fundingRecords, {
-      loanPrincipal: fundingRecords.reduce(
-        (sum, r) => sum + (Number(r.originalAmount) || 0),
-        0,
-      ),
-      regularPI: regularPIDec.toNumber(),
-      noteRate: noteRate,
-    });
-    if (rounded === null) return fundingRecords.map(() => 0);
-    return rounded;
-  }, [fundingRecords, regularPIDec, noteRate]);
+  // Per-lender Payment + Servicer Income (Model A: per-row daily accrual).
+  //   payment_i = originalAmount_i × (lenderRate_i / 100) × days_i / 360
+  //   servicerIncome_i = originalAmount_i × ((noteRate − lenderRate_i) / 100) × days_i / 360
+  // Days = daysBetween(fundingDate_i, interestFrom_i). Rows with missing or
+  // corrupted dates render as $0.00 (see helper status). Computed via the
+  // single canonical helper in src/lib/lenderPaymentFormula.ts — no inline
+  // math here.
+  const noteRateDec = React.useMemo(
+    () => parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0,
+    [noteRate],
+  );
+  const computedRowsArr = React.useMemo(() => {
+    if (!fundingRecords.length) return [] as Array<{ payment: number; servicerIncome: number }>;
+    return computeLenderRows(fundingRecords, {
+      noteRate: noteRateDec || undefined,
+      dayCountBasis: 360,
+    }).map((r) => ({ payment: r.payment, servicerIncome: r.servicerIncome }));
+  }, [fundingRecords, noteRateDec]);
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const i = recordIndexMap.get(record);
     if (i === undefined) return 0;
-    return computedPaymentsArr[i] ?? 0;
+    return computedRowsArr[i]?.payment ?? 0;
+  };
+  const getDisplayedServicerIncome = (record: FundingRecord) => {
+    const i = recordIndexMap.get(record);
+    if (i === undefined) return 0;
+    return computedRowsArr[i]?.servicerIncome ?? 0;
   };
   const getDisbursementsTotal = (record: FundingRecord) => {
     return (record.disbursements || []).reduce(
