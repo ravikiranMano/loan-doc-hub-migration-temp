@@ -346,8 +346,35 @@ export async function processDocx(
     );
 
     for (const partName of contentPartNames) {
-      const xml = getPartXml(partName);
+      let xml = getPartXml(partName);
       if (!xml) continue;
+
+      // Defensive auto-repair: some uploaded templates ship header/footer/
+      // footnotes/endnotes parts whose root close tag is missing (Word still
+      // opens them via its tolerant parser, but our strict integrity check
+      // — and Google Docs — reject them). When the root open tag is present
+      // and the close tag is absent, append the close tag rather than failing
+      // the whole generation. Never applied to word/document.xml (truncation
+      // there indicates real corruption that must be surfaced).
+      let rootCloseRepair: string | null = null;
+      let rootOpenName: string | null = null;
+      if (partName.startsWith("word/header")) { rootCloseRepair = "</w:hdr>"; rootOpenName = "w:hdr"; }
+      else if (partName.startsWith("word/footer")) { rootCloseRepair = "</w:ftr>"; rootOpenName = "w:ftr"; }
+      else if (partName.startsWith("word/footnotes")) { rootCloseRepair = "</w:footnotes>"; rootOpenName = "w:footnotes"; }
+      else if (partName.startsWith("word/endnotes")) { rootCloseRepair = "</w:endnotes>"; rootOpenName = "w:endnotes"; }
+      if (rootCloseRepair && rootOpenName) {
+        const trimmed = xml.trim();
+        const hasOpen = new RegExp(`<${rootOpenName}\\b`).test(trimmed);
+        if (hasOpen && !trimmed.endsWith(rootCloseRepair)) {
+          console.warn(
+            `[docx-processor] auto-repairing ${partName}: appended missing ${rootCloseRepair} ` +
+            `(last 120 chars before repair: ${JSON.stringify(trimmed.slice(-120))})`,
+          );
+          xml = trimmed + rootCloseRepair;
+          processedFiles[partName] = [encoder.encode(xml), { level: PROCESSED_XML_COMPRESSION_LEVEL }];
+        }
+      }
+
       validateContentXmlPart(partName, xml);
     }
   } catch (err) {
