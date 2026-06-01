@@ -76,9 +76,10 @@ export const AuthPage: React.FC = () => {
               : error.message,
             variant: 'destructive',
           });
-        } else {
-          navigate('/dashboard', { replace: true });
         }
+        // On success, the useEffect above navigates once `user` is populated
+        // by onAuthStateChange — prevents a race-induced redirect flash.
+
       } else {
         const result = signupSchema.safeParse({ email, password, confirmPassword, fullName });
         if (!result.success) {
