@@ -1062,21 +1062,33 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
                 { cb: NEW_KEYS.sendLateNotice, last: NEW_KEYS.sendLateNoticeLastSent, label: 'Late Notice' },
                 { cb: NEW_KEYS.sendBalloonNotice, last: NEW_KEYS.sendBalloonNoticeLastSent, label: 'Balloon / DIF Notice' },
               ].map((row) => (
-                <DirtyFieldWrapper key={row.cb} fieldKey={row.cb}>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={row.cb}
-                      checked={getBoolValue(row.cb)}
-                      onCheckedChange={(c) => setBoolValue(row.cb, !!c)}
-                      disabled={disabled}
-                      className="h-3.5 w-3.5"
-                    />
-                    <Label htmlFor={row.cb} className="font-normal cursor-pointer text-xs flex-1 whitespace-nowrap">
-                      {row.label}
-                    </Label>
-                    {renderReadOnlyDateField(row.last, `${row.label} Last Sent`)}
-                  </div>
-                </DirtyFieldWrapper>
+                <div key={row.cb} className="flex items-center gap-2">
+                  <DirtyFieldWrapper fieldKey={row.cb}>
+                    <div className="flex items-center gap-2 flex-1">
+                      <Checkbox
+                        id={row.cb}
+                        checked={getBoolValue(row.cb)}
+                        onCheckedChange={(c) => setBoolValue(row.cb, !!c)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={row.cb} className="font-normal cursor-pointer text-xs flex-1 whitespace-nowrap">
+                        {row.label}
+                      </Label>
+                    </div>
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={row.last}>
+                    <div className="w-[110px]">
+                      <TypableDateField
+                        value={getValue(row.last) || ''}
+                        onChange={(iso) => setValue(row.last, iso)}
+                        disabled={disabled}
+                        inputClassName="h-8 text-xs"
+                        aria-label={`${row.label} Last Sent`}
+                      />
+                    </div>
+                  </DirtyFieldWrapper>
+                </div>
               ))}
             </div>
           </div>
