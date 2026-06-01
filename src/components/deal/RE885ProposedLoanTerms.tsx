@@ -651,7 +651,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
 
         {/* Existing-lien payoff(s) flowed from Lien Management. Included in
             the Subtotal of All Deductions (Bug 2). */}
-        {liensPayoffTotal > 0 && (
+        {(liensPayoffTotal > 0 || liensHasOverride) && (
           <div className={ROW}>
             <Input
               value={getValue(FK.liens_payoff_lineno)}
@@ -662,8 +662,29 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
               aria-label="Line number"
             />
             <span className={`${LBL} italic`}>Payment of Existing Liens (from Lien Management)</span>
-            <div className={FIELD_W}>
-              <CurrencyInput value={formatCurrencyDisplay(liensPayoffTotal.toFixed(2))} onChange={() => {}} readOnly disabled />
+            <div className={`${FIELD_W} relative`}>
+              <CurrencyInput
+                value={
+                  liensHasOverride
+                    ? formatCurrencyDisplay(parseNumber(liensOverrideRaw).toFixed(2))
+                    : formatCurrencyDisplay(liensPayoffTotal.toFixed(2))
+                }
+                onChange={(v) => setValue(FK.liens_payoff_override, v)}
+                disabled={disabled}
+                className={liensHasOverride ? 'pr-6' : ''}
+              />
+              {liensHasOverride && (
+                <button
+                  type="button"
+                  onClick={() => setValue(FK.liens_payoff_override, '')}
+                  disabled={disabled}
+                  aria-label="Clear manual override"
+                  title="Clear manual override"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+                >
+                  ×
+                </button>
+              )}
             </div>
           </div>
         )}
