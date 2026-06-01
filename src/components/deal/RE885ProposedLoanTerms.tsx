@@ -357,6 +357,15 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [section800Total]);
 
+  // ─── Seed "Payment of Other Obligations" from the Loan Documentation Fee
+  // (HUD-1 line 812 _d) only when the RE 885 field is empty/zero, mirroring
+  // the seed-if-empty pattern used for initial_fees_page1. User edits win.
+  React.useEffect(() => {
+    if (loanDocFeeTotal > 0 && isEmptyOrZero(getValue(FK.other_obligations))) {
+      setValue(FK.other_obligations, formatCurrencyDisplay(loanDocFeeTotal.toFixed(2)));
+    }
+  }, [loanDocFeeTotal]);
+
   // Auto-calculate subtotal of deductions.
   // Per spec (Bug 2): existing-lien payoff(s) where Condition = "Existing –
   // Payoff" AND "Will Be Paid By This Loan" = TRUE MUST flow into the RE 885
