@@ -74,6 +74,8 @@ export interface FundingRecord {
   baseFee?: number;
   currentBalance?: number;
   regularPayment: number;
+  /** Per-row servicing/broker spread income (Model A). Optional for legacy rows. */
+  servicerIncome?: number;
   lenderShare: number;
   roundingError: boolean;
   rateSelection?: 'note_rate' | 'sold_rate' | 'lender_rate';
