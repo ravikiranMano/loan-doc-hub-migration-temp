@@ -59,17 +59,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const applySessionState = useCallback(async (nextSession: Session | null) => {
+  const applySessionState = useCallback((nextSession: Session | null) => {
     setSession(nextSession);
     setUser(nextSession?.user ?? null);
 
     if (nextSession?.user) {
-      const fetchedRole = await fetchUserRole(nextSession.user.id);
-      setRole(fetchedRole);
+      // Defer the role lookup out of any auth callback to avoid blocking
+      // Supabase's auth event loop (documented anti-pattern) and to let the
+      // shell paint immediately with the user present — role-gated content
+      // fills in on the next tick instead of holding the whole UI blank.
+      const uid = nextSession.user.id;
+      setTimeout(() => {
+        fetchUserRole(uid).then((fetchedRole) => setRole(fetchedRole));
+      }, 0);
     } else {
       setRole(null);
     }
   }, [fetchUserRole]);
+
 
   const recoverSession = useCallback(async (): Promise<Session | null> => {
     if (recoveringSessionRef.current) return null;
