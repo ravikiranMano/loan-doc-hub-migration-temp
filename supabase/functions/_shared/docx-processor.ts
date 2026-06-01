@@ -362,7 +362,12 @@ export async function processDocx(
       if (rootCloseRepair && rootOpenName) {
         const trimmed = xml.trim();
         const hasOpen = new RegExp(`<${rootOpenName}\\b`).test(trimmed);
-        if (hasOpen && !trimmed.endsWith(rootCloseRepair)) {
+        const selfClosedRootRe = new RegExp(`(<${rootOpenName}\\b[\\s\\S]*?)\\s*/>\\s*$`);
+        if (hasOpen && selfClosedRootRe.test(trimmed)) {
+          console.warn(`[docx-processor] auto-repairing ${partName}: expanded self-closing ${rootOpenName} root`);
+          xml = trimmed.replace(selfClosedRootRe, `$1>${rootCloseRepair}`);
+          processedFiles[partName] = [encoder.encode(xml), { level: PROCESSED_XML_COMPRESSION_LEVEL }];
+        } else if (hasOpen && !trimmed.endsWith(rootCloseRepair)) {
           console.warn(
             `[docx-processor] auto-repairing ${partName}: appended missing ${rootCloseRepair} ` +
             `(last 120 chars before repair: ${JSON.stringify(trimmed.slice(-120))})`,
@@ -414,7 +419,11 @@ export function validateContentXmlPart(partName: string, xml: string): void {
   else if (partName.startsWith("word/endnotes")) rootClose = "</w:endnotes>";
 
   if (rootClose && !trimmed.endsWith(rootClose)) {
-    throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+    const rootName = rootClose.slice(2, -1);
+    const selfClosedRootRe = new RegExp(`<${rootName}\\b[\\s\\S]*?/>\\s*$`);
+    if (!selfClosedRootRe.test(trimmed)) {
+      throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+    }
   }
 
   const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
