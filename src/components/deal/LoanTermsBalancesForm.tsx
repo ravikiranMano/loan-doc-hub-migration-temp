@@ -14,6 +14,7 @@ import type { CalculationResult } from "@/lib/calculationEngine";
 import { DirtyFieldWrapper } from "./DirtyFieldWrapper";
 import { TypableDateField } from "@/components/ui/typable-date-field";
 import { sanitizeInterestInput, normalizeInterestOnBlur } from "@/lib/interestValidation";
+import { computeBorrowerScheduledPayment } from "@/lib/borrowerPaymentFormula";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useDealNavigationOptional } from "@/contexts/DealNavigationContext";
 import type { LoanTermsSubSection } from "./LoanTermsSubNavigation";
