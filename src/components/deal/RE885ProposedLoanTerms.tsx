@@ -78,15 +78,25 @@ interface RE885Props {
   upstreamRateStructure?: string;
   /** Loan tab → Loan Type → Variable / ARM checkbox */
   upstreamVariableArm?: boolean;
-  /** Loan tab → Current Rate (Section V — Fully Indexed) */
+  /** Loan tab → Current Rate (Section V — Fully Indexed fallback when adj rate is unset) */
   upstreamCurrentRate?: number;
-  /** Loan tab → Regular P&I (Section VII Min Monthly Payment, preferred over computed) */
+  /** Loan tab → Regular P&I (legacy — kept only to detect divergence). */
   upstreamRegularPI?: number;
+  /** Loan tab → Amortization method (drives Section VII formula). */
+  upstreamAmortization?: string;
+  /** Loan tab → Payment Frequency (drives Section VII period count). */
+  upstreamPaymentFrequency?: string;
   /** Loan tab → Loan Type → Balloon Payment + Estimated Balloon */
   upstreamBalloonEnabled?: boolean;
   upstreamBalloonAmount?: number;
-  /** Loan tab → Penalties → Default Interest flat rate (Section VIII rate-increase %) */
-  upstreamDefaultInterestRate?: number;
+  /** Loan tab → Adjustable / Graduated Loan Details — single source of truth for Sections IV–IX. */
+  upstreamAdjInitialRateMonths?: string;
+  upstreamAdjFullyIndexedRate?: number;
+  upstreamAdjMaxInterestRate?: number;
+  upstreamAdjRateIncreasePercent?: number;
+  upstreamAdjRateIncreaseMonths?: string;
+  upstreamAdjPaymentOptionsEndMonths?: string;
+  upstreamAdjPaymentOptionsEndPercent?: number;
   section800Total?: number;
   liensPayoffTotal?: number;
   // Loan tab → Article 7 (Pre-payment Penalty)
