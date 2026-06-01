@@ -68,7 +68,7 @@ export const AuthPage: React.FC = () => {
             variant: 'destructive',
           });
         } else {
-          navigate('/');
+          navigate('/dashboard', { replace: true });
         }
       } else {
         const result = signupSchema.safeParse({ email, password, confirmPassword, fullName });

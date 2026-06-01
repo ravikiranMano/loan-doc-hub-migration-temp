@@ -95,12 +95,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // Ref-tracked so initial getSession and the onAuthStateChange race
+  // share the same de-dupe state — prevents double role fetches on cold
+  // start and on every SIGNED_IN/INITIAL_SESSION event for the same user.
+  const currentUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     let isMounted = true;
-    let currentUserId: string | null = null;
 
     const settleLoading = () => {
       if (isMounted) setLoading(false);
+    };
+
+    const applyIfNewUser = async (nextSession: Session | null) => {
+      const nextId = nextSession?.user?.id ?? null;
+      if (nextId && nextId === currentUserIdRef.current) {
+        // Same user — just refresh the session object, skip role re-fetch.
+        if (nextSession) setSession(nextSession);
+        return;
+      }
+      currentUserIdRef.current = nextId;
+      await applySessionState(nextSession);
     };
 
     // Set up auth state listener FIRST
@@ -111,15 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (authSession?.user) {
             manualSignOutRef.current = false;
-            // Skip re-applying state (and re-fetching role) for the same user on
-            // silent events like TOKEN_REFRESHED — prevents layout flicker.
-            if (authSession.user.id !== currentUserId) {
-              currentUserId = authSession.user.id;
-              await applySessionState(authSession);
-            } else {
-              // Keep session object fresh without role re-fetch
-              setSession(authSession);
-            }
+            await applyIfNewUser(authSession);
             settleLoading();
             return;
           }
@@ -127,12 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const recoveredSession = await recoverSession();
           if (recoveredSession?.user) {
             manualSignOutRef.current = false;
-            if (recoveredSession.user.id !== currentUserId) {
-              currentUserId = recoveredSession.user.id;
-              await applySessionState(recoveredSession);
-            } else {
-              setSession(recoveredSession);
-            }
+            await applyIfNewUser(recoveredSession);
             settleLoading();
             return;
           }
@@ -141,7 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Ignore transient SIGNED_OUT events caused by tab/focus/session race conditions.
           if (event === 'SIGNED_OUT' && manualSignOutRef.current) {
             manualSignOutRef.current = false;
-            currentUserId = null;
+            currentUserIdRef.current = null;
             await applySessionState(null);
           }
 
@@ -154,11 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void (async () => {
       const recoveredSession = await recoverSession();
       if (!isMounted) return;
-
-      if (recoveredSession?.user) {
-        currentUserId = recoveredSession.user.id;
-      }
-      await applySessionState(recoveredSession);
+      await applyIfNewUser(recoveredSession);
       settleLoading();
     })();
 
@@ -167,6 +165,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
     };
   }, [applySessionState, recoverSession]);
+
+
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({

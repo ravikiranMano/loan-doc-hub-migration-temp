@@ -10,11 +10,11 @@ interface RoleGuardProps {
 export const RoleGuard: React.FC<RoleGuardProps> = ({ requiredRoles, blockExternalUsers = false }) => {
   const { role, loading, isExternalUser } = useAuth();
 
-  // While auth/role is resolving, render nothing so the previous route stays
-  // painted until the new route is ready. Prevents a spinner flash on every
-  // guarded navigation.
+  // While auth/role is resolving, render the Outlet so the previously
+  // painted route content stays on screen. The redirect (if any) fires a
+  // frame later once role resolves — no visible blank flash.
   if (loading || role === null) {
-    return null;
+    return <Outlet />;
   }
 
   if (blockExternalUsers && isExternalUser) {

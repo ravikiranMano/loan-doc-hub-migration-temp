@@ -239,6 +239,10 @@
     /* No transition — instant swap prevents cross-fade flicker during nav. */
   }
 
+  /* Subtle fade on route content swap to smooth out gating transitions. */
+  main { transition: opacity 80ms ease-out; }
+
+
   .app-keepalive-pane-active {
     position: relative;
     opacity: 1;

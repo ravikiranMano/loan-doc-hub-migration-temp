@@ -1,70 +1,69 @@
-## Root cause
+## Root-cause analysis of UI flicker
 
-`DateMaskedInput` inside `src/components/deal/DealFieldInput.tsx` (lines 56–72) keeps its own local `typed` state for the visible MM/DD/YYYY text and only re-syncs to the upstream `displayValue` when the input is **not** focused:
+After tracing the auth + routing shell, three real flicker sources remain. Everything else (theme FOUC, scroll, keep-alive panes) is already handled.
 
-```ts
-const [typed, setTyped] = useState<string>(displayValue);
-React.useEffect(() => {
-  if (document.activeElement !== inputRef.current) {
-    setTyped(displayValue);
-    setTypedError(false);
-  }
-}, [displayValue]);
-```
+### 1. AppLayout unmounts the entire shell on every gating decision
+`src/components/layout/AppLayout.tsx` returns `null` while `loading || !user || !role`. Because `AppLayout` is the parent route element wrapping **every** protected route, any moment its gate flips back to "not ready" tears down the sidebar, header, tab bar, workspace panes, and `WorkspaceFileRenderer` — then rebuilds them. This is the main flash users see on:
+- **Login** — `AuthPage` navigates to `/`, `Index` redirects to `/dashboard`. Between those two route changes `AppLayout` mounts with `role===null` (still being fetched) → renders `null` → role arrives → full shell mounts. Visible blank frame.
+- **Refresh (F5)** — on initial load `loading=true`, shell renders `null`. Once session+role resolve, the entire shell paints from scratch.
+- **Token refresh / brief session blips** — `AuthProvider.applySessionState` flips `role` to `null` for a few ms during re-fetch, unmounting the shell.
 
-Repro path that breaks:
-1. User types `06/15/2026` into the input → input has focus, `typed = "06/15/2026"`, canonical is saved.
-2. User clicks the calendar icon and picks `11/03/2024`.
-3. The text input often retains focus (the popover trigger is a sibling button, and React’s Popover doesn’t blur the input). `handleDateSelect` runs, parent `value` becomes `2024-11-03`, so `displayValue` recomputes to `11/03/2024`.
-4. The sync effect fires but `document.activeElement === inputRef.current`, so it bails. `typed` stays `06/15/2026`. Storage is correct; only the visible text is stale — exactly the reported symptom.
+### 2. Double redirect on successful login
+`AuthPage.handleSubmit` calls `navigate('/')` after `signIn`. `Index.tsx` then renders `null` until `loading` is false, then `<Navigate to="/dashboard">`. That's two route transitions and one null render between login click and dashboard paint → visible flash. Should navigate straight to `/dashboard`.
 
-`TypableDateField` (`src/components/ui/typable-date-field.tsx`) has the identical focus-gated sync (lines 116–121) but its calendar `onSelect` calls `setTyped(format(...))` explicitly, so it’s safer. We’ll harden it the same way for parity.
+### 3. RoleGuard returns `null` on every gated navigation
+`RoleGuard` renders `null` while `loading || role===null`. On any in-app navigation into a guarded route, if React re-runs the guard before context value is memoised, the `<Outlet />` blanks for a frame. With the AppLayout fix this becomes harmless (parent stays mounted), but RoleGuard should still preserve the previous Outlet rather than blank.
 
-## Fix
+### Not actually broken (verified)
+- Theme FOUC is already prevented by the inline script in `index.html`.
+- `ScrollToTop` already defers to `requestAnimationFrame` — no jump.
+- Workspace tabs use `app-keepalive-pane` (instant swap, no cross-fade).
+- React Query is configured with `refetchOnWindowFocus: false`.
+- React Strict Mode is not enabled in `main.tsx`.
 
-Distinguish **“user is typing”** from **“value changed externally”** instead of using focus as the gate.
+---
 
-Track the canonical value last produced by *our own* keystroke handler. Any other change to the upstream canonical value is, by definition, external (calendar pick, Clear, Today, record load, programmatic reset) and must overwrite `typed` even when the input is focused.
+## Fix plan
 
-### `src/components/deal/DealFieldInput.tsx` — `DateMaskedInput`
+### A. Stop unmounting the shell — `src/components/layout/AppLayout.tsx`
+Replace the `if (loading) return null;` / `if (!role) return null;` gates with a persistent shell:
+- Always render `AppSidebar`, `AppHeader`, and the tab bar.
+- Show a lightweight **content-area** placeholder (matching shell background) only inside `<main>` while `loading || !role` is true, instead of blanking the entire page.
+- Keep the `Navigate to="/auth"` only for the resolved `!user` case (after `loading` settles).
+- Net effect: sidebar/header/tab bar never disappear during auth re-validation, token refresh, or navigation between guarded routes.
 
-- Add `lastSelfCanonicalRef = useRef<string | null>(null)`.
-- In `handleTextChange`, when calling `onChangeCanonical(...)`, set `lastSelfCanonicalRef.current = <value just pushed up>` (both the empty-string branch and the parsed-date branch).
-- Replace the sync effect so it depends on the canonical `value` (not just `displayValue`) and re-syncs whenever the incoming canonical value differs from what we last pushed up ourselves:
-  ```ts
-  React.useEffect(() => {
-    if (value !== lastSelfCanonicalRef.current) {
-      // External change: calendar pick, Clear, Today, parent reset.
-      setTyped(displayValue);
-      setTypedError(false);
-      lastSelfCanonicalRef.current = value;
-    }
-  }, [value, displayValue]);
-  ```
-- Initialize `lastSelfCanonicalRef.current = value` on mount so the first user keystroke isn’t treated as external.
+### B. Skip the `/` bounce after login — `src/components/auth/AuthPage.tsx`
+- On successful `signIn`, call `navigate('/dashboard', { replace: true })` instead of `navigate('/')`.
+- Keeps `Index.tsx` untouched (still useful for cold loads on `/`).
 
-This guarantees calendar Select / Clear / Today / record-load always refresh the full MM/DD/YYYY, while keystrokes never clobber the user’s in-progress text or reset the caret (the existing `requestAnimationFrame` caret-restore stays intact and only runs inside `handleTextChange`).
+### C. Make RoleGuard non-blanking — `src/components/layout/RoleGuard.tsx`
+- While `loading || role===null`, render `<Outlet />` anyway (the previous content stays painted) instead of `null`. The role decision will redirect a frame later if needed — no visual blank.
+- Keep the `Navigate` redirects for resolved mismatches.
 
-### `src/components/ui/typable-date-field.tsx` — `TypableDateField`
+### D. Suppress redundant role re-fetch — `src/contexts/AuthContext.tsx`
+- The auth logs show 4 `GET /user` within ~2s after each login. `applySessionState` runs once from `recoverSession` and again from `onAuthStateChange('SIGNED_IN')` for the same userId. The current `currentUserId` guard already exists for `onAuthStateChange`, but the very first `getSession`/`onAuthStateChange` race still double-applies because `currentUserId` is set inside an async closure.
+- Move `currentUserId` and the initial-application guard into a single `useRef` so a second apply for the same userId is a no-op (no second role fetch, no extra state churn).
 
-Apply the same `lastSelfCanonicalRef` pattern to the effect at lines 116–121:
+### E. Optional smoothing
+- Add a tiny `transition: opacity 80ms` on `<main>` so the content area's loading→ready swap is imperceptible instead of a hard frame.
 
-- In `handleChange`, set `lastSelfCanonicalRef.current` to whatever it passes to `onChange` (`''` on clear, `formatDateOnly(parsed)` on full 8-digit commit).
-- In `commit` (blur), do the same on success.
-- In the sync effect, re-sync `typed` from `upstreamDisplay` whenever `value !== lastSelfCanonicalRef.current`, regardless of focus.
-- Leave the existing `useLayoutEffect` caret-restore alone (it only runs when `pendingCaretRef.current != null`, which is set only by keystrokes — external syncs won’t trigger it, so no caret jump).
+---
 
-## Out of scope
+## Files touched
 
-- No changes to `dateOnly.ts`, storage format, calendar UI, or parent forms.
-- No data/merge/save logic changes.
-- `PropertyLiensForm`’s read-only popover trigger (no manual typing) doesn’t exhibit the bug; no change needed.
+- `src/components/layout/AppLayout.tsx` (persistent shell, scoped loading placeholder)
+- `src/components/auth/AuthPage.tsx` (direct navigate to `/dashboard`)
+- `src/components/layout/RoleGuard.tsx` (render Outlet during transient unknown state)
+- `src/contexts/AuthContext.tsx` (de-dupe initial role fetch)
+- `src/index.css` (one-line opacity transition on `main`)
 
 ## Verification
 
-- Type `06/15/2026` → pick `11/03/2024` → field shows `11/03/2024` fully.
-- Pick → Clear → pick again → display always matches.
-- Today button updates display.
-- Load existing record → display matches stored value.
-- Typing: caret stays put, partials like `06/14/192` aren’t clobbered, no cursor jump to end.
-- Manual typing of full date still updates calendar selection (reverse direction unchanged).
+- **Login** — submit credentials → no blank frame, sidebar/header already on screen as dashboard content fades in.
+- **F5 refresh** on any guarded route — shell paints immediately with placeholder in content area; content fills in without remounting sidebar/header.
+- **Route navigation** between `/dashboard`, `/deals`, `/contacts/*`, `/admin/*` — shell stays mounted, only `<main>` swaps.
+- **Token refresh** (wait for silent refresh or trigger via devtools) — no flash; role re-fetch is suppressed when userId unchanged.
+- **Logout** — clean transition to `/auth` (no intermediate blank shell).
+- Cross-browser smoke check in Chrome, Edge, Firefox at slow-3G throttling.
+
+No backend, schema, or data-layer changes. All edits are presentation/lifecycle only and respect the project's minimal-change policy.
