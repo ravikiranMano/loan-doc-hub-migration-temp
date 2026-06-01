@@ -4171,7 +4171,12 @@ async function generateSingleDocument(
         // "2nd\n2nd" for pr_li_lienPrioriNow). Drop the index-0 entry whenever
         // any indexed lien (>=1) is present, regardless of value match.
         const hasIndexed = entries.some(e => e.index >= 1);
-        const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
+        const dedupedEntries = (hasIndexed ? entries.filter(e => e.index >= 1) : entries)
+          // Drop blank/whitespace-only entries so they don't produce a leading
+          // or in-list "\n" that the docx renderer turns into a stray <w:br/>
+          // inside the lien table cell (breaks RE885 §XVI lien-row alignment
+          // because the column placeholders share a single paragraph).
+          .filter(e => e.value !== null && e.value !== undefined && String(e.value).trim() !== "");
         const isCurrencyField = (field === "current_balance" || field === "original_balance" ||
                           field === "regular_payment" || field === "balance_after" ||
                           field === "anticipated_amount" || field === "existing_paydown_amount" ||
