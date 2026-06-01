@@ -831,16 +831,19 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   };
 
   const renderReadOnlyNumberRow = (key: string, label: string) => (
-    <div className="flex items-center gap-2">
-      <Label className="flex-1 text-xs">{label}</Label>
-      <Input
-        value={getValue(key)}
-        readOnly
-        disabled
-        className="h-8 text-xs bg-muted/40 w-[80px] text-right"
-        aria-label={label}
-      />
-    </div>
+    <DirtyFieldWrapper fieldKey={key}>
+      <div className="flex items-center gap-2">
+        <Label className="flex-1 text-xs">{label}</Label>
+        <Input
+          value={getValue(key)}
+          onChange={(e) => setValue(key, e.target.value.replace(/\D/g, ''))}
+          disabled={disabled}
+          inputMode="numeric"
+          className="h-8 text-xs w-[80px] text-right"
+          aria-label={label}
+        />
+      </div>
+    </DirtyFieldWrapper>
   );
 
   // Loan Status conditional dropdown change handler — clears stale reason value
