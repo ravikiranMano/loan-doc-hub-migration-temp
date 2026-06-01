@@ -354,22 +354,33 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
   useEffect(() => {
     if (!fundingRecords.length) return;
     const handle = setTimeout(() => {
-      const rounded = computeLenderPaymentsRoundedSafe(fundingRecords, {
-        loanPrincipal: loanPrincipalBalance,
-        regularPI: totalPayment,
-        noteRate: noteRate,
+      const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
+      const results = computeLenderRows(fundingRecords, {
+        noteRate: noteRateNum || undefined,
+        dayCountBasis: 360,
       });
-      if (rounded === null) return; // missing inputs — leave stored values alone
       let drift = false;
       for (let i = 0; i < fundingRecords.length; i++) {
-        const stored = Number(fundingRecords[i].regularPayment) || 0;
-        if (Math.abs(stored - rounded[i]) > 0.005) {
+        if (results[i].status !== 'ok') continue;
+        const storedPay = Number(fundingRecords[i].regularPayment) || 0;
+        const storedSvc = Number((fundingRecords[i] as any).servicerIncome) || 0;
+        if (
+          Math.abs(storedPay - results[i].payment) > 0.005 ||
+          Math.abs(storedSvc - results[i].servicerIncome) > 0.005
+        ) {
           drift = true;
           break;
         }
       }
       if (!drift) return;
-      const updated = fundingRecords.map((r, i) => ({ ...r, regularPayment: rounded[i] }));
+      const updated = fundingRecords.map((r, i) => {
+        if (results[i].status !== 'ok') return r;
+        return {
+          ...r,
+          regularPayment: results[i].payment,
+          servicerIncome: results[i].servicerIncome,
+        } as FundingRecord;
+      });
       const json = JSON.stringify(updated);
       if (lastPaymentSyncRef.current === json) return;
       lastPaymentSyncRef.current = json;
@@ -377,7 +388,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
     }, 400);
     return () => clearTimeout(handle);
-  }, [fundingRecords, loanPrincipalBalance, totalPayment, noteRate, dealId, onValueChange]);
+  }, [fundingRecords, noteRate, dealId, onValueChange]);
 
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
   // No longer normalized to 100% — when the loan is partially funded the total
