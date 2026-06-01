@@ -26,11 +26,15 @@ import { useFormPermissions } from '@/hooks/useFormPermissions';
 interface ContactBrokerDetailLayoutProps {
   contact: ContactRecord;
   onBack: () => void;
-  onSave: (id: string, contactData: Record<string, string>) => Promise<boolean>;
+  onSave: (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => Promise<boolean>;
 }
 
 const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
-  contact,
+  contact: contactProp,
   onBack,
   onSave,
 }) => {
@@ -38,13 +42,20 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
   const [activeSection, setActiveSection] = useState<BrokerSection>('broker');
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const isReadOnly = permissionsLoading || isFormViewOnly('broker');
+
+  // Local contact copy so a successful Broker ID rename updates the header
+  // and sub-components without waiting for a parent refetch.
+  const [contact, setContact] = useState<ContactRecord>(contactProp);
+  useEffect(() => { setContact(contactProp); }, [contactProp]);
+
+  const [brokerIdError, setBrokerIdError] = useState<string>('');
   const [values, setValues] = useState<Record<string, string>>(() => {
     const result: Record<string, string> = {};
-    Object.entries(contact.contact_data || {}).forEach(([key, value]) => {
+    Object.entries(contactProp.contact_data || {}).forEach(([key, value]) => {
       result[`broker.${key}`] = value;
     });
     if (!result['broker.id']) {
-      result['broker.id'] = contact.contact_id;
+      result['broker.id'] = contactProp.contact_id;
     }
     return result;
   });
@@ -54,8 +65,11 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
 
   const handleValueChange = useCallback((fieldKey: string, value: string) => {
     if (isReadOnly) return;
+    if (fieldKey === 'broker.id' && brokerIdError) setBrokerIdError('');
     setValues(prev => ({ ...prev, [fieldKey]: value }));
-  }, [isReadOnly]);
+  }, [isReadOnly, brokerIdError]);
+
+  const contactWs = useContactWorkspaceOptional();
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (isReadOnly) return false;
@@ -64,6 +78,15 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
       const stripped = key.replace(/^broker\./, '');
       contactData[stripped] = value;
     });
+
+    // Validate Broker ID format before hitting the API
+    const requestedId = (values['broker.id'] || '').trim().toUpperCase();
+    const willRename = !!requestedId && requestedId !== contact.contact_id;
+    if (willRename && !/^BR-\d{4,}$/.test(requestedId)) {
+      setBrokerIdError('Broker ID must follow the format BR-##### (e.g. BR-00020).');
+      return false;
+    }
+
     const changes: ContactFieldChange[] = [];
     const allKeys = new Set([...Object.keys(values), ...Object.keys(initialValuesRef.current)]);
     allKeys.forEach(key => {
@@ -74,15 +97,31 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
         changes.push({ fieldLabel: label, oldValue: oldVal, newValue: newVal });
       }
     });
-    const saved = await onSave(contact.id, contactData);
-    if (saved && changes.length > 0) {
+    const saved = await onSave(contact.id, contactData, willRename ? { newContactId: requestedId } : undefined);
+    if (!saved) {
+      if (willRename) setBrokerIdError('This Broker ID already exists. Please enter a unique ID.');
+      return false;
+    }
+    if (changes.length > 0) {
       await logContactEvent(contact.id, 'Broker Info', changes);
     }
-    if (saved) initialValuesRef.current = { ...values };
-    return !!saved;
-  }, [values, contact.id, onSave, isReadOnly]);
+    if (willRename) {
+      setContact(prev => ({ ...prev, contact_id: requestedId }));
+      const fullName = contactData.full_name
+        || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim()
+        || contact.full_name;
+      contactWs?.updateContactId(contact.id, requestedId, fullName);
+      try {
+        window.dispatchEvent(new CustomEvent('contact-id-renamed', {
+          detail: { contactDbId: contact.id, oldContactId: contact.contact_id, newContactId: requestedId, contactType: 'broker' },
+        }));
+      } catch { /* ignore */ }
+    }
+    initialValuesRef.current = { ...values };
+    setBrokerIdError('');
+    return true;
+  }, [isReadOnly, values, contact.id, contact.contact_id, contact.full_name, onSave, contactWs]);
 
-  const contactWs = useContactWorkspaceOptional();
   useEffect(() => { if (contactWs) contactWs.setContactDirty(contact.id, isDirty); }, [isDirty, contact.id, contactWs]);
   useEffect(() => {
     if (!contactWs) return;
@@ -151,6 +190,7 @@ const ContactBrokerDetailLayout: React.FC<ContactBrokerDetailLayoutProps> = ({
               disabled={isReadOnly}
               values={values}
               onValueChange={handleValueChange}
+              brokerIdError={brokerIdError}
             />
           </div>
         );

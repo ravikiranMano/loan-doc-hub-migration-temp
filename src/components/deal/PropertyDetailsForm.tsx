@@ -20,6 +20,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { CalendarIcon, ChevronsUpDown, Check } from 'lucide-react';
 import { format, parse } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -47,9 +48,9 @@ const PROPERTY_TYPE_OPTIONS = [
   'Land Commercial', 'Land Income Producing', 'Farm', 'Restaurant / Bar', 'Group Housing'
 ];
 
-const OCCUPANCY_OPTIONS = ['Owner Occupied', 'Vacant', 'NA'];
+const OCCUPANCY_OPTIONS = ['Owner Occupied', 'Vacant', 'NA', 'Rental / Tenant'];
 const PERFORMED_BY_OPTIONS = ['Broker', 'Third Party'];
-const CONSTRUCTION_TYPES = ['Wood Frame', 'Wood Frame / Stucco', 'Modular', 'Steel Frame', 'Brick / Block', 'NA'];
+const CONSTRUCTION_TYPES = ['Wood Frame', 'Wood Frame / Stucco', 'Modular', 'Steel Frame', 'Brick / Block', 'NA', 'Concrete / Block'];
 const ZONING_OPTIONS = ['R1 SFR', 'R2 SFR', 'R3 Multi-family', 'R-M Multi-family', 'PUD', 'Residential Lot / Parcel', 'Mixed Use', 'C Commercial', 'Agriculture', 'NA'];
 const VALUATION_TYPE_OPTIONS = ['Appraisal', 'Broker Determined Value (BPO)'];
 const INFO_PROVIDED_BY_OPTIONS = ['Broker', 'Borrower', 'Public Record', 'Other'];
@@ -77,6 +78,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   dealId,
 }) => {
   const [datePickerStates, setDatePickerStates] = React.useState<Record<string, boolean>>({});
+  const lastAutoDownPaymentRef = React.useRef<string>('');
   const getFieldValue = (key: string) => values[key] || '';
   const sanitizeNumericValue = (value: string): string => value.replace(/[^0-9.-]/g, '');
   const handleCurrencyChange = (fieldKey: string, value: string) => onValueChange(fieldKey, sanitizeNumericValue(value));
@@ -161,13 +163,8 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.ltv, '');
     }
 
-    // Origination LTV — Loan Amount / Estimate of Value (frozen formula)
-    if (estValueValid && loanAmountValid) {
-      const origLtv = computeLtv(loanAmountNum, estValueNum);
-      writeIfChanged(FIELD_KEYS.originationLtv, origLtv ?? '');
-    } else {
-      writeIfChanged(FIELD_KEYS.originationLtv, '');
-    }
+    // Origination LTV — now user-editable; no auto-calc.
+
 
     // Principal Paid = Loan Amount − Current Principal Balance (derived)
     if (
@@ -177,10 +174,18 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged('loan_terms.principal_paid', roundDollarForStorage(loanAmountNum - currentPrincipalNum));
     }
 
-    // Down Payment = Purchase Price − Loan Amount (auto-calculated, persisted)
+    // Down Payment = Purchase Price − Loan Amount (auto-calculated, but user-editable).
+    // We only overwrite the stored value when it matches the last auto-computed value
+    // (i.e. the user hasn't manually overridden it). When Purchase Price or Loan Amount
+    // change, the new auto value is written even if the previous value was a manual edit,
+    // since the calculation explicitly drives this field.
     if (Number.isFinite(purchasePriceNum) && purchasePriceNum >= 0 && Number.isFinite(loanAmountNum) && loanAmountNum >= 0) {
-      const dp = purchasePriceNum - loanAmountNum;
-      writeIfChanged(FIELD_KEYS.downPayment, roundDollarForStorage(dp));
+      const dp = roundDollarForStorage(purchasePriceNum - loanAmountNum);
+      const current = getFieldValue(FIELD_KEYS.downPayment);
+      if (!current || current === lastAutoDownPaymentRef.current) {
+        writeIfChanged(FIELD_KEYS.downPayment, dp);
+      }
+      lastAutoDownPaymentRef.current = dp;
     }
   }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, purchasePriceRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
 
@@ -302,6 +307,41 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  const renderYearField = (fieldKey: string, label: string) => {
+    const raw = getFieldValue(fieldKey) ?? '';
+    // Extract 4-digit year from legacy date strings (e.g. "2026-05-21"); otherwise show raw digits as user types
+    const rawStr = String(raw);
+    const yearMatch = rawStr.match(/\d{4}/);
+    const displayValue = yearMatch ? yearMatch[0] : rawStr.replace(/\D/g, '').slice(0, 4);
+    const maxYear = new Date().getFullYear() + 1;
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-center gap-2">
+          <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
+          <Input
+            value={displayValue}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+              onValueChange(fieldKey, digits);
+            }}
+            onBlur={(e) => {
+              const v = e.target.value.replace(/\D/g, '');
+              if (!v) return;
+              const n = parseInt(v, 10);
+              if (n < 1800) onValueChange(fieldKey, '1800');
+              else if (n > maxYear) onValueChange(fieldKey, String(maxYear));
+            }}
+            disabled={disabled}
+            inputMode="numeric"
+            placeholder="YYYY"
+            maxLength={4}
+            className="h-7 text-xs flex-1"
+          />
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   const renderInlineSelect = (fieldKey: string, label: string, options: string[], placeholder: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
@@ -360,21 +400,14 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       <DirtyFieldWrapper fieldKey={fieldKey}>
         <div className="flex items-center gap-2">
           <Label className="w-[110px] shrink-0 text-xs text-foreground">{label}</Label>
-          <Popover open={datePickerStates[fieldKey] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 w-full justify-start text-left font-normal text-xs', !val && 'text-muted-foreground')} disabled={disabled}>
-                {val && parseDate(val) ? format(parseDate(val)!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={parseDate(val)}
-                onSelect={(date) => { if (date) onValueChange(fieldKey, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-                onClear={() => { onValueChange(fieldKey, ''); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-                onToday={() => { onValueChange(fieldKey, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-                initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={val || ''}
+              onChange={(iso) => onValueChange(fieldKey, iso)}
+              disabled={disabled}
+              inputClassName="h-7 text-xs"
+            />
+          </div>
         </div>
       </DirtyFieldWrapper>
     );
@@ -502,7 +535,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
             <div className="flex items-center gap-2">
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Down Payment</Label>
               <div className="flex-1">
-                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={() => {}} disabled />
+                <CurrencyInput value={getFieldValue(FIELD_KEYS.downPayment)} onValueChange={(v) => onValueChange(FIELD_KEYS.downPayment, v)} />
               </div>
             </div>
           </DirtyFieldWrapper>
@@ -510,7 +543,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
           {renderInlineSelect(FIELD_KEYS.propertyType, 'Property Type', PROPERTY_TYPE_OPTIONS, 'Select type')}
           {renderInlineSelect(FIELD_KEYS.occupancy, 'Occupancy', OCCUPANCY_OPTIONS, 'Select')}
-          {renderDateField(FIELD_KEYS.yearBuilt, 'Year Built')}
+          {renderYearField(FIELD_KEYS.yearBuilt, 'Year Built')}
           {renderInlineField(FIELD_KEYS.squareFeet, 'Square Feet')}
           {renderInlineSelect(FIELD_KEYS.constructionType, 'Type of Construction', CONSTRUCTION_TYPES, 'Select...')}
           {renderInlineSelect(FIELD_KEYS.zoning, 'Zoning', ZONING_OPTIONS, 'Select...')}
@@ -586,12 +619,19 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={formatLtv(getFieldValue(FIELD_KEYS.originationLtv)) || '—'}
-                  readOnly
+                  value={getFieldValue(FIELD_KEYS.originationLtv)}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/[^0-9.]/g, '');
+                    onValueChange(FIELD_KEYS.originationLtv, cleaned);
+                  }}
                   disabled={disabled}
-                  className="h-7 text-xs bg-muted/40"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  className="h-7 text-xs pr-6"
                 />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
+
             </div>
           </DirtyFieldWrapper>
           {(estValueInvalid || loanAmountInvalid) && (

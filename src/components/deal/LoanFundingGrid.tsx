@@ -19,6 +19,7 @@ import { FilterOption } from './GridToolbar';
 import { GridExportDialog, ExportColumn } from './GridExportDialog';
 import { CreateContactModal } from '@/components/contacts/CreateContactModal';
 import { formatPercentDisplay, Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { computeLenderRows } from '@/lib/lenderPaymentFormula';
 import { useAuth } from '@/contexts/AuthContext';
 import { createContact } from '@/services/contacts/contacts.service';
 import { toast } from 'sonner';
@@ -73,6 +74,8 @@ export interface FundingRecord {
   baseFee?: number;
   currentBalance?: number;
   regularPayment: number;
+  /** Per-row servicing/broker spread income (Model A). Optional for legacy rows. */
+  servicerIncome?: number;
   lenderShare: number;
   roundingError: boolean;
   rateSelection?: 'note_rate' | 'sold_rate' | 'lender_rate';
@@ -390,31 +393,34 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
     return v !== undefined ? v : (Number(record.pctOwned) || 0);
   };
 
-  // Per-lender Payment (GROSS): Pro Rata × Regular P&I. Calculated independently
-  // for every lender via .map (no shared scope, no early break). Banker's
-  // rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
-  const computedPaymentsArr = React.useMemo(() => {
-    if (!fundingRecords.length) return [] as number[];
-    const exact = fundingRecords.map((_, i) => {
-      const pct = computedPctOwnedArr[i] ?? 0;
-      return new Decimal(pct).div(100).mul(regularPIDec);
-    });
-    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
-    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
-    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
-    const diff = sumExact.minus(sumRounded);
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    if (adjIdx >= 0 && !diff.isZero()) {
-      rounded[adjIdx] = rounded[adjIdx].plus(diff);
-    }
-    return rounded.map(d => d.toNumber());
-  }, [fundingRecords, computedPctOwnedArr, regularPIDec]);
+  // Per-lender Payment + Servicer Income (Model A: per-row daily accrual).
+  //   payment_i = originalAmount_i × (lenderRate_i / 100) × days_i / 360
+  //   servicerIncome_i = originalAmount_i × ((noteRate − lenderRate_i) / 100) × days_i / 360
+  // Days = daysBetween(fundingDate_i, interestFrom_i). Rows with missing or
+  // corrupted dates render as $0.00 (see helper status). Computed via the
+  // single canonical helper in src/lib/lenderPaymentFormula.ts — no inline
+  // math here.
+  const noteRateDec = React.useMemo(
+    () => parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0,
+    [noteRate],
+  );
+  const computedRowsArr = React.useMemo(() => {
+    if (!fundingRecords.length) return [] as Array<{ payment: number; servicerIncome: number }>;
+    return computeLenderRows(fundingRecords, {
+      noteRate: noteRateDec || undefined,
+      dayCountBasis: 360,
+    }).map((r) => ({ payment: r.payment, servicerIncome: r.servicerIncome }));
+  }, [fundingRecords, noteRateDec]);
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const i = recordIndexMap.get(record);
     if (i === undefined) return 0;
-    return computedPaymentsArr[i] ?? 0;
+    return computedRowsArr[i]?.payment ?? 0;
+  };
+  const getDisplayedServicerIncome = (record: FundingRecord) => {
+    const i = recordIndexMap.get(record);
+    if (i === undefined) return 0;
+    return computedRowsArr[i]?.servicerIncome ?? 0;
   };
   const getDisbursementsTotal = (record: FundingRecord) => {
     return (record.disbursements || []).reduce(

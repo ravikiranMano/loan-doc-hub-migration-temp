@@ -178,11 +178,25 @@ const ContactBrokersPage: React.FC = () => {
     setModalOpen(false);
   }, [crud, isReadOnly]);
 
-  const handleSave = useCallback(async (id: string, contactData: Record<string, string>) => {
+  const handleSave = useCallback(async (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => {
     if (isReadOnly) return false;
-    const result = await crud.updateContact(id, contactData);
+    const result = await crud.updateContact(id, contactData, opts);
+    if (result && opts?.newContactId) {
+      setSelectedContact(prev => prev && prev.id === id ? { ...prev, contact_id: opts.newContactId! } : prev);
+    }
     return result;
   }, [crud, isReadOnly]);
+
+  // Refresh list when any contact rename event fires (keeps grid in sync)
+  useEffect(() => {
+    const handler = () => { crud.refresh(); };
+    window.addEventListener('contact-id-renamed', handler);
+    return () => window.removeEventListener('contact-id-renamed', handler);
+  }, [crud]);
 
   const handleDeleteSelected = useCallback(async (ids: string[]) => {
     if (isReadOnly) return;

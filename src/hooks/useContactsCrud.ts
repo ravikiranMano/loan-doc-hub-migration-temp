@@ -9,6 +9,7 @@ import {
 } from '@/services/contacts/contacts.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { normalizeBrokerLicenseFields, validateBrokerLicenseFields } from '@/lib/licenseNumberValidation';
 
 export type { ContactRecord };
 
@@ -23,6 +24,19 @@ export type ContactType =
 interface UseContactsCrudOptions {
   contactType: ContactType;
   pageSize?: number;
+}
+
+function prepareBrokerContactData(
+  contactType: ContactType,
+  contactData: Record<string, string>,
+): { data: Record<string, string>; error: string | null } {
+  const data =
+    contactType === 'broker' ? normalizeBrokerLicenseFields(contactData) : contactData;
+  if (contactType === 'broker') {
+    const licenseError = validateBrokerLicenseFields(data);
+    if (licenseError) return { data, error: licenseError };
+  }
+  return { data, error: null };
 }
 
 export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudOptions) {
@@ -65,10 +79,19 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
   const createContact = useCallback(async (contactData: Record<string, string>) => {
     if (!user) return null;
     try {
+      const { data: normalizedContactData, error: licenseError } = prepareBrokerContactData(
+        contactType,
+        contactData,
+      );
+      if (licenseError) {
+        toast.error(licenseError);
+        return null;
+      }
+
       const data = await createContactRecord({
         contactType,
         createdBy: user.id,
-        contactData,
+        contactData: normalizedContactData,
       });
       toast.success(`${contactType.charAt(0).toUpperCase() + contactType.slice(1)} created`);
       fetchContacts(currentPage, searchQuery);
@@ -80,20 +103,37 @@ export function useContactsCrud({ contactType, pageSize = 10 }: UseContactsCrudO
     }
   }, [user, contactType, currentPage, searchQuery, fetchContacts]);
 
-  const updateContact = useCallback(async (id: string, contactData: Record<string, string>) => {
+  const updateContact = useCallback(async (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => {
     if (!user) return false;
     try {
-      await updateContactWithMerge(id, contactData);
+      const { data: normalizedContactData, error: licenseError } = prepareBrokerContactData(
+        contactType,
+        contactData,
+      );
+      if (licenseError) {
+        toast.error(licenseError);
+        return false;
+      }
+
+      await updateContactWithMerge(id, normalizedContactData, {
+        newContactId: opts?.newContactId,
+        contactType,
+      });
 
       toast.success('Contact saved');
       fetchContacts(currentPage, searchQuery);
       return true;
     } catch (err: any) {
       console.error('Error updating contact:', err);
-      toast.error('Failed to save contact');
+      const message = err?.message || 'Failed to save contact';
+      toast.error(message);
       return false;
     }
-  }, [user, currentPage, searchQuery, fetchContacts]);
+  }, [user, contactType, currentPage, searchQuery, fetchContacts]);
 
   const deleteContact = useCallback(async (id: string) => {
     try {

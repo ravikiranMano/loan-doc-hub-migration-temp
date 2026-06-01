@@ -16,6 +16,14 @@ export interface GenerateDocumentResult {
   results: Array<{ templateName: string; success: boolean; error?: string }>;
 }
 
+/** Production generate — async edge pipeline (matches Lovable main). */
+export async function generateDocumentsAsync(
+  dealId: string,
+  body: GenerateDocumentBody,
+): Promise<GenerateDocumentResult> {
+  return apiClient.post<GenerateDocumentResult>(`/deals/${dealId}/documents/generate-edge`, body);
+}
+
 export interface DocumentPayloadPreviewResult {
   dealId: string;
   dealNumber?: string;

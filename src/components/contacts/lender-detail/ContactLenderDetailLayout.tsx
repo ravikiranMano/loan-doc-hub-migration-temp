@@ -25,25 +25,35 @@ import { useFormPermissions } from '@/hooks/useFormPermissions';
 interface ContactLenderDetailLayoutProps {
   contact: ContactRecord;
   onBack: () => void;
-  onSave: (id: string, contactData: Record<string, string>) => Promise<boolean>;
+  onSave: (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => Promise<boolean>;
 }
 
 const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
-  contact,
+  contact: contactProp,
   onBack,
   onSave,
 }) => {
   const { loading: permissionsLoading, isFormViewOnly } = useFormPermissions();
   const [activeSection, setActiveSection] = useState<LenderSection>('lender-info');
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  // Local copy so a successful Lender ID rename updates header / sub-components
+  // without waiting for a parent refetch.
+  const [contact, setContact] = useState<ContactRecord>(contactProp);
+  useEffect(() => { setContact(contactProp); }, [contactProp]);
+
+  const [lenderIdError, setLenderIdError] = useState<string>('');
   const [values, setValues] = useState<Record<string, string>>(() => {
     const result: Record<string, string> = {};
-    Object.entries(contact.contact_data || {}).forEach(([key, value]) => {
+    Object.entries(contactProp.contact_data || {}).forEach(([key, value]) => {
       result[`lender.${key}`] = value;
     });
     // Auto-fill Lender ID from contact record
     if (!result['lender.lender_id']) {
-      result['lender.lender_id'] = contact.contact_id;
+      result['lender.lender_id'] = contactProp.contact_id;
     }
     return result;
   });
@@ -54,8 +64,11 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
 
   const handleValueChange = useCallback((fieldKey: string, value: string) => {
     if (isReadOnly) return;
+    if (fieldKey === 'lender.lender_id' && lenderIdError) setLenderIdError('');
     setValues(prev => ({ ...prev, [fieldKey]: value }));
-  }, [isReadOnly]);
+  }, [isReadOnly, lenderIdError]);
+
+  const contactWs = useContactWorkspaceOptional();
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (isReadOnly) return false;
@@ -64,6 +77,15 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
       const stripped = key.replace(/^lender\./, '');
       contactData[stripped] = value;
     });
+
+    // Validate Lender ID format before hitting the API
+    const requestedId = (values['lender.lender_id'] || '').trim().toUpperCase();
+    const willRename = requestedId && requestedId !== contact.contact_id;
+    if (willRename && !/^L-\d{4,}$/.test(requestedId)) {
+      setLenderIdError('Lender ID must follow the format L-##### (e.g. L-00055).');
+      return false;
+    }
+
     const changes: ContactFieldChange[] = [];
     const allKeys = new Set([...Object.keys(values), ...Object.keys(initialValues)]);
     allKeys.forEach(key => {
@@ -74,15 +96,34 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
         changes.push({ fieldLabel: label, oldValue: oldVal, newValue: newVal });
       }
     });
-    const saved = await onSave(contact.id, contactData);
-    if (saved && changes.length > 0) {
+    const saved = await onSave(contact.id, contactData, willRename ? { newContactId: requestedId } : undefined);
+    if (!saved) {
+      // updateContact already toasted; surface inline error on rename attempts
+      if (willRename) setLenderIdError('This Lender ID already exists. Please enter a unique ID.');
+      return false;
+    }
+    if (changes.length > 0) {
       await logContactEvent(contact.id, 'Lender Info', changes);
     }
-    if (saved) setInitialValues({ ...values });
-    return !!saved;
-  }, [isReadOnly, values, initialValues, contact.id, onSave]);
+    // Cascade rename: update local header + workspace tab so all visible labels match
+    if (willRename) {
+      setContact(prev => ({ ...prev, contact_id: requestedId }));
+      const fullName = contactData.full_name
+        || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim()
+        || contact.full_name;
+      contactWs?.updateContactId(contact.id, requestedId, fullName);
+      // Notify open deal grids (Participants, Lenders, etc.) to refetch
+      try {
+        window.dispatchEvent(new CustomEvent('contact-id-renamed', {
+          detail: { contactDbId: contact.id, oldContactId: contact.contact_id, newContactId: requestedId },
+        }));
+      } catch { /* ignore */ }
+    }
+    setInitialValues({ ...values });
+    setLenderIdError('');
+    return true;
+  }, [isReadOnly, values, initialValues, contact.id, contact.contact_id, contact.full_name, onSave, contactWs]);
 
-  const contactWs = useContactWorkspaceOptional();
   useEffect(() => { if (contactWs) contactWs.setContactDirty(contact.id, isDirty); }, [isDirty, contact.id, contactWs]);
   useEffect(() => {
     if (!contactWs) return;
@@ -138,6 +179,7 @@ const ContactLenderDetailLayout: React.FC<ContactLenderDetailLayoutProps> = ({
             values={values}
             onValueChange={handleValueChange}
             disabled={isReadOnly}
+            lenderIdError={lenderIdError}
           />
         );
       case 'authorized-party':

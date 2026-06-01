@@ -1,7 +1,10 @@
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+type DbClient = PrismaService | Prisma.TransactionClient;
+
 /** Mirrors Supabase RPC `generate_deal_number()`. */
-export async function generateDealNumber(prisma: PrismaService): Promise<string> {
+export async function generateDealNumber(prisma: DbClient): Promise<string> {
   const rows = await prisma.$queryRaw<{ generate_deal_number: string }[]>`
     SELECT generate_deal_number() AS generate_deal_number
   `;
@@ -10,7 +13,7 @@ export async function generateDealNumber(prisma: PrismaService): Promise<string>
 
 /** Mirrors Supabase RPC `generate_contact_id(p_type)`. */
 export async function generateContactId(
-  prisma: PrismaService,
+  prisma: DbClient,
   contactType: string,
 ): Promise<string> {
   const rows = await prisma.$queryRaw<{ generate_contact_id: string }[]>`

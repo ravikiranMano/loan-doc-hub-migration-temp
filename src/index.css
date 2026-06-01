@@ -239,6 +239,13 @@
     /* No transition — instant swap prevents cross-fade flicker during nav. */
   }
 
+  /* No transition on <main> — caused a visible fade-flash whenever the
+     sidebar collapsed or the route swapped. Route transitions should be
+     instant to keep the shell stable. */
+
+
+
+
   .app-keepalive-pane-active {
     position: relative;
     opacity: 1;

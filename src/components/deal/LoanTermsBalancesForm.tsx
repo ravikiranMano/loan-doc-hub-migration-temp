@@ -6,13 +6,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { EnhancedCalendar } from "@/components/ui/enhanced-calendar";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Pencil } from "lucide-react";
 import { format, parse, isValid } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { FieldDefinition } from "@/hooks/useDealFields";
 import type { CalculationResult } from "@/lib/calculationEngine";
 import { DirtyFieldWrapper } from "./DirtyFieldWrapper";
+import { TypableDateField } from "@/components/ui/typable-date-field";
 import { sanitizeInterestInput, normalizeInterestOnBlur } from "@/lib/interestValidation";
+import { computeBorrowerScheduledPayment } from "@/lib/borrowerPaymentFormula";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useDealNavigationOptional } from "@/contexts/DealNavigationContext";
 import type { LoanTermsSubSection } from "./LoanTermsSubNavigation";
@@ -138,37 +140,53 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     return loanAmount + oneMonthInterest;
   }, [values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
 
-  // Regular P & I Payment = sum of `regularPayment` across funding records.
-  // Mirrors the "Payment" column total shown at the bottom of the Funding grid.
-  // The amortization formula previously used here has been removed; the value
-  // is now sourced strictly from the saved funding records.
+  // Regular Payment (borrower scheduled installment) — derived live from the
+  // loan's principal, note rate, term, payment frequency, and amortization
+  // method via the single shared formula (used by RE 885 Section VII too).
+  // Always loan-scoped so values cannot bleed across loans or go stale when
+  // any input changes.
   const computedRegularPayment = useMemo(() => {
-    const raw = values['loan_terms.funding_records'];
-    let records: any[] = [];
-    if (raw) {
-      try {
-        records = typeof raw === 'string' ? JSON.parse(raw) : (raw as any);
-      } catch {
-        records = [];
-      }
-    }
-    if (!Array.isArray(records) || records.length === 0) return '';
-    const sum = records.reduce((acc, r) => {
-      const v = parseFloat(String(r?.regularPayment ?? '').replace(/[$,]/g, ''));
-      return acc + (isNaN(v) ? 0 : v);
-    }, 0);
-    if (!isFinite(sum) || sum <= 0) return '';
-    return sum.toFixed(2);
-  }, [values['loan_terms.funding_records']]);
+    const loanAmount = parseNum(FIELD_KEYS.loanAmount);
+    const noteRate = parseNum(FIELD_KEYS.noteRate);
+    const numPayments = parseFloat(
+      (getValue(FIELD_KEYS.numberOfPayments) ?? '').toString().replace(/[,\s]/g, ''),
+    );
+    const termMonths = isFinite(numPayments) && numPayments > 0 ? numPayments : undefined;
+    const amortization = ((values['loan_terms.amortization'] ?? '') as string) as any;
+    const balloon = parseFloat(
+      (getValue(FIELD_KEYS.estimatedBalloonPayment) ?? '').toString().replace(/[$,\s]/g, ''),
+    );
+    const balloonAmount = isFinite(balloon) && balloon > 0 ? balloon : 0;
+    const frequency = (getValue(FIELD_KEYS.paymentFrequency) ?? 'monthly').toString().toLowerCase() as any;
+    const pmt = computeBorrowerScheduledPayment({
+      principal: loanAmount,
+      annualRatePct: noteRate,
+      termMonths,
+      amortization,
+      balloonAmount,
+      frequency,
+    });
+    return pmt === null ? '' : pmt.toFixed(2);
+  }, [
+    values[FIELD_KEYS.loanAmount],
+    values[FIELD_KEYS.noteRate],
+    values[FIELD_KEYS.numberOfPayments],
+    values['loan_terms.amortization'],
+    values[FIELD_KEYS.estimatedBalloonPayment],
+    values[FIELD_KEYS.paymentFrequency],
+  ]);
 
-  // Auto-populate Regular P & I Payment from funding records ONLY when the
-  // field is empty. A persisted/user-entered value must never be overwritten,
-  // otherwise typing + save appears to do nothing (value reverts on re-render).
+  // Keep the stored Regular Payment in sync with its inputs. Overwrite any
+  // stale/cross-loan value whenever the live computation differs, so each loan
+  // always reflects its own (loanAmount × noteRate / freq) installment and
+  // recomputes when inputs change.
   useEffect(() => {
     if (disabled) return;
     if (computedRegularPayment === '') return;
     const current = (getValue(FIELD_KEYS.regularPayment) ?? '').toString().trim();
-    if (current === '') {
+    const currentNum = parseFloat(current.replace(/[$,]/g, ''));
+    const nextNum = parseFloat(computedRegularPayment);
+    if (current === '' || !isFinite(currentNum) || Math.abs(currentNum - nextNum) > 0.005) {
       setValue(FIELD_KEYS.regularPayment, computedRegularPayment);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,6 +271,78 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     );
   };
 
+  // Pencil-to-edit currency field: starts read-only with an inline edit icon
+  // to the left of the $ input. Clicking the pencil toggles edit mode for that
+  // field only. Blur or Enter exits edit mode; persistence uses the standard
+  // currency blur handler. Save semantics are identical to renderCurrencyField.
+  const [editableBalanceFields, setEditableBalanceFields] = useState<Set<string>>(new Set());
+  const isBalanceEditable = (key: string) => editableBalanceFields.has(key);
+  const enableBalanceEdit = (key: string) => {
+    setEditableBalanceFields(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    // Focus the input on next tick
+    setTimeout(() => {
+      const el = document.getElementById(key) as HTMLInputElement | null;
+      el?.focus();
+    }, 0);
+  };
+  const disableBalanceEdit = (key: string) => {
+    setEditableBalanceFields(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const renderEditableBalanceField = (key: string, label: string) => {
+    const editable = isBalanceEditable(key);
+    const isFocused = focusedCurrencyField === key;
+    const rawValue = getValue(key);
+    const displayValue = isFocused ? rawValue : formatCurrencyDisplay(rawValue);
+    return (
+      <DirtyFieldWrapper fieldKey={key}>
+        <div className="flex items-center gap-3">
+          <Label className={LABEL_CLASS}>{label}</Label>
+          <div className="flex items-center gap-1 flex-1">
+            <button
+              type="button"
+              onClick={() => (editable ? disableBalanceEdit(key) : enableBalanceEdit(key))}
+              disabled={disabled}
+              className="text-muted-foreground hover:text-foreground shrink-0 p-0.5"
+              title={editable ? "Lock field" : "Edit value"}
+              aria-label={`Edit ${label}`}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <div className="relative flex-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+              <Input
+                id={key}
+                value={displayValue}
+                onChange={(e) => handleCurrencyChange(key, e.target.value)}
+                onFocus={() => setFocusedCurrencyField(key)}
+                onBlur={() => { handleCurrencyBlur(key); disableBalanceEdit(key); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                disabled={disabled}
+                readOnly={!editable}
+                className={cn("h-8 text-sm pl-7", !editable && "bg-muted/50 cursor-default")}
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
   const [focusedPercentField, setFocusedPercentField] = useState<string | null>(null);
 
   const formatPercentDisplay = useCallback((val: string) => {
@@ -307,36 +397,81 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     <DirtyFieldWrapper fieldKey={key}>
       <div className="flex items-center gap-3">
         <Label className={LABEL_CLASS}>{label}</Label>
-        <Popover open={datePickerStates[key] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [key]: open }))}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className={cn('h-8 text-sm flex-1 justify-start text-left font-normal', !getValue(key) && 'text-muted-foreground')} disabled={disabled}>
-              {getValue(key) && safeParseDateStr(getValue(key)) ? format(safeParseDateStr(getValue(key))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-            <EnhancedCalendar
-              mode="single"
-              selected={safeParseDateStr(getValue(key))}
-              onSelect={(date) => { if (date) setValue(key, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onClear={() => { setValue(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onToday={() => { setValue(key, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={getValue(key) || ''}
+            onChange={(v) => setValue(key, v)}
+            disabled={disabled}
+            ariaLabel={label}
+          />
+        </div>
       </div>
     </DirtyFieldWrapper>
   );
+
+
+  // Numeric day-of-month entry (1-31). Used for Payment Due Date, First Payment Due,
+  // and Next Due Date. Persists as the integer string (e.g. "15"). Migrates legacy
+  // yyyy-MM-dd values to the day portion on display.
+  const renderDayOfMonthField = (key: string, label: string) => {
+    const stored = getValue(key) || '';
+    let display = stored;
+    const isoMatch = /^\d{4}-\d{2}-(\d{2})$/.exec(stored);
+    if (isoMatch) display = String(parseInt(isoMatch[1], 10));
+
+    const numericVal = display === '' ? NaN : Number(display);
+    const invalid =
+      display !== '' &&
+      (!/^\d{1,2}$/.test(display) || numericVal < 1 || numericVal > 31);
+
+    return (
+      <DirtyFieldWrapper fieldKey={key}>
+        <div className="flex items-start gap-3">
+          <Label className={LABEL_CLASS}>{label}</Label>
+          <div className="flex-1">
+            <Input
+              id={key}
+              type="text"
+              inputMode="numeric"
+              value={display}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                setValue(key, digits);
+              }}
+              onBlur={() => {
+                const v = (getValue(key) || '').replace(/\D/g, '');
+                if (!v) { setValue(key, ''); return; }
+                const n = parseInt(v, 10);
+                if (isNaN(n) || n < 1 || n > 31) {
+                  setValue(key, '');
+                } else {
+                  setValue(key, String(n));
+                }
+              }}
+              disabled={disabled}
+              className={cn('h-8 text-sm w-full', invalid && 'border-destructive focus-visible:ring-destructive')}
+              placeholder="Day (1-31)"
+              maxLength={2}
+              min={1}
+              max={31}
+            />
+            {invalid && (
+              <p className="text-[10px] text-destructive mt-0.5">{label} must be a whole number between 1 and 31.</p>
+            )}
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
 
   return (
     <div className="p-4 space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Terms Column */}
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Terms</h3>
+          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Loan Terms</h3>
           <div className="space-y-2">
-            {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Amount")}
+            {renderCurrencyField(FIELD_KEYS.originalAmount, "Original Loan Amount")}
             {renderPercentField(FIELD_KEYS.noteRate, "Note Rate")}
 
             {/* Sold Rate with checkbox + single editable % field.
@@ -409,7 +544,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
             {/* Unearned Discount Balance */}
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>Unearned Disc. Bal.</Label>
+              <Label className={LABEL_CLASS}>Unearned Discount Balance</Label>
               <div className="relative flex-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
                 <Input
@@ -426,7 +561,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
             {/* Accrual Method */}
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>Accrual Method</Label>
+              <Label className={LABEL_CLASS}>UDB Accrual Method</Label>
               <Select
                 value={getValue(FIELD_KEYS.accrualMethod)}
                 onValueChange={(value) => setValue(FIELD_KEYS.accrualMethod, value)}
@@ -445,111 +580,14 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {/* Prepaid Payments */}
-            <div className="flex items-center gap-3">
-              <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id={`${FIELD_KEYS.prepaidPaymentsEnabled}-cb`}
-                    checked={isChecked(FIELD_KEYS.prepaidPaymentsEnabled)}
-                    onCheckedChange={() => toggleCheck(FIELD_KEYS.prepaidPaymentsEnabled)}
-                    disabled={disabled}
-                    className="h-3.5 w-3.5"
-                  />
-                  <Label htmlFor={`${FIELD_KEYS.prepaidPaymentsEnabled}-cb`} className="text-sm">
-                    Prepaid Payments
-                  </Label>
-                </div>
-                <p className="text-xs text-muted-foreground pl-5">Months</p>
-              </div>
-              <Input
-                value={getValue(FIELD_KEYS.prepaidPaymentsMonths)}
-                onChange={(e) => setValue(FIELD_KEYS.prepaidPaymentsMonths, e.target.value)}
-                disabled={disabled}
-                className="h-8 text-sm flex-1"
-              />
-            </div>
-
-            {/* Impounded Payments */}
-            <div className="flex items-center gap-3">
-              <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id={`${FIELD_KEYS.impoundedPaymentsEnabled}-cb`}
-                    checked={isChecked(FIELD_KEYS.impoundedPaymentsEnabled)}
-                    onCheckedChange={() => toggleCheck(FIELD_KEYS.impoundedPaymentsEnabled)}
-                    disabled={disabled}
-                    className="h-3.5 w-3.5"
-                  />
-                  <Label htmlFor={`${FIELD_KEYS.impoundedPaymentsEnabled}-cb`} className="text-sm">
-                    Impounded Payments
-                  </Label>
-                </div>
-                <p className="text-xs text-muted-foreground pl-5">Months</p>
-              </div>
-              <Input
-                value={getValue(FIELD_KEYS.impoundedPaymentsMonths)}
-                onChange={(e) => setValue(FIELD_KEYS.impoundedPaymentsMonths, e.target.value)}
-                disabled={disabled}
-                className="h-8 text-sm flex-1"
-              />
-            </div>
-
-            {/* Funding Holdback */}
-            <div className="flex items-start gap-3">
-              <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0 pt-1.5">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`}
-                    checked={isChecked(FIELD_KEYS.fundingHoldbackEnabled)}
-                    onCheckedChange={() => toggleCheck(FIELD_KEYS.fundingHoldbackEnabled)}
-                    disabled={disabled}
-                    className="h-3.5 w-3.5"
-                  />
-                  <Label htmlFor={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`} className="text-sm">
-                    Funding Holdback
-                  </Label>
-                </div>
-                <p className="text-xs text-muted-foreground pl-5">Held By</p>
-              </div>
-              <div className="flex-1 flex flex-col gap-2">
-                <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                  <Input
-                    value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
-                    onChange={(e) => handleCurrencyChange(FIELD_KEYS.fundingHoldbackAmount, e.target.value)}
-                    onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
-                    onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
-                    disabled={disabled}
-                    className="h-8 text-sm pl-7 w-full"
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <Select
-                  value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
-                  onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
-                  disabled={disabled}
-                >
-                  <SelectTrigger className="h-8 text-sm w-full">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="lender">Lender</SelectItem>
-                    <SelectItem value="company">Company</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
             {/* Shortpay / Overpay Handling */}
             <div className="pt-2">
-              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Shortpay / Overpay Handling</h4>
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Short Pay / Over Pay</h4>
               <div className="space-y-2">
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.shortPaymentHandling}>
                   <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Short Payment Handling</Label>
+                    <Label className={LABEL_CLASS}>Short Pay Handling</Label>
                     <Select
                       value={getValue(FIELD_KEYS.shortPaymentHandling) || undefined}
                       onValueChange={(value) => setValue(FIELD_KEYS.shortPaymentHandling, value)}
@@ -559,42 +597,102 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="do_not_accept">Do Not Accept</SelectItem>
-                        <SelectItem value="deposit_to_suspense">Deposit to Suspense</SelectItem>
-                        <SelectItem value="apply_to_payment">Apply to Payment</SelectItem>
+                        <SelectItem value="short_pay">Short Pay</SelectItem>
+                        <SelectItem value="reject">Reject</SelectItem>
+                        <SelectItem value="apply_to_suspense">Apply to Suspense</SelectItem>
+                        <SelectItem value="apply_to_regular_payment">Apply to Regular Payment</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </DirtyFieldWrapper>
-                <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentParameters}>
-                  <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Apply to Pmt Params</Label>
-                    <div className="flex items-center gap-3 flex-1">
-                      <label className="flex items-center gap-1 text-sm cursor-pointer">
-                        <Checkbox
-                          checked={getValue(FIELD_KEYS.applyToPaymentParameters) === 'percent'}
-                          onCheckedChange={(c) => setValue(FIELD_KEYS.applyToPaymentParameters, c ? 'percent' : '')}
-                          disabled={disabled}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span>%</span>
-                      </label>
-                      <span className="text-xs text-muted-foreground">or</span>
-                      <label className="flex items-center gap-1 text-sm cursor-pointer">
-                        <Checkbox
-                          checked={getValue(FIELD_KEYS.applyToPaymentParameters) === 'dollar'}
-                          onCheckedChange={(c) => setValue(FIELD_KEYS.applyToPaymentParameters, c ? 'dollar' : '')}
-                          disabled={disabled}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span>$</span>
-                      </label>
+                {/* Apply to Pmt Params: dual $ / % inputs with bi-directional calculation.
+                    Driver: whichever field was last edited. Base for the %↔$ conversion is the
+                    Regular P&I Payment (FIELD_KEYS.regularPayment). The legacy
+                    applyToPaymentParameters key still records which mode (percent | dollar) was
+                    last edited so downstream consumers know the user's intent. */}
+                <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyToPaymentAmount}>
+                  <div className="flex items-start gap-3">
+                    <Label className={cn(LABEL_CLASS, "whitespace-normal leading-tight")}>
+                      Acceptance Parameters
+                    </Label>
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex items-center gap-2 w-full">
+                        {/* Percent (%) */}
+                        <div className="relative flex-1">
+                          <Input
+                            id={FIELD_KEYS.applyToPaymentPercent}
+                            value={getValue(FIELD_KEYS.applyToPaymentPercent)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9.]/g, '');
+                              if ((raw.match(/\./g) || []).length > 1) return;
+                              const pct = parseFloat(raw);
+                              if (!isNaN(pct) && pct > 100) return;
+                              setValue(FIELD_KEYS.applyToPaymentPercent, raw);
+                              setValue(FIELD_KEYS.applyToPaymentParameters, 'percent');
+                              const base = parseFloat(getValue(FIELD_KEYS.regularPayment) || '0');
+                              if (!isNaN(pct) && base > 0) {
+                                setValue(FIELD_KEYS.applyToPaymentAmount, ((pct / 100) * base).toFixed(2));
+                              } else if (raw === '') {
+                                setValue(FIELD_KEYS.applyToPaymentAmount, '');
+                              }
+                            }}
+                            disabled={disabled}
+                            className="h-8 text-sm pr-6"
+                            placeholder="XXX"
+                            inputMode="decimal"
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">%</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground shrink-0">or</span>
+                        {/* Amount ($) */}
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+                          <Input
+                            id={FIELD_KEYS.applyToPaymentAmount}
+                            value={getValue(FIELD_KEYS.applyToPaymentAmount)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9.]/g, '');
+                              if ((raw.match(/\./g) || []).length > 1) return;
+                              setValue(FIELD_KEYS.applyToPaymentAmount, raw);
+                              setValue(FIELD_KEYS.applyToPaymentParameters, 'dollar');
+                              const base = parseFloat(getValue(FIELD_KEYS.regularPayment) || '0');
+                              const amt = parseFloat(raw);
+                              if (!isNaN(amt) && base > 0) {
+                                setValue(FIELD_KEYS.applyToPaymentPercent, ((amt / base) * 100).toFixed(4));
+                              } else if (raw === '') {
+                                setValue(FIELD_KEYS.applyToPaymentPercent, '');
+                              }
+                            }}
+                            disabled={disabled}
+                            className="h-8 text-sm pl-6"
+                            placeholder="XXX"
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+                      {(() => {
+                        const a = getValue(FIELD_KEYS.applyToPaymentAmount);
+                        const p = getValue(FIELD_KEYS.applyToPaymentPercent);
+                        const amtNum = a === '' ? NaN : parseFloat(a);
+                        const pctNum = p === '' ? NaN : parseFloat(p);
+                        const amtBad = a !== '' && (isNaN(amtNum) || amtNum < 0);
+                        const pctBad = p !== '' && (isNaN(pctNum) || pctNum < 0 || pctNum > 100);
+                        if (amtBad || pctBad) {
+                          return (
+                            <p className="text-[10px] text-destructive">
+                              {amtBad ? 'Amount must be a non-negative number. ' : ''}
+                              {pctBad ? 'Percent must be between 0 and 100.' : ''}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 </DirtyFieldWrapper>
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.applyShortPayment}>
                   <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Apply Short Payment</Label>
+                    <Label className={LABEL_CLASS}>Short Payment Application</Label>
                     <Select
                       value={getValue(FIELD_KEYS.applyShortPayment) || undefined}
                       onValueChange={(value) => setValue(FIELD_KEYS.applyShortPayment, value)}
@@ -604,38 +702,17 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="apply_short_pay">Apply Short Pay</SelectItem>
+                        <SelectItem value="application">Application</SelectItem>
                         <SelectItem value="unpaid_interest">Unpaid Interest</SelectItem>
-                        <SelectItem value="add_to_principal">Add to Principal</SelectItem>
+                        <SelectItem value="principal">Principal</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </DirtyFieldWrapper>
-              </div>
-            </div>
 
-            {/* Unpaid Interest Processing */}
-            <div className="pt-2">
-              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Unpaid Interest Processing</h4>
-              <div className="space-y-2">
-                <DirtyFieldWrapper fieldKey={FIELD_KEYS.unpaidInterestProcessing}>
-                  <div className="flex items-center gap-3">
-                    <Label className={LABEL_CLASS}>Processing</Label>
-                    <Select
-                      value={getValue(FIELD_KEYS.unpaidInterestProcessing) || undefined}
-                      onValueChange={(value) => setValue(FIELD_KEYS.unpaidInterestProcessing, value)}
-                      disabled={disabled}
-                    >
-                      <SelectTrigger className="h-8 text-sm flex-1">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pay_automatically">Pay Automatically</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </DirtyFieldWrapper>
+
+
+                {/* Pay Unpaid Automatically (was in Unpaid Interest Processing) */}
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.payAutomatically}>
                   <div className="flex items-center gap-3">
                     <Checkbox
@@ -645,7 +722,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                       disabled={disabled}
                       className="h-3.5 w-3.5"
                     />
-                    <Label htmlFor={`${FIELD_KEYS.payAutomatically}-cb`} className="text-sm">Pay Automatically</Label>
+                    <Label htmlFor={`${FIELD_KEYS.payAutomatically}-cb`} className="text-sm">Pay Unpaid Automatically</Label>
                   </div>
                 </DirtyFieldWrapper>
                 <DirtyFieldWrapper fieldKey={FIELD_KEYS.calculateInterestOnInterest}>
@@ -660,123 +737,211 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                     <Label htmlFor={`${FIELD_KEYS.calculateInterestOnInterest}-cb`} className="text-sm">Calculate Interest on Interest</Label>
                   </div>
                 </DirtyFieldWrapper>
-              </div>
-            </div>
 
-            {/* Accept Short, Post-maturity, Auto-post, Override - part of Interest Split section */}
-            <div className="space-y-2 pt-1">
-              {/* Accept Short Payments */}
-              <div>
+                {/* Accept Short Payments */}
+                <div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`}
+                          checked={isChecked(FIELD_KEYS.acceptShortPaymentsEnabled)}
+                          onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsEnabled)}
+                          disabled={disabled}
+                          className="h-3.5 w-3.5"
+                        />
+                        <Label htmlFor={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`} className="text-sm">
+                          Accept Short Payments
+                        </Label>
+                      </div>
+                    </div>
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">{isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '%' : '$'}</span>
+                      <Input
+                        value={
+                          isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
+                            ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
+                            : focusedCurrencyField === FIELD_KEYS.acceptShortPaymentsAmount
+                              ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
+                              : formatCurrencyDisplay(getValue(FIELD_KEYS.acceptShortPaymentsAmount))
+                        }
+                        onChange={(e) =>
+                          isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
+                            ? setValue(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
+                            : handleCurrencyChange(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
+                        }
+                        onFocus={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) setFocusedCurrencyField(FIELD_KEYS.acceptShortPaymentsAmount); }}
+                        onBlur={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) handleCurrencyBlur(FIELD_KEYS.acceptShortPaymentsAmount); }}
+                        disabled={disabled}
+                        className="h-8 text-sm pl-7"
+                        placeholder={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '-' : '0.00'}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pl-5 mt-0.5">
+                    <span className="text-xs text-muted-foreground">Or</span>
+                    <Checkbox
+                      id={`${FIELD_KEYS.acceptShortPaymentsOrPercent}-cb`}
+                      checked={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)}
+                      onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsOrPercent)}
+                      disabled={disabled}
+                      className="h-3.5 w-3.5"
+                    />
+                    <Label className="text-xs text-muted-foreground">Percent</Label>
+                  </div>
+                </div>
+
+                {/* Prepaid Payments (moved from Terms) */}
                 <div className="flex items-center gap-3">
                   <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
                     <div className="flex items-center gap-2">
                       <Checkbox
-                        id={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`}
-                        checked={isChecked(FIELD_KEYS.acceptShortPaymentsEnabled)}
-                        onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsEnabled)}
+                        id={`${FIELD_KEYS.prepaidPaymentsEnabled}-cb`}
+                        checked={isChecked(FIELD_KEYS.prepaidPaymentsEnabled)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.prepaidPaymentsEnabled)}
                         disabled={disabled}
                         className="h-3.5 w-3.5"
                       />
-                      <Label htmlFor={`${FIELD_KEYS.acceptShortPaymentsEnabled}-cb`} className="text-sm">
-                        Accept Short Payments
+                      <Label htmlFor={`${FIELD_KEYS.prepaidPaymentsEnabled}-cb`} className="text-sm">
+                        Prepaid Payments
                       </Label>
                     </div>
+                    <p className="text-xs text-muted-foreground pl-5">Months</p>
                   </div>
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">{isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '%' : '$'}</span>
-                    <Input
-                      value={
-                        isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
-                          ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
-                          : focusedCurrencyField === FIELD_KEYS.acceptShortPaymentsAmount
-                            ? getValue(FIELD_KEYS.acceptShortPaymentsAmount)
-                            : formatCurrencyDisplay(getValue(FIELD_KEYS.acceptShortPaymentsAmount))
-                      }
-                      onChange={(e) =>
-                        isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)
-                          ? setValue(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
-                          : handleCurrencyChange(FIELD_KEYS.acceptShortPaymentsAmount, e.target.value)
-                      }
-                      onFocus={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) setFocusedCurrencyField(FIELD_KEYS.acceptShortPaymentsAmount); }}
-                      onBlur={() => { if (!isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)) handleCurrencyBlur(FIELD_KEYS.acceptShortPaymentsAmount); }}
+                  <Input
+                    value={getValue(FIELD_KEYS.prepaidPaymentsMonths)}
+                    onChange={(e) => setValue(FIELD_KEYS.prepaidPaymentsMonths, e.target.value)}
+                    disabled={disabled}
+                    className="h-8 text-sm flex-1"
+                  />
+                </div>
+
+                {/* Impounded Payments (moved from Terms) */}
+                <div className="flex items-center gap-3">
+                  <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${FIELD_KEYS.impoundedPaymentsEnabled}-cb`}
+                        checked={isChecked(FIELD_KEYS.impoundedPaymentsEnabled)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.impoundedPaymentsEnabled)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={`${FIELD_KEYS.impoundedPaymentsEnabled}-cb`} className="text-sm">
+                        Impounded Payments
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5">Months</p>
+                  </div>
+                  <Input
+                    value={getValue(FIELD_KEYS.impoundedPaymentsMonths)}
+                    onChange={(e) => setValue(FIELD_KEYS.impoundedPaymentsMonths, e.target.value)}
+                    disabled={disabled}
+                    className="h-8 text-sm flex-1"
+                  />
+                </div>
+
+                {/* Initial Funding Holdback (moved from Terms) */}
+                <div className="flex items-start gap-3">
+                  <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0 pt-1.5">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`}
+                        checked={isChecked(FIELD_KEYS.fundingHoldbackEnabled)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.fundingHoldbackEnabled)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={`${FIELD_KEYS.fundingHoldbackEnabled}-cb`} className="text-sm">
+                        Initial Funding Holdback
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5">Held By</p>
+                  </div>
+                  <div className="flex-1 flex flex-col gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                      <Input
+                        value={focusedCurrencyField === FIELD_KEYS.fundingHoldbackAmount ? getValue(FIELD_KEYS.fundingHoldbackAmount) : formatCurrencyDisplay(getValue(FIELD_KEYS.fundingHoldbackAmount))}
+                        onChange={(e) => handleCurrencyChange(FIELD_KEYS.fundingHoldbackAmount, e.target.value)}
+                        onFocus={() => setFocusedCurrencyField(FIELD_KEYS.fundingHoldbackAmount)}
+                        onBlur={() => handleCurrencyBlur(FIELD_KEYS.fundingHoldbackAmount)}
+                        disabled={disabled}
+                        className="h-8 text-sm pl-7 w-full"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <Select
+                      value={getValue(FIELD_KEYS.fundingHoldbackHeldBy)}
+                      onValueChange={(value) => setValue(FIELD_KEYS.fundingHoldbackHeldBy, value)}
                       disabled={disabled}
-                      className="h-8 text-sm pl-7"
-                      placeholder={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent) ? '-' : '0.00'}
-                    />
+                    >
+                      <SelectTrigger className="h-8 text-sm w-full">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="lender">Lender</SelectItem>
+                        <SelectItem value="company">Company</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 pl-5 mt-0.5">
-                  <span className="text-xs text-muted-foreground">Or</span>
+
+                {/* Accept Payments Post Maturity */}
+                <div className="flex items-center gap-3">
                   <Checkbox
-                    id={`${FIELD_KEYS.acceptShortPaymentsOrPercent}-cb`}
-                    checked={isChecked(FIELD_KEYS.acceptShortPaymentsOrPercent)}
-                    onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptShortPaymentsOrPercent)}
+                    id={`${FIELD_KEYS.acceptPostMaturity}-cb`}
+                    checked={isChecked(FIELD_KEYS.acceptPostMaturity)}
+                    onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptPostMaturity)}
                     disabled={disabled}
                     className="h-3.5 w-3.5"
                   />
-                  <Label className="text-xs text-muted-foreground">Percent</Label>
+                  <Label htmlFor={`${FIELD_KEYS.acceptPostMaturity}-cb`} className="text-sm">
+                    Accept Payments Post Maturity
+                  </Label>
                 </div>
-              </div>
 
-              {/* Accept Post-maturity */}
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id={`${FIELD_KEYS.acceptPostMaturity}-cb`}
-                  checked={isChecked(FIELD_KEYS.acceptPostMaturity)}
-                  onCheckedChange={() => toggleCheck(FIELD_KEYS.acceptPostMaturity)}
-                  disabled={disabled}
-                  className="h-3.5 w-3.5"
-                />
-                <Label
-                  htmlFor={`${FIELD_KEYS.acceptPostMaturity}-cb`}
-                  className="text-sm"
-                >
-                  Accept Post-maturity
-                </Label>
-              </div>
-
-              {/* Auto-post Enabled */}
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id={`${FIELD_KEYS.autoPostEnabled}-cb`}
-                  checked={isChecked(FIELD_KEYS.autoPostEnabled)}
-                  onCheckedChange={() => toggleCheck(FIELD_KEYS.autoPostEnabled)}
-                  disabled={disabled}
-                  className="h-3.5 w-3.5"
-                />
-                <Label
-                  htmlFor={`${FIELD_KEYS.autoPostEnabled}-cb`}
-                  className="text-sm"
-                >
-                  Auto-post Enabled
-                </Label>
-              </div>
-
-              {/* Override Funds Held - last in section */}
-              <div className="flex items-center gap-3">
-                <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id={`${FIELD_KEYS.overrideFundsHeld}-cb`}
-                      checked={isChecked(FIELD_KEYS.overrideFundsHeld)}
-                      onCheckedChange={() => toggleCheck(FIELD_KEYS.overrideFundsHeld)}
-                      disabled={disabled}
-                      className="h-3.5 w-3.5"
-                    />
-                    <Label htmlFor={`${FIELD_KEYS.overrideFundsHeld}-cb`} className="text-sm">
-                      Override Funds Held
-                    </Label>
+                {/* Override Hold Days */}
+                <div className="flex items-center gap-3">
+                  <div className="w-[140px] min-w-[140px] max-w-[140px] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${FIELD_KEYS.overrideFundsHeld}-cb`}
+                        checked={isChecked(FIELD_KEYS.overrideFundsHeld)}
+                        onCheckedChange={() => toggleCheck(FIELD_KEYS.overrideFundsHeld)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={`${FIELD_KEYS.overrideFundsHeld}-cb`} className="text-sm">
+                        Override Hold Days
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-5">Hold Days</p>
                   </div>
-                  <p className="text-xs text-muted-foreground pl-5">Hold Days</p>
+                  <Input
+                    value={getValue(FIELD_KEYS.holdDays)}
+                    onChange={(e) => setValue(FIELD_KEYS.holdDays, e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => { if (!/\d/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
+                    disabled={disabled}
+                    className="h-8 text-sm flex-1"
+                    inputMode="numeric"
+                  />
                 </div>
-                <Input
-                  value={getValue(FIELD_KEYS.holdDays)}
-                  onChange={(e) => setValue(FIELD_KEYS.holdDays, e.target.value.replace(/\D/g, ''))}
-                  onKeyDown={(e) => { if (!/\d/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault(); }}
-                  disabled={disabled}
-                  className="h-8 text-sm flex-1"
-                  inputMode="numeric"
-                />
+
+                {/* Auto-post Enabled */}
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id={`${FIELD_KEYS.autoPostEnabled}-cb`}
+                    checked={isChecked(FIELD_KEYS.autoPostEnabled)}
+                    onCheckedChange={() => toggleCheck(FIELD_KEYS.autoPostEnabled)}
+                    disabled={disabled}
+                    className="h-3.5 w-3.5"
+                  />
+                  <Label htmlFor={`${FIELD_KEYS.autoPostEnabled}-cb`} className="text-sm">
+                    Auto-post Enabled
+                  </Label>
+                </div>
               </div>
             </div>
           </div>
@@ -784,10 +949,10 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
 
         {/* Payments Column */}
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Payments</h3>
+          <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Payment Details</h3>
           <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <Label className={LABEL_CLASS}>No. of Payments</Label>
+              <Label className={LABEL_CLASS}>Number of Payments</Label>
               <Input
                 value={getValue(FIELD_KEYS.numberOfPayments)}
                 onChange={(e) => setValue(FIELD_KEYS.numberOfPayments, e.target.value.replace(/\D/g, ''))}
@@ -819,14 +984,20 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               </Select>
             </div>
 
-            {renderDateField(FIELD_KEYS.dayDue, "Payment Due Date")}
+
+
+            {renderDateField(FIELD_KEYS.dayDue, "Payment Due DOM")}
 
             {renderDateField(FIELD_KEYS.firstPayment, "First Payment Due")}
-            {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Pmt Received")}
+            {renderDateField(FIELD_KEYS.lastPaymentReceived, "Last Payment Received")}
             {renderDateField(FIELD_KEYS.paidTo, "Paid To Date")}
-            {renderDateField(FIELD_KEYS.nextPayment, "Next Due Date")}
-            {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular P & I Payment")}
+            {renderDateField(FIELD_KEYS.nextPayment, "Next Payment Due")}
+            {renderCurrencyField(FIELD_KEYS.regularPayment, "Regular Payment")}
             {renderCurrencyField(FIELD_KEYS.addedToRegularPayment, "Added to Regular Payment")}
+            {/* Add to Regular Payment sub-section */}
+            <div className="pt-3">
+              <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Add to Regular Payment</h4>
+            </div>
             {renderCurrencyField(FIELD_KEYS.additionalPrincipal, "Additional Principal")}
 
             {/* Servicing Fees - always currency, independent of Sales Tax */}
@@ -880,7 +1051,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline")}
                   onClick={() => setOtherSchedPmtsOpen(true)}
                 >
-                  Other Sched. Pmts
+                  Other Scheduled Payments
                 </Label>
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
@@ -925,6 +1096,34 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             {renderCurrencyField(FIELD_KEYS.defaultInterest, "Default Interest")}
             {renderCurrencyField(FIELD_KEYS.totalPayment, "Total Payment")}
 
+            {/* Recast Payment — clickable link placeholder (action TBD with client) */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => { /* TODO: confirm Recast Payment workflow with client */ console.log('Recast Payment clicked'); }}
+                disabled={disabled}
+                className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline bg-transparent p-0 border-0 text-left")}
+              >
+                Recast Payment
+              </button>
+            </div>
+
+            {/* Certified Funds Only checkbox */}
+            <DirtyFieldWrapper fieldKey="loan.certified_funds_only">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="loan.certified_funds_only-cb"
+                  checked={isChecked("loan.certified_funds_only")}
+                  onCheckedChange={() => toggleCheck("loan.certified_funds_only")}
+                  disabled={disabled}
+                  className="h-3.5 w-3.5"
+                />
+                <Label htmlFor="loan.certified_funds_only-cb" className="text-sm">
+                  Certified Funds Only
+                </Label>
+              </div>
+            </DirtyFieldWrapper>
+
             {/* Overpayments Applied To */}
             <div className="pt-3">
               <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Overpayments Applied To</h4>
@@ -934,6 +1133,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                 {renderCurrencyField(FIELD_KEYS.overpaymentsProcessingUnpaidInterest, "Processing Unpaid Int.")}
               </div>
             </div>
+
           </div>
         </div>
 
@@ -941,17 +1141,17 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
         <div className="space-y-3">
           <h3 className="font-semibold text-sm text-foreground border-b border-border pb-2">Balances</h3>
           <div className="space-y-2">
-            {renderCurrencyField(FIELD_KEYS.principal, "Principal")}
-            {renderCurrencyField(FIELD_KEYS.unpaidLateCharges, "Unpaid Late Charges")}
-            {renderCurrencyField(FIELD_KEYS.accruedLateCharges, "Accrued Late Charges")}
-            {renderCurrencyField(FIELD_KEYS.unpaidInterest, "Unpaid Interest")}
-            {renderCurrencyField(FIELD_KEYS.accruedInterest, "Accrued Interest")}
-            {renderCurrencyField(FIELD_KEYS.interestGuarantee, "Interest Guarantee")}
-            {renderCurrencyField(FIELD_KEYS.unpaidDefaultInterest, "Unpaid Def. Interest")}
-            {renderCurrencyField(FIELD_KEYS.accruedDefaultInterest, "Accrued Def. Interest")}
-            {renderCurrencyField(FIELD_KEYS.chargesOwed, "Charges Owed")}
-            {renderCurrencyField(FIELD_KEYS.chargesInterest, "Charges Interest")}
-            {renderCurrencyField(FIELD_KEYS.unpaidOther, "Unpaid Other")}
+            {renderCurrencyField(FIELD_KEYS.principal, "Principal Balance")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidLateCharges, "Unpaid Late Charges")}
+            {renderEditableBalanceField(FIELD_KEYS.accruedLateCharges, "Accrued Late Charges")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidInterest, "Unpaid Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.accruedInterest, "Accrued Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.interestGuarantee, "Interest Guarantee")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidDefaultInterest, "Unpaid Default Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.accruedDefaultInterest, "Accrued Default Interest")}
+            {renderEditableBalanceField(FIELD_KEYS.chargesOwed, "Charges Owed")}
+            {renderEditableBalanceField(FIELD_KEYS.chargesInterest, "Interest on Charges Owed")}
+            {renderEditableBalanceField(FIELD_KEYS.unpaidOther, "Unpaid Other Payments")}
             {renderReadOnlyCurrencyField(
               calculatedAmountToReinstate,
               "Amount to Reinstate",
@@ -993,7 +1193,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
                   className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline")}
                   onClick={() => navigateToSubSection('trust_ledger')}
                 >
-                  Suspense Funds
+                  Suspense Balance
                 </Label>
                 <div className="relative flex-1">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
@@ -1016,7 +1216,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
               <div>
               {renderReadOnlyCurrencyField(
                 calculatedTotalBalanceDue,
-                "Total Balance Due",
+                "Total Amount Due",
                 cn(LABEL_CLASS, "text-primary font-medium"),
               )}
                 <p className="text-xs text-muted-foreground mt-0.5" style={{ paddingLeft: "0px" }}>

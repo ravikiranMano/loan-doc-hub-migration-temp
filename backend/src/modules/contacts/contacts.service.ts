@@ -81,9 +81,15 @@ export class ContactsService {
     return this.repo.update(id, dto as Record<string, unknown>);
   }
 
-  async updateContactWithMerge(id: string, contactData: Record<string, unknown>) {
+  async updateContactWithMerge(
+    id: string,
+    contactData: Record<string, unknown>,
+    newContactId?: string,
+  ) {
     await this.getContact(id);
-    return this.repo.updateWithMerge(id, contactData);
+    return this.repo.updateWithMerge(id, contactData, {
+      newContactId: newContactId?.trim().toUpperCase(),
+    });
   }
 
   async patchContactData(id: string, patch: Record<string, unknown>) {

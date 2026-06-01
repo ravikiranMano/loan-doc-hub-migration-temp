@@ -29,7 +29,11 @@ import { useFormPermissions } from '@/hooks/useFormPermissions';
 interface ContactBorrowerDetailLayoutProps {
   contact: ContactRecord;
   onBack: () => void;
-  onSave: (id: string, contactData: Record<string, string>) => Promise<boolean>;
+  onSave: (
+    id: string,
+    contactData: Record<string, string>,
+    opts?: { newContactId?: string },
+  ) => Promise<boolean>;
   initialSection?: BorrowerSection;
   backLabel?: string;
   titlePrefix?: string;
@@ -50,7 +54,7 @@ const SEND_FIELD_ALIASES: [string, string][] = [
 ];
 
 const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = ({
-  contact,
+  contact: contactProp,
   onBack,
   onSave,
   initialSection = 'borrower',
@@ -65,9 +69,16 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const isReadOnly = permissionsLoading || isFormViewOnly('borrower');
 
+  // Local contact copy so a successful Borrower ID rename updates the header
+  // and sub-components without waiting for a parent refetch.
+  const [contact, setContact] = useState<ContactRecord>(contactProp);
+  useEffect(() => { setContact(contactProp); }, [contactProp]);
+
+  const [borrowerIdError, setBorrowerIdError] = useState<string>('');
+
   const [values, setValues] = useState<Record<string, string>>(() => {
     const result: Record<string, string> = {};
-    Object.entries(contact.contact_data || {}).forEach(([key, value]) => {
+    Object.entries(contactProp.contact_data || {}).forEach(([key, value]) => {
       if (typeof value !== 'string') return;
       const needsPrefix = !NON_BORROWER_PREFIXES.some(p => key.startsWith(p)) && !key.startsWith('borrower.');
       result[needsPrefix ? `borrower.${key}` : key] = value;
@@ -79,7 +90,7 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
       }
     });
     if (!result['borrower.borrower_id']) {
-      result['borrower.borrower_id'] = contact.contact_id;
+      result['borrower.borrower_id'] = contactProp.contact_id;
     }
     return result;
   });
@@ -89,8 +100,11 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
 
   const handleValueChange = useCallback((fieldKey: string, value: string) => {
     if (isReadOnly) return;
+    if (fieldKey === 'borrower.borrower_id' && borrowerIdError) setBorrowerIdError('');
     setValues(prev => ({ ...prev, [fieldKey]: value }));
-  }, [isReadOnly]);
+  }, [isReadOnly, borrowerIdError]);
+
+  const contactWs = useContactWorkspaceOptional();
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     if (isReadOnly) return false;
@@ -105,6 +119,15 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
         contactData[sendPrefKey] = borrowerValue;
       }
     });
+
+    // Validate Borrower ID format before hitting the API (primary variant only renames)
+    const requestedId = (values['borrower.borrower_id'] || '').trim().toUpperCase();
+    const willRename = borrowerSectionVariant === 'primary' && !!requestedId && requestedId !== contact.contact_id;
+    if (willRename && !/^B-\d{4,}$/.test(requestedId)) {
+      setBorrowerIdError('Borrower ID must follow the format B-##### (e.g. B-00043).');
+      return false;
+    }
+
     const oldData = (contact.contact_data || {}) as Record<string, string>;
     const changes: ContactFieldChange[] = [];
     const allKeys = new Set([...Object.keys(oldData), ...Object.keys(contactData)]);
@@ -114,8 +137,12 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
       const newVal = contactData[key] || '';
       if (oldVal !== newVal) changes.push({ fieldLabel: key, oldValue: oldVal, newValue: newVal });
     });
-    const saved = await onSave(contact.id, contactData);
-    if (saved && changes.length > 0) {
+    const saved = await onSave(contact.id, contactData, willRename ? { newContactId: requestedId } : undefined);
+    if (!saved) {
+      if (willRename) setBorrowerIdError('This Borrower ID already exists. Please enter a unique ID.');
+      return false;
+    }
+    if (changes.length > 0) {
       let section = 'borrower_profile';
       const ck = changes.map(c => c.fieldLabel);
       if (ck.some(k => k.startsWith('ach.') || k.includes('bank') || k.includes('routing'))) section = 'banking';
@@ -124,11 +151,23 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
       else if (ck.some(k => k.includes('email') || k.includes('phone') || k.includes('address') || k.includes('mailing'))) section = 'contact_info';
       logContactEvent(contact.id, section, changes).catch(err => console.error('Failed to log borrower event:', err));
     }
-    if (saved) initialValuesRef.current = { ...values };
-    return !!saved;
-  }, [values, contact.id, contact.contact_data, onSave, isReadOnly]);
+    if (willRename) {
+      setContact(prev => ({ ...prev, contact_id: requestedId }));
+      const fullName = contactData.full_name
+        || `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim()
+        || contact.full_name;
+      contactWs?.updateContactId(contact.id, requestedId, fullName);
+      try {
+        window.dispatchEvent(new CustomEvent('contact-id-renamed', {
+          detail: { contactDbId: contact.id, oldContactId: contact.contact_id, newContactId: requestedId, contactType: 'borrower' },
+        }));
+      } catch { /* ignore */ }
+    }
+    initialValuesRef.current = { ...values };
+    setBorrowerIdError('');
+    return true;
+  }, [values, contact.id, contact.contact_id, contact.full_name, contact.contact_data, onSave, isReadOnly, contactWs, borrowerSectionVariant]);
 
-  const contactWs = useContactWorkspaceOptional();
   useEffect(() => { if (contactWs) contactWs.setContactDirty(contact.id, isDirty); }, [isDirty, contact.id, contactWs]);
   useEffect(() => {
     if (!contactWs) return;
@@ -168,6 +207,7 @@ const ContactBorrowerDetailLayout: React.FC<ContactBorrowerDetailLayoutProps> = 
             values={values}
             onValueChange={handleValueChange}
               disabled={isReadOnly}
+            borrowerIdError={borrowerIdError}
           />
         );
       case 'co-borrower':

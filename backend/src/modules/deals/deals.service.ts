@@ -7,7 +7,18 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { generateDealNumber as generateDealNumberRpc } from '../../common/helpers/db-sequences';
+import {
+  generateDealNumber as generateDealNumberRpc,
+  generateContactId as generateContactIdRpc,
+} from '../../common/helpers/db-sequences';
+import {
+  CLEAN_FUNDING_HISTORY_KEYS,
+  FUNDING_OPERATIONAL_FIELD_KEYS,
+  CONTACT_OPERATIONAL_KEYWORDS,
+  getCanonicalFundingHistoryKey,
+  isOperationalCloneFieldKey,
+  sanitizeContactDataForCopy,
+} from './deal-clone.constants';
 import { DealsRepository } from './deals.repository';
 import {
   CreateDealDto,
@@ -490,5 +501,220 @@ export class DealsService {
       }),
     ]);
     return docCount > 0 || jobCount > 0;
+  }
+
+  /**
+   * Clone deal business setup (sections, typed field values, participants + contacts).
+   * Mirrors CSR DealsPage handleCopyDeal — excludes notes, history, and operational keys.
+   */
+  async cloneDeal(sourceDealId: string, createdBy?: string) {
+    const src = await this.getDeal(sourceDealId);
+    const dealNumber = await generateDealNumberRpc(this.prisma);
+
+    return this.prisma.$transaction(async (tx) => {
+      const newDeal = await tx.deals.create({
+        data: {
+          deal_number: dealNumber,
+          state: src.state || 'TBD',
+          product_type: src.product_type || 'TBD',
+          mode: (src.mode as 'doc_prep' | 'servicing_only') || 'doc_prep',
+          status: 'draft',
+          packet_id: src.packet_id,
+          loan_amount: src.loan_amount,
+          property_address: src.property_address,
+          borrower_name: src.borrower_name,
+          notes: src.notes,
+          created_by: createdBy ?? src.created_by,
+        },
+      });
+      const newDealId = newDeal.id;
+
+      const excludeDictRows = await tx.field_dictionary.findMany({
+        where: {
+          OR: [
+            { field_key: { in: [...FUNDING_OPERATIONAL_FIELD_KEYS] } },
+            ...CONTACT_OPERATIONAL_KEYWORDS.map((token) => ({
+              field_key: { contains: token, mode: 'insensitive' as const },
+            })),
+          ],
+        },
+        select: { id: true, field_key: true },
+      });
+
+      const excludedDictIds = new Set<string>();
+      const excludedDbKeys = new Set<string>();
+      const emptyFundingHistoryDictRow = excludeDictRows.find(
+        (r) => getCanonicalFundingHistoryKey(r.field_key) === 'loan_terms.funding_history',
+      );
+      for (const r of excludeDictRows) {
+        if (
+          isOperationalCloneFieldKey(r.field_key) ||
+          CLEAN_FUNDING_HISTORY_KEYS.has(getCanonicalFundingHistoryKey(r.field_key))
+        ) {
+          excludedDictIds.add(r.id);
+          excludedDbKeys.add(r.field_key);
+        }
+      }
+
+      const sectionRows = await tx.deal_section_values.findMany({
+        where: { deal_id: sourceDealId, section: { not: 'notes' } },
+        select: { section: true, field_values: true, version: true },
+      });
+
+      if (sectionRows.length > 0) {
+        await tx.deal_section_values.createMany({
+          data: sectionRows.map((r) => {
+            const cleaned: Record<string, unknown> = {};
+            const fv =
+              r.field_values && typeof r.field_values === 'object'
+                ? (r.field_values as Record<string, unknown>)
+                : {};
+            for (const [k, v] of Object.entries(fv)) {
+              const tail = k.includes('::') ? k.split('::').pop()! : k;
+              if (excludedDictIds.has(tail)) continue;
+              if (excludedDbKeys.has(tail) || isOperationalCloneFieldKey(k)) continue;
+              if (v && typeof v === 'object') {
+                const fieldData = v as Record<string, unknown>;
+                const indexedKey = String(
+                  fieldData.indexed_key || fieldData.indexed_db_key || '',
+                );
+                if (indexedKey && isOperationalCloneFieldKey(indexedKey)) continue;
+              }
+              cleaned[k] = v;
+            }
+            if (r.section === 'loan_terms' && emptyFundingHistoryDictRow?.id) {
+              cleaned[emptyFundingHistoryDictRow.id] = {
+                value_text: '[]',
+                indexed_key: 'loan_terms.funding_history',
+                indexed_db_key: emptyFundingHistoryDictRow.field_key,
+                updated_at: new Date().toISOString(),
+              };
+            }
+            return {
+              deal_id: newDealId,
+              section: r.section,
+              field_values: cleaned as object,
+              version: r.version ?? 1,
+            };
+          }),
+        });
+      }
+
+      const fieldRows = await tx.deal_field_values.findMany({
+        where: { deal_id: sourceDealId },
+        select: {
+          field_dictionary_id: true,
+          value_text: true,
+          value_number: true,
+          value_date: true,
+          value_json: true,
+        },
+      });
+      const filteredFieldRows = fieldRows.filter(
+        (r) => !excludedDictIds.has(r.field_dictionary_id),
+      );
+      if (filteredFieldRows.length > 0) {
+        await tx.deal_field_values.createMany({
+          data: filteredFieldRows.map((r) => ({
+            deal_id: newDealId,
+            field_dictionary_id: r.field_dictionary_id,
+            value_text: r.value_text,
+            value_number: r.value_number,
+            value_date: r.value_date,
+            value_json: r.value_json,
+            updated_by: createdBy ?? null,
+          })),
+        });
+      }
+
+      const partRows = await tx.deal_participants.findMany({
+        where: { deal_id: sourceDealId },
+        select: {
+          contact_id: true,
+          role: true,
+          name: true,
+          email: true,
+          phone: true,
+          sequence_order: true,
+          access_method: true,
+        },
+      });
+
+      const clonedContactIds = new Map<string, string>();
+
+      if (partRows.length > 0) {
+        const sourceContactIds = [
+          ...new Set(partRows.map((p) => p.contact_id).filter(Boolean)),
+        ] as string[];
+
+        if (sourceContactIds.length > 0) {
+          const contacts = await tx.contacts.findMany({
+            where: { id: { in: sourceContactIds } },
+          });
+
+          for (const contact of contacts) {
+            const generatedContactId = await generateContactIdRpc(tx, contact.contact_type);
+            const cloned = await tx.contacts.create({
+              data: {
+                contact_type: contact.contact_type,
+                contact_id: generatedContactId,
+                created_by: createdBy ?? contact.created_by,
+                full_name: contact.full_name || '',
+                first_name: contact.first_name || '',
+                last_name: contact.last_name || '',
+                email: contact.email || '',
+                phone: contact.phone || '',
+                city: contact.city || '',
+                state: contact.state || '',
+                company: contact.company || '',
+                contact_data: sanitizeContactDataForCopy(contact.contact_data) as object,
+              },
+            });
+            clonedContactIds.set(contact.id, cloned.id);
+          }
+        }
+
+        await tx.deal_participants.createMany({
+          data: partRows.map((p) => ({
+            deal_id: newDealId,
+            contact_id: p.contact_id ? clonedContactIds.get(p.contact_id) ?? null : null,
+            role: p.role,
+            name: p.name,
+            email: p.email,
+            phone: p.phone,
+            sequence_order: p.sequence_order,
+            access_method: p.access_method ?? 'login',
+            status: 'invited',
+          })),
+        });
+
+        if (clonedContactIds.size > 0) {
+          const participantSection = await tx.deal_section_values.findFirst({
+            where: { deal_id: newDealId, section: 'participants' },
+          });
+          if (participantSection?.field_values) {
+            const fv = participantSection.field_values as Record<string, unknown>;
+            const remapped: Record<string, unknown> = {};
+            for (const [key, value] of Object.entries(fv)) {
+              let remappedKey = key;
+              clonedContactIds.forEach((newId, oldId) => {
+                remappedKey = remappedKey.split(oldId).join(newId);
+              });
+              remapped[remappedKey] = value;
+            }
+            await tx.deal_section_values.update({
+              where: { id: participantSection.id },
+              data: {
+                field_values: remapped as object,
+                updated_at: new Date(),
+                version: participantSection.version + 1,
+              },
+            });
+          }
+        }
+      }
+
+      return newDeal;
+    });
   }
 }

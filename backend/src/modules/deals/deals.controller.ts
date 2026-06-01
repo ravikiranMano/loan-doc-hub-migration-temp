@@ -81,6 +81,12 @@ export class DealsController {
     return { dealNumber };
   }
 
+  /** POST /api/deals/:id/clone — duplicate business setup into a new draft deal. */
+  @Post(':id/clone')
+  cloneDeal(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.cloneDeal(id, user?.sub);
+  }
+
   @Get('sections/by-section/:section')
   listSectionsBySection(@Param('section') section: string) {
     return this.service.listSectionsBySection(section);

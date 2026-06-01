@@ -9,7 +9,10 @@ import { type SortDirection } from '@/hooks/useGridSortFilter';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  resolveContactPortfolioDealIds,
+  fetchContactPortfolioDealContext,
+} from '@/services/contacts/contact-portfolio.service';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import {
   extractPortfolioLoanAmount,
@@ -102,31 +105,10 @@ const GuarantorPortfolio: React.FC<Props> = ({ guarantorId, contactDbId }) => {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 1. Find deals where this contact appears as a participant
-      const { data: participants } = await supabase
-        .from('deal_participants')
-        .select('deal_id')
-        .eq('contact_id', contactDbId);
-
-      let dealIds = [...new Set((participants || []).map(p => p.deal_id))];
-
-      // 2. Fallback: scan borrower section JSON for any field referencing this contact_id/guarantor_id
-      if (dealIds.length === 0 && (contactDbId || guarantorId)) {
-        const { data: borrowerSections } = await supabase
-          .from('deal_section_values')
-          .select('deal_id, field_values')
-          .eq('section', 'borrower');
-        const matched: string[] = [];
-        (borrowerSections || []).forEach(bs => {
-          const fv = bs.field_values as Record<string, any>;
-          if (!fv) return;
-          const flat = JSON.stringify(fv);
-          if ((contactDbId && flat.includes(contactDbId)) || (guarantorId && flat.includes(guarantorId))) {
-            matched.push(bs.deal_id);
-          }
-        });
-        dealIds = [...new Set(matched)];
-      }
+      const dealIds = await resolveContactPortfolioDealIds({
+        contactDbId,
+        externalId: guarantorId,
+      });
 
       if (dealIds.length === 0) {
         setRows([]);
@@ -134,27 +116,8 @@ const GuarantorPortfolio: React.FC<Props> = ({ guarantorId, contactDbId }) => {
         return;
       }
 
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('id, deal_number, loan_amount, status')
-        .in('id', dealIds);
-      const dealsMap = new Map((deals || []).map(d => [d.id, d]));
-
-      const { data: loanTermsSv } = await supabase
-        .from('deal_section_values')
-        .select('deal_id, field_values')
-        .in('deal_id', dealIds)
-        .eq('section', 'loan_terms');
-      const ltMap = new Map<string, Record<string, any>>();
-      (loanTermsSv || []).forEach(sv => ltMap.set(sv.deal_id, sv.field_values as Record<string, any>));
-
-      const { data: borrowerSv } = await supabase
-        .from('deal_section_values')
-        .select('deal_id, field_values')
-        .in('deal_id', dealIds)
-        .eq('section', 'borrower');
-      const brMap = new Map<string, Record<string, any>>();
-      (borrowerSv || []).forEach(sv => brMap.set(sv.deal_id, sv.field_values as Record<string, any>));
+      const { dealsMap, loanTermsMap: ltMap, borrowerMap: brMap } =
+        await fetchContactPortfolioDealContext(dealIds);
 
       const portfolioRows: PortfolioRow[] = [];
 

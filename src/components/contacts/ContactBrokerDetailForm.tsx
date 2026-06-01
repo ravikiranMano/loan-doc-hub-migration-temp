@@ -17,6 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { ContactBroker } from '@/pages/contacts/ContactBrokersPage';
+import { getLicenseNumberError, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 interface Props {
   broker: ContactBroker;
@@ -148,8 +149,30 @@ export const ContactBrokerDetailForm: React.FC<Props> = ({ broker, onSave, onCan
           <EmailInput value={form.repEmail} onValueChange={(v) => set('repEmail', v)} />
         </div>
         <div>
-          <Label>License</Label>
-          <Input value={form.repLicense} onChange={(e) => set('repLicense', e.target.value)} />
+          <Label>License Number</Label>
+          {(() => {
+            const raw = form.repLicense || '';
+            const error = getLicenseNumberError(raw);
+            return (
+              <>
+                <Input
+                  value={raw}
+                  maxLength={50}
+                  onChange={(e) => {
+                    const filtered = sanitizeLicenseNumber(e.target.value);
+                    set('repLicense', filtered);
+                  }}
+                  onBlur={(e) => {
+                    const t = e.target.value.trim();
+                    if (t !== e.target.value) set('repLicense', t);
+                  }}
+                  aria-invalid={!!error}
+                  className={error ? 'border-destructive' : ''}
+                />
+                {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+              </>
+            );
+          })()}
         </div>
       </div>
 

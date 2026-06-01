@@ -358,25 +358,62 @@ export async function updateContactRow(id: string, updates: Record<string, unkno
   if (error) throw error;
 }
 
+export interface UpdateContactWithMergeOptions {
+  newContactId?: string;
+  contactType?: string;
+}
+
 export async function updateContactWithMerge(
   id: string,
-  contactData: Record<string, string>
+  contactData: Record<string, string>,
+  opts?: UpdateContactWithMergeOptions,
 ) {
   if (isNodeApiEnabled('contacts')) {
-    return apiClient.patch(`/contacts/${id}/merge`, { contact_data: contactData });
+    return apiClient.patch(`/contacts/${id}/merge`, {
+      contact_data: contactData,
+      ...(opts?.newContactId ? { new_contact_id: opts.newContactId.trim().toUpperCase() } : {}),
+    });
   }
   // — Supabase (keep unchanged) —
   const fullName =
     contactData.full_name ||
     `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim();
 
-  const existingData = await getContactContactData(id);
+  const { data: existing } = await supabase
+    .from('contacts')
+    .select('contact_data, contact_id, contact_type')
+    .eq('id', id)
+    .single();
+
+  const existingData = (existing?.contact_data as Record<string, unknown>) || {};
   const mergedData: Record<string, unknown> = { ...contactData };
   Object.entries(existingData).forEach(([key, value]) => {
     if (key.startsWith('_')) mergedData[key] = value;
   });
 
-  await updateContactRow(id, {
+  const requestedNewId = (opts?.newContactId || '').trim().toUpperCase();
+  const currentContactId = (existing?.contact_id || '').trim();
+  const willRenameId = !!requestedNewId && requestedNewId !== currentContactId;
+  const resolvedContactType = opts?.contactType || existing?.contact_type || '';
+  const typeLabel = resolvedContactType
+    ? resolvedContactType.charAt(0).toUpperCase() + resolvedContactType.slice(1).replace(/_/g, ' ')
+    : 'Contact';
+  const dupMsg = `This ${typeLabel} ID already exists. Please enter a unique ID.`;
+
+  if (willRenameId) {
+    const { data: dup, error: dupErr } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('contact_id', requestedNewId)
+      .eq('contact_type', resolvedContactType)
+      .neq('id', id)
+      .limit(1)
+      .maybeSingle();
+    if (dupErr) throw dupErr;
+    if (dup) throw new Error(dupMsg);
+  }
+
+  const updatePayload: Record<string, unknown> = {
     full_name: fullName,
     first_name: contactData.first_name || '',
     last_name: contactData.last_name || '',
@@ -401,7 +438,14 @@ export async function updateContactWithMerge(
     company: contactData.company || '',
     contact_data: mergedData,
     updated_at: new Date().toISOString(),
-  });
+  };
+  if (willRenameId) updatePayload.contact_id = requestedNewId;
+
+  const { error } = await supabase.from('contacts').update(updatePayload).eq('id', id);
+  if (error) {
+    if ((error as { code?: string }).code === '23505') throw new Error(dupMsg);
+    throw error;
+  }
 
   const phoneValue =
     contactData.phone ||

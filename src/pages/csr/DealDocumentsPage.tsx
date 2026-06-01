@@ -49,7 +49,7 @@ import { useToast } from '@/hooks/use-toast';
 import { subscribeToChanges } from '@/services/node-api/realtime';
 import { fetchDealById } from '@/services/deals/deals.service';
 import {
-  generateDocument,
+  generateDocumentsAsync,
   generateDocumentApi,
   generateDocumentEdge,
   generateDocumentV2,
@@ -154,6 +154,8 @@ interface GeneratedDocument {
   error_message: string | null;
   created_at: string;
   created_by: string;
+  creator_name?: string | null;
+  creator_email?: string | null;
 }
 
 interface GenerationJob {
@@ -178,7 +180,7 @@ export const DealDocumentsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { role } = useAuth();
+  const { user, role } = useAuth();
 
   const [deal, setDeal] = useState<Deal | null>(null);
   const [packet, setPacket] = useState<Packet | null>(null);
@@ -275,6 +277,14 @@ export const DealDocumentsPage: React.FC = () => {
       }
     };
   }, [recentJobs]);
+
+  // Clear primary generating spinner when background jobs finish (async edge pipeline).
+  useEffect(() => {
+    if (!generating) return;
+    if (!recentJobs.some((job) => job.status === 'running')) {
+      setGenerating(false);
+    }
+  }, [recentJobs, generating]);
 
   const debouncedBackgroundRefresh = useCallback(() => {
     if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
@@ -490,6 +500,8 @@ export const DealDocumentsPage: React.FC = () => {
     setShowConfirmDialog(false);
     setGenerating(true);
 
+    let startedAsyncJob = false;
+
     try {
       const body: { outputType: string; templateId?: string; packetId?: string } = {
         outputType,
@@ -502,13 +514,17 @@ export const DealDocumentsPage: React.FC = () => {
         body.packetId = selectedPacketId;
       }
 
-      const result = await generateDocument(deal!.id, body);
+      // Match main: edge function returns immediately with status=running, then processes in background.
+      const result = await generateDocumentsAsync(deal!.id, body);
 
       if (result.status === 'running' && result.jobId) {
+        startedAsyncJob = true;
         toast({
-          title: 'Generation Started',
-          description: 'Documents are being processed in the background and will appear here automatically when ready.',
+          title: 'Document Generation Started',
+          description:
+            'Processing in the background. Documents will appear automatically when ready.',
         });
+        await fetchRecentJobs();
       } else if (result.failCount === 0 && result.successCount > 0) {
         toast({
           title: 'Documents Generated',
@@ -529,7 +545,7 @@ export const DealDocumentsPage: React.FC = () => {
         });
       }
 
-      refreshDataInBackground();
+      await refreshDataInBackground();
     } catch (error: unknown) {
       // Session expired: redirect is already in flight — do not show a toast.
       if (error instanceof SessionExpiredError) return;
@@ -540,7 +556,9 @@ export const DealDocumentsPage: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      setGenerating(false);
+      if (!startedAsyncJob) {
+        setGenerating(false);
+      }
     }
   };
 
@@ -711,7 +729,11 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
     return generatedDocuments.filter(doc => doc.template_id === templateId);
   };
 
-  const getCreatorName = (userId: string): string => {
+  const getCreatorName = (userId: string, doc?: GeneratedDocument): string => {
+    if (doc?.creator_name) return doc.creator_name;
+    if (user?.id === userId) {
+      return user.full_name || user.email || 'Unknown';
+    }
     const profile = profiles.get(userId);
     return profile?.full_name || profile?.email || 'Unknown';
   };
@@ -747,7 +769,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
       docs = docs.filter(d => {
         const tName = getDocTemplateName(d).toLowerCase();
         const pName = (d.packet_name || '').toLowerCase();
-        const creator = getCreatorName(d.created_by).toLowerCase();
+        const creator = getCreatorName(d.created_by, d).toLowerCase();
         return tName.includes(q) || pName.includes(q) || creator.includes(q);
       });
     }
@@ -766,7 +788,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
           cmp = (a.packet_name || '').localeCompare(b.packet_name || '');
           break;
         case 'user':
-          cmp = getCreatorName(a.created_by).localeCompare(getCreatorName(b.created_by));
+          cmp = getCreatorName(a.created_by, a).localeCompare(getCreatorName(b.created_by, b));
           break;
       }
       return historySortDir === 'desc' ? -cmp : cmp;
@@ -1078,34 +1100,14 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                   </Select>
                 </div>
 
-                <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="flex flex-col gap-2">
                   <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handlePreviewPayload}
-                    disabled={!canGenerate || previewLoading || generating || generatingApi || generatingEdge || !selectedTemplateId}
-                    className="flex-1 gap-2"
+                    onClick={() => handleGenerateClick('single', selectedTemplateId || undefined)}
+                    disabled={!canGenerate || generating || !selectedTemplateId}
+                    className="w-full gap-2"
                     size="lg"
                   >
-                    {previewLoading && previewMode === 'legacy' ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Loading payload...
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-5 w-5" />
-                        Preview merge data
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={handleGenerateApi}
-                    disabled={!canGenerate || generatingApi || generatingEdge || !selectedTemplateId}
-                    className="flex-1 gap-2"
-                    size="lg"
-                  >
-                    {generatingApi ? (
+                    {generating ? (
                       <>
                         <Loader2 className="h-5 w-5 animate-spin" />
                         Generating...
@@ -1113,29 +1115,64 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                     ) : (
                       <>
                         <Play className="h-5 w-5" />
-                        Generate (API)
+                        Generate Document
                       </>
                     )}
                   </Button>
-                  <Button
-                    onClick={handleGenerateEdge}
-                    disabled={!canGenerate || generatingApi || generatingEdge || !selectedTemplateId}
-                    variant="secondary"
-                    className="flex-1 gap-2"
-                    size="lg"
-                  >
-                    {generatingEdge ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-5 w-5" />
-                        Generate (Edge)
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handlePreviewPayload}
+                      disabled={!canGenerate || previewLoading || generating || generatingApi || generatingEdge || !selectedTemplateId}
+                      className="flex-1 gap-2"
+                      size="sm"
+                    >
+                      {previewLoading && previewMode === 'legacy' ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading payload...
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-4 w-4" />
+                          Preview merge data
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleGenerateApi}
+                      disabled={!canGenerate || generatingApi || generating || !selectedTemplateId}
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      size="sm"
+                    >
+                      {generatingApi ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          API...
+                        </>
+                      ) : (
+                        'Generate (API)'
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleGenerateEdge}
+                      disabled={!canGenerate || generatingEdge || generating || !selectedTemplateId}
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      size="sm"
+                    >
+                      {generatingEdge ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Edge...
+                        </>
+                      ) : (
+                        'Generate (Edge sync)'
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
                 {/* v2 docxtemplater test row */}
@@ -1500,7 +1537,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          {format(new Date(doc.created_at), 'MM/dd/yyyy – hh:mm a')} • by {getCreatorName(doc.created_by)}
+                          {format(new Date(doc.created_at), 'MM/dd/yyyy – hh:mm a')} • by {getCreatorName(doc.created_by, doc)}
                         </div>
                         {doc.error_message && (
                           <p className="text-sm text-destructive mt-2 p-2 bg-background rounded">
@@ -1644,7 +1681,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                                 <div className="space-y-1 text-xs">
                                   <p><strong>Template:</strong> {templateName}</p>
                                   {doc.packet_name && <p><strong>Packet:</strong> {doc.packet_name}</p>}
-                                  <p><strong>Generated by:</strong> {getCreatorName(doc.created_by)}</p>
+                                  <p><strong>Generated by:</strong> {getCreatorName(doc.created_by, doc)}</p>
                                   <p><strong>Timestamp:</strong> {format(new Date(doc.created_at), 'MM/dd/yyyy – hh:mm:ss a')}</p>
                                   {doc.generation_batch_id && <p><strong>Batch:</strong> {doc.generation_batch_id.slice(0, 8)}…</p>}
                                 </div>
@@ -1664,7 +1701,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                           <TableCell>
                             <span className="flex items-center gap-1 text-sm text-muted-foreground">
                               <User className="h-3 w-3" />
-                              {getCreatorName(doc.created_by)}
+                              {getCreatorName(doc.created_by, doc)}
                             </span>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground whitespace-nowrap">

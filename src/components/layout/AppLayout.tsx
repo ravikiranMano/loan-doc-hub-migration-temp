@@ -191,18 +191,28 @@ const AppLayoutInner: React.FC = () => {
 
 export const AppLayout: React.FC = () => {
   const { user, role, loading } = useAuth();
+  // Track whether we've ever had a user so we don't unmount the shell during
+  // a transient token-refresh that briefly clears user/role.
+  const hadUserRef = React.useRef(false);
+  if (user) hadUserRef.current = true;
 
-  if (loading) {
+  // Cold start: nothing painted yet, no prior user — render nothing so the
+  // html background covers the screen until session resolves.
+  if (loading && !user && !hadUserRef.current) {
     return null;
   }
 
-  if (!user) {
+  // Auth resolved and no user → go to /auth.
+  if (!loading && !user) {
     return <Navigate to="/auth" replace />;
   }
 
-  if (!role) {
-    return null;
-  }
+  // User exists but role hasn't loaded yet — still render the shell so
+  // sidebar/header stay mounted. Per-route RoleGuard handles role checks.
+
+
+
+
 
 
   return (

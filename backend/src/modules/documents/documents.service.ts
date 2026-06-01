@@ -5,6 +5,7 @@ import { DocumentDataService } from './document-data.service';
 import { DocxtemplaterService } from './docxtemplater.service';
 import { StorageService } from '../storage/storage.service';
 import { GenerationService } from '../generation/generation.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { toTemplateFieldMapCompat } from './template-field-map.mapper';
 import {
   CreateTemplateDto,
@@ -25,6 +26,7 @@ export class DocumentsService {
 
   constructor(
     private readonly repo: DocumentsRepository,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly documentDataService: DocumentDataService,
     private readonly docxtemplaterService: DocxtemplaterService,
@@ -193,8 +195,25 @@ export class DocumentsService {
   //                  with no DB writes. Separate track experimenting with docxtemplater
   //                  as a drop-in replacement for the raw XML approach.
 
-  listGeneratedDocuments(dealId: string) {
-    return this.repo.findGeneratedDocuments(dealId);
+  async listGeneratedDocuments(dealId: string) {
+    const docs = await this.repo.findGeneratedDocuments(dealId);
+    const userIds = [...new Set(docs.map((d) => d.created_by).filter(Boolean))];
+    if (!userIds.length) return docs;
+
+    const users = await this.prisma.users.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, full_name: true, email: true },
+    });
+    const byId = new Map(users.map((u) => [u.id, u]));
+
+    return docs.map((doc) => {
+      const creator = byId.get(doc.created_by);
+      return {
+        ...doc,
+        creator_name: creator?.full_name || creator?.email || null,
+        creator_email: creator?.email ?? null,
+      };
+    });
   }
 
   listGeneratedDocumentsByDealIds(dealIds: string[]) {

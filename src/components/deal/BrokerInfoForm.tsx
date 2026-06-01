@@ -12,8 +12,10 @@ import { AlertCircle, CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { getLicenseNumberError, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 const safeParseAgreementDate = (val: string): Date | undefined => {
   if (!val) return undefined;
@@ -43,12 +45,14 @@ interface BrokerInfoFormProps {
   disabled?: boolean;
   values?: Record<string, string>;
   onValueChange?: (fieldKey: string, value: string) => void;
+  brokerIdError?: string;
 }
 
 export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({ 
   disabled = false,
   values = {},
   onValueChange,
+  brokerIdError,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => values[FIELD_KEYS[key]] || '';
   const getBoolValue = (key: keyof typeof FIELD_KEYS): boolean => values[FIELD_KEYS[key]] === 'true';
@@ -93,6 +97,37 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
     </DirtyFieldWrapper>
   );
 
+  const renderLicenseField = (key: 'license' | 'repLicense', label: string) => (
+    <DirtyFieldWrapper fieldKey={FIELD_KEYS[key]}>
+      <div className="flex items-center gap-2">
+        <Label className="w-[100px] shrink-0 text-xs">{label}</Label>
+        <div className="flex-1">
+          {(() => {
+            const raw = getValue(key);
+            const error = getLicenseNumberError(raw);
+            return (
+              <>
+                <Input
+                  value={raw}
+                  maxLength={50}
+                  onChange={(e) => handleChange(key, sanitizeLicenseNumber(e.target.value))}
+                  onBlur={(e) => {
+                    const t = e.target.value.trim();
+                    if (t !== e.target.value) handleChange(key, t);
+                  }}
+                  disabled={disabled}
+                  aria-invalid={!!error}
+                  className={cn('h-7 text-xs w-full', error && 'border-destructive')}
+                />
+                {error && <p className="text-[10px] text-destructive mt-0.5">{error}</p>}
+              </>
+            );
+          })()}
+        </div>
+      </div>
+    </DirtyFieldWrapper>
+  );
+
   const handlePhonePref = (prefKey: keyof typeof FIELD_KEYS) => {
     const allPrefKeys: (keyof typeof FIELD_KEYS)[] = ['preferredHome', 'preferredWork', 'preferredCell', 'preferredFax'];
     allPrefKeys.forEach(k => {
@@ -116,9 +151,34 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
         {/* Column 1 - Name + Broker or Representative */}
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Name</h3>
-          {renderInlineField('brokerId', 'Broker ID')}
+          {(() => {
+            const brokerIdVal = getValue('brokerId');
+            const formatError = brokerIdVal && !/^BR-\d{4,}$/.test(brokerIdVal)
+              ? 'Broker ID must follow the format BR-##### (e.g. BR-00020).'
+              : '';
+            const displayError = brokerIdError || formatError;
+            return (
+              <DirtyFieldWrapper fieldKey={FIELD_KEYS.brokerId}>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <Label className="w-[100px] shrink-0 text-xs">Broker ID</Label>
+                    <Input
+                      value={brokerIdVal}
+                      onChange={(e) => handleChange('brokerId', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      disabled={disabled}
+                      className={cn('h-7 text-xs flex-1', displayError && 'border-destructive focus-visible:ring-destructive')}
+                      aria-invalid={!!displayError}
+                    />
+                  </div>
+                  {displayError && (
+                    <p className="text-[10px] text-destructive pl-[108px]">{displayError}</p>
+                  )}
+                </div>
+              </DirtyFieldWrapper>
+            );
+          })()}
           {renderInlineField('licenseeNameIfEntity', 'Licensee Name If Entity')}
-          {renderInlineField('license', 'License Number')}
+          {renderLicenseField('license', 'License Number')}
 
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2 mt-4">Broker or Representative</h3>
           {renderInlineField('firstName', 'First')}
@@ -146,6 +206,9 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               })()}
             </div>
           </DirtyFieldWrapper>
+          {renderLicenseField('repLicense', 'License Number')}
+
+          
           
           <DirtyFieldWrapper fieldKey={FIELD_KEYS.email}>
             <div className="flex items-center gap-2">
@@ -162,28 +225,16 @@ export const BrokerInfoForm: React.FC<BrokerInfoFormProps> = ({
               </div>
             </DirtyFieldWrapper>
             <DirtyFieldWrapper fieldKey={FIELD_KEYS.agreementOnFileDate}>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    disabled={disabled}
-                    className={cn('h-7 text-xs flex-1 justify-start font-normal', !getValue('agreementOnFileDate') && 'text-muted-foreground')}
-                  >
-                    <CalendarIcon className="mr-2 h-3 w-3" />
-                    {safeFormatAgreementDate(getValue('agreementOnFileDate')) || 'MM/DD/YYYY'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseAgreementDate(getValue('agreementOnFileDate'))}
-                    onSelect={(d) => handleChange('agreementOnFileDate', d ? format(d, 'yyyy-MM-dd') : '')}
-                    onClear={() => handleChange('agreementOnFileDate', '')}
-                    onToday={() => handleChange('agreementOnFileDate', format(new Date(), 'yyyy-MM-dd'))}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="flex-1">
+                <TypableDateField
+                  value={getValue('agreementOnFileDate') || ''}
+                  onChange={(iso) => handleChange('agreementOnFileDate', iso)}
+                  disabled={disabled}
+                  inputClassName="h-7 text-xs"
+                  ariaLabel="Agreement on File date"
+                />
+              </div>
+
             </DirtyFieldWrapper>
           </div>
         </div>

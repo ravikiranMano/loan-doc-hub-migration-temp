@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { EmailInput } from '@/components/ui/email-input';
@@ -90,6 +91,8 @@ interface BorrowerPrimaryFormProps {
   calculationResults?: Record<string, CalculationResult>;
   /** When true, render Borrower ID as a contact lookup that pulls existing borrower data on select. */
   borrowerIdLookup?: boolean;
+  /** Server-side duplicate error for Borrower ID (rendered inline beneath the field). */
+  borrowerIdError?: string;
 }
 
 const InlineField = ({ label, children, labelWidth = 'min-w-[140px]', fieldKey }: { label: string; children: React.ReactNode; labelWidth?: string; fieldKey?: string }) => {
@@ -112,6 +115,7 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
   showValidation = false,
   disabled = false,
   borrowerIdLookup = false,
+  borrowerIdError,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => {
     return values[FIELD_KEYS[key]] || '';
@@ -196,9 +200,25 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
                   }
                 }}
               />
-            ) : (
-              <Input value={getValue('borrowerId')} onChange={(e) => handleChange('borrowerId', e.target.value)} disabled={disabled} className="h-7 text-sm" />
-            )}
+            ) : (() => {
+              const borrowerIdVal = getValue('borrowerId');
+              const formatError = borrowerIdVal && !/^B-\d{4,}$/.test(borrowerIdVal)
+                ? 'Borrower ID must follow the format B-##### (e.g. B-00043).'
+                : '';
+              const displayError = borrowerIdError || formatError;
+              return (
+                <div className="flex flex-col gap-0.5">
+                  <Input
+                    value={borrowerIdVal}
+                    onChange={(e) => handleChange('borrowerId', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                    disabled={disabled}
+                    className={cn('h-7 text-sm', displayError && 'border-destructive focus-visible:ring-destructive')}
+                    aria-invalid={!!displayError}
+                  />
+                  {displayError && <p className="text-[10px] text-destructive">{displayError}</p>}
+                </div>
+              );
+            })()}
           </InlineField>
 
           <InlineField label="Borrower Type" fieldKey={FIELD_KEYS.borrowerType}>
@@ -277,28 +297,16 @@ export const BorrowerPrimaryForm: React.FC<BorrowerPrimaryFormProps> = ({
             <div className="flex items-center gap-2">
               <Checkbox id="borrower-agreementOnFile" checked={getBoolValue('agreementOnFile')} onCheckedChange={(checked) => handleChange('agreementOnFile', !!checked)} disabled={disabled} />
               <Label htmlFor="borrower-agreementOnFile" className="text-sm font-normal">Agreement on File</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    disabled={disabled}
-                    className={cn('h-7 text-sm w-[140px] justify-start font-normal', !getValue('agreementOnFileDate') && 'text-muted-foreground')}
-                  >
-                    <CalendarIcon className="mr-2 h-3 w-3" />
-                    {safeFormatAgreementDate(getValue('agreementOnFileDate')) || 'MM/DD/YYYY'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseAgreementDate(getValue('agreementOnFileDate'))}
-                    onSelect={(d) => handleChange('agreementOnFileDate', d ? format(d, 'yyyy-MM-dd') : '')}
-                    onClear={() => handleChange('agreementOnFileDate', '')}
-                    onToday={() => handleChange('agreementOnFileDate', format(new Date(), 'yyyy-MM-dd'))}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="w-[160px]">
+                <TypableDateField
+                  value={getValue('agreementOnFileDate') || ''}
+                  onChange={(iso) => handleChange('agreementOnFileDate', iso)}
+                  disabled={disabled}
+                  inputClassName="h-7 text-sm"
+                  ariaLabel="Agreement on File date"
+                />
+              </div>
+
             </div>
           </DirtyFieldWrapper>
         </div>

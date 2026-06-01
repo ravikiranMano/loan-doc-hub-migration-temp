@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAttachmentDto, UpdateAttachmentDto } from './dto/contact.dto';
@@ -94,10 +94,34 @@ export class ContactsRepository {
     });
   }
 
-  async updateWithMerge(id: string, contactData: Record<string, unknown>) {
+  async updateWithMerge(
+    id: string,
+    contactData: Record<string, unknown>,
+    options?: { newContactId?: string },
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.contacts.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException(`Contact '${id}' not found`);
+
+      const requestedNewId = (options?.newContactId || '').trim().toUpperCase();
+      const currentContactId = (existing.contact_id || '').trim();
+      const willRenameId = !!requestedNewId && requestedNewId !== currentContactId;
+      const typeLabel =
+        (existing.contact_type || 'contact').charAt(0).toUpperCase() +
+        (existing.contact_type || 'contact').slice(1).replace(/_/g, ' ');
+      const dupMsg = `This ${typeLabel} ID already exists. Please enter a unique ID.`;
+
+      if (willRenameId) {
+        const dup = await tx.contacts.findFirst({
+          where: {
+            contact_id: requestedNewId,
+            contact_type: existing.contact_type,
+            NOT: { id },
+          },
+          select: { id: true },
+        });
+        if (dup) throw new ConflictException(dupMsg);
+      }
 
       const cd = contactData as Record<string, string>;
       const fullName =
@@ -129,6 +153,7 @@ export class ContactsRepository {
           state: cd.state || cd['address.state'] || cd['primary_address.state'] || '',
           company: cd.company || '',
           contact_data: mergedData as Prisma.InputJsonValue,
+          ...(willRenameId ? { contact_id: requestedNewId } : {}),
           updated_at: new Date(),
         },
       });

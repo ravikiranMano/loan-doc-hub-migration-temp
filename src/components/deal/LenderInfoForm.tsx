@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
@@ -113,6 +114,7 @@ interface LenderInfoFormProps {
   showValidation?: boolean;
   disabled?: boolean;
   calculationResults?: Record<string, CalculationResult>;
+  lenderIdError?: string;
 }
 
 export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
@@ -122,6 +124,7 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
   showValidation = false,
   disabled = false,
   calculationResults = {},
+  lenderIdError,
 }) => {
   const getValue = (key: keyof typeof FIELD_KEYS): string => {
     return values[FIELD_KEYS[key]] || '';
@@ -204,15 +207,30 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
         <div className="space-y-4">
           <h3 className="text-sm font-semibold text-foreground border-b pb-2">Name</h3>
           <div className="space-y-3">
-            {wrapField('lenderId', <div className="flex items-center gap-3">
-              <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender ID</Label>
-              <Input
-                value={getValue('lenderId')}
-                onChange={(e) => handleChange('lenderId', e.target.value)}
-                disabled={disabled}
-                className="h-8"
-              />
-            </div>)}
+            {wrapField('lenderId', (() => {
+              const lenderIdVal = getValue('lenderId');
+              const formatError = lenderIdVal && !/^L-\d{4,}$/.test(lenderIdVal)
+                ? 'Lender ID must follow the format L-##### (e.g. L-00055).'
+                : '';
+              const displayError = lenderIdError || formatError;
+              return (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Lender ID</Label>
+                    <Input
+                      value={lenderIdVal}
+                      onChange={(e) => handleChange('lenderId', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+                      disabled={disabled}
+                      className={cn('h-8', displayError && 'border-destructive focus-visible:ring-destructive')}
+                      aria-invalid={!!displayError}
+                    />
+                  </div>
+                  {displayError && (
+                    <p className="text-xs text-destructive pl-[132px]">{displayError}</p>
+                  )}
+                </div>
+              );
+            })())}
 
             {wrapField('status', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">Status</Label>
@@ -321,31 +339,14 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
             {wrapField('dob', <div className="flex items-center gap-3">
               <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">DOB</Label>
               <div className="flex-1">
-                <Popover open={dobOpen} onOpenChange={setDobOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "h-8 w-full justify-start text-left font-normal",
-                        !getValue('dob') && "text-muted-foreground"
-                      )}
-                      disabled={disabled}
-                    >
-                      {safeFormatDate(getValue('dob'), 'MM/dd/yyyy') || <span>Date</span>}
-                      <CalendarIcon className="ml-auto h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                    <EnhancedCalendar
-                      mode="single"
-                      selected={safeParseDateStr(getValue('dob'))}
-                      onSelect={(date) => { handleChange('dob', date ? format(date, 'yyyy-MM-dd') : ''); setDobOpen(false); }}
-                      onClear={() => { handleChange('dob', ''); setDobOpen(false); }}
-                      onToday={() => { handleChange('dob', format(new Date(), 'yyyy-MM-dd')); setDobOpen(false); }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <TypableDateField
+                  value={getValue('dob') || ''}
+                  onChange={(iso) => handleChange('dob', iso)}
+                  disabled={disabled}
+                  inputClassName="h-8"
+                  ariaLabel="DOB"
+                />
+
               </div>
             </div>)}
           </div>
@@ -359,28 +360,16 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 disabled={disabled}
               />
               <Label className="text-sm text-muted-foreground flex-1">Agreement on File</Label>
-              <Popover open={agreementDateOpen} onOpenChange={setAgreementDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn("h-7 text-xs w-[120px]", !getValue('servicingAgreementOnFileDate') && "text-muted-foreground")}
-                    disabled={disabled || !getBoolValue('servicingAgreementOnFile')}
-                  >
-                    {safeFormatDate(getValue('servicingAgreementOnFileDate'), 'MM/dd/yyyy') || 'Date'}
-                    <CalendarIcon className="ml-auto h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseDateStr(getValue('servicingAgreementOnFileDate'))}
-                    onSelect={(date) => { handleChange('servicingAgreementOnFileDate', date ? format(date, 'yyyy-MM-dd') : ''); setAgreementDateOpen(false); }}
-                    onClear={() => { handleChange('servicingAgreementOnFileDate', ''); setAgreementDateOpen(false); }}
-                    onToday={() => { handleChange('servicingAgreementOnFileDate', format(new Date(), 'yyyy-MM-dd')); setAgreementDateOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="w-[140px]">
+                <TypableDateField
+                  value={getValue('servicingAgreementOnFileDate') || ''}
+                  onChange={(iso) => handleChange('servicingAgreementOnFileDate', iso)}
+                  disabled={disabled || !getBoolValue('servicingAgreementOnFile')}
+                  inputClassName="h-7 text-xs"
+                  ariaLabel="Agreement on File date"
+                />
+              </div>
+
             </div>)}
 
             {wrapField('investorQuestionnaireDue', <div className="flex items-center gap-2">
@@ -393,28 +382,16 @@ export const LenderInfoForm: React.FC<LenderInfoFormProps> = ({
                 disabled={disabled}
               />
               <Label className="text-sm text-muted-foreground flex-1">Investor Questionnaire on File</Label>
-              <Popover open={investorDateOpen} onOpenChange={setInvestorDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn("h-7 text-xs w-[120px]", !getValue('investorQuestionnaireDueDate') && "text-muted-foreground")}
-                    disabled={disabled || !getBoolValue('investorQuestionnaireDue')}
-                  >
-                    {safeFormatDate(getValue('investorQuestionnaireDueDate'), 'MM/dd/yyyy') || 'Date'}
-                    <CalendarIcon className="ml-auto h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                  <EnhancedCalendar
-                    mode="single"
-                    selected={safeParseDateStr(getValue('investorQuestionnaireDueDate'))}
-                    onSelect={(date) => { handleChange('investorQuestionnaireDueDate', date ? format(date, 'yyyy-MM-dd') : ''); setInvestorDateOpen(false); }}
-                    onClear={() => { handleChange('investorQuestionnaireDueDate', ''); setInvestorDateOpen(false); }}
-                    onToday={() => { handleChange('investorQuestionnaireDueDate', format(new Date(), 'yyyy-MM-dd')); setInvestorDateOpen(false); }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <div className="w-[140px]">
+                <TypableDateField
+                  value={getValue('investorQuestionnaireDueDate') || ''}
+                  onChange={(iso) => handleChange('investorQuestionnaireDueDate', iso)}
+                  disabled={disabled || !getBoolValue('investorQuestionnaireDue')}
+                  inputClassName="h-7 text-xs"
+                  ariaLabel="Investor Questionnaire on File date"
+                />
+              </div>
+
             </div>)}
           </div>
         </div>

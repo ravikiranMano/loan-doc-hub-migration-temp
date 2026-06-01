@@ -51,7 +51,12 @@ export const EscrowImpoundForm: React.FC<Props> = ({
   calculationResults = {},
 }) => {
   // 1) Strip duplicate label variants
-  const dedupedFields = fields.filter(f => !isHiddenDuplicate(f.field_key));
+  // 1a) Also strip fields that don't belong on this screen (e.g. Loan Purpose
+  //     lives on Loan Details; its escrow-scoped key is hidden here).
+  const HIDDEN_KEYS = new Set(['es_p_loanPurpos']);
+  const dedupedFields = fields.filter(
+    f => !isHiddenDuplicate(f.field_key) && !HIDDEN_KEYS.has(f.field_key)
+  );
 
   // 2) Replace the Frequency text field with a dropdown by rendering it
   //    separately and removing it from the DealSectionTab list.

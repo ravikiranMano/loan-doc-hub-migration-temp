@@ -88,7 +88,9 @@ export class ContactsController {
   @Patch(':id/merge')
   mergeContact(@Param('id') id: string, @Body() body: Record<string, unknown>) {
     const contactData = (body.contact_data ?? body) as Record<string, unknown>;
-    return this.service.updateContactWithMerge(id, contactData);
+    const newContactId =
+      typeof body.new_contact_id === 'string' ? body.new_contact_id : undefined;
+    return this.service.updateContactWithMerge(id, contactData, newContactId);
   }
 
   @Patch(':id')

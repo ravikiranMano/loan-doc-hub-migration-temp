@@ -17,40 +17,40 @@ import type { FundingFormData } from './AddFundingModal';
 import { resolveLegacyKey } from '@/lib/legacyKeyMap';
 import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { computeLenderRows } from '@/lib/lenderPaymentFormula';
 
 /**
- * Recompute monthly payment for every lender row using Decimal arithmetic
- * (no native floating point). Each lender's payment is independent and
- * uses the standard amortization formula:
- *   Payment_i = P_i × [r(1+r)^n] / [(1+r)^n − 1]
- * where P_i = originalAmount_i, r = lenderRate_i / 100 / 12,
- *       n = remainingPayments (loan term months).
- * When n <= 0 (no term provided), falls back to interest-only (P × r).
- * Any sub-cent rounding remainder between the exact total and the sum of
- * rounded shares is assigned to the single lender flagged with
- * `roundingAdjustment` (mutual exclusivity is enforced elsewhere).
- * Guarantees every row — including the last — has its payment persisted.
+ * Recompute persisted per-lender Payment + servicerIncome for every funding
+ * row using Model A (per-row daily accrual). See src/lib/lenderPaymentFormula.ts.
+ *
+ *   payment_i        = originalAmount_i × (lenderRate_i / 100) × days_i / 360
+ *   servicerIncome_i = originalAmount_i × ((noteRate − lenderRate_i)/100) × days_i / 360
+ *
+ * Rows whose dates are missing/corrupted keep their stored values untouched
+ * (helper status !== 'ok' → we skip that row to avoid writing $0 over a
+ * legitimate value that the user simply hasn't fixed the dates for yet).
  */
-const recomputeLenderPayments = (records: FundingRecord[], remainingPayments: number, noteRate: string = ''): FundingRecord[] => {
+const recomputeLenderPayments = (
+  records: FundingRecord[],
+  _loanPrincipalRaw: string,
+  _regularPIRaw: string,
+  noteRateRaw: string,
+): FundingRecord[] => {
   if (!records.length) return records;
-  const noteRateNum = parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0;
-  const exact = records.map(r => {
-    // Payment = Funding Amount × Note Rate / 12 (simple monthly interest)
-    const fundingAmount = r.originalAmount || 0;
-    const rate = noteRateNum > 0 ? noteRateNum : (r.lenderRate || 0);
-    const monthly = (fundingAmount * (rate / 100)) / 12;
-    return new Decimal(monthly || 0);
+  const noteRateNum = parseFloat((noteRateRaw || '').toString().replace(/[%,]/g, '')) || 0;
+  const results = computeLenderRows(records, {
+    noteRate: noteRateNum || undefined,
+    dayCountBasis: 360,
   });
-  const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_UP));
-  const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
-  const diff = sumExact.minus(sumRounded);
-  const adjIdx = records.findIndex(r => r.roundingAdjustment);
-  if (adjIdx >= 0 && !diff.isZero()) {
-    rounded[adjIdx] = rounded[adjIdx].plus(diff);
-  }
-  return records.map((r, i) => ({ ...r, regularPayment: rounded[i].toNumber() }));
+  return records.map((r, i) => {
+    const res = results[i];
+    if (res.status !== 'ok') return r;
+    return {
+      ...r,
+      regularPayment: res.payment,
+      servicerIncome: res.servicerIncome,
+    } as FundingRecord;
+  });
 };
 
 /** Strip commas/$ from a string before parseFloat so formatted values like "3,423.00" parse correctly */
@@ -273,6 +273,57 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     onValueChange(FIELD_KEYS.fundingRecords, json);
     void persistChanges();
   }, [fundingRecords, loanAmount, onValueChange, persistChanges]);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Lender Payment recompute-on-edit (kills the frozen-value bug).
+  //
+  // Whenever any input to the canonical Lender Payment formula changes —
+  // loan-level note rate, regular P&I, principal, or any per-row originalAmount,
+  // lenderRate, or roundingAdjustment flag — recompute persisted regularPayment
+  // for every row via the shared helper and persist if the rounded result drifts
+  // by more than ½ cent on any row. Debounced 400 ms so typing doesn't storm
+  // the network. Stored value is a snapshot for docs/exports; the grid still
+  // derives Payment live for display.
+  // ────────────────────────────────────────────────────────────────────────────
+  const lastPaymentSyncRef = useRef<string>('');
+  useEffect(() => {
+    if (!fundingRecords.length) return;
+    const handle = setTimeout(() => {
+      const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
+      const results = computeLenderRows(fundingRecords, {
+        noteRate: noteRateNum || undefined,
+        dayCountBasis: 360,
+      });
+      let drift = false;
+      for (let i = 0; i < fundingRecords.length; i++) {
+        if (results[i].status !== 'ok') continue;
+        const storedPay = Number(fundingRecords[i].regularPayment) || 0;
+        const storedSvc = Number((fundingRecords[i] as any).servicerIncome) || 0;
+        if (
+          Math.abs(storedPay - results[i].payment) > 0.005 ||
+          Math.abs(storedSvc - results[i].servicerIncome) > 0.005
+        ) {
+          drift = true;
+          break;
+        }
+      }
+      if (!drift) return;
+      const updated = fundingRecords.map((r, i) => {
+        if (results[i].status !== 'ok') return r;
+        return {
+          ...r,
+          regularPayment: results[i].payment,
+          servicerIncome: results[i].servicerIncome,
+        } as FundingRecord;
+      });
+      const json = JSON.stringify(updated);
+      if (lastPaymentSyncRef.current === json) return;
+      lastPaymentSyncRef.current = json;
+      onValueChange(FIELD_KEYS.fundingRecords, json);
+      void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [fundingRecords, noteRate, dealId, onValueChange]);
 
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
   // No longer normalized to 100% — when the loan is partially funded the total
@@ -533,7 +584,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     const baseRecords = newRecord.roundingAdjustment
       ? fundingRecords.map((r) => (r.roundingAdjustment ? { ...r, roundingAdjustment: false } : r))
       : fundingRecords;
-    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], remainingPayments, noteRate);
+    const updatedRecords = recomputeLenderPayments([...baseRecords, newRecord], loanPrincipalBalance, totalPayment, noteRate);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
     // Ensure newly added record is visible by jumping to the page that contains it.
@@ -611,7 +662,7 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
       if (record.id === id) return { ...record, ...updates };
       if (enablingRounding && record.roundingAdjustment) return { ...record, roundingAdjustment: false };
       return record;
-    }), remainingPayments, noteRate);
+    }), loanPrincipalBalance, totalPayment, noteRate);
     const updatedRecordsJson = JSON.stringify(updatedRecords);
     onValueChange(FIELD_KEYS.fundingRecords, updatedRecordsJson);
 

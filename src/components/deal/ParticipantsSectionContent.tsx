@@ -316,6 +316,13 @@ export const ParticipantsSectionContent: React.FC<ParticipantsSectionContentProp
     fetchParticipants();
   }, [fetchParticipants]);
 
+  // Refetch when a linked contact's ID is renamed elsewhere in the app
+  useEffect(() => {
+    const handler = () => { fetchParticipants(); };
+    window.addEventListener('contact-id-renamed', handler);
+    return () => window.removeEventListener('contact-id-renamed', handler);
+  }, [fetchParticipants]);
+
   const handleRowClick = (participant: Participant) => {
     if (!participant.contact_id) {
       navigateToContactByEmail(participant);

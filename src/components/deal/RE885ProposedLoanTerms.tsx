@@ -4,6 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { sanitizeInterestInput, normalizeInterestOnBlur } from '@/lib/interestValidation';
 import { formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
+import { computeBorrowerScheduledPayment } from '@/lib/borrowerPaymentFormula';
 
 const FK = {
   proposed_loan_amount: 'origination_fees.re885_proposed_loan_amount',
@@ -30,6 +31,10 @@ const FK = {
   viii_rate_increase_months: 'origination_fees.re885_viii_rate_increase_months',
   ix_payment_end_months: 'origination_fees.re885_ix_payment_end_months',
   ix_payment_end_pct: 'origination_fees.re885_ix_payment_end_pct',
+  // Section X – Balloon Payment
+  x_balloon_has: 'origination_fees.re885_x_balloon_has',
+  x_balloon_amount: 'origination_fees.re885_x_balloon_amount',
+  x_balloon_due_months: 'origination_fees.re885_x_balloon_due_months',
   xi_neg_amort_balance: 'origination_fees.re885_xi_neg_amort_balance',
   impound_county_taxes: 'origination_fees.re885_impound_county_taxes',
   impound_hazard_ins: 'origination_fees.re885_impound_hazard_ins',
@@ -38,7 +43,25 @@ const FK = {
   impound_other: 'origination_fees.re885_impound_other',
   impound_other_desc: 'origination_fees.re885_impound_other_desc',
   impound_approx_amount: 'origination_fees.re885_impound_approx_amount',
+  // Section XVII – Prepayment Penalty (seeded from Loan → Article 7)
+  xvii_prepay_has: 'origination_fees.re885_xvii_prepay_has',
+  xvii_prepay_amount: 'origination_fees.re885_xvii_prepay_amount',
+  xvii_prepay_term_months: 'origination_fees.re885_xvii_prepay_term_months',
+  xvii_prepay_pct: 'origination_fees.re885_xvii_prepay_pct',
+  // Section XVIII – Documentation Type (seeded from Loan → Limited/No Doc)
+  xviii_doc_type: 'origination_fees.re885_xviii_doc_type',
+  xviii_doc_type_other: 'origination_fees.re885_xviii_doc_type_other',
 };
+
+const DOC_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'full', label: 'Full Documentation' },
+  { value: 'limited', label: 'Limited Documentation' },
+  { value: 'none', label: 'No Documentation' },
+  { value: 'stated_income', label: 'Stated Income' },
+  { value: 'sisa', label: 'SISA (Stated Income / Stated Assets)' },
+  { value: 'nina', label: 'NINA (No Income / No Assets)' },
+  { value: 'other', label: 'Other' },
+];
 
 interface RE885Props {
   getValue: (key: string) => string;
@@ -47,6 +70,42 @@ interface RE885Props {
   setBoolValue: (key: string, value: boolean) => void;
   parseNumber: (val: string) => number;
   disabled: boolean;
+  upstreamLoanAmount?: number;
+  upstreamInterestRate?: number;
+  upstreamLoanTermValue?: string;
+  upstreamLoanTermUnit?: string;
+  /** Loan tab → Rate Structure (e.g. 'frm_fixed_rate' | 'arm_adjustable_rate' | 'gtm_graduated_terms') */
+  upstreamRateStructure?: string;
+  /** Loan tab → Loan Type → Variable / ARM checkbox */
+  upstreamVariableArm?: boolean;
+  /** Loan tab → Current Rate (Section V — Fully Indexed fallback when adj rate is unset) */
+  upstreamCurrentRate?: number;
+  /** Loan tab → Regular P&I (legacy — kept only to detect divergence). */
+  upstreamRegularPI?: number;
+  /** Loan tab → Amortization method (drives Section VII formula). */
+  upstreamAmortization?: string;
+  /** Loan tab → Payment Frequency (drives Section VII period count). */
+  upstreamPaymentFrequency?: string;
+  /** Loan tab → Loan Type → Balloon Payment + Estimated Balloon */
+  upstreamBalloonEnabled?: boolean;
+  upstreamBalloonAmount?: number;
+  /** Loan tab → Adjustable / Graduated Loan Details — single source of truth for Sections IV–IX. */
+  upstreamAdjInitialRateMonths?: string;
+  upstreamAdjFullyIndexedRate?: number;
+  upstreamAdjMaxInterestRate?: number;
+  upstreamAdjRateIncreasePercent?: number;
+  upstreamAdjRateIncreaseMonths?: string;
+  upstreamAdjPaymentOptionsEndMonths?: string;
+  upstreamAdjPaymentOptionsEndPercent?: number;
+  section800Total?: number;
+  liensPayoffTotal?: number;
+  // Loan tab → Article 7 (Pre-payment Penalty)
+  upstreamPrepayEnabled?: boolean;
+  upstreamPrepayPenaltyMonths?: string;
+  upstreamPrepayGreaterThanPct?: string;
+  upstreamPrepayFirstYears?: string;
+  // Loan tab → Limited / No Documentation
+  upstreamLimitedNoDoc?: boolean;
 }
 
 const CurrencyInput: React.FC<{
@@ -82,12 +141,214 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   setBoolValue,
   parseNumber,
   disabled,
+  upstreamLoanAmount = 0,
+  upstreamInterestRate = 0,
+  upstreamLoanTermValue = '',
+  upstreamLoanTermUnit = '',
+  upstreamRateStructure = '',
+  upstreamVariableArm = false,
+  upstreamCurrentRate = 0,
+  upstreamRegularPI = 0,
+  upstreamAmortization = '',
+  upstreamPaymentFrequency = '',
+  upstreamBalloonEnabled = false,
+  upstreamBalloonAmount = 0,
+  upstreamAdjInitialRateMonths = '',
+  upstreamAdjFullyIndexedRate = 0,
+  upstreamAdjMaxInterestRate = 0,
+  upstreamAdjRateIncreasePercent = 0,
+  upstreamAdjRateIncreaseMonths = '',
+  upstreamAdjPaymentOptionsEndMonths = '',
+  upstreamAdjPaymentOptionsEndPercent = 0,
+  section800Total = 0,
+  liensPayoffTotal = 0,
+  upstreamPrepayEnabled = false,
+  upstreamPrepayPenaltyMonths = '',
+  upstreamPrepayGreaterThanPct = '',
+  upstreamPrepayFirstYears = '',
+  upstreamLimitedNoDoc = false,
 }) => {
   const isFixed = getBoolValue(FK.rate_type_fixed);
   const isAdjustable = getBoolValue(FK.rate_type_adjustable);
   const adjustableSectionsDisabled = disabled || isFixed;
 
-  // Auto-calculate subtotal
+  // Treat "", "0", "0.00", "$0.00" all as "empty" so re-seeding works after first render
+  const isEmptyOrZero = (raw: string): boolean => {
+    if (!raw) return true;
+    const n = parseNumber(raw);
+    return !Number.isFinite(n) || n === 0;
+  };
+
+  // ─── Seed Proposed Loan Amount from Loan tab if empty/zero
+  React.useEffect(() => {
+    if (upstreamLoanAmount > 0 && isEmptyOrZero(getValue(FK.proposed_loan_amount))) {
+      setValue(FK.proposed_loan_amount, formatCurrencyDisplay(upstreamLoanAmount.toFixed(2)));
+    }
+  }, [upstreamLoanAmount]);
+
+  // ─── Seed Interest Rate from Loan tab if empty/zero
+  React.useEffect(() => {
+    if (upstreamInterestRate > 0 && isEmptyOrZero(getValue(FK.interest_rate))) {
+      setValue(FK.interest_rate, upstreamInterestRate.toFixed(4));
+    }
+  }, [upstreamInterestRate]);
+
+  // ─── Seed Loan Term value + unit from Loan tab if empty/zero
+  React.useEffect(() => {
+    if (upstreamLoanTermValue && isEmptyOrZero(getValue(FK.loan_term_value))) {
+      setValue(FK.loan_term_value, String(upstreamLoanTermValue));
+    }
+  }, [upstreamLoanTermValue]);
+  React.useEffect(() => {
+    if (upstreamLoanTermUnit && !getValue(FK.loan_term_unit)) {
+      setValue(FK.loan_term_unit, upstreamLoanTermUnit);
+    }
+  }, [upstreamLoanTermUnit]);
+
+  // ─── Seed Section III rate type (Fixed / Adjustable) from Loan → Rate Structure
+  // or Loan → Loan Type → Variable/ARM. CA DRE requires exactly one selection — when
+  // rate structure is unknown, default to Fixed. When the loan flips structure, force
+  // the matching selection so stale choices cannot persist.
+  React.useEffect(() => {
+    const adjustable =
+      upstreamVariableArm ||
+      upstreamRateStructure === 'arm_adjustable_rate' ||
+      upstreamRateStructure === 'gtm_graduated_terms';
+    const fixed =
+      !adjustable &&
+      (upstreamRateStructure === 'frm_fixed_rate' ||
+        !upstreamRateStructure); // default to Fixed when unknown
+    const wantFixed = fixed;
+    const wantAdjustable = adjustable;
+    if (wantFixed && (!getBoolValue(FK.rate_type_fixed) || getBoolValue(FK.rate_type_adjustable))) {
+      setBoolValue(FK.rate_type_fixed, true);
+      setBoolValue(FK.rate_type_adjustable, false);
+    } else if (wantAdjustable && (!getBoolValue(FK.rate_type_adjustable) || getBoolValue(FK.rate_type_fixed))) {
+      setBoolValue(FK.rate_type_adjustable, true);
+      setBoolValue(FK.rate_type_fixed, false);
+    }
+  }, [upstreamRateStructure, upstreamVariableArm]);
+
+  // ─── Seed Sections IV–IX from the loan's Adjustable / Graduated Loan Details when the
+  // loan is Adjustable. Continuous-sync pattern: write whenever the loan value differs
+  // from the stored RE 885 value, so values cannot bleed across loans or go stale.
+  // Note: V (Fully Indexed Rate) falls back to Loan → Current Rate when adj field is unset.
+  React.useEffect(() => {
+    if (isFixed) return;
+    // IV — Initial Adjustable Rate in effect for (months)
+    if (upstreamAdjInitialRateMonths && getValue(FK.iv_adj_rate_months) !== String(upstreamAdjInitialRateMonths)) {
+      setValue(FK.iv_adj_rate_months, String(upstreamAdjInitialRateMonths));
+    }
+    // V — Fully Indexed Rate: prefer loan_terms.adj_fully_indexed_rate; else fall back to current rate.
+    const fullyIndexed = upstreamAdjFullyIndexedRate > 0 ? upstreamAdjFullyIndexedRate : upstreamCurrentRate;
+    if (fullyIndexed > 0) {
+      const next = fullyIndexed.toFixed(4);
+      if (parseNumber(getValue(FK.v_fully_indexed_rate)).toFixed(4) !== next) {
+        setValue(FK.v_fully_indexed_rate, next);
+      }
+    }
+    // VI — Maximum Interest Rate
+    if (upstreamAdjMaxInterestRate > 0) {
+      const next = upstreamAdjMaxInterestRate.toFixed(4);
+      if (parseNumber(getValue(FK.vi_max_interest_rate)).toFixed(4) !== next) {
+        setValue(FK.vi_max_interest_rate, next);
+      }
+    }
+    // VIII — Rate increase % and frequency in months
+    if (upstreamAdjRateIncreasePercent > 0) {
+      const next = upstreamAdjRateIncreasePercent.toFixed(4);
+      if (parseNumber(getValue(FK.viii_rate_increase_pct)).toFixed(4) !== next) {
+        setValue(FK.viii_rate_increase_pct, next);
+      }
+    }
+    if (upstreamAdjRateIncreaseMonths && getValue(FK.viii_rate_increase_months) !== String(upstreamAdjRateIncreaseMonths)) {
+      setValue(FK.viii_rate_increase_months, String(upstreamAdjRateIncreaseMonths));
+    }
+    // IX — Payment Options end after months / % of original balance
+    if (upstreamAdjPaymentOptionsEndMonths && getValue(FK.ix_payment_end_months) !== String(upstreamAdjPaymentOptionsEndMonths)) {
+      setValue(FK.ix_payment_end_months, String(upstreamAdjPaymentOptionsEndMonths));
+    }
+    if (upstreamAdjPaymentOptionsEndPercent > 0) {
+      const next = upstreamAdjPaymentOptionsEndPercent.toFixed(4);
+      if (parseNumber(getValue(FK.ix_payment_end_pct)).toFixed(4) !== next) {
+        setValue(FK.ix_payment_end_pct, next);
+      }
+    }
+  }, [
+    isFixed,
+    upstreamAdjInitialRateMonths,
+    upstreamAdjFullyIndexedRate,
+    upstreamCurrentRate,
+    upstreamAdjMaxInterestRate,
+    upstreamAdjRateIncreasePercent,
+    upstreamAdjRateIncreaseMonths,
+    upstreamAdjPaymentOptionsEndMonths,
+    upstreamAdjPaymentOptionsEndPercent,
+  ]);
+
+  // ─── When the loan is FIXED, Sections IV–IX must be empty (no "33% / 0 Months"
+  // garbage from stale adjustable data). Clear them whenever isFixed becomes true.
+  React.useEffect(() => {
+    if (!isFixed) return;
+    const clears: Array<[string, string]> = [
+      [FK.iv_adj_rate_months, ''],
+      [FK.v_fully_indexed_rate, ''],
+      [FK.vi_max_interest_rate, ''],
+      [FK.viii_rate_increase_pct, ''],
+      [FK.viii_rate_increase_months, ''],
+      [FK.ix_payment_end_months, ''],
+      [FK.ix_payment_end_pct, ''],
+    ];
+    for (const [k, v] of clears) {
+      if (getValue(k) !== v) setValue(k, v);
+    }
+  }, [isFixed]);
+
+  // ─── Seed Section X Balloon from Loan → Loan Type → Balloon Payment
+  React.useEffect(() => {
+    // Only seed when user hasn't touched it (both flag and amount untouched).
+    const hasFlag = getValue(FK.x_balloon_has);
+    if (hasFlag === '' && isEmptyOrZero(getValue(FK.x_balloon_amount))) {
+      setBoolValue(FK.x_balloon_has, !!upstreamBalloonEnabled);
+      if (upstreamBalloonEnabled && upstreamBalloonAmount > 0) {
+        setValue(FK.x_balloon_amount, formatCurrencyDisplay(upstreamBalloonAmount.toFixed(2)));
+      }
+    }
+  }, [upstreamBalloonEnabled, upstreamBalloonAmount]);
+
+  // ─── Seed Section XVII (Prepayment Penalty) from Loan → Article 7 (only if untouched)
+  // Per spec: penalty term in months = first_years × 12; falls back to penalty_months when years absent.
+  React.useEffect(() => {
+    if (getValue(FK.xvii_prepay_has) === '' && getValue(FK.xvii_prepay_amount) === '' &&
+        getValue(FK.xvii_prepay_term_months) === '' && getValue(FK.xvii_prepay_pct) === '') {
+      setBoolValue(FK.xvii_prepay_has, upstreamPrepayEnabled);
+      if (upstreamPrepayEnabled) {
+        const years = parseNumber(upstreamPrepayFirstYears);
+        const months = years > 0 ? years * 12 : parseNumber(upstreamPrepayPenaltyMonths);
+        if (months > 0) setValue(FK.xvii_prepay_term_months, String(months));
+        if (upstreamPrepayGreaterThanPct) setValue(FK.xvii_prepay_pct, String(upstreamPrepayGreaterThanPct));
+      }
+    }
+  }, [upstreamPrepayEnabled, upstreamPrepayFirstYears, upstreamPrepayPenaltyMonths, upstreamPrepayGreaterThanPct]);
+
+  // ─── Seed Section XVIII (Documentation Type) from Loan → Limited/No Doc (only if untouched)
+  React.useEffect(() => {
+    if (!getValue(FK.xviii_doc_type)) {
+      setValue(FK.xviii_doc_type, upstreamLimitedNoDoc ? 'limited' : 'full');
+    }
+  }, [upstreamLimitedNoDoc]);
+
+  // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
+  React.useEffect(() => {
+    const formatted = formatCurrencyDisplay(section800Total.toFixed(2));
+    if (getValue(FK.initial_fees_page1) !== formatted) {
+      setValue(FK.initial_fees_page1, formatted);
+    }
+  }, [section800Total]);
+
+  // Auto-calculate subtotal of deductions
+  // Per spec (Fix 3): subtotal = sum of the 5 listed deductions only.
+  // Existing-liens payoff is tracked separately and does NOT roll into this subtotal.
   const subtotal = useMemo(() => {
     const fees = parseNumber(getValue(FK.initial_fees_page1));
     const otherObl = parseNumber(getValue(FK.other_obligations));
@@ -103,27 +364,88 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     getValue(FK.additional_obligation_2),
   ]);
 
-  // Auto-calculate cash at closing
+  // Auto-calculate cash at closing: loan amount − subtotal deductions
   const cashAtClosing = useMemo(() => {
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount));
     return loanAmt - subtotal;
   }, [getValue(FK.proposed_loan_amount), subtotal]);
 
-  // Write computed values
+  // Persist subtotal
   React.useEffect(() => {
-    if (subtotal > 0) setValue(FK.subtotal_deductions, formatCurrencyDisplay(subtotal.toFixed(2)));
+    const f = formatCurrencyDisplay(subtotal.toFixed(2));
+    if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
   }, [subtotal]);
 
+  // ─── Section VII: Proposed Initial (Minimum) Loan Payment.
+  // SINGLE source of truth = computeBorrowerScheduledPayment, the same function the
+  // Loan tab's Regular Payment uses. Loan-scoped, recomputes on every input change.
+  const minMonthlyPayment = useMemo(() => {
+    const loanAmt = parseNumber(getValue(FK.proposed_loan_amount)) || upstreamLoanAmount;
+    const annualRate = parseNumber(getValue(FK.interest_rate)) || upstreamInterestRate;
+    const termRaw = parseNumber(getValue(FK.loan_term_value)) || parseNumber(upstreamLoanTermValue);
+    const unit = (getValue(FK.loan_term_unit) || upstreamLoanTermUnit || 'months').toLowerCase();
+    const termMonths = unit.startsWith('year') ? termRaw * 12 : termRaw;
+    const pmt = computeBorrowerScheduledPayment({
+      principal: loanAmt,
+      annualRatePct: annualRate,
+      termMonths,
+      amortization: (upstreamAmortization || '') as any,
+      balloonAmount: upstreamBalloonEnabled ? upstreamBalloonAmount : 0,
+      frequency: (upstreamPaymentFrequency || 'monthly') as any,
+    });
+    return pmt ?? 0;
+  }, [
+    getValue(FK.proposed_loan_amount),
+    getValue(FK.interest_rate),
+    getValue(FK.loan_term_value),
+    getValue(FK.loan_term_unit),
+    upstreamLoanAmount,
+    upstreamInterestRate,
+    upstreamLoanTermValue,
+    upstreamLoanTermUnit,
+    upstreamAmortization,
+    upstreamPaymentFrequency,
+    upstreamBalloonEnabled,
+    upstreamBalloonAmount,
+  ]);
+
+  // Continuous sync: overwrite the stored Section VII payment whenever the live
+  // derived value differs by more than a half-cent. This prevents stale values
+  // (e.g. $2,812.50 from a previous $450k tranche) from sticking across loans.
+  React.useEffect(() => {
+    if (minMonthlyPayment <= 0) return;
+    const formatted = formatCurrencyDisplay(minMonthlyPayment.toFixed(2));
+    const current = parseNumber(getValue(FK.vii_payment_amount));
+    if (Math.abs(current - minMonthlyPayment) > 0.005 || getValue(FK.vii_payment_amount) === '') {
+      setValue(FK.vii_payment_amount, formatted);
+    }
+  }, [minMonthlyPayment]);
+
+
+
+
+  // Persist cash-at-closing on EVERY change (no abs > 0 gate)
   React.useEffect(() => {
     const abs = Math.abs(cashAtClosing);
-    if (abs > 0) {
-      setValue(FK.cash_at_closing_amount, formatCurrencyDisplay(abs.toFixed(2)));
-      const payable = cashAtClosing >= 0;
-      setValue(FK.cash_at_closing_option, payable ? 'payable_to_you' : 'you_must_pay');
-      setBoolValue(FK.cash_payable_to_you, payable);
-      setBoolValue(FK.cash_you_must_pay, !payable);
+    const amountFormatted = formatCurrencyDisplay(abs.toFixed(2));
+    if (getValue(FK.cash_at_closing_amount) !== amountFormatted) {
+      setValue(FK.cash_at_closing_amount, amountFormatted);
+    }
+    if (cashAtClosing > 0) {
+      if (getValue(FK.cash_at_closing_option) !== 'payable_to_you') setValue(FK.cash_at_closing_option, 'payable_to_you');
+      if (!getBoolValue(FK.cash_payable_to_you)) setBoolValue(FK.cash_payable_to_you, true);
+      if (getBoolValue(FK.cash_you_must_pay)) setBoolValue(FK.cash_you_must_pay, false);
+    } else if (cashAtClosing < 0) {
+      if (getValue(FK.cash_at_closing_option) !== 'you_must_pay') setValue(FK.cash_at_closing_option, 'you_must_pay');
+      if (getBoolValue(FK.cash_payable_to_you)) setBoolValue(FK.cash_payable_to_you, false);
+      if (!getBoolValue(FK.cash_you_must_pay)) setBoolValue(FK.cash_you_must_pay, true);
+    } else {
+      if (getValue(FK.cash_at_closing_option) !== '') setValue(FK.cash_at_closing_option, '');
+      if (getBoolValue(FK.cash_payable_to_you)) setBoolValue(FK.cash_payable_to_you, false);
+      if (getBoolValue(FK.cash_you_must_pay)) setBoolValue(FK.cash_you_must_pay, false);
     }
   }, [cashAtClosing]);
+
 
   const closingOption = getValue(FK.cash_at_closing_option);
   const isPayableToYou = getBoolValue(FK.cash_payable_to_you) || closingOption === 'payable_to_you';
@@ -162,9 +484,10 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         <div className={ROW}>
           <span className={LBL}>Initial Commissions, Fees, Costs and Expenses Summarized on Page 1</span>
           <div className={FIELD_W}>
-            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={(v) => setValue(FK.initial_fees_page1, v)} disabled={disabled} />
+            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={() => {}} readOnly disabled />
           </div>
         </div>
+
 
         <div className="bg-muted/20 px-3 py-1 border-b border-border/30">
           <span className="text-xs font-semibold text-foreground">Payment of Other Obligations (List)</span>
@@ -485,6 +808,51 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         </div>
       </div>
 
+      {/* ─── X. Balloon Payment ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">X. Balloon Payment</span>
+        </div>
+        <div className={ROW}>
+          <div className="flex items-center gap-3 flex-1 flex-wrap">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getBoolValue(FK.x_balloon_has)}
+                onCheckedChange={(c) => setBoolValue(FK.x_balloon_has, !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">This loan contains a balloon payment</span>
+            </label>
+          </div>
+        </div>
+        {getBoolValue(FK.x_balloon_has) && (
+          <div className={ROW}>
+            <div className="flex items-center gap-2 flex-1 flex-wrap">
+              <span className="text-xs text-foreground">Balloon payment of</span>
+              <div className="w-[140px] flex-shrink-0">
+                <CurrencyInput
+                  value={getValue(FK.x_balloon_amount)}
+                  onChange={(v) => setValue(FK.x_balloon_amount, v)}
+                  disabled={disabled}
+                />
+              </div>
+              <span className="text-xs text-foreground">due in</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={getValue(FK.x_balloon_due_months)}
+                onChange={(e) => setValue(FK.x_balloon_due_months, e.target.value)}
+                disabled={disabled}
+                placeholder="0"
+                className="h-8 text-xs w-20"
+              />
+              <span className="text-xs text-foreground">months from the date of the loan.</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ─── XI. Negative Amortization ─── */}
       <div className="space-y-0">
         <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
@@ -505,10 +873,10 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         </div>
       </div>
 
-      {/* ─── Impound (Escrow) Account ─── */}
+      {/* ─── XIV. Impound (Escrow) Account ─── */}
       <div className="space-y-0">
         <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
-          <span className="text-xs font-bold text-foreground">Impound (Escrow) Account</span>
+          <span className="text-xs font-bold text-foreground">XIV. Impound (Escrow) Account</span>
         </div>
         <div className="px-3 py-3 space-y-3 border-b border-border/30">
           <div className="flex items-start gap-1 flex-wrap">
@@ -576,6 +944,116 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             </div>
             <span className="text-xs text-foreground">per year.</span>
           </div>
+        </div>
+      </div>
+
+      {/* ─── XVII. Prepayment Penalty (from Loan → Article 7) ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">XVII. Prepayment Penalty</span>
+        </div>
+        <div className="px-3 py-1 text-[10px] italic text-muted-foreground border-b border-border/30">
+          Auto-populated from Loan → Article 7 (Pre-payment Penalty). User can override.
+        </div>
+        <div className={ROW}>
+          <span className={LBL}>Does this loan contain a prepayment penalty?</span>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getBoolValue(FK.xvii_prepay_has)}
+                onCheckedChange={(c) => setBoolValue(FK.xvii_prepay_has, !!c)}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">Yes</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={!getBoolValue(FK.xvii_prepay_has)}
+                onCheckedChange={(c) => { if (c) setBoolValue(FK.xvii_prepay_has, false); }}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">No</span>
+            </label>
+          </div>
+        </div>
+        {getBoolValue(FK.xvii_prepay_has) && (
+          <>
+            <div className={ROW}>
+              <span className={LBL}>Penalty Amount</span>
+              <div className={FIELD_W}>
+                <CurrencyInput
+                  value={getValue(FK.xvii_prepay_amount)}
+                  onChange={(v) => setValue(FK.xvii_prepay_amount, v)}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+            <div className={ROW}>
+              <span className={LBL}>Penalty Period (months)</span>
+              <div className={FIELD_W}>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  value={getValue(FK.xvii_prepay_term_months)}
+                  onChange={(e) => setValue(FK.xvii_prepay_term_months, e.target.value)}
+                  disabled={disabled}
+                  placeholder="0"
+                  className="h-8 text-xs text-right"
+                />
+              </div>
+            </div>
+            <div className={ROW}>
+              <span className={LBL}>Penalty % of outstanding balance</span>
+              <div className={FIELD_W}>
+                <div className="relative">
+                  <Input
+                    inputMode="decimal"
+                    value={getValue(FK.xvii_prepay_pct)}
+                    onChange={(e) => setValue(FK.xvii_prepay_pct, sanitizeInterestInput(e.target.value))}
+                    onBlur={() => { const v = normalizeInterestOnBlur(getValue(FK.xvii_prepay_pct), 3); if (v !== getValue(FK.xvii_prepay_pct)) setValue(FK.xvii_prepay_pct, v); }}
+                    disabled={disabled}
+                    placeholder="0.00"
+                    className="h-8 text-xs text-right pr-5"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">%</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ─── XVIII. Loan Documentation Type (from Loan → Limited/No Doc) ─── */}
+      <div className="space-y-0">
+        <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
+          <span className="text-xs font-bold text-foreground">XVIII. Loan Documentation Type</span>
+        </div>
+        <div className="px-3 py-1 text-[10px] italic text-muted-foreground border-b border-border/30">
+          Auto-populated from Loan → Limited / No Documentation. User can override.
+        </div>
+        <div className="px-3 py-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/30">
+          {DOC_TYPE_OPTIONS.map(opt => (
+            <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
+              <Checkbox
+                checked={getValue(FK.xviii_doc_type) === opt.value}
+                onCheckedChange={(c) => { if (c) setValue(FK.xviii_doc_type, opt.value); }}
+                disabled={disabled}
+                className="h-3.5 w-3.5"
+              />
+              <span className="text-xs text-foreground">{opt.label}</span>
+            </label>
+          ))}
+          {getValue(FK.xviii_doc_type) === 'other' && (
+            <Input
+              value={getValue(FK.xviii_doc_type_other)}
+              onChange={(e) => setValue(FK.xviii_doc_type_other, e.target.value)}
+              disabled={disabled}
+              placeholder="Specify..."
+              className="h-7 text-xs w-40"
+            />
+          )}
         </div>
       </div>
     </div>

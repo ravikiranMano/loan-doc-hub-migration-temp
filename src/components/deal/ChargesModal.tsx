@@ -18,6 +18,7 @@ import { ModalSaveConfirmation } from './ModalSaveConfirmation';
 import { hasModalFormData } from '@/lib/modalFormValidation';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import type { ChargeData } from './ChargesTableView';
 
@@ -83,17 +84,13 @@ export const ChargesModal: React.FC<ChargesModalProps> = ({ open, onOpenChange, 
     return (
       <div className="flex items-center gap-2">
         <Label className={cn(labelWidth, 'shrink-0 text-xs font-semibold text-foreground')}>{label}</Label>
-        <Popover open={datePickerStates[field] || false} onOpenChange={(o) => setDatePickerStates(prev => ({ ...prev, [field]: o }))}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className={cn('h-7 text-xs flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')}>
-              {val && safeParse(val) ? formatDateOnly(safeParse(val), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 !z-[9999]" align="start">
-            <EnhancedCalendar mode="single" selected={safeParse(val)} onSelect={(date) => { if (date) handleFieldChange(field, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onClear={() => { handleFieldChange(field, ''); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} onToday={() => { handleFieldChange(field, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, [field]: false })); }} initialFocus />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={String(val || '')}
+            onChange={(iso) => handleFieldChange(field, iso)}
+            inputClassName="h-7 text-xs"
+          />
+        </div>
       </div>
     );
   };

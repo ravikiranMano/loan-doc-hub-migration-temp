@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { numericKeyDown, numericPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { roundPctForStorage, roundDollarForStorage, formatPercentDisplay } from '@/lib/precisionFormat';
+import { computeLenderRow } from '@/lib/lenderPaymentFormula';
+import Decimal from 'decimal.js';
 
 /** Strip commas/$ before parseFloat so formatted values parse correctly */
 const safeParseFloat = (v: string | undefined): number => {
@@ -16,6 +18,7 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Button } from '@/components/ui/button';
 import { CalendarIcon } from 'lucide-react';
 import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { cn } from '@/lib/utils';
 import type { FundingFormData } from './AddFundingModal';
 import { LenderIdSearch } from './LenderIdSearch';
@@ -26,6 +29,10 @@ interface FundingDetailFormProps {
   onChange: (data: FundingFormData) => void;
   totalPayment?: string;
   loanAmount?: string;
+  /** Loan-level Note Rate (percent string, e.g. "9.50") — required to compute
+   *  the per-row Lender Payment correctly. When missing the form leaves the
+   *  Payment field unchanged rather than silently writing a Note-Rate value. */
+  noteRate?: string;
   /** Sum of funding amounts across sibling records (excluding this row). When
    *  provided, Pro Rata is computed as fundingAmount / (siblingTotal + fundingAmount). */
   siblingFundingTotal?: number;
@@ -36,6 +43,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
   onChange,
   totalPayment = '',
   loanAmount = '',
+  noteRate = '',
   siblingFundingTotal,
 }) => {
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
@@ -81,18 +89,47 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     }
   }, [data.fundingAmount, loanAmount, siblingFundingTotal]);
 
-  // Regular Payment (per-lender share) = (Percent Owned / 100) × Borrower Regular P&I.
-  // Rates are NOT used here — they drive interest accrual only.
+  // Regular Payment (per-lender) — Model A: per-row daily accrual.
+  //   payment = fundingAmount × (effectiveLenderRate / 100) × days / 360
+  // Days = daysBetween(fundingDate, interestFrom). Helper in
+  // src/lib/lenderPaymentFormula.ts.
   React.useEffect(() => {
-    const pct = parseFloat((data.percentOwned || '').replace(/[%,]/g, '')) || 0;
-    const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
-    const payment = pct > 0 && regPI > 0
-      ? roundDollarForStorage(pct / 100 * regPI)
+    const fundingAmount = parseFloat((data.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
+    const overrideVal = parseFloat((data.lenderRateOverrideValue || '').replace(/[%,]/g, '')) || 0;
+    const lenderRateField = parseFloat((data.lenderRate || '').toString().replace(/[%,]/g, '')) || 0;
+    const rateLenderValue = parseFloat((data.rateLenderValue || '').replace(/[%,]/g, '')) || 0;
+    let lr = 0;
+    if (data.lenderRateOverride && overrideVal > 0) lr = overrideVal;
+    else if (lenderRateField > 0) lr = lenderRateField;
+    else if (rateLenderValue > 0) lr = rateLenderValue;
+    else lr = noteRateNum;
+
+    const result = computeLenderRow(
+      {
+        originalAmount: fundingAmount,
+        lenderRate: lr,
+        fundingDate: data.fundingDate || '',
+        interestFrom: data.interestFrom || '',
+      },
+      { noteRate: noteRateNum || undefined, dayCountBasis: 360 },
+    );
+    const payment = result.status === 'ok' && result.payment > 0
+      ? result.payment.toFixed(2)
       : '';
     if (payment !== data.regularPayment) {
       onChange({ ...data, regularPayment: payment });
     }
-  }, [data.percentOwned, totalPayment]);
+  }, [
+    data.fundingAmount,
+    data.lenderRate,
+    data.lenderRateOverride,
+    data.lenderRateOverrideValue,
+    data.rateLenderValue,
+    data.fundingDate,
+    data.interestFrom,
+    noteRate,
+  ]);
 
   const percentOwnedNum = parseFloat(data.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
@@ -151,33 +188,28 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
         </div>
         <div className="flex items-center gap-3">
           <Label className="text-sm text-muted-foreground min-w-[110px] text-left shrink-0">Funding Date</Label>
-          <Popover open={fundingDateOpen} onOpenChange={setFundingDateOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal flex-1', !fundingDate && 'text-muted-foreground')}>
-                {fundingDate ? formatDateOnly(fundingDate, 'MM/dd/yyyy') : 'Select date'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={fundingDate} onSelect={handleFundingDateChange} onClear={() => handleFundingDateChange(undefined)} onToday={() => handleFundingDateChange(parseDateOnly(formatDateOnly(new Date())))} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={fundingDate ? formatDateOnly(fundingDate) : ''}
+              onChange={(iso) => handleFundingDateChange(iso ? parseDateOnly(iso) : undefined)}
+              inputClassName="h-7 text-sm"
+              ariaLabel="Funding Date"
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <Label className="text-sm text-muted-foreground min-w-[110px] text-left shrink-0">Interest From</Label>
-          <Popover open={interestFromOpen} onOpenChange={setInterestFromOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-sm w-full justify-start text-left font-normal flex-1', !interestFromDate && 'text-muted-foreground')}>
-                {interestFromDate ? formatDateOnly(interestFromDate, 'MM/dd/yyyy') : 'Select date'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={interestFromDate} onSelect={handleInterestFromDateChange} onClear={() => handleInterestFromDateChange(undefined)} onToday={() => handleInterestFromDateChange(parseDateOnly(formatDateOnly(new Date())))} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={interestFromDate ? formatDateOnly(interestFromDate) : ''}
+              onChange={(iso) => handleInterestFromDateChange(iso ? parseDateOnly(iso) : undefined)}
+              inputClassName="h-7 text-sm"
+              ariaLabel="Interest From"
+            />
+          </div>
         </div>
+
       </div>
 
       {/* Rate Selection - hidden from UI, kept for calculation logic */}

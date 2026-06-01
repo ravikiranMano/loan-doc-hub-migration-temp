@@ -21,6 +21,7 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { CalendarIcon } from 'lucide-react';
 import { format, parse, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,7 @@ import { toast } from 'sonner';
 import { US_STATES } from '@/lib/usStates';
 import { LenderInfoForm } from '@/components/deal/LenderInfoForm';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { getLicenseNumberError, normalizeLicenseNumber, sanitizeLicenseNumber } from '@/lib/licenseNumberValidation';
 
 interface CreateContactModalProps {
   open: boolean;
@@ -270,8 +272,10 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
     // Broker-specific required field validation
     if (contactType === 'broker') {
       const errs: Record<string, string> = {};
-      if (!(form['License'] || '').trim()) errs['License'] = 'Enter valid license number';
-      else if ((form['License'] || '').length > 50) errs['License'] = 'Max 50 characters';
+      const licenseError = getLicenseNumberError(form['License'] || '', true);
+      const repLicenseError = getLicenseNumberError(form['rep_license'] || '');
+      if (licenseError) errs['License'] = licenseError;
+      if (repLicenseError) errs['rep_license'] = repLicenseError;
       if (!(form['company'] || '').trim()) errs['company'] = 'Licensee Name is required';
       else if ((form['company'] || '').length > 100) errs['company'] = 'Max 100 characters';
       if (!(form['first_name'] || '').trim()) errs['first_name'] = 'Enter valid first name';
@@ -500,7 +504,7 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* License Number */}
               <div className="flex items-center gap-2">
                 <Label className="w-[140px] shrink-0 text-xs">License Number</Label>
-                <Input value={form['License'] || ''} onChange={(e) => { set('License', e.target.value); clrKErr('License'); }} onKeyDown={alphaNumKD} onPaste={(e) => { e.preventDefault(); set('License', e.clipboardData.getData('text').replace(/[^A-Za-z0-9]/g, '')); }} onBlur={() => { const v = (form['License'] || '').trim(); set('License', v); if (!v) setKErr('License', 'Enter valid license number'); else clrKErr('License'); }} maxLength={50} className={cn("h-7 text-xs flex-1", brokerErrors['License'] && "border-destructive")} />
+                <Input value={form['License'] || ''} onChange={(e) => { set('License', sanitizeLicenseNumber(e.target.value)); clrKErr('License'); }} onBlur={() => { const v = normalizeLicenseNumber(form['License'] || ''); set('License', v); const err = getLicenseNumberError(v, true); if (err) setKErr('License', err); else clrKErr('License'); }} maxLength={50} className={cn("h-7 text-xs flex-1", brokerErrors['License'] && "border-destructive")} />
               </div>
               {brokerErrors['License'] && <p className="text-[10px] text-destructive ml-[148px]">{brokerErrors['License']}</p>}
 
@@ -542,8 +546,9 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
               {/* License Number (Rep) */}
               <div className="flex items-center gap-2">
                 <Label className="w-[140px] shrink-0 text-xs">License Number</Label>
-                <Input value={form['rep_license'] || ''} onChange={(e) => set('rep_license', e.target.value)} onBlur={() => set('rep_license', (form['rep_license'] || '').trim())} maxLength={50} className="h-7 text-xs flex-1" />
+                <Input value={form['rep_license'] || ''} onChange={(e) => { set('rep_license', sanitizeLicenseNumber(e.target.value)); clrKErr('rep_license'); }} onBlur={() => { const v = normalizeLicenseNumber(form['rep_license'] || ''); set('rep_license', v); const err = getLicenseNumberError(v); if (err) setKErr('rep_license', err); else clrKErr('rep_license'); }} maxLength={50} className={cn("h-7 text-xs flex-1", brokerErrors['rep_license'] && "border-destructive")} />
               </div>
+              {brokerErrors['rep_license'] && <p className="text-[10px] text-destructive ml-[148px]">{brokerErrors['rep_license']}</p>}
 
               {/* Email */}
               <div className="flex items-center gap-2">
@@ -561,29 +566,15 @@ export const CreateContactModal: React.FC<CreateContactModalProps> = ({
                   />
                   <Label className="text-xs">Agreement on File</Label>
                 </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn('h-7 text-xs flex-1 justify-start font-normal', !form['agreement_on_file_date'] && 'text-muted-foreground')}
-                    >
-                      <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                      {form['agreement_on_file_date']
-                        ? (() => { try { const d = parse(form['agreement_on_file_date'], 'yyyy-MM-dd', new Date()); return isValid(d) ? format(d, 'MM/dd/yyyy') : form['agreement_on_file_date']; } catch { return form['agreement_on_file_date']; } })()
-                        : 'MM/DD/YYYY'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-                    <EnhancedCalendar
-                      mode="single"
-                      selected={form['agreement_on_file_date'] ? (() => { try { const d = parse(form['agreement_on_file_date'], 'yyyy-MM-dd', new Date()); return isValid(d) ? d : undefined; } catch { return undefined; } })() : undefined}
-                      onSelect={(d) => set('agreement_on_file_date', d ? format(d, 'yyyy-MM-dd') : '')}
-                      onClear={() => set('agreement_on_file_date', '')}
-                      onToday={() => set('agreement_on_file_date', format(new Date(), 'yyyy-MM-dd'))}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <div className="flex-1">
+                  <TypableDateField
+                    value={form['agreement_on_file_date'] || ''}
+                    onChange={(iso) => set('agreement_on_file_date', iso)}
+                    inputClassName="h-7 text-xs"
+                    ariaLabel="Agreement on File date"
+                  />
+                </div>
+
               </div>
             </div>
 

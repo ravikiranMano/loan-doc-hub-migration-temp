@@ -11,6 +11,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { CalendarIcon, Search } from 'lucide-react';
 import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { cn } from '@/lib/utils';
@@ -61,17 +62,14 @@ export const ChargesDetailForm: React.FC<ChargesDetailFormProps> = ({
       <DirtyFieldWrapper fieldKey={key}>
         <div className="flex items-center gap-3">
           <Label className="text-sm text-muted-foreground min-w-[120px] text-left shrink-0">{label}</Label>
-          <Popover open={datePickerStates[key] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [key]: open }))}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn('h-7 text-sm flex-1 justify-start text-left font-normal', !val && 'text-muted-foreground')} disabled={disabled}>
-                {val && safeParse(val) ? formatDateOnly(safeParse(val), 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-                <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-              <EnhancedCalendar mode="single" selected={safeParse(val)} onSelect={(date) => { if (date) onValueChange(key, formatDateOnly(date)); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} onClear={() => { onValueChange(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} onToday={() => { onValueChange(key, todayDateOnly()); setDatePickerStates(prev => ({ ...prev, [key]: false })); }} initialFocus />
-            </PopoverContent>
-          </Popover>
+          <div className="flex-1">
+            <TypableDateField
+              value={val}
+              onChange={(iso) => onValueChange(key, iso)}
+              disabled={disabled}
+              inputClassName="h-7 text-sm"
+            />
+          </div>
         </div>
       </DirtyFieldWrapper>
     );

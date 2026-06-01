@@ -29,6 +29,7 @@ import { ChargesSectionContent } from "@/components/deal/ChargesSectionContent";
 import { OriginationFeesSectionContent } from "@/components/deal/OriginationFeesSectionContent";
 import { NotesSectionContent } from "@/components/deal/NotesSectionContent";
 import { EventJournalViewer } from "@/components/deal/EventJournalViewer";
+import DealAttachmentsTab from "@/components/deal/DealAttachmentsTab";
 
 import { ParticipantsSectionContent } from "@/components/deal/ParticipantsSectionContent";
 import { logDealUpdated, logDealMarkedReady, logDealRevertedToDraft } from "@/hooks/useActivityLog";
@@ -272,6 +273,7 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
   const isSectionDisabledByFormPerm = (section: string): boolean => {
     // Standalone sections not gated by form permissions
     if (section === 'event_journal') return false;
+    if (section === 'attachments') return false;
 
     // Map section names to form_keys
     const sectionToFormKey: Record<string, string> = {
@@ -504,11 +506,14 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
       fetchDeal();
       const missing = getMissingRequiredFields();
       if (missing.length > 0) {
+        const names = missing.slice(0, 5).map((f) => `${f.label} (${f.section})`).join(", ");
+        const more = missing.length > 5 ? `, +${missing.length - 5} more` : "";
         toast({
           title: "Saved with incomplete fields",
-          description: `${missing.length} required field${missing.length > 1 ? "s" : ""} still missing`,
+          description: `${missing.length} required field${missing.length > 1 ? "s" : ""} still missing: ${names}${more}`,
           variant: "default",
         });
+        console.warn("[Save] Missing required fields:", missing.map((f) => ({ label: f.label, key: f.field_key, section: f.section })));
       }
     }
   };
@@ -1212,22 +1217,13 @@ export const DealDataEntryInner: React.FC<DealDataEntryInnerProps> = ({
               </TabsContent>
             )}
 
-            {/* Attachments - Coming Soon */}
+            {/* Attachments */}
             {isInternalUser && (
               <TabsContent value="attachments" forceMount className={cn("animate-fade-in", activeTab !== "attachments" && "hidden")}>
-                <div className="flex items-center justify-center min-h-[300px]">
-                  <div className="text-center space-y-2">
-                    <h1 className="text-4xl font-bold text-foreground tracking-tight" style={{ fontFamily: "'Brush Script MT', cursive" }}>
-                      Coming
-                    </h1>
-                    <p className="text-3xl font-extrabold uppercase tracking-widest text-foreground/80">
-                      SOON
-                    </p>
-                    <p className="text-sm text-muted-foreground pt-2">
-                      Attachments is under development. Data will be available soon.
-                    </p>
-                  </div>
-                </div>
+                <DealAttachmentsTab
+                  dealId={id || ""}
+                  disabled={isSectionDisabledByFormPerm('attachments' as any)}
+                />
               </TabsContent>
             )}
           </Tabs>

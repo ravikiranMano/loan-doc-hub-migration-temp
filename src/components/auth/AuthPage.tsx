@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,9 +35,17 @@ export const AuthPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Redirect once auth context has the user — avoids the imperative
+  // navigate() racing onAuthStateChange and producing a login flash where
+  // /dashboard briefly bounces to /auth and back.
+  useEffect(() => {
+    if (user) navigate('/dashboard', { replace: true });
+  }, [user, navigate]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,9 +76,10 @@ export const AuthPage: React.FC = () => {
               : error.message,
             variant: 'destructive',
           });
-        } else {
-          navigate('/');
         }
+        // On success, the useEffect above navigates once `user` is populated
+        // by onAuthStateChange — prevents a race-induced redirect flash.
+
       } else {
         const result = signupSchema.safeParse({ email, password, confirmPassword, fullName });
         if (!result.success) {

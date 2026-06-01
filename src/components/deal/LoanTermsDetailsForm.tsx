@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { CalendarIcon } from 'lucide-react';
 import { format, parse, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -25,10 +26,14 @@ interface LoanTermsDetailsFormProps {
   calculationResults?: Record<string, CalculationResult>;
 }
 
-import { LOAN_TERMS_DETAILS_KEYS } from '@/lib/fieldKeyMap';
+import { LOAN_TERMS_DETAILS_KEYS, LOAN_TERMS_BALANCES_KEYS } from '@/lib/fieldKeyMap';
 
 // Use central field key map
 const FIELD_KEYS = LOAN_TERMS_DETAILS_KEYS;
+// Terms field keys live on the Balances key map; reused here so the Loan Details
+// tab reads/writes the exact same storage location (placement-only change).
+const TERMS_KEYS = LOAN_TERMS_BALANCES_KEYS;
+
 
 const LIEN_POSITION_OPTIONS = [
   { value: '1st', label: '1st' }, { value: '2nd', label: '2nd' },
@@ -80,10 +85,13 @@ const LOAN_STATUS_OPTIONS = [
   { value: 'hold', label: 'Hold' },
   { value: 'closed', label: 'Closed' },
 ];
+// Hold Reason values — preserve legacy value codes where labels are compatible
+// so previously saved data continues to display correctly. New code 'pending_payoff'
+// is added for V3 spec.
 const HOLD_REASON_OPTIONS = [
-  { value: 'w9_document_needed', label: 'W-9 / Document Needed' },
+  { value: 'w9_document_needed', label: 'Document Needed' },
   { value: 'fraud_red_flag', label: 'Fraud / Red Flag' },
-  { value: 'payment_issue', label: 'Payment Issue' },
+  { value: 'pending_payoff', label: 'Pending Payoff' },
   { value: 'occupancy_concern', label: 'Occupancy Concern' },
   { value: 'pending_workout', label: 'Pending Workout' },
   { value: 'other', label: 'Other' },
@@ -93,10 +101,29 @@ const CLOSED_REASON_OPTIONS = [
   { value: 'transfer_out_customer', label: 'Transfer Out (Customer)' },
   { value: 'transfer_out_company', label: 'Transfer Out (Company)' },
   { value: 'dead', label: 'Dead' },
-  { value: 'reo', label: 'REO' },
   { value: 'charged_off', label: 'Charged Off' },
   { value: 'other', label: 'Other' },
 ];
+
+// New V3 field keys — stored directly in deal_section_values JSONB,
+// no schema changes required.
+const NEW_KEYS = {
+  projectNumber: 'loan.project_number',
+  paidOffDate: 'loan.paid_off_date',
+  typeSection32: 'loan.type_section32',
+  typeArticle7: 'loan.type_article7',
+  typeOnPull: 'loan.type_on_pull',
+  sendCouponBook: 'loan.send_coupon_book',
+  sendCouponBookLastSent: 'loan.send_coupon_book_last_sent',
+  sendPmtStatement: 'loan.send_pmt_statement',
+  sendPmtStatementLastSent: 'loan.send_pmt_statement_last_sent',
+  sendLateNotice: 'loan.send_late_notice',
+  sendLateNoticeLastSent: 'loan.send_late_notice_last_sent',
+  sendBalloonNotice: 'loan.send_balloon_notice',
+  sendBalloonNoticeLastSent: 'loan.send_balloon_notice_last_sent',
+  nsfPrev12mo: 'loan.nsf_prev_12mo',
+  thirtyDaysPlus: 'loan.thirty_days_plus',
+} as const;
 
 // Validation configs
 type ValidationConfig = {
@@ -289,6 +316,8 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
   };
 
   const [datePickerStates, setDatePickerStates] = useState<Record<string, boolean>>({});
+  const [maturityText, setMaturityText] = useState<string | null>(null);
+  const [maturityTouched, setMaturityTouched] = useState<boolean>(false);
 
   const safeParseDateStr = (val: string): Date | undefined => {
     if (!val) return undefined;
@@ -302,27 +331,252 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     <DirtyFieldWrapper fieldKey={fieldKey}>
       <div className="flex items-center gap-2">
         <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
-        <Popover open={datePickerStates[fieldKey] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className={cn('h-8 text-xs flex-1 justify-start text-left font-normal', !getValue(fieldKey) && 'text-muted-foreground')} disabled={disabled}>
-              {(() => { const d = safeParseDateStr(getValue(fieldKey)); return d ? format(d, 'MM/dd/yyyy') : 'MM/DD/YYYY'; })()}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-            <EnhancedCalendar
-              mode="single"
-              selected={safeParseDateStr(getValue(fieldKey))}
-              onSelect={(date) => { if (date) setValue(fieldKey, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-              onClear={() => { setValue(fieldKey, ''); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-              onToday={() => { setValue(fieldKey, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [fieldKey]: false })); }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={getValue(fieldKey) || ''}
+            onChange={(iso) => setValue(fieldKey, iso)}
+            disabled={disabled}
+            inputClassName="h-8 text-xs"
+          />
+        </div>
       </div>
     </DirtyFieldWrapper>
   );
+
+  // Maturity Date: typable MM/DD/YYYY input + calendar icon popover trigger.
+  // Keeps existing validation (validateMaturityDate) and stores yyyy-MM-dd.
+  const renderMaturityDateField = (fieldKey: string, label: string) => {
+    const stored = getValue(fieldKey);
+    const parsedStored = safeParseDateStr(stored);
+    const displayFromStored = parsedStored ? format(parsedStored, 'MM/dd/yyyy') : '';
+    const localText = maturityText ?? displayFromStored;
+    const error = showValidation || maturityTouched
+      ? validateMaturityDate(localText, stored)
+      : null;
+
+    const commitText = (raw: string) => {
+      const trimmed = (raw || '').trim();
+      if (!trimmed) { setValue(fieldKey, ''); return; }
+      const parsed = parse(trimmed, 'MM/dd/yyyy', new Date());
+      if (isValid(parsed) && format(parsed, 'MM/dd/yyyy') === trimmed) {
+        setValue(fieldKey, format(parsed, 'yyyy-MM-dd'));
+      }
+    };
+
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-start gap-2">
+          <Label className="w-[130px] shrink-0 text-xs pt-2">{label}</Label>
+          <div className="flex-1">
+            <div className="relative">
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={localText}
+                placeholder="MM/DD/YYYY"
+                disabled={disabled}
+                onChange={(e) => {
+                  const input = e.target as HTMLInputElement;
+                  const rawValue = input.value;
+                  const selStart = input.selectionStart ?? rawValue.length;
+                  // Count digits before caret in raw input
+                  const digitsBeforeCaret = rawValue.slice(0, selStart).replace(/\D/g, '').length;
+                  // Build masked string
+                  const digits = rawValue.replace(/\D/g, '').slice(0, 8);
+                  let out = digits;
+                  if (digits.length > 4) out = `${digits.slice(0,2)}/${digits.slice(2,4)}/${digits.slice(4)}`;
+                  else if (digits.length > 2) out = `${digits.slice(0,2)}/${digits.slice(2)}`;
+                  // Map digitsBeforeCaret to position in masked output
+                  let newCaret = 0;
+                  let dCount = 0;
+                  while (newCaret < out.length && dCount < digitsBeforeCaret) {
+                    if (/\d/.test(out[newCaret])) dCount++;
+                    newCaret++;
+                  }
+                  // If next char is a slash and we just finished a digit group, step past it
+                  while (newCaret < out.length && out[newCaret] === '/' && dCount === digitsBeforeCaret && digitsBeforeCaret > 0 && (digitsBeforeCaret === 2 || digitsBeforeCaret === 4)) {
+                    newCaret++;
+                    break;
+                  }
+                  setMaturityText(out);
+                  setMaturityTouched(true);
+                  // Restore caret after React commits the value
+                  requestAnimationFrame(() => {
+                    try { input.setSelectionRange(newCaret, newCaret); } catch {}
+                  });
+                  if (out.length === 10) commitText(out);
+                }}
+                onBlur={() => {
+                  setMaturityTouched(true);
+                  commitText(localText);
+                }}
+                className={cn('h-8 text-xs pr-9', error && 'border-destructive focus-visible:ring-destructive')}
+              />
+              <Popover
+                open={datePickerStates[fieldKey] || false}
+                onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [fieldKey]: open }))}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label="Open calendar"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+                  <EnhancedCalendar
+                    mode="single"
+                    selected={safeParseDateStr(getValue(fieldKey))}
+                    onSelect={(date) => {
+                      if (date) {
+                        const iso = format(date, 'yyyy-MM-dd');
+                        setValue(fieldKey, iso);
+                        setMaturityText(format(date, 'MM/dd/yyyy'));
+                        setMaturityTouched(true);
+                      }
+                      setDatePickerStates(prev => ({ ...prev, [fieldKey]: false }));
+                    }}
+                    onClear={() => {
+                      setValue(fieldKey, '');
+                      setMaturityText('');
+                      setMaturityTouched(true);
+                      setDatePickerStates(prev => ({ ...prev, [fieldKey]: false }));
+                    }}
+                    onToday={() => {
+                      const t = new Date();
+                      setValue(fieldKey, format(t, 'yyyy-MM-dd'));
+                      setMaturityText(format(t, 'MM/dd/yyyy'));
+                      setMaturityTouched(true);
+                      setDatePickerStates(prev => ({ ...prev, [fieldKey]: false }));
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            {error && (
+              <p className="text-[10px] text-destructive mt-0.5">{error}</p>
+            )}
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
+  const validateMaturityDate = (rawText: string, storedIso: string): string | null => {
+    const trimmed = (rawText || '').trim();
+    if (!trimmed) return 'Maturity Date is required.';
+    const parsed = parse(trimmed, 'MM/dd/yyyy', new Date());
+    if (!isValid(parsed) || format(parsed, 'MM/dd/yyyy') !== trimmed) {
+      return 'Please enter a valid Maturity Date.';
+    }
+    // Future date (compare by date only)
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (parsed <= today) return 'Maturity Date must be a future date.';
+
+    const noteDate = safeParseDateStr(getValue(FIELD_KEYS.origination));
+    if (noteDate && parsed <= noteDate) return 'Maturity Date must be later than the Note Date.';
+
+    const firstPayment = safeParseDateStr(getValue('loan_terms.first_payment'));
+    if (firstPayment && parsed <= firstPayment) return 'Maturity Date must be later than the First Payment Due Date.';
+
+    // Max term: 480 months from Note Date (or today as fallback)
+    const baseForTerm = noteDate || today;
+    const maxAllowed = new Date(baseForTerm);
+    maxAllowed.setMonth(maxAllowed.getMonth() + 480);
+    if (parsed > maxAllowed) return 'Loan term exceeds the maximum allowed duration.';
+
+    return null;
+  };
+
+  const ManualDateInput: React.FC<{
+    fieldKey: string;
+    label: string;
+    validate?: (rawText: string, storedIso: string) => string | null;
+    required?: boolean;
+  }> = ({ fieldKey, label, validate, required }) => {
+    const stored = getValue(fieldKey);
+    const display = (() => {
+      const d = safeParseDateStr(stored);
+      return d ? format(d, 'MM/dd/yyyy') : stored || '';
+    })();
+    const [text, setText] = React.useState(display);
+    React.useEffect(() => { setText(display); }, [stored]);
+    const error = validationErrors[fieldKey];
+    const runValidate = (val: string, iso: string) => {
+      if (!validate) return;
+      setValidationErrors(prev => ({ ...prev, [fieldKey]: validate(val, iso) }));
+    };
+    const handleChange = (raw: string) => {
+      const digits = raw.replace(/\D/g, '').slice(0, 8);
+      let out = digits;
+      if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+      else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      setText(out);
+      if (out.length === 10) {
+        const parsed = parse(out, 'MM/dd/yyyy', new Date());
+        if (isValid(parsed)) {
+          const iso = format(parsed, 'yyyy-MM-dd');
+          if (iso !== stored) setValue(fieldKey, iso);
+          runValidate(out, iso);
+          return;
+        }
+      }
+      runValidate(out, stored);
+    };
+    const handleBlur = () => {
+      if (!text.trim()) {
+        if (stored) setValue(fieldKey, '');
+        runValidate('', '');
+        return;
+      }
+      const parsed = parse(text, 'MM/dd/yyyy', new Date());
+      if (isValid(parsed)) {
+        const iso = format(parsed, 'yyyy-MM-dd');
+        if (iso !== stored) setValue(fieldKey, iso);
+        const formatted = format(parsed, 'MM/dd/yyyy');
+        setText(formatted);
+        runValidate(formatted, iso);
+      } else {
+        runValidate(text, stored);
+      }
+    };
+    return (
+      <DirtyFieldWrapper fieldKey={fieldKey}>
+        <div className="flex items-start gap-2">
+          <Label className="w-[130px] shrink-0 text-xs pt-1.5">
+            {label}{required && <span className="text-destructive ml-0.5">*</span>}
+          </Label>
+          <div className="flex-1">
+            <Input
+              value={text}
+              onChange={(e) => handleChange(e.target.value)}
+              onBlur={handleBlur}
+              placeholder="MM/DD/YYYY"
+              inputMode="numeric"
+              maxLength={10}
+              disabled={disabled}
+              className={cn('h-8 text-xs w-full', error && 'border-destructive')}
+              aria-invalid={!!error}
+            />
+            {error && <p className="text-destructive text-[10px] mt-0.5">{error}</p>}
+          </div>
+        </div>
+      </DirtyFieldWrapper>
+    );
+  };
+
+  const renderManualDateField = (
+    fieldKey: string,
+    label: string,
+    opts?: { validate?: (rawText: string, storedIso: string) => string | null; required?: boolean }
+  ) => (
+    <ManualDateInput fieldKey={fieldKey} label={label} validate={opts?.validate} required={opts?.required} />
+  );
+
 
   const renderInlineField = (fieldKey: string, label: string) => (
     <DirtyFieldWrapper fieldKey={fieldKey}>
@@ -549,97 +803,107 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
     </div>
   );
 
+  // Helpers for new V3 fields
+  const renderPlainTextField = (key: string, label: string) => (
+    <DirtyFieldWrapper fieldKey={key}>
+      <div className="flex items-center gap-2">
+        <Label className="w-[130px] shrink-0 text-xs">{label}</Label>
+        <Input
+          id={key}
+          value={getValue(key)}
+          onChange={(e) => setValue(key, e.target.value)}
+          disabled={disabled}
+          className="h-8 text-xs flex-1"
+        />
+      </div>
+    </DirtyFieldWrapper>
+  );
+
+  const renderReadOnlyDateField = (key: string, label: string) => {
+    const stored = getValue(key);
+    const d = safeParseDateStr(stored);
+    const display = d ? format(d, 'MM/dd/yyyy') : (stored || '');
+    return (
+      <Input
+        value={display}
+        readOnly
+        disabled
+        className="h-8 text-xs bg-muted/40 w-[110px]"
+        aria-label={label}
+        placeholder="—"
+      />
+    );
+  };
+
+  const renderReadOnlyNumberRow = (key: string, label: string) => (
+    <DirtyFieldWrapper fieldKey={key}>
+      <div className="flex items-center gap-2">
+        <Label className="flex-1 text-xs">{label}</Label>
+        <Input
+          value={getValue(key)}
+          onChange={(e) => setValue(key, e.target.value.replace(/\D/g, ''))}
+          disabled={disabled}
+          inputMode="numeric"
+          className="h-8 text-xs w-[80px] text-right"
+          aria-label={label}
+        />
+      </div>
+    </DirtyFieldWrapper>
+  );
+
+  // Loan Status conditional dropdown change handler — clears stale reason value
+  const handleLoanStatusChange = (newStatus: string) => {
+    const prev = getValue(FIELD_KEYS.loanStatus);
+    if (prev !== newStatus) {
+      // Clear opposite reason fields whenever status changes
+      if (newStatus !== 'hold' && getValue(FIELD_KEYS.holdReason)) {
+        setValue(FIELD_KEYS.holdReason, '');
+      }
+      if (newStatus !== 'closed' && getValue(FIELD_KEYS.closedReason)) {
+        setValue(FIELD_KEYS.closedReason, '');
+      }
+    }
+    setValue(FIELD_KEYS.loanStatus, newStatus);
+  };
+
+  const currentLoanStatus = getValue(FIELD_KEYS.loanStatus);
+
   return (
     <div className="p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-6 gap-y-0">
 
         {/* Details Column */}
         <div className="space-y-1.5">
           <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Details</h3>
           {renderInlineField(FIELD_KEYS.companyId, 'Company ID')}
-          {renderValidatedField(FIELD_KEYS.loanNumber, 'Loan Number', 'loanNumber', 14)}
           {renderInlineField(FIELD_KEYS.previousLoanNumber, 'Previous Loan Number')}
+          {/* Parent / Child Account — V3 spec: plain text only, no radio/checkbox */}
+          {renderPlainTextField(FIELD_KEYS.parentAccountValue, 'Parent Account')}
+          {renderPlainTextField(FIELD_KEYS.childAccountValue, 'Child Account')}
+          {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
           {renderInlineField(FIELD_KEYS.loanCode, 'Loan Code')}
+          {renderPlainTextField(NEW_KEYS.projectNumber, 'Project Number')}
           {renderValidatedField(FIELD_KEYS.assignedCsr, 'Assigned CSR', 'assignedCsr')}
           {renderInlineSelect(FIELD_KEYS.originatingVendor, 'Originating Vendor', brokerOptions, 'Select Originating Vendor')}
-          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Balance')}
-          {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
-          {renderInlineSelect(FIELD_KEYS.lienPosition, 'Lien Position', LIEN_POSITION_OPTIONS, 'Select')}
+          {renderInlineCurrencyField(FIELD_KEYS.originalBalance, 'Original Loan Amount')}
+          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
           {renderInlineDateField(FIELD_KEYS.recordingDate, 'Recording Date')}
           {renderInlineField(FIELD_KEYS.recordingNumber, 'Recording Number')}
           {renderInlineDateField(FIELD_KEYS.boarding, 'Boarding Date')}
-          {renderInlineDateField('loan_terms.first_payment', 'First Payment Due')}
-          {renderInlineDateField(FIELD_KEYS.maturityDate, 'Maturity')}
+          {renderMaturityDateField(FIELD_KEYS.maturityDate, 'Maturity / DIF')}
+          {renderInlineDateField(NEW_KEYS.paidOffDate, 'Paid Off / Closed')}
+
+          {/* Existing fields kept — not in V3 spec, retained at bottom */}
+          {renderValidatedField(FIELD_KEYS.loanNumber, 'Loan Number', 'loanNumber', 14)}
+          {renderInlineDateField(FIELD_KEYS.origination, 'Origination Date')}
           {renderInlineField(FIELD_KEYS.previousAccountNumber, 'Previous Account Number')}
           {renderInlineField(FIELD_KEYS.overpaymentsAppliedTo, 'Overpayments Applied To')}
           {renderInlineField(FIELD_KEYS.relatedPartySearch, 'Related Party Search')}
-          <div className="pt-2">
-            {renderAccountRow(FIELD_KEYS.parentAccount, FIELD_KEYS.parentAccountValue, 'Parent Account')}
-          </div>
-          {renderAccountRow(FIELD_KEYS.childAccount, FIELD_KEYS.childAccountValue, 'Child Account')}
         </div>
 
-        {/* Terms Column */}
+        {/* Loan Categories Column */}
         <div className="space-y-1.5">
-          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Terms</h3>
-          {renderInlineDateField('loan_terms.day_due', 'Day Due')}
-          {renderAdjPercentField('loan_terms.note_rate', 'Note Rate')}
-          {/* Sold Rate is a single source of truth shared with Terms & Balances.
-              Both screens read/write `loan_terms.sold_rate_company` (the value
-              users actually enter on Balances). `loan_terms.sold_rate` is kept
-              as a legacy fallback for older deals that wrote to that key, but
-              new writes go to sold_rate_company so the two screens stay in sync
-              and the funding modal sees one truthful value. */}
-          {renderAdjPercentFieldMirrored(
-            'loan_terms.sold_rate_company',
-            'loan_terms.sold_rate',
-            'Sold Rate'
-          )}
-          
-          {(() => {
-            const rs = getValue(FIELD_KEYS.rateStructure);
-            const note = getValue('loan_terms.note_rate');
-            const cur = getValue('loan_terms.current_rate');
-            let hint = '';
-            if (rs === 'frm_fixed_rate') hint = 'Auto: Note Rate';
-            else if (rs === 'arm_adjustable_rate') hint = 'Auto: Index + Margin (within Floor/Cap)';
-            else if (rs === 'gtm_graduated_terms') hint = getBoolValue(FIELD_KEYS.gtmStepRateProduct) ? 'Auto: Scheduled Period Rate' : 'Auto: Note Rate';
-            return (
-              <DirtyFieldWrapper fieldKey="loan_terms.current_rate">
-                <div className="flex items-center gap-2">
-                  <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
-                  <div className="relative flex-1">
-                    <Input
-                      value={cur ? formatPercentDisplay(cur, 3) : ''}
-                      readOnly
-                      disabled
-                      className="h-8 text-xs pr-5 bg-muted/40"
-                      placeholder="0.00"
-                      title={hint}
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
-                  </div>
-                </div>
-              </DirtyFieldWrapper>
-            );
-          })()}
-          {renderInlineField('loan_terms.interest_split', 'Interest Split')}
-          {renderInlineCurrencyField('loan_terms.unearned_discount_balance', 'Unearned Discount Balance')}
-          {renderInlineSelect(FIELD_KEYS.loanPurpose, 'Loan Purpose', LOAN_PURPOSE_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
-          {getValue(FIELD_KEYS.rateStructure) === 'other' && (
-            renderInlineField(FIELD_KEYS.rateStructureOther, 'Other (specify)')
-          )}
-          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
-          {renderInlineSelect('loan_terms.accrual_method', 'Accrual Method', ACCRUAL_METHOD_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
-        </div>
-
-        {/* Loan Type Column */}
-        <div className="space-y-1.5">
-          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Type (can be multiple)</h3>
+          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Categories (can be multiple)</h3>
           {renderInlineCheckbox(FIELD_KEYS.ownerOccupied, 'Owner Occupied')}
           {renderInlineCheckbox(FIELD_KEYS.multiLender, 'Multi-lender')}
           {renderInlineCheckbox(FIELD_KEYS.sellerCarry, 'Seller Carry')}
@@ -653,25 +917,201 @@ export const LoanTermsDetailsForm: React.FC<LoanTermsDetailsFormProps> = ({
           {renderInlineCheckbox(FIELD_KEYS.balloonPayment, 'Balloon Payment')}
           {renderInlineCheckbox(FIELD_KEYS.subordinationProvision, 'Subordination Provision')}
           {renderInlineCheckbox(FIELD_KEYS.passThrough, 'Pass Through')}
+          {renderInlineCheckbox(NEW_KEYS.typeSection32, 'Section 32')}
+          {renderInlineCheckbox(NEW_KEYS.typeArticle7, 'Article 7')}
+          {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
+          {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
+          {renderInlineCheckbox(FIELD_KEYS.statusMilitarySCRA, 'Military SCRA')}
+          {renderInlineCheckbox(NEW_KEYS.typeOnPull, 'On Pull')}
+
+          {/* Terms fields — placed directly below On Pull per V3 spec.
+              Storage keys mirror LOAN_TERMS_BALANCES_KEYS so save/load is identical. */}
+          <DirtyFieldWrapper fieldKey={TERMS_KEYS.dayDue}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[130px] shrink-0 text-xs">Day Due</Label>
+              <Input
+                value={getValue(TERMS_KEYS.dayDue)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 2);
+                  setValue(TERMS_KEYS.dayDue, digits);
+                }}
+                onBlur={() => {
+                  const v = getValue(TERMS_KEYS.dayDue);
+                  if (!v) return;
+                  const n = parseInt(v, 10);
+                  if (isNaN(n)) { setValue(TERMS_KEYS.dayDue, ''); return; }
+                  const clamped = Math.max(1, Math.min(31, n));
+                  setValue(TERMS_KEYS.dayDue, String(clamped));
+                }}
+                disabled={disabled}
+                inputMode="numeric"
+                placeholder="1-31"
+                className="h-8 text-xs flex-1"
+              />
+            </div>
+          </DirtyFieldWrapper>
+          <DirtyFieldWrapper fieldKey={TERMS_KEYS.currentRate}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[130px] shrink-0 text-xs">Current Rate</Label>
+              <div className="relative flex-1">
+                <Input
+                  value={getValue(TERMS_KEYS.currentRate) ? formatPercentDisplay(getValue(TERMS_KEYS.currentRate), 3) : ''}
+                  readOnly
+                  disabled
+                  className="h-8 text-xs pr-5 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900"
+                  placeholder="0.00"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>
+              </div>
+            </div>
+          </DirtyFieldWrapper>
+
+          {/* Terms dropdowns — moved here from Loan Status column per spec.
+              Same storage bindings, no functional change. */}
+          {renderInlineSelect(FIELD_KEYS.rateStructure, 'Rate Structure', RATE_STRUCTURE_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.amortization, 'Amortization', AMORTIZATION_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.interestCalculation, 'Interest Calculation', INTEREST_CALCULATION_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.calculationPeriod, 'Calculation Period', CALCULATION_PERIOD_OPTIONS, 'Select')}
+          {renderInlineSelect(FIELD_KEYS.processingUnpaidInterest, 'Processing Unpaid Interest', PROCESSING_UNPAID_INTEREST_OPTIONS, 'Select')}
+
         </div>
 
-        {/* Status Categories Column */}
+
+        {/* Loan Status Column */}
         <div className="space-y-1.5">
-          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Status Categories (can be multiple)</h3>
-          {renderInlineSelect(FIELD_KEYS.loanStatus, 'Loan Status', LOAN_STATUS_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.holdReason, 'Hold Reason', HOLD_REASON_OPTIONS, 'Select')}
-          {renderInlineSelect(FIELD_KEYS.closedReason, 'Closed Reason', CLOSED_REASON_OPTIONS, 'Select')}
-          {renderInlineCheckbox(FIELD_KEYS.documentPrep, 'Document Prep')}
-          {renderInlineCheckbox(FIELD_KEYS.transferIn, 'Transfer In')}
-          {renderInlineCheckbox(FIELD_KEYS.statusBankruptcy, 'Bankruptcy')}
-          {renderInlineCheckbox(FIELD_KEYS.statusForeclosure, 'Foreclosure')}
-          {renderInlineCheckbox(FIELD_KEYS.statusModification, 'Modification')}
-          {renderInlineCheckbox(FIELD_KEYS.statusForbearance, 'Forbearance')}
-          {renderInlineCheckbox(FIELD_KEYS.statusAssignment, 'Assignment')}
-          {renderInlineCheckbox(FIELD_KEYS.statusLitigation, 'Litigation')}
-          {renderInlineCheckbox(FIELD_KEYS.statusMilitarySCRA, 'Military SCRA')}
+          <h3 className="font-semibold text-xs text-foreground border-b border-border pb-1 mb-2">Loan Status (can be multiple)</h3>
+
+          {/* Loan Status dropdown — supports blank */}
+          <DirtyFieldWrapper fieldKey={FIELD_KEYS.loanStatus}>
+            <div className="flex items-center gap-2">
+              <Label className="w-[110px] shrink-0 text-xs">Loan Status</Label>
+              <Select
+                value={currentLoanStatus || undefined}
+                onValueChange={(v) => handleLoanStatusChange(v === '__none__' ? '' : v)}
+                disabled={disabled}
+              >
+                <SelectTrigger className="h-8 text-xs flex-1">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {LOAN_STATUS_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </DirtyFieldWrapper>
+
+          {/* Conditional Hold Reason — visible only when status = hold */}
+          {currentLoanStatus === 'hold' && (
+            <DirtyFieldWrapper fieldKey={FIELD_KEYS.holdReason}>
+              <div className="flex items-center gap-2">
+                <Label className="w-[110px] shrink-0 text-xs">Hold Reason</Label>
+                <Select
+                  value={getValue(FIELD_KEYS.holdReason) || undefined}
+                  onValueChange={(v) => setValue(FIELD_KEYS.holdReason, v === '__none__' ? '' : v)}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 text-xs flex-1">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {HOLD_REASON_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </DirtyFieldWrapper>
+          )}
+
+          {/* Conditional Closed Reason — visible only when status = closed */}
+          {currentLoanStatus === 'closed' && (
+            <DirtyFieldWrapper fieldKey={FIELD_KEYS.closedReason}>
+              <div className="flex items-center gap-2">
+                <Label className="w-[110px] shrink-0 text-xs">Closed Reason</Label>
+                <Select
+                  value={getValue(FIELD_KEYS.closedReason) || undefined}
+                  onValueChange={(v) => setValue(FIELD_KEYS.closedReason, v === '__none__' ? '' : v)}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 text-xs flex-1">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {CLOSED_REASON_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </DirtyFieldWrapper>
+          )}
+
+          {/* V3 status checkboxes — Assignment removed per spec */}
+          <div className="pt-1">
+            {renderInlineCheckbox(FIELD_KEYS.statusBankruptcy, 'Bankruptcy')}
+            {renderInlineCheckbox(FIELD_KEYS.statusForeclosure, 'Foreclosure')}
+            {renderInlineCheckbox(FIELD_KEYS.statusModification, 'Modification')}
+            {renderInlineCheckbox(FIELD_KEYS.statusForbearance, 'Forbearance')}
+            {renderInlineCheckbox(FIELD_KEYS.statusLitigation, 'Litigation')}
+          </div>
+
+          {/* Send block */}
+          <div className="pt-3">
+            <h4 className="font-semibold text-xs text-foreground border-b border-border/50 pb-1 mb-2">Send:</h4>
+            <div className="space-y-1.5">
+              {[
+                { cb: NEW_KEYS.sendCouponBook, last: NEW_KEYS.sendCouponBookLastSent, label: 'Coupon Book' },
+                { cb: NEW_KEYS.sendPmtStatement, last: NEW_KEYS.sendPmtStatementLastSent, label: 'Payment Statement' },
+                { cb: NEW_KEYS.sendLateNotice, last: NEW_KEYS.sendLateNoticeLastSent, label: 'Late Notice' },
+                { cb: NEW_KEYS.sendBalloonNotice, last: NEW_KEYS.sendBalloonNoticeLastSent, label: 'Balloon / DIF Notice' },
+              ].map((row) => (
+                <div key={row.cb} className="flex items-center gap-2">
+                  <DirtyFieldWrapper fieldKey={row.cb}>
+                    <div className="flex items-center gap-2 flex-1">
+                      <Checkbox
+                        id={row.cb}
+                        checked={getBoolValue(row.cb)}
+                        onCheckedChange={(c) => setBoolValue(row.cb, !!c)}
+                        disabled={disabled}
+                        className="h-3.5 w-3.5"
+                      />
+                      <Label htmlFor={row.cb} className="font-normal cursor-pointer text-xs flex-1 whitespace-nowrap">
+                        {row.label}
+                      </Label>
+                    </div>
+                  </DirtyFieldWrapper>
+                  <DirtyFieldWrapper fieldKey={row.last}>
+                    <div className="w-[110px]">
+                      <TypableDateField
+                        value={getValue(row.last) || ''}
+                        onChange={(iso) => setValue(row.last, iso)}
+                        disabled={disabled}
+                        inputClassName="h-8 text-xs"
+                        aria-label={`${row.label} Last Sent`}
+                      />
+                    </div>
+                  </DirtyFieldWrapper>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* NSF / 30-days Plus — read-only system-calculated */}
+          <div className="pt-3 space-y-1.5">
+            {renderReadOnlyNumberRow(NEW_KEYS.nsfPrev12mo, 'NSF Previous 12 Months')}
+            {renderReadOnlyNumberRow(NEW_KEYS.thirtyDaysPlus, '30-days Plus')}
+          </div>
+
+
+
         </div>
       </div>
+
 
       {/* Adjustable / Graduated Loan Details - shown for ARM or GTM */}
       {(getValue(FIELD_KEYS.rateStructure) === 'arm_adjustable_rate' || getValue(FIELD_KEYS.rateStructure) === 'gtm_graduated_terms') && (

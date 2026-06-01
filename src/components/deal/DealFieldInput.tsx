@@ -8,13 +8,185 @@ import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { AlertCircle, Lock, Calculator, Asterisk, CheckCircle2, CalendarIcon } from 'lucide-react';
-import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
+import { formatDateOnly, parseDateOnly, parseDisplayDate, todayDateOnly } from '@/lib/dateOnly';
 import { parseToCanonical, formatForDisplay } from '@/lib/fieldTransforms';
 import { roundPctForStorage } from '@/lib/precisionFormat';
 import { isNegativeValue, INTEREST_NEGATIVE_MESSAGE } from '@/lib/interestValidation';
 import { useDirtyFields } from '@/contexts/DirtyFieldsContext';
 import type { FieldDefinition } from '@/hooks/useDealFields';
 import type { CalculationResult } from '@/lib/calculationEngine';
+
+/**
+ * Mask raw input toward MM/DD/YYYY without fighting the user mid-edit.
+ * - Keeps only digits and `/`.
+ * - Auto-inserts a `/` only when the user is TYPING FORWARD past positions 2 and 5.
+ * - Never strips trailing digits the user is in the middle of typing/deleting,
+ *   so `06/14/1925` → backspace → `06/14/192` (not `06/14/19`).
+ * - Caps total length at 10 (MM/DD/YYYY).
+ */
+function maskDateInput(raw: string, prev: string = ''): string {
+  // Keep digits + slashes only.
+  let s = raw.replace(/[^\d/]/g, '');
+  const growing = s.length > prev.length;
+  if (growing) {
+    // Auto-insert separators as the user types forward.
+    if (s.length === 2 && !s.includes('/')) s = s + '/';
+    if (s.length === 5 && s.indexOf('/', 3) === -1) s = s + '/';
+  }
+  // Cap to MM/DD/YYYY length.
+  if (s.length > 10) s = s.slice(0, 10);
+  return s;
+}
+
+interface DateMaskedInputProps {
+  id: string;
+  value: string;
+  displayValue: string;
+  selectedDate?: Date;
+  disabled: boolean;
+  showError: boolean;
+  datePickerOpen: boolean;
+  setDatePickerOpen: (v: boolean) => void;
+  onChangeCanonical: (v: string) => void;
+  onCalendarSelect: (date: Date | undefined) => void;
+  onClear: () => void;
+  onToday: () => void;
+}
+
+const DateMaskedInput: React.FC<DateMaskedInputProps> = ({
+  id, value, displayValue, selectedDate, disabled, showError,
+  datePickerOpen, setDatePickerOpen,
+  onChangeCanonical, onCalendarSelect, onClear, onToday,
+}) => {
+  const [typed, setTyped] = useState<string>(displayValue);
+  const [typedError, setTypedError] = useState(false);
+
+  // Track the canonical value we ourselves last pushed up via onChangeCanonical.
+  // Any incoming `value` that differs from this ref is, by definition, an
+  // external change (calendar pick, Clear, Today, parent reset / record load)
+  // and must overwrite the visible text — even when the input has focus.
+  // Using focus as the gate (the previous approach) failed because clicking the
+  // calendar icon often left focus on the input, so calendar picks left the
+  // displayed text stale while the stored canonical updated correctly.
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const lastSelfCanonicalRef = React.useRef<string>(value);
+  React.useEffect(() => {
+    if (value !== lastSelfCanonicalRef.current) {
+      setTyped(displayValue);
+      setTypedError(false);
+      lastSelfCanonicalRef.current = value;
+    }
+  }, [value, displayValue]);
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target as HTMLInputElement;
+    const rawValue = input.value;
+    const rawCaret = input.selectionStart ?? rawValue.length;
+
+    // Count digits before the caret in the raw (pre-mask) input. The mask only
+    // inserts `/` separators, so digit-count is a stable anchor across formatting.
+    let digitsBeforeCaret = 0;
+    for (let i = 0; i < rawCaret && i < rawValue.length; i++) {
+      if (/\d/.test(rawValue[i])) digitsBeforeCaret++;
+    }
+
+    const masked = maskDateInput(rawValue, typed);
+
+    // Map digit-count back to a caret offset in the masked string. When the mask
+    // just auto-inserted a `/` immediately after the caret (forward typing past
+    // pos 2 or 5), advance past it so the user keeps typing the next group.
+    let newCaret = 0;
+    let seenDigits = 0;
+    while (newCaret < masked.length && seenDigits < digitsBeforeCaret) {
+      if (/\d/.test(masked[newCaret])) seenDigits++;
+      newCaret++;
+    }
+    const growing = rawValue.length > typed.length;
+    if (growing && masked[newCaret] === '/') newCaret++;
+
+    setTyped(masked);
+
+    // Restore caret after React commits the controlled value.
+    requestAnimationFrame(() => {
+      if (document.activeElement === input) {
+        try { input.setSelectionRange(newCaret, newCaret); } catch { /* noop */ }
+      }
+    });
+
+    if (masked === '') {
+      setTypedError(false);
+      lastSelfCanonicalRef.current = '';
+      onChangeCanonical('');
+      return;
+    }
+    const parsed = parseDisplayDate(masked);
+    if (parsed) {
+      setTypedError(false);
+      const canonical = formatDateOnly(parsed);
+      lastSelfCanonicalRef.current = canonical;
+      onChangeCanonical(canonical);
+    }
+    // Partial / not-yet-valid input: keep typing without error noise.
+  };
+
+  const handleTextBlur = () => {
+    if (!typed) { setTypedError(false); return; }
+    const parsed = parseDisplayDate(typed);
+    if (!parsed) {
+      setTypedError(true);
+    } else {
+      setTypedError(false);
+      setTyped(formatDateOnly(parsed, 'MM/dd/yyyy'));
+    }
+  };
+
+  return (
+    <div className="flex items-stretch gap-1">
+      <Input
+        ref={inputRef}
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="MM/DD/YYYY"
+        value={typed}
+        onChange={handleTextChange}
+        onBlur={handleTextBlur}
+        disabled={disabled}
+        className={cn(
+          'h-7 text-xs flex-1 transition-colors',
+          (showError || typedError) && 'border-destructive focus:ring-destructive bg-destructive/5',
+          disabled && 'bg-muted cursor-not-allowed'
+        )}
+      />
+      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={disabled}
+            className={cn('h-7 w-7 shrink-0', disabled && 'cursor-not-allowed')}
+            aria-label="Open calendar"
+          >
+            <CalendarIcon className="h-3 w-3" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 z-[9999]" align="start">
+          <EnhancedCalendar
+            mode="single"
+            selected={selectedDate}
+            month={selectedDate}
+            onSelect={onCalendarSelect}
+            onClear={onClear}
+            onToday={onToday}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+};
 
 interface DealFieldInputProps {
   field: FieldDefinition;
@@ -160,40 +332,27 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
     }
   };
 
-  // Render date picker
+  // Render date picker — masked MM/DD/YYYY text input + calendar icon button.
   const renderDatePicker = () => {
     const selectedDate = parseDateOnly(value);
     const isValidDate = !!selectedDate;
+    const displayValue = isValidDate ? formatDateOnly(selectedDate, 'MM/dd/yyyy') : '';
 
     return (
-      <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={field.field_key}
-            variant="outline"
-            disabled={isDisabled}
-            className={cn(
-              'w-full justify-start text-left font-normal h-7 text-xs',
-              !value && 'text-muted-foreground',
-              showError && 'border-destructive focus:ring-destructive bg-destructive/5',
-              isDisabled && 'bg-muted cursor-not-allowed'
-            )}
-          >
-            {isValidDate ? formatDateOnly(selectedDate, 'MM/dd/yyyy') : <span>mm/dd/yyyy</span>}
-            <CalendarIcon className="ml-auto h-3 w-3" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-          <EnhancedCalendar
-            mode="single"
-            selected={isValidDate ? selectedDate : undefined}
-            onSelect={handleDateSelect}
-            onClear={() => { onChange(''); setDatePickerOpen(false); }}
-            onToday={() => { onChange(todayDateOnly()); setDatePickerOpen(false); }}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
+      <DateMaskedInput
+        id={field.field_key}
+        value={value || ''}
+        displayValue={displayValue}
+        selectedDate={isValidDate ? selectedDate : undefined}
+        disabled={isDisabled}
+        showError={showError}
+        datePickerOpen={datePickerOpen}
+        setDatePickerOpen={setDatePickerOpen}
+        onChangeCanonical={(v) => onChange(v)}
+        onCalendarSelect={handleDateSelect}
+        onClear={() => { onChange(''); setDatePickerOpen(false); }}
+        onToday={() => { onChange(todayDateOnly()); setDatePickerOpen(false); }}
+      />
     );
   };
 

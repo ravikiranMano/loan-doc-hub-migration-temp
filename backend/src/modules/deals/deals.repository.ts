@@ -154,7 +154,7 @@ export class DealsRepository {
     });
   }
 
-  findParticipants(
+  async findParticipants(
     dealId: string,
     options?: { role?: string; roles?: string[]; sort?: string; include?: string },
   ) {
@@ -164,13 +164,33 @@ export class DealsRepository {
 
     const includeContacts = options?.include === 'contact';
 
-    return this.prisma.deal_participants.findMany({
+    const participants = await this.prisma.deal_participants.findMany({
       where,
-      include: includeContacts ? { contacts: true } : undefined,
       orderBy: options?.sort === 'created_at'
         ? { created_at: 'asc' }
         : { sequence_order: 'asc' },
     });
+
+    if (!includeContacts) return participants;
+
+    const contactIds = [
+      ...new Set(
+        participants.map((p) => p.contact_id).filter((id): id is string => !!id),
+      ),
+    ];
+    if (!contactIds.length) {
+      return participants.map((p) => ({ ...p, contacts: null }));
+    }
+
+    const contacts = await this.prisma.contacts.findMany({
+      where: { id: { in: contactIds } },
+    });
+    const contactsById = new Map(contacts.map((c) => [c.id, c]));
+
+    return participants.map((p) => ({
+      ...p,
+      contacts: p.contact_id ? contactsById.get(p.contact_id) ?? null : null,
+    }));
   }
 
   findParticipantById(id: string) {
