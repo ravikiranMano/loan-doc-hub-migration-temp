@@ -172,6 +172,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   upstreamAdjPaymentOptionsEndPercent = 0,
   section800Total = 0,
   liensPayoffTotal = 0,
+  loanDocFeeTotal = 0,
   upstreamPrepayEnabled = false,
   upstreamPrepayPenaltyMonths = '',
   upstreamPrepayGreaterThanPct = '',
