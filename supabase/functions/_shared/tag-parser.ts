@@ -331,6 +331,11 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
     const tFastSimple = Date.now();
     result = consolidateFragmentedSimpleTagsFast(result);
     __nwxLog('fastSimpleFragmentedTags', tFastSimple);
+    const tParaSafety = Date.now();
+    if (hasFragmentedMergeTagCandidates(result)) {
+      result = consolidateFragmentedTagsInParagraphs(result);
+      __nwxLog('fastParagraphSafety', tParaSafety);
+    }
     console.log(
       `[tag-parser] normalizeWordXml RE885 fast-path: skipped heavy fragmented suite (${xmlContent.length}B, total=${Date.now() - __nwxStart}ms)`
     );
