@@ -599,7 +599,14 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             the Subtotal of All Deductions (Bug 2). */}
         {liensPayoffTotal > 0 && (
           <div className={ROW}>
-            <span className="w-14 flex-shrink-0" />
+            <Input
+              value={getValue(FK.liens_payoff_lineno)}
+              onChange={(e) => setValue(FK.liens_payoff_lineno, e.target.value)}
+              disabled={disabled}
+              placeholder="#"
+              className="h-8 text-xs w-14 text-center flex-shrink-0"
+              aria-label="Line number"
+            />
             <span className={`${LBL} italic`}>Payment of Existing Liens (from Lien Management)</span>
             <div className={FIELD_W}>
               <CurrencyInput value={formatCurrencyDisplay(liensPayoffTotal.toFixed(2))} onChange={() => {}} readOnly disabled />
