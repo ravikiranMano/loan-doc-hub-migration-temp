@@ -672,7 +672,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
               )}
             </div>
           </div>
-          <div className={FIELD_W}>
+          <div className={`${FIELD_W} relative`}>
             <CurrencyInput
               value={
                 hasOverride
@@ -683,7 +683,20 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
               }
               onChange={(v) => setValue(FK.cash_at_closing_override, v)}
               disabled={disabled}
+              className={hasOverride ? 'pr-6' : ''}
             />
+            {hasOverride && (
+              <button
+                type="button"
+                onClick={() => setValue(FK.cash_at_closing_override, '')}
+                disabled={disabled}
+                aria-label="Clear manual override"
+                title="Clear manual override"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
       </div>
