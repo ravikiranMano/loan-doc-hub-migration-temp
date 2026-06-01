@@ -715,6 +715,10 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     + parseNumber(getValue(FIELD_KEYS.existingLien2_d))
     + parseNumber(getValue(FIELD_KEYS.existingLien3_d));
 
+  // Loan Documentation Fee feeds the RE 885 "Payment of Other Obligations" row
+  // as an auto-seed (still user-editable on the RE 885 side).
+  const loanDocFeeTotal = parseNumber(getValue(FIELD_KEYS.loanDocumentationFee_d));
+
   // Standard fee row: HUD# | Description | Comment | Paid to Others | Paid to Broker | Include in APR | Paid to Company
   const renderFeeRow = (
     hudNumber: string,
