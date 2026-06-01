@@ -1000,6 +1000,7 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         upstreamAdjPaymentOptionsEndPercent={parseNumber(values['loan_terms.adj_payment_options_end_percent'] || '')}
         section800Total={section800Total}
         liensPayoffTotal={liensPayoffTotal}
+        loanDocFeeTotal={loanDocFeeTotal}
         upstreamPrepayEnabled={values['loan_terms.penalties.prepayment.enabled'] === 'true'}
         upstreamPrepayPenaltyMonths={values['loan_terms.penalties.prepayment.penalty_months'] || ''}
         upstreamPrepayGreaterThanPct={values['loan_terms.penalties.prepayment.greater_than'] || ''}
