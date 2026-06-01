@@ -284,9 +284,6 @@ export async function processDocx(
   }
   const tAfterParts = performance.now();
 
-  const compressed = fflate.zipSync(processedFiles);
-  const tAfterZip = performance.now();
-
   // Per-stage timing summary. Highlights the slowest XML part so future
   // CPU-budget regressions are immediately visible in production logs.
   try {
@@ -298,7 +295,7 @@ export async function processDocx(
       `[docx-processor] timings: unzip=${Math.round(tUnzip - t0)}ms ` +
       `partsTotal=${Math.round(tAfterParts - tUnzip)}ms ` +
       `(replaceMs=${totalReplaceMs} across ${partTimings.length} parts) ` +
-      `zip=${Math.round(tAfterZip - tAfterParts)}ms` +
+      `zip=pending ` +
       (slowest ? ` slowestPart=${slowest.part} (${slowest.bytes}B, replace=${slowest.replaceMs}ms)` : "")
     );
     if (is885) {
@@ -384,6 +381,10 @@ export async function processDocx(
     }
     throw err;
   }
+
+  const compressed = fflate.zipSync(processedFiles);
+  const tAfterZip = performance.now();
+  console.log(`[docx-processor] zip complete: ${Math.round(tAfterZip - tAfterParts)}ms`);
 
   return compressed;
 }
