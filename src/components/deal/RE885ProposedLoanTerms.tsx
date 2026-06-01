@@ -355,13 +355,26 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [upstreamLimitedNoDoc]);
 
-  // ─── Initial Commissions/Fees (Page 1) always reflects Section 800 total
+  // ─── Initial Commissions/Fees (Page 1): auto-track Section 800 total UNLESS
+  // the user has typed a manual override. Override wins until the × is clicked.
+  const initialFeesOverrideRaw = getValue(FK.initial_fees_page1_override);
+  const initialFeesHasOverride =
+    initialFeesOverrideRaw !== '' && Number.isFinite(parseNumber(initialFeesOverrideRaw));
   React.useEffect(() => {
+    if (initialFeesHasOverride) return;
     const formatted = formatCurrencyDisplay(section800Total.toFixed(2));
     if (getValue(FK.initial_fees_page1) !== formatted) {
       setValue(FK.initial_fees_page1, formatted);
     }
-  }, [section800Total]);
+  }, [section800Total, initialFeesHasOverride]);
+  // Mirror an active override into the persisted value used by the subtotal sum.
+  React.useEffect(() => {
+    if (!initialFeesHasOverride) return;
+    const formatted = formatCurrencyDisplay(parseNumber(initialFeesOverrideRaw).toFixed(2));
+    if (getValue(FK.initial_fees_page1) !== formatted) {
+      setValue(FK.initial_fees_page1, formatted);
+    }
+  }, [initialFeesOverrideRaw, initialFeesHasOverride]);
 
   // ─── Seed "Payment of Other Obligations" from the Loan Documentation Fee
   // (HUD-1 line 812 _d) only when the RE 885 field is empty/zero, mirroring
@@ -372,26 +385,40 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [loanDocFeeTotal]);
 
+  // Existing-lien payoff: override wins, else use upstream liensPayoffTotal.
+  const liensOverrideRaw = getValue(FK.liens_payoff_override);
+  const liensHasOverride =
+    liensOverrideRaw !== '' && Number.isFinite(parseNumber(liensOverrideRaw));
+  const effectiveLiensPayoff = liensHasOverride
+    ? parseNumber(liensOverrideRaw)
+    : (liensPayoffTotal || 0);
+
   // Auto-calculate subtotal of deductions.
   // Per spec (Bug 2): existing-lien payoff(s) where Condition = "Existing –
   // Payoff" AND "Will Be Paid By This Loan" = TRUE MUST flow into the RE 885
   // deductions and reduce Estimated Cash at Closing. liensPayoffTotal is
   // computed upstream from the Lien Management data and passed in as a prop.
-  const subtotal = useMemo(() => {
+  const computedSubtotal = useMemo(() => {
     const fees = parseNumber(getValue(FK.initial_fees_page1));
     const otherObl = parseNumber(getValue(FK.other_obligations));
     const insurance = parseNumber(getValue(FK.credit_life_insurance));
     const add1 = parseNumber(getValue(FK.additional_obligation_1));
     const add2 = parseNumber(getValue(FK.additional_obligation_2));
-    return fees + otherObl + insurance + add1 + add2 + (liensPayoffTotal || 0);
+    return fees + otherObl + insurance + add1 + add2 + effectiveLiensPayoff;
   }, [
     getValue(FK.initial_fees_page1),
     getValue(FK.other_obligations),
     getValue(FK.credit_life_insurance),
     getValue(FK.additional_obligation_1),
     getValue(FK.additional_obligation_2),
-    liensPayoffTotal,
+    effectiveLiensPayoff,
   ]);
+
+  // Subtotal override wins over the live sum.
+  const subtotalOverrideRaw = getValue(FK.subtotal_deductions_override);
+  const subtotalHasOverride =
+    subtotalOverrideRaw !== '' && Number.isFinite(parseNumber(subtotalOverrideRaw));
+  const subtotal = subtotalHasOverride ? parseNumber(subtotalOverrideRaw) : computedSubtotal;
 
   // Auto-calculate cash at closing: loan amount − subtotal deductions.
   // computedCashAtClosing is the legally-correct derived figure; cashAtClosing
@@ -405,7 +432,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   const hasOverride = overrideRaw !== '' && Number.isFinite(parseNumber(overrideRaw));
   const cashAtClosing = hasOverride ? parseNumber(overrideRaw) : computedCashAtClosing;
 
-  // Persist subtotal
+  // Persist subtotal (the effective value — override or computed).
   React.useEffect(() => {
     const f = formatCurrencyDisplay(subtotal.toFixed(2));
     if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
