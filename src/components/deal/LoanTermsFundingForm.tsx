@@ -10,32 +10,19 @@ import type { FundingFormData } from './AddFundingModal';
 import { resolveLegacyKey } from '@/lib/legacyKeyMap';
 import { unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { Decimal, computeAmortizedPayment } from '@/lib/precisionFormat';
+import { computeLenderPaymentsRoundedSafe } from '@/lib/lenderPaymentFormula';
 
 /**
  * Recompute the persisted per-lender Payment for every funding row using
- * the canonical platform formula (matches LoanFundingGrid display and
- * AddFundingModal):
+ * the canonical platform formula (see src/lib/lenderPaymentFormula.ts):
  *
- *   ProRata_i      = originalAmount_i ÷ loanPrincipal × 100
- *   Lender Payment_i = (ProRata_i ÷ 100) × Borrower Regular P&I
+ *   Lender Payment_i = (originalAmount_i / loanPrincipal)
+ *                      × Borrower Regular P&I
+ *                      × (effectiveLenderRate_i / noteRate)
  *
- * Rate (Note/Lender) is NOT used here — rates only drive interest accrual.
- * Sub-cent rounding drift between the exact total and the sum of rounded
- * shares is absorbed by the single lender flagged `roundingAdjustment`
- * (mutual exclusivity enforced elsewhere). Decimal.js throughout — no
- * native floating point on financial math.
- */
-/**
- * Canonical per-lender Payment formula (matches LoanFundingGrid display):
- *   Lender Payment = (Original / Principal) × Regular P&I × (LenderRate / NoteRate)
- *
- * When a lender's Lender Rate matches the Note Rate (or no Lender Rate is set),
- * the scaling factor is 1 and the result is the legacy pro-rata Payment.
- * The Note Rate − Lender Rate gap is the servicing/broker spread and is
- * surfaced downstream — never lost.
- *
- * Banker's rounding to 2dp; sub-cent drift is absorbed by the row flagged
- * `roundingAdjustment` so the persisted total reconciles to the cent.
+ * When loan-level inputs (principal / regular P&I / note rate) are missing,
+ * the helper returns null and we leave persisted payments untouched rather
+ * than silently writing Note-Rate values.
  */
 const recomputeLenderPayments = (
   records: FundingRecord[],
@@ -44,34 +31,20 @@ const recomputeLenderPayments = (
   noteRateRaw: string,
 ): FundingRecord[] => {
   if (!records.length) return records;
-  const principal = new Decimal(parseFloat((loanPrincipalRaw || '').replace(/[$,]/g, '')) || 0);
-  const regPI = new Decimal(parseFloat((regularPIRaw || '').replace(/[$,]/g, '')) || 0);
-  if (principal.lte(0) || regPI.lte(0)) {
-    // Without a principal or scheduled P&I we can't split — leave payments untouched.
+  const rounded = computeLenderPaymentsRoundedSafe(records, {
+    loanPrincipal: loanPrincipalRaw,
+    regularPI: regularPIRaw,
+    noteRate: noteRateRaw,
+  });
+  if (rounded === null) {
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[LoanTermsFundingForm] recomputeLenderPayments skipped: missing loanPrincipal/regularPI/noteRate. Persisted payments left unchanged.',
+      );
+    }
     return records;
   }
-  const noteRateDec = new Decimal(parseFloat((noteRateRaw || '').toString().replace(/[%,]/g, '')) || 0);
-  const useRateScaling = noteRateDec.gt(0);
-  const exact = records.map(r => {
-    const orig = new Decimal(r.originalAmount || 0);
-    const base = orig.div(principal).mul(regPI);
-    if (!useRateScaling) return base;
-    const lr = Number(r.lenderRate);
-    if (!Number.isFinite(lr) || lr <= 0) return base; // no lender rate → fall back to note rate
-    const lenderRateDec = new Decimal(lr);
-    if (lenderRateDec.equals(noteRateDec)) return base;
-    return base.mul(lenderRateDec).div(noteRateDec);
-  });
-  const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
-  const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-    .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
-  const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
-  const diff = sumExact.minus(sumRounded);
-  const adjIdx = records.findIndex(r => r.roundingAdjustment);
-  if (adjIdx >= 0 && !diff.isZero()) {
-    rounded[adjIdx] = rounded[adjIdx].plus(diff);
-  }
-  return records.map((r, i) => ({ ...r, regularPayment: rounded[i].toNumber() }));
+  return records.map((r, i) => ({ ...r, regularPayment: rounded[i] }));
 };
 
 /** Strip commas/$ from a string before parseFloat so formatted values like "3,423.00" parse correctly */
