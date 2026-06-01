@@ -29,7 +29,7 @@ import { formatDateOnly, parseDateOnly, todayDateOnly } from '@/lib/dateOnly';
 import { TypableDateField } from '@/components/ui/typable-date-field';
 import { formatCurrencyDisplay, unformatCurrencyDisplay, numericKeyDown, numericPaste } from '@/lib/numericInputFilter';
 import { roundPctForStorage, computeAmortizedPayment, Decimal, formatPercentDisplay, formatPercentByFieldKey } from '@/lib/precisionFormat';
-import { computeLenderRowPaymentExact, LenderPaymentInputsMissingError } from '@/lib/lenderPaymentFormula';
+import { computeLenderRow } from '@/lib/lenderPaymentFormula';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
