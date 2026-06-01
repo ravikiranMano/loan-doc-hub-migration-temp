@@ -187,7 +187,9 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
 }) => {
   const isFixed = getBoolValue(FK.rate_type_fixed);
   const isAdjustable = getBoolValue(FK.rate_type_adjustable);
-  const adjustableSectionsDisabled = disabled || isFixed;
+  // Sections IV–IX remain editable regardless of rate type so the user can
+  // override the auto-seeded values (or fill them in even on a fixed loan).
+  const adjustableSectionsDisabled = disabled;
 
   // Treat "", "0", "0.00", "$0.00" all as "empty" so re-seeding works after first render
   const isEmptyOrZero = (raw: string): boolean => {
