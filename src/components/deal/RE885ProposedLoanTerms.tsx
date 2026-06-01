@@ -108,6 +108,7 @@ interface RE885Props {
   upstreamAdjPaymentOptionsEndPercent?: number;
   section800Total?: number;
   liensPayoffTotal?: number;
+  loanDocFeeTotal?: number;
   // Loan tab → Article 7 (Pre-payment Penalty)
   upstreamPrepayEnabled?: boolean;
   upstreamPrepayPenaltyMonths?: string;
