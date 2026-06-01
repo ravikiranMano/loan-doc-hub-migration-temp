@@ -192,17 +192,19 @@ const AppLayoutInner: React.FC = () => {
 export const AppLayout: React.FC = () => {
   const { user, role, loading } = useAuth();
 
-  if (loading) {
-    return null;
-  }
-
-  if (!user) {
+  // Only redirect once auth has actually resolved. While loading we keep the
+  // previous DOM painted (html background covers any cold start) — never
+  // return null here because that unmounts the entire shell on token
+  // refresh / silent re-validation and causes a full re-paint flicker.
+  if (!loading && !user) {
     return <Navigate to="/auth" replace />;
   }
 
-  if (!role) {
-    return null;
-  }
+  // If user exists but role hasn't loaded yet, still render the shell so
+  // sidebar/header stay mounted. Per-route RoleGuard handles role checks
+  // and will redirect once role resolves.
+
+
 
 
   return (
