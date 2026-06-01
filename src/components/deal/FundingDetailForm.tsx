@@ -89,10 +89,10 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     }
   }, [data.fundingAmount, loanAmount, siblingFundingTotal]);
 
-  // Regular Payment (per-lender share) — canonical formula:
-  //   Lender Payment = (fundingAmount / loanPrincipal) × Regular P&I × (lenderRate / noteRate)
-  // via src/lib/lenderPaymentFormula.ts. When noteRate / regPI / principal
-  // are missing the field is left as-is rather than written at Note Rate.
+  // Regular Payment (per-lender) — Model A: per-row daily accrual.
+  //   payment = fundingAmount × (effectiveLenderRate / 100) × days / 360
+  // Days = daysBetween(fundingDate, interestFrom). Helper in
+  // src/lib/lenderPaymentFormula.ts.
   React.useEffect(() => {
     const fundingAmount = parseFloat((data.fundingAmount || '').replace(/[$,]/g, '')) || 0;
     const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
@@ -105,25 +105,20 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     else if (rateLenderValue > 0) lr = rateLenderValue;
     else lr = noteRateNum;
 
-    // Use sibling-based principal when provided, else fall back to total loanAmount.
-    const principal = typeof siblingFundingTotal === 'number'
-      ? siblingFundingTotal + fundingAmount
-      : safeParseFloat(loanAmount);
-
-    try {
-      const exact = computeLenderRowPaymentExact(
-        { originalAmount: fundingAmount, lenderRate: lr },
-        { loanPrincipal: principal, regularPI: totalPayment, noteRate: noteRate },
-      );
-      const payment = exact.gt(0)
-        ? exact.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toFixed(2)
-        : '';
-      if (payment !== data.regularPayment) {
-        onChange({ ...data, regularPayment: payment });
-      }
-    } catch (err) {
-      if (!(err instanceof LenderPaymentInputsMissingError)) throw err;
-      // Missing inputs — leave the field unchanged.
+    const result = computeLenderRow(
+      {
+        originalAmount: fundingAmount,
+        lenderRate: lr,
+        fundingDate: data.fundingDate || '',
+        interestFrom: data.interestFrom || '',
+      },
+      { noteRate: noteRateNum || undefined, dayCountBasis: 360 },
+    );
+    const payment = result.status === 'ok' && result.payment > 0
+      ? result.payment.toFixed(2)
+      : '';
+    if (payment !== data.regularPayment) {
+      onChange({ ...data, regularPayment: payment });
     }
   }, [
     data.fundingAmount,
@@ -131,10 +126,9 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     data.lenderRateOverride,
     data.lenderRateOverrideValue,
     data.rateLenderValue,
-    totalPayment,
+    data.fundingDate,
+    data.interestFrom,
     noteRate,
-    loanAmount,
-    siblingFundingTotal,
   ]);
 
   const percentOwnedNum = parseFloat(data.percentOwned) || 0;
