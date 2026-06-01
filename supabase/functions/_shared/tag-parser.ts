@@ -2953,14 +2953,18 @@ export function replaceMergeTags(
       const nextTextStart = result.slice(offset).match(/^[\s\S]*?\}\}([\s\S]*?)<\/w:t>/)?.[1] || "";
       const leadingNewlineCount = (replacement.match(/^\n+/)?.[0].length || 0);
       const trailingNewlineCount = (replacement.match(/\n+$/)?.[0].length || 0);
-      if (previousText.trim() === "") {
+      let trimmedLeadingNewlines = 0;
+      let trimmedTrailingNewlines = 0;
+      if (previousText.trim() === "" && leadingNewlineCount > 0) {
+        trimmedLeadingNewlines = leadingNewlineCount;
         replacement = replacement.replace(/^\n+/, "");
       }
-      if (nextTextStart.trim() === "") {
+      if (nextTextStart.trim() === "" && trailingNewlineCount > 0) {
+        trimmedTrailingNewlines = trailingNewlineCount;
         replacement = replacement.replace(/\n+$/, "");
       }
-      if (leadingNewlineCount || trailingNewlineCount) {
-        debugLog(`[tag-parser] Trimmed boundary newlines around ${match}: leading=${leadingNewlineCount}, trailing=${trailingNewlineCount}`);
+      if (trimmedLeadingNewlines || trimmedTrailingNewlines) {
+        debugLog(`[tag-parser] Trimmed boundary newlines around ${match}: leading=${trimmedLeadingNewlines}, trailing=${trimmedTrailingNewlines}`);
       }
       if (!replacement.includes('\n')) return replacement;
       // Context-aware newline handling: only emit Word's in-run break form
