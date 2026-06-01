@@ -13,9 +13,17 @@ const FK = {
   credit_life_insurance: 'origination_fees.re885_credit_life_insurance',
   additional_obligation_1: 'origination_fees.re885_additional_obligation_1',
   additional_obligation_2: 'origination_fees.re885_additional_obligation_2',
+  // Editable line-number (left-side) inputs for each deduction row
+  initial_fees_page1_lineno: 'origination_fees.re885_initial_fees_page1_lineno',
+  credit_life_insurance_lineno: 'origination_fees.re885_credit_life_insurance_lineno',
+  other_obligations_lineno: 'origination_fees.re885_other_obligations_lineno',
+  additional_obligation_1_lineno: 'origination_fees.re885_additional_obligation_1_lineno',
+  additional_obligation_2_lineno: 'origination_fees.re885_additional_obligation_2_lineno',
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
+  // Manual override: when non-empty, used instead of computed cashAtClosing.
+  cash_at_closing_override: 'origination_fees.re885_cash_at_closing_override',
   cash_payable_to_you: 'origination_fees.re885_cash_payable_to_you',
   cash_you_must_pay: 'origination_fees.re885_cash_you_must_pay',
   loan_term_value: 'origination_fees.re885_loan_term_value',
