@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { numericKeyDown, numericPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import { roundPctForStorage, roundDollarForStorage, formatPercentDisplay } from '@/lib/precisionFormat';
+import { computeLenderRowPaymentExact, LenderPaymentInputsMissingError } from '@/lib/lenderPaymentFormula';
+import Decimal from 'decimal.js';
 
 /** Strip commas/$ before parseFloat so formatted values parse correctly */
 const safeParseFloat = (v: string | undefined): number => {
