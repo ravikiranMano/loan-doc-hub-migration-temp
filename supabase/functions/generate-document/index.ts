@@ -4444,17 +4444,23 @@ async function generateSingleDocument(
           };
 
           if (orderedIdx.length > 0) {
-            const holderLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.holder));
-            const cbLines = orderedIdx.map((i) => fmtAmt(perLienAll[i]?.cb));
-            const prioNowLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.prioNow));
-            const prioAfterLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.prioAfter));
-            const antLines = orderedIdx.map((i) => {
+            const lienRows = orderedIdx.map((i) => {
               const rec = perLienAll[i] || {};
-              // Only output anticipated amount on rows whose lien is flagged
-              // anticipated; otherwise blank to keep the row aligned.
-              if (!isTrueLocal(rec.ant)) return "";
-              return fmtAmt(rec.nrb) || fmtAmt(rec.antAmt);
-            });
+              const antLine = isTrueLocal(rec.ant) ? (fmtAmt(rec.nrb) || fmtAmt(rec.antAmt)) : "";
+              return {
+                holder: fmtText(rec.holder),
+                cb: fmtAmt(rec.cb),
+                prioNow: fmtText(rec.prioNow),
+                prioAfter: fmtText(rec.prioAfter),
+                ant: antLine,
+              };
+            }).filter((row) => row.holder || row.cb || row.prioNow || row.prioAfter || row.ant);
+
+            const holderLines = lienRows.map((row) => row.holder);
+            const cbLines = lienRows.map((row) => row.cb);
+            const prioNowLines = lienRows.map((row) => row.prioNow);
+            const prioAfterLines = lienRows.map((row) => row.prioAfter);
+            const antLines = lienRows.map((row) => row.ant);
 
             fieldValues.set("pr_li_lienHolder", {
               rawValue: holderLines.join("\n"),
@@ -4477,7 +4483,7 @@ async function generateSingleDocument(
               dataType: "text",
             });
             debugLog(
-              `[generate-document] RE885 row-aligned Section XVI lien table: ${orderedIdx.length} rows; ` +
+              `[generate-document] RE885 row-aligned Section XVI lien table: ${lienRows.length}/${orderedIdx.length} visible rows; ` +
               `pr_li_lienHolder=[${holderLines.map((s) => s || "·").join("|")}] ` +
               `pr_p_currentBalanc=[${cbLines.map((s) => s || "·").join("|")}] ` +
               `pr_li_lienPrioriNow=[${prioNowLines.map((s) => s || "·").join("|")}] ` +
