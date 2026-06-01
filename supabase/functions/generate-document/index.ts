@@ -2495,9 +2495,12 @@ async function generateSingleDocument(
           }
           if (matched.length > 0) {
             matched.sort((a, b) => a.lienIdx - b.lienIdx);
-            const joined = matched.map(e => e.value).join("\n");
+            // Drop blanks so the joined value never starts with "\n"
+            // (avoids a stray <w:br/> at the cell start during merge).
+            const nonBlank = matched.filter(e => e.value !== null && e.value !== undefined && String(e.value).trim() !== "");
+            const joined = nonBlank.map(e => e.value).join("\n");
             fieldValues.set(`pr_p_currentBalanc_${idx}`, { rawValue: joined, dataType: "currency" });
-            debugLog(`[generate-document] Published pr_p_currentBalanc_${idx} (${matched.length} liens)`);
+            debugLog(`[generate-document] Published pr_p_currentBalanc_${idx} (${nonBlank.length}/${matched.length} liens)`);
           }
         }
 
@@ -4171,7 +4174,12 @@ async function generateSingleDocument(
         // "2nd\n2nd" for pr_li_lienPrioriNow). Drop the index-0 entry whenever
         // any indexed lien (>=1) is present, regardless of value match.
         const hasIndexed = entries.some(e => e.index >= 1);
-        const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
+        const dedupedEntries = (hasIndexed ? entries.filter(e => e.index >= 1) : entries)
+          // Drop blank/whitespace-only entries so they don't produce a leading
+          // or in-list "\n" that the docx renderer turns into a stray <w:br/>
+          // inside the lien table cell (breaks RE885 §XVI lien-row alignment
+          // because the column placeholders share a single paragraph).
+          .filter(e => e.value !== null && e.value !== undefined && String(e.value).trim() !== "");
         const isCurrencyField = (field === "current_balance" || field === "original_balance" ||
                           field === "regular_payment" || field === "balance_after" ||
                           field === "anticipated_amount" || field === "existing_paydown_amount" ||
