@@ -206,37 +206,103 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   }, [upstreamLoanTermUnit]);
 
   // ─── Seed Section III rate type (Fixed / Adjustable) from Loan → Rate Structure
-  // or Loan → Loan Type → Variable/ARM. Only when neither checkbox has been chosen.
+  // or Loan → Loan Type → Variable/ARM. CA DRE requires exactly one selection — when
+  // rate structure is unknown, default to Fixed. When the loan flips structure, force
+  // the matching selection so stale choices cannot persist.
   React.useEffect(() => {
-    if (!upstreamRateStructure && !upstreamVariableArm) return;
-    const alreadyChosen = getBoolValue(FK.rate_type_fixed) || getBoolValue(FK.rate_type_adjustable);
-    if (alreadyChosen) return;
     const adjustable =
       upstreamVariableArm ||
       upstreamRateStructure === 'arm_adjustable_rate' ||
       upstreamRateStructure === 'gtm_graduated_terms';
-    if (adjustable) {
-      setBoolValue(FK.rate_type_adjustable, true);
-      setBoolValue(FK.rate_type_fixed, false);
-    } else if (upstreamRateStructure === 'frm_fixed_rate') {
+    const fixed =
+      !adjustable &&
+      (upstreamRateStructure === 'frm_fixed_rate' ||
+        !upstreamRateStructure); // default to Fixed when unknown
+    const wantFixed = fixed;
+    const wantAdjustable = adjustable;
+    if (wantFixed && (!getBoolValue(FK.rate_type_fixed) || getBoolValue(FK.rate_type_adjustable))) {
       setBoolValue(FK.rate_type_fixed, true);
       setBoolValue(FK.rate_type_adjustable, false);
+    } else if (wantAdjustable && (!getBoolValue(FK.rate_type_adjustable) || getBoolValue(FK.rate_type_fixed))) {
+      setBoolValue(FK.rate_type_adjustable, true);
+      setBoolValue(FK.rate_type_fixed, false);
     }
   }, [upstreamRateStructure, upstreamVariableArm]);
 
-  // ─── Seed Section V Fully Indexed Rate from Loan → Current Rate (adjustable only)
+  // ─── Seed Sections IV–IX from the loan's Adjustable / Graduated Loan Details when the
+  // loan is Adjustable. Continuous-sync pattern: write whenever the loan value differs
+  // from the stored RE 885 value, so values cannot bleed across loans or go stale.
+  // Note: V (Fully Indexed Rate) falls back to Loan → Current Rate when adj field is unset.
   React.useEffect(() => {
-    if (upstreamCurrentRate > 0 && isEmptyOrZero(getValue(FK.v_fully_indexed_rate))) {
-      setValue(FK.v_fully_indexed_rate, upstreamCurrentRate.toFixed(4));
+    if (isFixed) return;
+    // IV — Initial Adjustable Rate in effect for (months)
+    if (upstreamAdjInitialRateMonths && getValue(FK.iv_adj_rate_months) !== String(upstreamAdjInitialRateMonths)) {
+      setValue(FK.iv_adj_rate_months, String(upstreamAdjInitialRateMonths));
     }
-  }, [upstreamCurrentRate]);
+    // V — Fully Indexed Rate: prefer loan_terms.adj_fully_indexed_rate; else fall back to current rate.
+    const fullyIndexed = upstreamAdjFullyIndexedRate > 0 ? upstreamAdjFullyIndexedRate : upstreamCurrentRate;
+    if (fullyIndexed > 0) {
+      const next = fullyIndexed.toFixed(4);
+      if (parseNumber(getValue(FK.v_fully_indexed_rate)).toFixed(4) !== next) {
+        setValue(FK.v_fully_indexed_rate, next);
+      }
+    }
+    // VI — Maximum Interest Rate
+    if (upstreamAdjMaxInterestRate > 0) {
+      const next = upstreamAdjMaxInterestRate.toFixed(4);
+      if (parseNumber(getValue(FK.vi_max_interest_rate)).toFixed(4) !== next) {
+        setValue(FK.vi_max_interest_rate, next);
+      }
+    }
+    // VIII — Rate increase % and frequency in months
+    if (upstreamAdjRateIncreasePercent > 0) {
+      const next = upstreamAdjRateIncreasePercent.toFixed(4);
+      if (parseNumber(getValue(FK.viii_rate_increase_pct)).toFixed(4) !== next) {
+        setValue(FK.viii_rate_increase_pct, next);
+      }
+    }
+    if (upstreamAdjRateIncreaseMonths && getValue(FK.viii_rate_increase_months) !== String(upstreamAdjRateIncreaseMonths)) {
+      setValue(FK.viii_rate_increase_months, String(upstreamAdjRateIncreaseMonths));
+    }
+    // IX — Payment Options end after months / % of original balance
+    if (upstreamAdjPaymentOptionsEndMonths && getValue(FK.ix_payment_end_months) !== String(upstreamAdjPaymentOptionsEndMonths)) {
+      setValue(FK.ix_payment_end_months, String(upstreamAdjPaymentOptionsEndMonths));
+    }
+    if (upstreamAdjPaymentOptionsEndPercent > 0) {
+      const next = upstreamAdjPaymentOptionsEndPercent.toFixed(4);
+      if (parseNumber(getValue(FK.ix_payment_end_pct)).toFixed(4) !== next) {
+        setValue(FK.ix_payment_end_pct, next);
+      }
+    }
+  }, [
+    isFixed,
+    upstreamAdjInitialRateMonths,
+    upstreamAdjFullyIndexedRate,
+    upstreamCurrentRate,
+    upstreamAdjMaxInterestRate,
+    upstreamAdjRateIncreasePercent,
+    upstreamAdjRateIncreaseMonths,
+    upstreamAdjPaymentOptionsEndMonths,
+    upstreamAdjPaymentOptionsEndPercent,
+  ]);
 
-  // ─── Seed Section VIII rate-increase % from Loan → Penalties → Default Interest flat rate
+  // ─── When the loan is FIXED, Sections IV–IX must be empty (no "33% / 0 Months"
+  // garbage from stale adjustable data). Clear them whenever isFixed becomes true.
   React.useEffect(() => {
-    if (upstreamDefaultInterestRate > 0 && isEmptyOrZero(getValue(FK.viii_rate_increase_pct))) {
-      setValue(FK.viii_rate_increase_pct, upstreamDefaultInterestRate.toFixed(4));
+    if (!isFixed) return;
+    const clears: Array<[string, string]> = [
+      [FK.iv_adj_rate_months, ''],
+      [FK.v_fully_indexed_rate, ''],
+      [FK.vi_max_interest_rate, ''],
+      [FK.viii_rate_increase_pct, ''],
+      [FK.viii_rate_increase_months, ''],
+      [FK.ix_payment_end_months, ''],
+      [FK.ix_payment_end_pct, ''],
+    ];
+    for (const [k, v] of clears) {
+      if (getValue(k) !== v) setValue(k, v);
     }
-  }, [upstreamDefaultInterestRate]);
+  }, [isFixed]);
 
   // ─── Seed Section X Balloon from Loan → Loan Type → Balloon Payment
   React.useEffect(() => {
@@ -310,29 +376,25 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     if (getValue(FK.subtotal_deductions) !== f) setValue(FK.subtotal_deductions, f);
   }, [subtotal]);
 
-  // ─── Section VII: Minimum Monthly Payment
-  // Priority per spec:
-  //   1) Use Regular P&I from Terms & Balances when present (> 0)
-  //   2) Otherwise compute via standard amortization formula
-  //      P × r(1+r)^n / ((1+r)^n − 1), r = annualRate/12, n = termMonths
+  // ─── Section VII: Proposed Initial (Minimum) Loan Payment.
+  // SINGLE source of truth = computeBorrowerScheduledPayment, the same function the
+  // Loan tab's Regular Payment uses. Loan-scoped, recomputes on every input change.
   const minMonthlyPayment = useMemo(() => {
-    if (upstreamRegularPI > 0) {
-      return Math.round(upstreamRegularPI * 100) / 100;
-    }
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount)) || upstreamLoanAmount;
     const annualRate = parseNumber(getValue(FK.interest_rate)) || upstreamInterestRate;
     const termRaw = parseNumber(getValue(FK.loan_term_value)) || parseNumber(upstreamLoanTermValue);
-    const unit = (getValue(FK.loan_term_unit) || upstreamLoanTermUnit || 'years').toLowerCase();
+    const unit = (getValue(FK.loan_term_unit) || upstreamLoanTermUnit || 'months').toLowerCase();
     const termMonths = unit.startsWith('year') ? termRaw * 12 : termRaw;
-    if (!loanAmt || !annualRate || !termMonths) return 0;
-    const r = annualRate / 100 / 12;
-    if (r <= 0) return 0;
-    const pow = Math.pow(1 + r, termMonths);
-    const pmt = (loanAmt * (r * pow)) / (pow - 1);
-    if (!Number.isFinite(pmt) || pmt <= 0) return 0;
-    return Math.round(pmt * 100) / 100;
+    const pmt = computeBorrowerScheduledPayment({
+      principal: loanAmt,
+      annualRatePct: annualRate,
+      termMonths,
+      amortization: (upstreamAmortization || '') as any,
+      balloonAmount: upstreamBalloonEnabled ? upstreamBalloonAmount : 0,
+      frequency: (upstreamPaymentFrequency || 'monthly') as any,
+    });
+    return pmt ?? 0;
   }, [
-    upstreamRegularPI,
     getValue(FK.proposed_loan_amount),
     getValue(FK.interest_rate),
     getValue(FK.loan_term_value),
@@ -341,16 +403,25 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     upstreamInterestRate,
     upstreamLoanTermValue,
     upstreamLoanTermUnit,
+    upstreamAmortization,
+    upstreamPaymentFrequency,
+    upstreamBalloonEnabled,
+    upstreamBalloonAmount,
   ]);
 
+  // Continuous sync: overwrite the stored Section VII payment whenever the live
+  // derived value differs by more than a half-cent. This prevents stale values
+  // (e.g. $2,812.50 from a previous $450k tranche) from sticking across loans.
   React.useEffect(() => {
     if (minMonthlyPayment <= 0) return;
     const formatted = formatCurrencyDisplay(minMonthlyPayment.toFixed(2));
-    // Only auto-write when the field is empty or zero, so a user override sticks.
-    if (isEmptyOrZero(getValue(FK.vii_payment_amount))) {
+    const current = parseNumber(getValue(FK.vii_payment_amount));
+    if (Math.abs(current - minMonthlyPayment) > 0.005 || getValue(FK.vii_payment_amount) === '') {
       setValue(FK.vii_payment_amount, formatted);
     }
   }, [minMonthlyPayment]);
+
+
 
 
   // Persist cash-at-closing on EVERY change (no abs > 0 gate)
