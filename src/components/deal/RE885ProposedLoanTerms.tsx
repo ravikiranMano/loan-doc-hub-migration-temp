@@ -869,7 +869,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
       </div>
 
       {/* ─── IV–IX: Adjustable Rate Details ─── */}
-      <div className={`space-y-0 ${isFixed ? 'opacity-40 pointer-events-none' : ''}`}>
+      <div className="space-y-0">
         {/* IV */}
         <div className="bg-muted/30 px-3 py-1.5 border-b border-foreground/20">
           <span className="text-xs font-bold text-foreground">IV. Initial Adjustable Rate in effect for</span>
