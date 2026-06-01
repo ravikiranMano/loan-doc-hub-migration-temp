@@ -4,6 +4,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { sanitizeInterestInput, normalizeInterestOnBlur } from '@/lib/interestValidation';
 import { formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
+import { computeBorrowerScheduledPayment } from '@/lib/borrowerPaymentFormula';
 
 const FK = {
   proposed_loan_amount: 'origination_fees.re885_proposed_loan_amount',
