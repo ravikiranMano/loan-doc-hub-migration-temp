@@ -692,8 +692,29 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
         {/* Subtotal */}
         <div className="flex items-center justify-between gap-4 py-2 border-t border-foreground/30 border-b border-border/30">
           <span className="text-xs font-bold text-foreground flex-1">Subtotal of All Deductions</span>
-          <div className={FIELD_W}>
-            <CurrencyInput value={subtotal > 0 ? formatCurrencyDisplay(subtotal.toFixed(2)) : ''} onChange={() => {}} readOnly disabled />
+          <div className={`${FIELD_W} relative`}>
+            <CurrencyInput
+              value={
+                subtotalHasOverride
+                  ? formatCurrencyDisplay(parseNumber(subtotalOverrideRaw).toFixed(2))
+                  : (subtotal > 0 ? formatCurrencyDisplay(subtotal.toFixed(2)) : '')
+              }
+              onChange={(v) => setValue(FK.subtotal_deductions_override, v)}
+              disabled={disabled}
+              className={subtotalHasOverride ? 'pr-6' : ''}
+            />
+            {subtotalHasOverride && (
+              <button
+                type="button"
+                onClick={() => setValue(FK.subtotal_deductions_override, '')}
+                disabled={disabled}
+                aria-label="Clear manual override"
+                title="Clear manual override"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
 
