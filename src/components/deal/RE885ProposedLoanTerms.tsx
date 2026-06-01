@@ -19,6 +19,7 @@ const FK = {
   other_obligations_lineno: 'origination_fees.re885_other_obligations_lineno',
   additional_obligation_1_lineno: 'origination_fees.re885_additional_obligation_1_lineno',
   additional_obligation_2_lineno: 'origination_fees.re885_additional_obligation_2_lineno',
+  liens_payoff_lineno: 'origination_fees.re885_liens_payoff_lineno',
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
