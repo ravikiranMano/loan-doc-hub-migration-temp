@@ -2946,8 +2946,43 @@ export function replaceMergeTags(
   if (tagReplacementMap.size > 0) {
     const tagScanRe = /\{\{[^{}\n]{1,400}?\}\}|«[^«»\n]{1,400}?»/g;
     result = result.replace(tagScanRe, (match, offset: number) => {
-      const replacement = tagReplacementMap.get(match);
+      let replacement = tagReplacementMap.get(match);
       if (replacement === undefined) return match;
+      if (/885/i.test(__tplName) && !replacement.includes('\n')) {
+        const paragraphStart = result.lastIndexOf("<w:p", offset);
+        const paragraphEnd = result.indexOf("</w:p>", offset);
+        const paragraphXml = paragraphStart !== -1 && paragraphEnd !== -1
+          ? result.slice(paragraphStart, paragraphEnd + 6)
+          : "";
+        const isBrokerSignatureValueLine =
+          paragraphXml.includes("bk_p_brokerLicens") ||
+          paragraphXml.includes("bk_p_firstName") ||
+          paragraphXml.includes("bk_p_lastName");
+        if (isBrokerSignatureValueLine && /^\{\{\s*bk_p_(?:company|brokerLicens|lastName)\s*\}\}$/.test(match)) {
+          const displayPad = Math.max(0, match.length - replacement.length);
+          if (displayPad > 0) replacement = replacement + " ".repeat(displayPad);
+        }
+      }
+      if (!replacement.includes('\n')) return replacement;
+      if (/885/i.test(__tplName)) {
+        const previousText = result.slice(0, offset).match(/<w:t[^>]*>([\s\S]*?)$/)?.[1] || "";
+        const nextTextStart = result.slice(offset).match(/^[\s\S]*?\}\}([\s\S]*?)<\/w:t>/)?.[1] || "";
+        const leadingNewlineCount = (replacement.match(/^\n+/)?.[0].length || 0);
+        const trailingNewlineCount = (replacement.match(/\n+$/)?.[0].length || 0);
+        let trimmedLeadingNewlines = 0;
+        let trimmedTrailingNewlines = 0;
+        if (previousText.trim() === "" && leadingNewlineCount > 0) {
+          trimmedLeadingNewlines = leadingNewlineCount;
+          replacement = replacement.replace(/^\n+/, "");
+        }
+        if (nextTextStart.trim() === "" && trailingNewlineCount > 0) {
+          trimmedTrailingNewlines = trailingNewlineCount;
+          replacement = replacement.replace(/\n+$/, "");
+        }
+        if (trimmedLeadingNewlines || trimmedTrailingNewlines) {
+          debugLog(`[tag-parser] Trimmed RE885 boundary newlines around ${match}: leading=${trimmedLeadingNewlines}, trailing=${trimmedTrailingNewlines}`);
+        }
+      }
       if (!replacement.includes('\n')) return replacement;
       // Context-aware newline handling: only emit Word's in-run break form
       // when we're substituting inside an open <w:t> element. Otherwise the
