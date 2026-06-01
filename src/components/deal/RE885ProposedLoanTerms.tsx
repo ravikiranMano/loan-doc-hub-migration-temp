@@ -20,6 +20,12 @@ const FK = {
   additional_obligation_1_lineno: 'origination_fees.re885_additional_obligation_1_lineno',
   additional_obligation_2_lineno: 'origination_fees.re885_additional_obligation_2_lineno',
   liens_payoff_lineno: 'origination_fees.re885_liens_payoff_lineno',
+  // Manual overrides for the three computed-display rows (Initial Fees,
+  // Existing Liens, Subtotal). When non-empty, the typed value wins; the
+  // small "×" button clears it and reverts to the auto value.
+  initial_fees_page1_override: 'origination_fees.re885_initial_fees_page1_override',
+  liens_payoff_override: 'origination_fees.re885_liens_payoff_override',
+  subtotal_deductions_override: 'origination_fees.re885_subtotal_deductions_override',
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
