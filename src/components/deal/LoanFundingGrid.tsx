@@ -391,41 +391,24 @@ export const LoanFundingGrid: React.FC<LoanFundingGridProps> = ({
   };
 
   // Per-lender Payment (GROSS): each lender's share of the borrower Regular P&I,
-  // scaled by that lender's own rate (Lender Rate ÷ Note Rate). This is
-  // equivalent to:  lenderFundedAmount × lenderRate × accrualFraction
-  // because Regular P&I = loanPrincipal × noteRate × accrualFraction. When a
-  // lender's Lender Rate equals the Note Rate the result is unchanged.
-  // The Note Rate − Lender Rate gap is the servicing/broker spread and is
-  // surfaced in the Servicing / Broker income lines downstream (not lost).
-  // Banker's rounding to 2dp; sub-cent drift absorbed by the row flagged roundingAdjustment.
-  const noteRateForPaymentDec = React.useMemo(
-    () => new Decimal(parseFloat((noteRate || '').replace(/[%,]/g, '')) || 0),
-    [noteRate]
-  );
+  // scaled by that lender's own rate (Lender Rate ÷ Note Rate). Computed via
+  // the single canonical helper in `src/lib/lenderPaymentFormula.ts` — no
+  // inline formula here, and no silent fallback when noteRate is missing
+  // (the helper returns null in that case and we leave display values at 0
+  // rather than rendering an implicit Note-Rate amount).
   const computedPaymentsArr = React.useMemo(() => {
     if (!fundingRecords.length) return [] as number[];
-    const useRateScaling = noteRateForPaymentDec.gt(0);
-    const exact = fundingRecords.map((r, i) => {
-      const pct = computedPctOwnedArr[i] ?? 0;
-      const base = new Decimal(pct).div(100).mul(regularPIDec);
-      if (!useRateScaling) return base;
-      const lr = Number(r.lenderRate);
-      if (!Number.isFinite(lr) || lr <= 0) return base; // no lender rate → fall back to note rate
-      const lenderRateDec = new Decimal(lr);
-      if (lenderRateDec.equals(noteRateForPaymentDec)) return base;
-      return base.mul(lenderRateDec).div(noteRateForPaymentDec);
+    const rounded = computeLenderPaymentsRoundedSafe(fundingRecords, {
+      loanPrincipal: fundingRecords.reduce(
+        (sum, r) => sum + (Number(r.originalAmount) || 0),
+        0,
+      ),
+      regularPI: regularPIDec.toNumber(),
+      noteRate: noteRate,
     });
-    const rounded = exact.map(d => d.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN));
-    const sumExact = exact.reduce((a, b) => a.plus(b), new Decimal(0))
-      .toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
-    const sumRounded = rounded.reduce((a, b) => a.plus(b), new Decimal(0));
-    const diff = sumExact.minus(sumRounded);
-    const adjIdx = fundingRecords.findIndex(r => r.roundingAdjustment);
-    if (adjIdx >= 0 && !diff.isZero()) {
-      rounded[adjIdx] = rounded[adjIdx].plus(diff);
-    }
-    return rounded.map(d => d.toNumber());
-  }, [fundingRecords, computedPctOwnedArr, regularPIDec, noteRateForPaymentDec]);
+    if (rounded === null) return fundingRecords.map(() => 0);
+    return rounded;
+  }, [fundingRecords, regularPIDec, noteRate]);
 
   const getDisplayedPayment = (record: FundingRecord) => {
     const i = recordIndexMap.get(record);
