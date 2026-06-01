@@ -29,6 +29,10 @@ interface FundingDetailFormProps {
   onChange: (data: FundingFormData) => void;
   totalPayment?: string;
   loanAmount?: string;
+  /** Loan-level Note Rate (percent string, e.g. "9.50") — required to compute
+   *  the per-row Lender Payment correctly. When missing the form leaves the
+   *  Payment field unchanged rather than silently writing a Note-Rate value. */
+  noteRate?: string;
   /** Sum of funding amounts across sibling records (excluding this row). When
    *  provided, Pro Rata is computed as fundingAmount / (siblingTotal + fundingAmount). */
   siblingFundingTotal?: number;
@@ -39,6 +43,7 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
   onChange,
   totalPayment = '',
   loanAmount = '',
+  noteRate = '',
   siblingFundingTotal,
 }) => {
   const [fundingDateOpen, setFundingDateOpen] = useState(false);
