@@ -957,9 +957,17 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         upstreamVariableArm={values['loan_terms.variable_arm'] === 'true'}
         upstreamCurrentRate={parseNumber(values['loan_terms.current_rate'] || '')}
         upstreamRegularPI={parseNumber(values['loan_terms.regular_payment'] || '')}
+        upstreamAmortization={values['loan_terms.amortization'] || ''}
+        upstreamPaymentFrequency={values['loan_terms.payment_frequency'] || ''}
         upstreamBalloonEnabled={values['loan_terms.balloon_payment'] === 'true'}
         upstreamBalloonAmount={parseNumber(values['loan_terms.estimated_balloon_payment'] || values['loan_terms.balloon_payment_amount'] || '')}
-        upstreamDefaultInterestRate={parseNumber(values['loan_terms.penalties.default_interest.flat_rate'] || '')}
+        upstreamAdjInitialRateMonths={values['loan_terms.adj_initial_rate_months'] || ''}
+        upstreamAdjFullyIndexedRate={parseNumber(values['loan_terms.adj_fully_indexed_rate'] || '')}
+        upstreamAdjMaxInterestRate={parseNumber(values['loan_terms.adj_max_interest_rate'] || '')}
+        upstreamAdjRateIncreasePercent={parseNumber(values['loan_terms.adj_rate_increase_percent'] || '')}
+        upstreamAdjRateIncreaseMonths={values['loan_terms.adj_rate_increase_months'] || ''}
+        upstreamAdjPaymentOptionsEndMonths={values['loan_terms.adj_payment_options_end_months'] || ''}
+        upstreamAdjPaymentOptionsEndPercent={parseNumber(values['loan_terms.adj_payment_options_end_percent'] || '')}
         section800Total={section800Total}
         liensPayoffTotal={liensPayoffTotal}
         upstreamPrepayEnabled={values['loan_terms.penalties.prepayment.enabled'] === 'true'}

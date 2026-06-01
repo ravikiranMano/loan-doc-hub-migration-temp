@@ -14,6 +14,7 @@ import type { CalculationResult } from "@/lib/calculationEngine";
 import { DirtyFieldWrapper } from "./DirtyFieldWrapper";
 import { TypableDateField } from "@/components/ui/typable-date-field";
 import { sanitizeInterestInput, normalizeInterestOnBlur } from "@/lib/interestValidation";
+import { computeBorrowerScheduledPayment } from "@/lib/borrowerPaymentFormula";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useDealNavigationOptional } from "@/contexts/DealNavigationContext";
 import type { LoanTermsSubSection } from "./LoanTermsSubNavigation";
@@ -139,33 +140,39 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     return loanAmount + oneMonthInterest;
   }, [values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
 
-  // Regular Payment (borrower scheduled installment) — INTEREST-ONLY on the
-  // FULL loan principal at the NOTE RATE, scaled by payment frequency.
-  // Always derived live and loan-scoped so values cannot bleed across loans
-  // or go stale when loan amount / note rate / frequency change.
-  // Formula: loanAmount × (noteRate% / 100) / periodsPerYear
+  // Regular Payment (borrower scheduled installment) — derived live from the
+  // loan's principal, note rate, term, payment frequency, and amortization
+  // method via the single shared formula (used by RE 885 Section VII too).
+  // Always loan-scoped so values cannot bleed across loans or go stale when
+  // any input changes.
   const computedRegularPayment = useMemo(() => {
     const loanAmount = parseNum(FIELD_KEYS.loanAmount);
     const noteRate = parseNum(FIELD_KEYS.noteRate);
-    if (!isFinite(loanAmount) || !isFinite(noteRate) || loanAmount <= 0 || noteRate <= 0) {
-      return '';
-    }
-    const freq = (getValue(FIELD_KEYS.paymentFrequency) || 'monthly').toLowerCase();
-    const periodsPerYear: Record<string, number> = {
-      monthly: 12,
-      bi_weekly: 26,
-      weekly: 52,
-      quarterly: 4,
-      annually: 1,
-      semi_annually: 2,
-    };
-    const periods = periodsPerYear[freq] ?? 12;
-    const payment = (loanAmount * (noteRate / 100)) / periods;
-    if (!isFinite(payment) || payment <= 0) return '';
-    return payment.toFixed(2);
+    const numPayments = parseFloat(
+      (getValue(FIELD_KEYS.numberOfPayments) ?? '').toString().replace(/[,\s]/g, ''),
+    );
+    const termMonths = isFinite(numPayments) && numPayments > 0 ? numPayments : undefined;
+    const amortization = ((values['loan_terms.amortization'] ?? '') as string) as any;
+    const balloon = parseFloat(
+      (getValue(FIELD_KEYS.estimatedBalloonPayment) ?? '').toString().replace(/[$,\s]/g, ''),
+    );
+    const balloonAmount = isFinite(balloon) && balloon > 0 ? balloon : 0;
+    const frequency = (getValue(FIELD_KEYS.paymentFrequency) ?? 'monthly').toString().toLowerCase() as any;
+    const pmt = computeBorrowerScheduledPayment({
+      principal: loanAmount,
+      annualRatePct: noteRate,
+      termMonths,
+      amortization,
+      balloonAmount,
+      frequency,
+    });
+    return pmt === null ? '' : pmt.toFixed(2);
   }, [
     values[FIELD_KEYS.loanAmount],
     values[FIELD_KEYS.noteRate],
+    values[FIELD_KEYS.numberOfPayments],
+    values['loan_terms.amortization'],
+    values[FIELD_KEYS.estimatedBalloonPayment],
     values[FIELD_KEYS.paymentFrequency],
   ]);
 
