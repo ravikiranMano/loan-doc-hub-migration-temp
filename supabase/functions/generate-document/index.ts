@@ -5911,6 +5911,21 @@ async function generateSingleDocument(
       fieldValues.set('of_fe_subtotalOthers', { rawValue: totalOthers.toFixed(2), dataType: 'currency' });
       fieldValues.set('of_fe_subtotalJ', { rawValue: totalBroker.toFixed(2), dataType: 'currency' });
       fieldValues.set('of_fe_totalJ', { rawValue: grandTotal.toFixed(2), dataType: 'currency' });
+      if (isTemplate885) {
+        const grandTotalData = { rawValue: grandTotal.toFixed(2), dataType: 'currency' as const };
+        fieldValues.set('of_re_initialFeesPage1', grandTotalData);
+        fieldValues.set('origination_fees.re885_initial_fees_page1', grandTotalData);
+
+        const loanDocFee = fieldValues.get('of_fe_loanDocumeFeeD')
+          || fieldValues.get('origination_fees.loan_documentation_fee_d');
+        const otherObligations = fieldValues.get('of_re_creditLifeInsurance')
+          || fieldValues.get('origination_fees.re885_other_obligations');
+        if ((!otherObligations || otherObligations.rawValue == null || String(otherObligations.rawValue).trim() === '') && loanDocFee?.rawValue != null && String(loanDocFee.rawValue).trim() !== '') {
+          const loanDocFeeData = { rawValue: loanDocFee.rawValue, dataType: loanDocFee.dataType || 'currency' };
+          fieldValues.set('of_re_creditLifeInsurance', loanDocFeeData);
+          fieldValues.set('origination_fees.re885_other_obligations', loanDocFeeData);
+        }
+      }
       debugLog(`[generate-document] Auto-computed HUD totals: Others=${totalOthers.toFixed(2)} (${dynamicOthersKeys.size} keys), Broker=${totalBroker.toFixed(2)} (${dynamicBrokerKeys.size} keys), Grand=${grandTotal.toFixed(2)}`);
     }
 
