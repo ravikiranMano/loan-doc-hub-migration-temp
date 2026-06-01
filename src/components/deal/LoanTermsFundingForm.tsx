@@ -340,6 +340,46 @@ export const LoanTermsFundingForm: React.FC<LoanTermsFundingFormProps> = ({
     void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
   }, [fundingRecords, loanAmount, dealId, onValueChange]);
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // Lender Payment recompute-on-edit (kills the frozen-value bug).
+  //
+  // Whenever any input to the canonical Lender Payment formula changes —
+  // loan-level note rate, regular P&I, principal, or any per-row originalAmount,
+  // lenderRate, or roundingAdjustment flag — recompute persisted regularPayment
+  // for every row via the shared helper and persist if the rounded result drifts
+  // by more than ½ cent on any row. Debounced 400 ms so typing doesn't storm
+  // the network. Stored value is a snapshot for docs/exports; the grid still
+  // derives Payment live for display.
+  // ────────────────────────────────────────────────────────────────────────────
+  const lastPaymentSyncRef = useRef<string>('');
+  useEffect(() => {
+    if (!fundingRecords.length) return;
+    const handle = setTimeout(() => {
+      const rounded = computeLenderPaymentsRoundedSafe(fundingRecords, {
+        loanPrincipal: loanPrincipalBalance,
+        regularPI: totalPayment,
+        noteRate: noteRate,
+      });
+      if (rounded === null) return; // missing inputs — leave stored values alone
+      let drift = false;
+      for (let i = 0; i < fundingRecords.length; i++) {
+        const stored = Number(fundingRecords[i].regularPayment) || 0;
+        if (Math.abs(stored - rounded[i]) > 0.005) {
+          drift = true;
+          break;
+        }
+      }
+      if (!drift) return;
+      const updated = fundingRecords.map((r, i) => ({ ...r, regularPayment: rounded[i] }));
+      const json = JSON.stringify(updated);
+      if (lastPaymentSyncRef.current === json) return;
+      lastPaymentSyncRef.current = json;
+      onValueChange(FIELD_KEYS.fundingRecords, json);
+      void directPersistFundingField(dealId, FIELD_KEYS.fundingRecords, json, dictCacheRef.current);
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [fundingRecords, loanPrincipalBalance, totalPayment, noteRate, dealId, onValueChange]);
+
   // Auto-compute Pro Rata as the sum of pctOwned across all funding records.
   // No longer normalized to 100% — when the loan is partially funded the total
   // reflects the actual funded share (e.g. 81.20%).
