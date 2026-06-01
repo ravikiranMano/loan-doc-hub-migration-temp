@@ -2949,22 +2949,24 @@ export function replaceMergeTags(
       const replacement = tagReplacementMap.get(match);
       if (replacement === undefined) return match;
       if (!replacement.includes('\n')) return replacement;
-      const previousText = result.slice(0, offset).match(/<w:t[^>]*>([\s\S]*?)$/)?.[1] || "";
-      const nextTextStart = result.slice(offset).match(/^[\s\S]*?\}\}([\s\S]*?)<\/w:t>/)?.[1] || "";
-      const leadingNewlineCount = (replacement.match(/^\n+/)?.[0].length || 0);
-      const trailingNewlineCount = (replacement.match(/\n+$/)?.[0].length || 0);
-      let trimmedLeadingNewlines = 0;
-      let trimmedTrailingNewlines = 0;
-      if (previousText.trim() === "" && leadingNewlineCount > 0) {
-        trimmedLeadingNewlines = leadingNewlineCount;
-        replacement = replacement.replace(/^\n+/, "");
-      }
-      if (nextTextStart.trim() === "" && trailingNewlineCount > 0) {
-        trimmedTrailingNewlines = trailingNewlineCount;
-        replacement = replacement.replace(/\n+$/, "");
-      }
-      if (trimmedLeadingNewlines || trimmedTrailingNewlines) {
-        debugLog(`[tag-parser] Trimmed boundary newlines around ${match}: leading=${trimmedLeadingNewlines}, trailing=${trimmedTrailingNewlines}`);
+      if (/885/i.test(__tplName)) {
+        const previousText = result.slice(0, offset).match(/<w:t[^>]*>([\s\S]*?)$/)?.[1] || "";
+        const nextTextStart = result.slice(offset).match(/^[\s\S]*?\}\}([\s\S]*?)<\/w:t>/)?.[1] || "";
+        const leadingNewlineCount = (replacement.match(/^\n+/)?.[0].length || 0);
+        const trailingNewlineCount = (replacement.match(/\n+$/)?.[0].length || 0);
+        let trimmedLeadingNewlines = 0;
+        let trimmedTrailingNewlines = 0;
+        if (previousText.trim() === "" && leadingNewlineCount > 0) {
+          trimmedLeadingNewlines = leadingNewlineCount;
+          replacement = replacement.replace(/^\n+/, "");
+        }
+        if (nextTextStart.trim() === "" && trailingNewlineCount > 0) {
+          trimmedTrailingNewlines = trailingNewlineCount;
+          replacement = replacement.replace(/\n+$/, "");
+        }
+        if (trimmedLeadingNewlines || trimmedTrailingNewlines) {
+          debugLog(`[tag-parser] Trimmed RE885 boundary newlines around ${match}: leading=${trimmedLeadingNewlines}, trailing=${trimmedTrailingNewlines}`);
+        }
       }
       if (!replacement.includes('\n')) return replacement;
       // Context-aware newline handling: only emit Word's in-run break form
