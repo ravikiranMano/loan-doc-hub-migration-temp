@@ -2949,6 +2949,20 @@ export function replaceMergeTags(
       const replacement = tagReplacementMap.get(match);
       if (replacement === undefined) return match;
       if (!replacement.includes('\n')) return replacement;
+      const previousText = result.slice(0, offset).match(/<w:t[^>]*>([\s\S]*?)$/)?.[1] || "";
+      const nextTextStart = result.slice(offset).match(/^[\s\S]*?\}\}([\s\S]*?)<\/w:t>/)?.[1] || "";
+      const leadingNewlineCount = (replacement.match(/^\n+/)?.[0].length || 0);
+      const trailingNewlineCount = (replacement.match(/\n+$/)?.[0].length || 0);
+      if (previousText.trim() === "") {
+        replacement = replacement.replace(/^\n+/, "");
+      }
+      if (nextTextStart.trim() === "") {
+        replacement = replacement.replace(/\n+$/, "");
+      }
+      if (leadingNewlineCount || trailingNewlineCount) {
+        debugLog(`[tag-parser] Trimmed boundary newlines around ${match}: leading=${leadingNewlineCount}, trailing=${trailingNewlineCount}`);
+      }
+      if (!replacement.includes('\n')) return replacement;
       // Context-aware newline handling: only emit Word's in-run break form
       // when we're substituting inside an open <w:t> element. Otherwise the
       // </w:t><w:br/><w:t> fragment would create orphan tags and corrupt
