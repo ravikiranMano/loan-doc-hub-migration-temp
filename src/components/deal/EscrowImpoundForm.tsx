@@ -29,10 +29,13 @@ const PAYMENT_FREQUENCY_OPTIONS = [
 // The base key (e.g. es_p_amount) is preserved; es_p_amount2 / _3 are hidden.
 const DUPLICATE_BASE_KEYS = new Set([
   'es_p_amount',
+  'es_p_date',
   'es_p_frequenc',
-  'es_p_payee',
-  'es_p_type',
   'es_p_memo',
+  'es_p_paid',
+  'es_p_payee',
+  'es_p_ref',
+  'es_p_type',
 ]);
 
 const isHiddenDuplicate = (fieldKey: string): boolean => {
