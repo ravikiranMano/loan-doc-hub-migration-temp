@@ -89,18 +89,53 @@ export const FundingDetailForm: React.FC<FundingDetailFormProps> = ({
     }
   }, [data.fundingAmount, loanAmount, siblingFundingTotal]);
 
-  // Regular Payment (per-lender share) = (Percent Owned / 100) × Borrower Regular P&I.
-  // Rates are NOT used here — they drive interest accrual only.
+  // Regular Payment (per-lender share) — canonical formula:
+  //   Lender Payment = (fundingAmount / loanPrincipal) × Regular P&I × (lenderRate / noteRate)
+  // via src/lib/lenderPaymentFormula.ts. When noteRate / regPI / principal
+  // are missing the field is left as-is rather than written at Note Rate.
   React.useEffect(() => {
-    const pct = parseFloat((data.percentOwned || '').replace(/[%,]/g, '')) || 0;
-    const regPI = parseFloat((totalPayment || '').replace(/[$,]/g, '')) || 0;
-    const payment = pct > 0 && regPI > 0
-      ? roundDollarForStorage(pct / 100 * regPI)
-      : '';
-    if (payment !== data.regularPayment) {
-      onChange({ ...data, regularPayment: payment });
+    const fundingAmount = parseFloat((data.fundingAmount || '').replace(/[$,]/g, '')) || 0;
+    const noteRateNum = parseFloat((noteRate || '').toString().replace(/[%,]/g, '')) || 0;
+    const overrideVal = parseFloat((data.lenderRateOverrideValue || '').replace(/[%,]/g, '')) || 0;
+    const lenderRateField = parseFloat((data.lenderRate || '').toString().replace(/[%,]/g, '')) || 0;
+    const rateLenderValue = parseFloat((data.rateLenderValue || '').replace(/[%,]/g, '')) || 0;
+    let lr = 0;
+    if (data.lenderRateOverride && overrideVal > 0) lr = overrideVal;
+    else if (lenderRateField > 0) lr = lenderRateField;
+    else if (rateLenderValue > 0) lr = rateLenderValue;
+    else lr = noteRateNum;
+
+    // Use sibling-based principal when provided, else fall back to total loanAmount.
+    const principal = typeof siblingFundingTotal === 'number'
+      ? siblingFundingTotal + fundingAmount
+      : safeParseFloat(loanAmount);
+
+    try {
+      const exact = computeLenderRowPaymentExact(
+        { originalAmount: fundingAmount, lenderRate: lr },
+        { loanPrincipal: principal, regularPI: totalPayment, noteRate: noteRate },
+      );
+      const payment = exact.gt(0)
+        ? exact.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN).toFixed(2)
+        : '';
+      if (payment !== data.regularPayment) {
+        onChange({ ...data, regularPayment: payment });
+      }
+    } catch (err) {
+      if (!(err instanceof LenderPaymentInputsMissingError)) throw err;
+      // Missing inputs — leave the field unchanged.
     }
-  }, [data.percentOwned, totalPayment]);
+  }, [
+    data.fundingAmount,
+    data.lenderRate,
+    data.lenderRateOverride,
+    data.lenderRateOverrideValue,
+    data.rateLenderValue,
+    totalPayment,
+    noteRate,
+    loanAmount,
+    siblingFundingTotal,
+  ]);
 
   const percentOwnedNum = parseFloat(data.percentOwned) || 0;
   const percentOwnedError = percentOwnedNum > 100;
