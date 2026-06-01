@@ -558,8 +558,29 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             aria-label="Line number"
           />
           <span className={LBL}>Initial Commissions, Fees, Costs and Expenses Summarized on Page 1</span>
-          <div className={FIELD_W}>
-            <CurrencyInput value={getValue(FK.initial_fees_page1)} onChange={() => {}} readOnly disabled />
+          <div className={`${FIELD_W} relative`}>
+            <CurrencyInput
+              value={
+                initialFeesHasOverride
+                  ? formatCurrencyDisplay(parseNumber(initialFeesOverrideRaw).toFixed(2))
+                  : getValue(FK.initial_fees_page1)
+              }
+              onChange={(v) => setValue(FK.initial_fees_page1_override, v)}
+              disabled={disabled}
+              className={initialFeesHasOverride ? 'pr-6' : ''}
+            />
+            {initialFeesHasOverride && (
+              <button
+                type="button"
+                onClick={() => setValue(FK.initial_fees_page1_override, '')}
+                disabled={disabled}
+                aria-label="Clear manual override"
+                title="Clear manual override"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
 
