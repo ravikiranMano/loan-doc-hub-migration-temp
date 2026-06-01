@@ -152,7 +152,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
       (getValue(FIELD_KEYS.numberOfPayments) ?? '').toString().replace(/[,\s]/g, ''),
     );
     const termMonths = isFinite(numPayments) && numPayments > 0 ? numPayments : undefined;
-    const amortization = (getValue(FIELD_KEYS.amortization) ?? '').toString() as any;
+    const amortization = ((values['loan_terms.amortization'] ?? '') as string) as any;
     const balloon = parseFloat(
       (getValue(FIELD_KEYS.estimatedBalloonPayment) ?? '').toString().replace(/[$,\s]/g, ''),
     );
@@ -171,7 +171,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     values[FIELD_KEYS.loanAmount],
     values[FIELD_KEYS.noteRate],
     values[FIELD_KEYS.numberOfPayments],
-    values[FIELD_KEYS.amortization],
+    values['loan_terms.amortization'],
     values[FIELD_KEYS.estimatedBalloonPayment],
     values[FIELD_KEYS.paymentFrequency],
   ]);
