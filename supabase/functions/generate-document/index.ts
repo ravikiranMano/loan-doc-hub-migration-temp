@@ -2495,9 +2495,12 @@ async function generateSingleDocument(
           }
           if (matched.length > 0) {
             matched.sort((a, b) => a.lienIdx - b.lienIdx);
-            const joined = matched.map(e => e.value).join("\n");
+            // Drop blanks so the joined value never starts with "\n"
+            // (avoids a stray <w:br/> at the cell start during merge).
+            const nonBlank = matched.filter(e => e.value !== null && e.value !== undefined && String(e.value).trim() !== "");
+            const joined = nonBlank.map(e => e.value).join("\n");
             fieldValues.set(`pr_p_currentBalanc_${idx}`, { rawValue: joined, dataType: "currency" });
-            debugLog(`[generate-document] Published pr_p_currentBalanc_${idx} (${matched.length} liens)`);
+            debugLog(`[generate-document] Published pr_p_currentBalanc_${idx} (${nonBlank.length}/${matched.length} liens)`);
           }
         }
 
