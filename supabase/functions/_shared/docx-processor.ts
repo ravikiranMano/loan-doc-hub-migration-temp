@@ -284,9 +284,6 @@ export async function processDocx(
   }
   const tAfterParts = performance.now();
 
-  const compressed = fflate.zipSync(processedFiles);
-  const tAfterZip = performance.now();
-
   // Per-stage timing summary. Highlights the slowest XML part so future
   // CPU-budget regressions are immediately visible in production logs.
   try {
@@ -298,7 +295,7 @@ export async function processDocx(
       `[docx-processor] timings: unzip=${Math.round(tUnzip - t0)}ms ` +
       `partsTotal=${Math.round(tAfterParts - tUnzip)}ms ` +
       `(replaceMs=${totalReplaceMs} across ${partTimings.length} parts) ` +
-      `zip=${Math.round(tAfterZip - tAfterParts)}ms` +
+      `zip=pending ` +
       (slowest ? ` slowestPart=${slowest.part} (${slowest.bytes}B, replace=${slowest.replaceMs}ms)` : "")
     );
     if (is885) {
@@ -365,7 +362,12 @@ export async function processDocx(
       if (rootCloseRepair && rootOpenName) {
         const trimmed = xml.trim();
         const hasOpen = new RegExp(`<${rootOpenName}\\b`).test(trimmed);
-        if (hasOpen && !trimmed.endsWith(rootCloseRepair)) {
+        const selfClosedRootRe = new RegExp(`(<${rootOpenName}\\b[\\s\\S]*?)\\s*/>\\s*$`);
+        if (hasOpen && selfClosedRootRe.test(trimmed)) {
+          console.warn(`[docx-processor] auto-repairing ${partName}: expanded self-closing ${rootOpenName} root`);
+          xml = trimmed.replace(selfClosedRootRe, `$1>${rootCloseRepair}`);
+          processedFiles[partName] = [encoder.encode(xml), { level: PROCESSED_XML_COMPRESSION_LEVEL }];
+        } else if (hasOpen && !trimmed.endsWith(rootCloseRepair)) {
           console.warn(
             `[docx-processor] auto-repairing ${partName}: appended missing ${rootCloseRepair} ` +
             `(last 120 chars before repair: ${JSON.stringify(trimmed.slice(-120))})`,
@@ -384,6 +386,10 @@ export async function processDocx(
     }
     throw err;
   }
+
+  const compressed = fflate.zipSync(processedFiles);
+  const tAfterZip = performance.now();
+  console.log(`[docx-processor] zip complete: ${Math.round(tAfterZip - tAfterParts)}ms`);
 
   return compressed;
 }
@@ -413,7 +419,11 @@ export function validateContentXmlPart(partName: string, xml: string): void {
   else if (partName.startsWith("word/endnotes")) rootClose = "</w:endnotes>";
 
   if (rootClose && !trimmed.endsWith(rootClose)) {
-    throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+    const rootName = rootClose.slice(2, -1);
+    const selfClosedRootRe = new RegExp(`<${rootName}\\b[\\s\\S]*?/>\\s*$`);
+    if (!selfClosedRootRe.test(trimmed)) {
+      throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+    }
   }
 
   const parsed = new DOMParser().parseFromString(trimmed, "application/xml");
