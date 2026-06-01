@@ -2948,6 +2948,21 @@ export function replaceMergeTags(
     result = result.replace(tagScanRe, (match, offset: number) => {
       let replacement = tagReplacementMap.get(match);
       if (replacement === undefined) return match;
+      if (/885/i.test(__tplName) && !replacement.includes('\n')) {
+        const paragraphStart = result.lastIndexOf("<w:p", offset);
+        const paragraphEnd = result.indexOf("</w:p>", offset);
+        const paragraphXml = paragraphStart !== -1 && paragraphEnd !== -1
+          ? result.slice(paragraphStart, paragraphEnd + 6)
+          : "";
+        const isBrokerSignatureValueLine =
+          paragraphXml.includes("bk_p_brokerLicens") ||
+          paragraphXml.includes("bk_p_firstName") ||
+          paragraphXml.includes("bk_p_lastName");
+        if (isBrokerSignatureValueLine && /^\{\{\s*bk_p_(?:company|brokerLicens|lastName)\s*\}\}$/.test(match)) {
+          const displayPad = Math.max(0, match.length - replacement.length);
+          if (displayPad > 0) replacement = replacement + " ".repeat(displayPad);
+        }
+      }
       if (!replacement.includes('\n')) return replacement;
       if (/885/i.test(__tplName)) {
         const previousText = result.slice(0, offset).match(/<w:t[^>]*>([\s\S]*?)$/)?.[1] || "";
