@@ -2946,7 +2946,7 @@ export function replaceMergeTags(
   if (tagReplacementMap.size > 0) {
     const tagScanRe = /\{\{[^{}\n]{1,400}?\}\}|«[^«»\n]{1,400}?»/g;
     result = result.replace(tagScanRe, (match, offset: number) => {
-      const replacement = tagReplacementMap.get(match);
+      let replacement = tagReplacementMap.get(match);
       if (replacement === undefined) return match;
       if (!replacement.includes('\n')) return replacement;
       if (/885/i.test(__tplName)) {
