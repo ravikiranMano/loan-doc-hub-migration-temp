@@ -354,29 +354,38 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     }
   }, [section800Total]);
 
-  // Auto-calculate subtotal of deductions
-  // Per spec (Fix 3): subtotal = sum of the 5 listed deductions only.
-  // Existing-liens payoff is tracked separately and does NOT roll into this subtotal.
+  // Auto-calculate subtotal of deductions.
+  // Per spec (Bug 2): existing-lien payoff(s) where Condition = "Existing –
+  // Payoff" AND "Will Be Paid By This Loan" = TRUE MUST flow into the RE 885
+  // deductions and reduce Estimated Cash at Closing. liensPayoffTotal is
+  // computed upstream from the Lien Management data and passed in as a prop.
   const subtotal = useMemo(() => {
     const fees = parseNumber(getValue(FK.initial_fees_page1));
     const otherObl = parseNumber(getValue(FK.other_obligations));
     const insurance = parseNumber(getValue(FK.credit_life_insurance));
     const add1 = parseNumber(getValue(FK.additional_obligation_1));
     const add2 = parseNumber(getValue(FK.additional_obligation_2));
-    return fees + otherObl + insurance + add1 + add2;
+    return fees + otherObl + insurance + add1 + add2 + (liensPayoffTotal || 0);
   }, [
     getValue(FK.initial_fees_page1),
     getValue(FK.other_obligations),
     getValue(FK.credit_life_insurance),
     getValue(FK.additional_obligation_1),
     getValue(FK.additional_obligation_2),
+    liensPayoffTotal,
   ]);
 
-  // Auto-calculate cash at closing: loan amount − subtotal deductions
-  const cashAtClosing = useMemo(() => {
+  // Auto-calculate cash at closing: loan amount − subtotal deductions.
+  // computedCashAtClosing is the legally-correct derived figure; cashAtClosing
+  // is what the form actually displays/persists (override wins when set).
+  const computedCashAtClosing = useMemo(() => {
     const loanAmt = parseNumber(getValue(FK.proposed_loan_amount));
     return loanAmt - subtotal;
   }, [getValue(FK.proposed_loan_amount), subtotal]);
+
+  const overrideRaw = getValue(FK.cash_at_closing_override);
+  const hasOverride = overrideRaw !== '' && Number.isFinite(parseNumber(overrideRaw));
+  const cashAtClosing = hasOverride ? parseNumber(overrideRaw) : computedCashAtClosing;
 
   // Persist subtotal
   React.useEffect(() => {
