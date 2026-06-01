@@ -19,6 +19,7 @@ const FK = {
   other_obligations_lineno: 'origination_fees.re885_other_obligations_lineno',
   additional_obligation_1_lineno: 'origination_fees.re885_additional_obligation_1_lineno',
   additional_obligation_2_lineno: 'origination_fees.re885_additional_obligation_2_lineno',
+  liens_payoff_lineno: 'origination_fees.re885_liens_payoff_lineno',
   subtotal_deductions: 'origination_fees.re885_subtotal_deductions',
   cash_at_closing_option: 'origination_fees.re885_cash_at_closing_option',
   cash_at_closing_amount: 'origination_fees.re885_cash_at_closing_amount',
@@ -107,6 +108,7 @@ interface RE885Props {
   upstreamAdjPaymentOptionsEndPercent?: number;
   section800Total?: number;
   liensPayoffTotal?: number;
+  loanDocFeeTotal?: number;
   // Loan tab → Article 7 (Pre-payment Penalty)
   upstreamPrepayEnabled?: boolean;
   upstreamPrepayPenaltyMonths?: string;
@@ -170,6 +172,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
   upstreamAdjPaymentOptionsEndPercent = 0,
   section800Total = 0,
   liensPayoffTotal = 0,
+  loanDocFeeTotal = 0,
   upstreamPrepayEnabled = false,
   upstreamPrepayPenaltyMonths = '',
   upstreamPrepayGreaterThanPct = '',
@@ -353,6 +356,15 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
       setValue(FK.initial_fees_page1, formatted);
     }
   }, [section800Total]);
+
+  // ─── Seed "Payment of Other Obligations" from the Loan Documentation Fee
+  // (HUD-1 line 812 _d) only when the RE 885 field is empty/zero, mirroring
+  // the seed-if-empty pattern used for initial_fees_page1. User edits win.
+  React.useEffect(() => {
+    if (loanDocFeeTotal > 0 && isEmptyOrZero(getValue(FK.other_obligations))) {
+      setValue(FK.other_obligations, formatCurrencyDisplay(loanDocFeeTotal.toFixed(2)));
+    }
+  }, [loanDocFeeTotal]);
 
   // Auto-calculate subtotal of deductions.
   // Per spec (Bug 2): existing-lien payoff(s) where Condition = "Existing –
@@ -587,7 +599,14 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
             the Subtotal of All Deductions (Bug 2). */}
         {liensPayoffTotal > 0 && (
           <div className={ROW}>
-            <span className="w-14 flex-shrink-0" />
+            <Input
+              value={getValue(FK.liens_payoff_lineno)}
+              onChange={(e) => setValue(FK.liens_payoff_lineno, e.target.value)}
+              disabled={disabled}
+              placeholder="#"
+              className="h-8 text-xs w-14 text-center flex-shrink-0"
+              aria-label="Line number"
+            />
             <span className={`${LBL} italic`}>Payment of Existing Liens (from Lien Management)</span>
             <div className={FIELD_W}>
               <CurrencyInput value={formatCurrencyDisplay(liensPayoffTotal.toFixed(2))} onChange={() => {}} readOnly disabled />
@@ -653,7 +672,7 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
               )}
             </div>
           </div>
-          <div className={FIELD_W}>
+          <div className={`${FIELD_W} relative`}>
             <CurrencyInput
               value={
                 hasOverride
@@ -664,7 +683,20 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
               }
               onChange={(v) => setValue(FK.cash_at_closing_override, v)}
               disabled={disabled}
+              className={hasOverride ? 'pr-6' : ''}
             />
+            {hasOverride && (
+              <button
+                type="button"
+                onClick={() => setValue(FK.cash_at_closing_override, '')}
+                disabled={disabled}
+                aria-label="Clear manual override"
+                title="Clear manual override"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none px-1 disabled:opacity-50"
+              >
+                ×
+              </button>
+            )}
           </div>
         </div>
       </div>
