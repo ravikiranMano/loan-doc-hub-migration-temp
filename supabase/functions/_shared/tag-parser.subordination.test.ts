@@ -300,3 +300,28 @@ Deno.test("RE851A subordination provision — (eq KEY true) bareword bool unchec
   assertEquals(visibleGlyphsBeforeLabel(out, "Yes").slice(-1), "☐");
   assertEquals(visibleGlyphsBeforeLabel(out, "No").slice(-1), "☑");
 });
+
+Deno.test("RE851A financial statement section — No-only rows do not keep manual line breaks", () => {
+  const fieldValues = new Map<string, FieldValueData>([
+    ["origination_app.financials.performed_by", { rawValue: "Borrower", dataType: "text" }],
+    ["origination_app.doc.additional_info_attached", { rawValue: "false", dataType: "boolean" }],
+  ]);
+  const fixture = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+<w:body>
+<w:p><w:r><w:t xml:space="preserve">Financial Statements have been audited by CPA or PA. {{#if (eq origination_app.financials.performed_by "CPA")}}☑{{else}}☐{{/if}}YES</w:t></w:r></w:p>
+<w:p><w:r><w:t xml:space="preserve">Additional information is included on an attached addendum {{#if origination_app.doc.additional_info_attached}}☑{{else}}☐{{/if}} Yes</w:t></w:r></w:p>
+<w:p><w:pPr><w:sectPr><w:type w:val="continuous"/></w:sectPr></w:pPr><w:r><w:br/></w:r><w:r><w:t xml:space="preserve"> {{#if origination_app.doc.additional_info_attached}}☐{{else}}☑{{/if}} No</w:t></w:r></w:p>
+<w:p><w:r><w:t>PART 8</w:t></w:r></w:p>
+</w:body></w:document>`;
+  const out = replaceMergeTags(fixture, fieldValues, new Map(), {}, {}, new Set([
+    "origination_app.financials.performed_by",
+    "origination_app.doc.additional_info_attached",
+  ]), "RE851A");
+  const noIdx = out.indexOf(" No");
+  const noParaStart = out.lastIndexOf("<w:p", noIdx);
+  const noParaEnd = out.indexOf("</w:p>", noIdx);
+  const noPara = out.slice(noParaStart, noParaEnd);
+  assertEquals(noPara.includes("<w:br"), false);
+  assertEquals(noPara.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim(), "☑ No");
+});
