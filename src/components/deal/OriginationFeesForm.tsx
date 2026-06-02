@@ -571,6 +571,15 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     if (getValue(FIELD_KEYS.interestForDays_perDay) !== next) {
       setValue(FIELD_KEYS.interestForDays_perDay, next);
     }
+    // Also clear the user-entered Days input when upstream drivers go to zero,
+    // so a stale "# of days" can't combine with a re-introduced per-day later
+    // and silently revive the 901 row total.
+    if (perDayAuto <= 0) {
+      const currentDays = getValue(FIELD_KEYS.interestForDays_days);
+      if (currentDays !== '' && currentDays != null) {
+        setValue(FIELD_KEYS.interestForDays_days, '');
+      }
+    }
   }, [perDayAuto]);
 
   // Row total auto: days × per-day. Clear when either driver is zero so the
