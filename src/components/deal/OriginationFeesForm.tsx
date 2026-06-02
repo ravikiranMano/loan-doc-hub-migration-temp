@@ -757,14 +757,18 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         <div style={GRID_STYLE} className="py-1 border-b border-border/50">
           <div className="text-xs font-medium text-foreground">{hudNumber}</div>
           {labelKey ? (
-            <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs" />
+            <DirtyFieldWrapper fieldKey={labelKey}>
+              <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs" />
+            </DirtyFieldWrapper>
           ) : descriptionNode ? (
             <div className="text-xs text-foreground">{descriptionNode}</div>
           ) : (
             <div className="text-xs text-foreground">{description}</div>
           )}
           {commentKey ? (
-            <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            <DirtyFieldWrapper fieldKey={commentKey}>
+              <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            </DirtyFieldWrapper>
           ) : <div />}
           <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
