@@ -825,19 +825,21 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
 
   // Simple row for bottom sections (label + amount only)
   const renderSimpleRow = (label: string, dKey: string, labelKey?: string) => (
-    <DirtyFieldWrapper fieldKey={dKey}>
-      <div className="flex items-center gap-2 py-1 border-b border-border/50">
-        {labelKey ? (
+    <div className="flex items-center gap-2 py-1 border-b border-border/50">
+      {labelKey ? (
+        <DirtyFieldWrapper fieldKey={labelKey}>
           <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs flex-1" />
-        ) : (
-          <div className="text-xs text-foreground flex-1">{label}</div>
-        )}
+        </DirtyFieldWrapper>
+      ) : (
+        <div className="text-xs text-foreground flex-1">{label}</div>
+      )}
+      <DirtyFieldWrapper fieldKey={dKey}>
         <div className="relative w-28">
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
           <Input inputMode="decimal" value={getValue(dKey)} onChange={(e) => setValue(dKey, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(dKey, val))} onBlur={() => { const raw = getValue(dKey); if (raw) setValue(dKey, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(dKey); if (raw) setValue(dKey, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-7 text-xs text-right pl-5" />
         </div>
-      </div>
-    </DirtyFieldWrapper>
+      </DirtyFieldWrapper>
+    </div>
   );
 
   // Dynamic description for 901 (per-day auto-computed, read-only)
