@@ -562,23 +562,27 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     ? (loanAmountUpstream * (loanRateUpstream / 100) / 365)
     : 0;
 
+  // Per-day auto: write when upstream produces a positive rate, otherwise
+  // CLEAR any stale value so cleared/zeroed Loan Amount or Note Rate
+  // doesn't leave a phantom "$/day" silently inflating the row + section
+  // 900 subtotal + grand total + APR total + subtotal_j / total_j merge tags.
   useEffect(() => {
-    if (perDayAuto > 0) {
-      const formatted = formatCurrencyDisplay(perDayAuto.toFixed(2));
-      if (getValue(FIELD_KEYS.interestForDays_perDay) !== formatted) {
-        setValue(FIELD_KEYS.interestForDays_perDay, formatted);
-      }
+    const next = perDayAuto > 0 ? formatCurrencyDisplay(perDayAuto.toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.interestForDays_perDay) !== next) {
+      setValue(FIELD_KEYS.interestForDays_perDay, next);
     }
   }, [perDayAuto]);
 
+  // Row total auto: days × per-day. Clear when either driver is zero so the
+  // computed "Paid to Others" cell doesn't keep a stale value after the user
+  // zeros days or upstream loan inputs.
   useEffect(() => {
     const days = parseNumber(getValue(FIELD_KEYS.interestForDays_days));
-    if (days > 0 && perDayAuto > 0) {
-      const total = days * perDayAuto;
-      const formatted = formatCurrencyDisplay(total.toFixed(2));
-      if (getValue(FIELD_KEYS.interestForDays_others) !== formatted) {
-        setValue(FIELD_KEYS.interestForDays_others, formatted);
-      }
+    const next = (days > 0 && perDayAuto > 0)
+      ? formatCurrencyDisplay((days * perDayAuto).toFixed(2))
+      : '';
+    if (getValue(FIELD_KEYS.interestForDays_others) !== next) {
+      setValue(FIELD_KEYS.interestForDays_others, next);
     }
   }, [perDayAuto, values[FIELD_KEYS.interestForDays_days]]);
 
