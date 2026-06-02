@@ -13,6 +13,7 @@ import { CalendarIcon } from 'lucide-react';
 import { format, parse } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { DirtyFieldWrapper } from './DirtyFieldWrapper';
+import { TypableDateField } from '@/components/ui/typable-date-field';
 import { numericKeyDown, numericPaste, integerKeyDown, integerPaste, formatCurrencyDisplay, unformatCurrencyDisplay } from '@/lib/numericInputFilter';
 import type { CalculationResult } from '@/lib/calculationEngine';
 
@@ -116,28 +117,15 @@ export const OriginationApplicationForm: React.FC<OriginationApplicationFormProp
     <DirtyFieldWrapper fieldKey={key}>
       <div className="flex items-center gap-2">
         <Label className="w-[140px] text-sm shrink-0">{label}</Label>
-        <Popover open={datePickerStates[key] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [key]: open }))}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn('h-7 w-full justify-start text-left font-normal text-sm', !getValue(key) && 'text-muted-foreground')}
-              disabled={disabled}
-            >
-              {getValue(key) ? format(parseDate(getValue(key))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-            <EnhancedCalendar
-              mode="single"
-              selected={parseDate(getValue(key))}
-              onSelect={(date) => { if (date) setValue(key, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onClear={() => { setValue(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onToday={() => { setValue(key, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={getValue(key)}
+            onChange={(v) => setValue(key, v)}
+            disabled={disabled}
+            ariaLabel={label}
+            inputClassName="h-7 text-sm"
+          />
+        </div>
       </div>
     </DirtyFieldWrapper>
   );
@@ -292,28 +280,15 @@ export const OriginationApplicationForm: React.FC<OriginationApplicationFormProp
     <DirtyFieldWrapper fieldKey={key}>
       <div className="flex items-center gap-2">
         <Label className="w-[180px] text-sm shrink-0">{label}</Label>
-        <Popover open={datePickerStates[key] || false} onOpenChange={(open) => setDatePickerStates(prev => ({ ...prev, [key]: open }))}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn('h-7 flex-1 justify-start text-left font-normal text-sm', !getValue(key) && 'text-muted-foreground')}
-              disabled={disabled}
-            >
-              {getValue(key) ? format(parseDate(getValue(key))!, 'MM/dd/yyyy') : 'MM/DD/YYYY'}
-              <CalendarIcon className="ml-auto h-3.5 w-3.5" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-[9999]" align="start">
-            <EnhancedCalendar
-              mode="single"
-              selected={parseDate(getValue(key))}
-              onSelect={(date) => { if (date) setValue(key, format(date, 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onClear={() => { setValue(key, ''); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              onToday={() => { setValue(key, format(new Date(), 'yyyy-MM-dd')); setDatePickerStates(prev => ({ ...prev, [key]: false })); }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+        <div className="flex-1">
+          <TypableDateField
+            value={getValue(key)}
+            onChange={(v) => setValue(key, v)}
+            disabled={disabled}
+            ariaLabel={label}
+            inputClassName="h-7 text-sm"
+          />
+        </div>
       </div>
     </DirtyFieldWrapper>
   );
