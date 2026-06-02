@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -62,6 +61,7 @@ import {
   downloadGeneratedDoc,
 } from '@/services/documents/generation.service';
 import { SessionExpiredError } from '@/services/node-api/client';
+import { FieldDataJsonView } from '@/components/documents/FieldDataJsonView';
 import { listTemplates, updateTemplate, uploadTemplateDocx } from '@/services/documents/templates.service';
 import {
   listActivePackets,
@@ -175,6 +175,30 @@ const statusConfig = {
   success: { label: 'Success', color: 'text-success', bgColor: 'bg-success/10', icon: CheckCircle2 },
   failed: { label: 'Failed', color: 'text-destructive', bgColor: 'bg-destructive/10', icon: XCircle },
 };
+
+/** Parse JSON driver values (e.g. properties[]) for tree display instead of "[object Object]". */
+function formatConditionDriverDisplay(driverValue?: string): unknown {
+  if (!driverValue) return driverValue ?? '';
+  const trimmed = driverValue.trim();
+  if (
+    (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+    (trimmed.startsWith('{') && trimmed.endsWith('}'))
+  ) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return driverValue;
+    }
+  }
+  return driverValue;
+}
+
+function summarizeConditionDriver(driverValue?: string): string {
+  const parsed = formatConditionDriverDisplay(driverValue);
+  if (Array.isArray(parsed)) return `[${parsed.length} items]`;
+  if (parsed != null && typeof parsed === 'object') return '{object}';
+  return String(parsed ?? '(empty)');
+}
 
 export const DealDocumentsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -467,11 +491,7 @@ export const DealDocumentsPage: React.FC = () => {
         fieldCount: result.metadata.templateResolvedCount ?? result.metadata.resolvedCount,
         totalKeysInMap: tagKeys.length || result.metadata.fieldMapCount,
         templateConditions: result.metadata.templateConditions,
-        data: Object.fromEntries(
-          Object.entries(result.data)
-            .filter(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
-            .map(([k, v]) => [k, String(v)])
-        ) as Record<string, string>,
+        data: result.data,
       });
     } catch (error: unknown) {
       if (error instanceof SessionExpiredError) return;
@@ -483,18 +503,26 @@ export const DealDocumentsPage: React.FC = () => {
     }
   };
 
-  const previewJsonDisplay = useMemo(() => {
-    if (!previewResult?.data) return '';
+  const previewPayload = useMemo((): Record<string, unknown> | null => {
+    if (!previewResult?.data) return null;
     const filter = previewFilter.trim().toLowerCase();
     const entries = Object.entries(previewResult.data)
       .filter(([k]) => !filter || k.toLowerCase().includes(filter))
       .sort(([a], [b]) => a.localeCompare(b));
     const payload: Record<string, unknown> = { fields: Object.fromEntries(entries) };
     if (previewMode === 'v2' && previewResult.templateConditions?.length) {
-      payload.conditions = previewResult.templateConditions;
+      payload.conditions = previewResult.templateConditions.map((c) => ({
+        ...c,
+        driverValue: formatConditionDriverDisplay(c.driverValue),
+      }));
     }
-    return JSON.stringify(payload, null, 2);
+    return payload;
   }, [previewResult, previewFilter, previewMode]);
+
+  const previewJsonText = useMemo(
+    () => (previewPayload ? JSON.stringify(previewPayload, null, 2) : ''),
+    [previewPayload],
+  );
 
   const handleGenerate = async () => {
     setShowConfirmDialog(false);
@@ -1865,8 +1893,8 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
       </Dialog>
 
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               {previewMode === 'v2' ? <Info className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               {previewMode === 'v2' ? 'Merge field data — v2 engine (docxtemplater)' : 'Merge field payload (preview)'}
@@ -1886,7 +1914,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
           )}
 
           {!previewLoading && previewResult && (
-            <div className="flex flex-col gap-3 min-h-0 flex-1">
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
               <div className="grid grid-cols-2 gap-2 text-sm p-3 rounded-lg bg-muted/50">
                 <div>
                   <span className="text-muted-foreground">Template</span>
@@ -1911,7 +1939,7 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                       {c.driverField && (
                         <span className="text-muted-foreground">
                           {' '}
-                          — {c.driverField}={c.driverValue ?? '(empty)'}
+                          — {c.driverField}={summarizeConditionDriver(c.driverValue)}
                           {c.matchesCompare != null && (c.matchesCompare ? ' ✓ branch' : ' ✗ else branch')}
                         </span>
                       )}
@@ -1929,24 +1957,27 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                 value={previewFilter}
                 onChange={(e) => setPreviewFilter(e.target.value)}
               />
-              <Textarea
-                readOnly
-                className="font-mono text-xs min-h-[320px] flex-1 resize-y"
-                value={previewJsonDisplay}
-              />
+              <div className="h-[min(48vh,440px)] overflow-y-auto overscroll-contain rounded-md border">
+                {previewPayload ? (
+                  <FieldDataJsonView
+                    data={previewPayload}
+                    className="p-3 font-mono text-xs"
+                  />
+                ) : null}
+              </div>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               variant="outline"
               onClick={() => {
-                if (previewJsonDisplay) {
-                  void navigator.clipboard.writeText(previewJsonDisplay);
+                if (previewJsonText) {
+                  void navigator.clipboard.writeText(previewJsonText);
                   toast({ title: 'Copied to clipboard' });
                 }
               }}
-              disabled={!previewJsonDisplay}
+              disabled={!previewJsonText}
             >
               Copy JSON
             </Button>

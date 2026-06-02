@@ -127,6 +127,9 @@ const PR_KEY_TO_SUFFIX: Record<string, string> = {
   pr_p_performeBy: 'appraisal_performed_by',
 };
 
+/** Exported for deal-field-values loader composite-key bridging (matches edge generate-document). */
+export { PR_KEY_TO_SUFFIX };
+
 const PROP_PRESENCE_FIELDS = [
   'address',
   'street',
@@ -146,6 +149,42 @@ function getRaw(map: FieldMap, key: string): string {
 
 function setField(map: FieldMap, key: string, raw: string, dataType = 'text'): void {
   map.set(key, { rawValue: raw, dataType });
+}
+
+function autoComputePropertyAddresses(map: FieldMap): void {
+  const indices = new Set<number>();
+  for (const key of map.keys()) {
+    const m = key.match(/^property(\d+)\./i);
+    if (m) indices.add(parseInt(m[1], 10));
+  }
+  indices.add(1);
+  for (const idx of [...indices].sort((a, b) => a - b)) {
+    const prefix = `property${idx}`;
+    if (getRaw(map, `${prefix}.address`)) continue;
+    const parts = [
+      getRaw(map, `${prefix}.street`),
+      getRaw(map, `${prefix}.city`),
+      getRaw(map, `${prefix}.state`),
+      getRaw(map, `${prefix}.country`),
+      getRaw(map, `${prefix}.zip`),
+    ].filter(Boolean);
+    if (parts.length > 0) setField(map, `${prefix}.address`, parts.join(', '));
+  }
+}
+
+function hasPropertyPresence(map: FieldMap, idx: number): boolean {
+  const prefix = `property${idx}`;
+  if (PROP_PRESENCE_FIELDS.some((f) => getRaw(map, `${prefix}.${f}`) !== '')) return true;
+  const presenceSignals = [
+    'description',
+    'property_owner',
+    'owner',
+    'appraised_value',
+    'appraisal_property_type',
+    'land_classification',
+    'valuation_type',
+  ];
+  return presenceSignals.some((f) => getRaw(map, `${prefix}.${f}`) !== '');
 }
 
 function setBool(map: FieldMap, key: string, on: boolean): void {
@@ -171,8 +210,10 @@ function parseAmt(v: unknown): number {
 function discoverPropertyIndices(map: FieldMap): number[] {
   const indices = new Set<number>();
   for (const key of map.keys()) {
-    const m = key.match(/^property(\d+)\./i);
-    if (m) indices.add(parseInt(m[1], 10));
+    const dotted = key.match(/^property(\d+)\./i);
+    if (dotted) indices.add(parseInt(dotted[1], 10));
+    const composite = key.match(/^property(\d+)::/i);
+    if (composite) indices.add(parseInt(composite[1], 10));
   }
   for (let i = 1; i <= MAX_PROPERTIES; i++) {
     if (map.has(`property_number_${i}`) || map.has(`pr_p_address_${i}`)) indices.add(i);
@@ -182,10 +223,7 @@ function discoverPropertyIndices(map: FieldMap): number[] {
 }
 
 function realPropertyIndices(map: FieldMap, allIndices: number[]): number[] {
-  const real = allIndices.filter((idx) => {
-    const prefix = `property${idx}`;
-    return PROP_PRESENCE_FIELDS.some((f) => getRaw(map, `${prefix}.${f}`) !== '');
-  });
+  const real = allIndices.filter((idx) => hasPropertyPresence(map, idx));
   return real.length > 0 ? real : allIndices.slice(0, 1);
 }
 
@@ -349,10 +387,7 @@ function bridgePropertyFields(map: FieldMap, idx: number): void {
     getRaw(map, `${prefix}.appraiseValue`);
   if (appraise) setField(map, `pr_p_appraiseValue_${idx}`, appraise, 'currency');
 
-  const performedBy =
-    getRaw(map, `${prefix}.appraisal_performed_by`) ||
-    getRaw(map, `pr_p_performedBy_${idx}`) ||
-    getRaw(map, `pr_p_performeBy_${idx}`);
+  const performedBy = getRaw(map, `${prefix}.appraisal_performed_by`);
   if (performedBy) {
     setField(map, `pr_p_performedBy_${idx}`, performedBy);
     setField(map, `pr_p_performeBy_${idx}`, performedBy);
@@ -481,16 +516,22 @@ function publishMultiplePropertiesGlyphs(map: FieldMap, realIndices: number[]): 
   setGlyph(map, 'pr_p_multipleProperties_no_glyph', isSingle);
 }
 
-/** Copy indexed value `key_N` → loop key without suffix. */
+/** Copy indexed value `key_N` → loop key without suffix (for {{#properties}} rows). */
 function copyIndexedToLoopKey(map: FieldMap, idx: number, loopKey: string): string {
   const indexed = `${loopKey}_${idx}`;
   const dottedIndexed = loopKey.includes('.') ? `${loopKey.replace(/\./g, '_')}_${idx}` : '';
-  return (
-    getRaw(map, indexed) ||
-    getRaw(map, loopKey) ||
-    (dottedIndexed ? getRaw(map, dottedIndexed) : '') ||
-    ''
-  );
+  const direct = getRaw(map, indexed) || (dottedIndexed ? getRaw(map, dottedIndexed) : '');
+  if (direct) return direct;
+
+  const sfx = PR_KEY_TO_SUFFIX[loopKey];
+  if (sfx) {
+    const fromProperty = getRaw(map, `property${idx}.${sfx}`);
+    if (fromProperty) return fromProperty;
+  }
+
+  // Legacy bare merge tags (e.g. pr_p_appraiseValue) apply to property 1 only.
+  if (idx === 1) return getRaw(map, loopKey);
+  return '';
 }
 
 function buildPropertyLoopObject(map: FieldMap, idx: number): Record<string, unknown> {
@@ -542,17 +583,350 @@ function buildPropertyLoopObject(map: FieldMap, idx: number): Record<string, unk
   return row;
 }
 
+function collectOrderedLienPrefixes(map: FieldMap): string[] {
+  const prefixes = new Set<string>();
+  for (const key of map.keys()) {
+    const m = key.match(/^(lien\d+)\./);
+    if (m) prefixes.add(m[1]);
+  }
+  return [...prefixes].sort(
+    (a, b) => parseInt(a.replace('lien', ''), 10) - parseInt(b.replace('lien', ''), 10),
+  );
+}
+
+function lienField(map: FieldMap, lp: string, ...suffixes: string[]): string {
+  for (const sfx of suffixes) {
+    const v = getRaw(map, `${lp}.${sfx}`);
+    if (v) return v;
+  }
+  return '';
+}
+
+function hasLienDisplayRowData(map: FieldMap, lp: string): boolean {
+  return [
+    'lien_priority_now', 'priority', 'remaining_new_lien_priority', 'lien_priority_after',
+    'holder', 'lienHolder', 'beneficiary', 'original_balance', 'originalBalance',
+    'current_balance', 'currentBalance', 'regular_payment', 'regularPayment',
+    'maturity_date', 'matDate', 'balloon', 'balloon_amount', 'balloonAmount',
+  ].some((sfx) => lienField(map, lp, sfx) !== '');
+}
+
+/** Mirrors generate-document edge RE851D encumbrance row classification. */
+function classifyLienEncumbrance(
+  map: FieldMap,
+  lp: string,
+): 'anticipated' | 'remain' | 'paydown' | 'payoff' | 'none' {
+  const normLbl = (v: unknown) =>
+    String(v ?? '').toLowerCase().replace(/[\u2013\u2014]/g, '-').replace(/\s+/g, ' ').trim();
+  const get = (sfx: string) => lienField(map, lp, sfx);
+  const hasAmt = (raw: string) => {
+    const n = parseAmt(raw);
+    return raw !== '' && Number.isFinite(n) && n !== 0;
+  };
+
+  const lbl = normLbl(get('condition'));
+  if (lbl === 'existing - payoff' || lbl === 'payoff') return 'remain';
+  if (lbl === 'anticipated') return 'anticipated';
+  if (lbl === 'will remain' || lbl === 'existing - remain' || lbl === 'remain') return 'remain';
+  if (lbl === 'remain - paydown' || lbl === 'existing - paydown' || lbl === 'paydown') return 'paydown';
+
+  if (toBool(get('existing_payoff')) || toBool(get('existingPayoff'))) return 'remain';
+  if (toBool(get('existing_paydown')) || toBool(get('existingPaydown'))) return 'paydown';
+  if (toBool(get('existing_remain')) || toBool(get('existingRemain'))) return 'remain';
+
+  if (toBool(get('anticipated'))) {
+    const hasOrig =
+      hasAmt(get('original_balance')) ||
+      hasAmt(get('originalBalance')) ||
+      hasAmt(get('anticipated_amount')) ||
+      hasAmt(get('anticipatedAmount'));
+    const hasRemain =
+      hasAmt(get('current_balance')) ||
+      hasAmt(get('currentBalance')) ||
+      hasAmt(get('existing_paydown_amount')) ||
+      hasAmt(get('existingPaydownAmount'));
+    if (hasOrig) return 'anticipated';
+    if (hasRemain) return 'remain';
+    return 'anticipated';
+  }
+
+  const antLbl = normLbl(get('anticipated'));
+  if (antLbl === 'anticipated' || antLbl === 'this loan' || antLbl === 'other') return 'anticipated';
+  if ((antLbl === 'false' || antLbl === 'no' || antLbl === '0' || antLbl === '') && hasLienDisplayRowData(map, lp)) {
+    return 'remain';
+  }
+  return 'none';
+}
+
+function resolveLienPropertyIndex(map: FieldMap, lp: string, propIndices: number[]): number | undefined {
+  const propRaw = lienField(map, lp, 'property').trim();
+  const pm = propRaw.match(/^property(\d+)$/i);
+  if (pm) {
+    const idx = parseInt(pm[1], 10);
+    return propIndices.includes(idx) ? idx : idx;
+  }
+  if (!propRaw || propRaw.toLowerCase() === 'unassigned') return undefined;
+
+  const normAddr = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  const propNorm = normAddr(propRaw);
+  for (const pi of propIndices) {
+    const prefix = `property${pi}`;
+    const candidates = [
+      normAddr(getRaw(map, `${prefix}.address`)),
+      normAddr(getRaw(map, `${prefix}.description`)),
+      normAddr(
+        [getRaw(map, `${prefix}.street`), getRaw(map, `${prefix}.city`), getRaw(map, `${prefix}.state`), getRaw(map, `${prefix}.zip`)]
+          .filter(Boolean)
+          .join(', '),
+      ),
+    ].filter(Boolean);
+    if (candidates.some((c) => c === propNorm || c.includes(propNorm) || propNorm.includes(c))) {
+      return pi;
+    }
+  }
+  return undefined;
+}
+
+function setBoolEmpty(map: FieldMap, key: string, on: boolean): void {
+  setField(map, key, on ? 'true' : '', 'boolean');
+}
+
+type LienEncumbranceRow = { prefix: string };
+
+/**
+ * Publishes pr_li_rem_* / pr_li_ant_* per property index and slot (_N_S).
+ * Inside {{#properties}}, tags use slot suffix only (_1, _2) via buildPropertyLoopObject.
+ * Ported from generate-document edge publishSection.
+ */
+function publishEncumbranceSections(map: FieldMap, propIndices: number[]): void {
+  const orderedLiens = collectOrderedLienPrefixes(map);
+  if (orderedLiens.length === 0) return;
+
+  const perPropRem: Record<number, LienEncumbranceRow[]> = {};
+  const perPropAnt: Record<number, LienEncumbranceRow[]> = {};
+
+  for (const prefix of orderedLiens) {
+    const pIdx = resolveLienPropertyIndex(map, prefix, propIndices);
+    if (pIdx == null) continue;
+
+    const cond = classifyLienEncumbrance(map, prefix);
+    if (cond === 'payoff' || cond === 'none') continue;
+
+    const bucket = cond === 'anticipated' ? perPropAnt : perPropRem;
+    if (!bucket[pIdx]) bucket[pIdx] = [];
+    bucket[pIdx].push({ prefix });
+  }
+
+  const publishSection = (
+    tagPrefix: 'pr_li_rem' | 'pr_li_ant',
+    buckets: Record<number, LienEncumbranceRow[]>,
+  ) => {
+    for (const [pIdxStr, rows] of Object.entries(buckets)) {
+      const pIdx = parseInt(pIdxStr, 10);
+      rows.forEach((row, sIdx0) => {
+        const slot = sIdx0 + 1;
+        const lp = row.prefix;
+        const get = (...fields: string[]) => lienField(map, lp, ...fields);
+        const firstNonEmpty = (...fields: string[]) => {
+          for (const f of fields) {
+            const v = get(f);
+            if (v) return v;
+          }
+          return '';
+        };
+
+        const balloon = get('balloon').toLowerCase();
+        const isYes = balloon === 'true' || balloon === 'yes';
+        const isNo = balloon === 'false' || balloon === 'no';
+        const isUnknown = !isYes && !isNo;
+
+        const amountOwingVal =
+          tagPrefix === 'pr_li_ant'
+            ? firstNonEmpty(
+                'new_remaining_balance',
+                'newRemainingBalance',
+                'anticipated_amount',
+                'anticipatedAmount',
+                'original_balance',
+                'originalBalance',
+                'current_balance',
+                'currentBalance',
+              )
+            : firstNonEmpty(
+                'current_balance',
+                'currentBalance',
+                'existing_payoff_amount',
+                'existingPayoffAmount',
+                'existing_paydown_amount',
+                'existingPaydownAmount',
+                'original_balance',
+                'originalBalance',
+              );
+
+        const fields: Array<[string, string, string]> = [
+          [
+            'priority',
+            firstNonEmpty(
+              'lien_priority_now',
+              'priority',
+              'remaining_new_lien_priority',
+              'lien_priority_after',
+              'n',
+            ),
+            'text',
+          ],
+          ['interestRate', firstNonEmpty('interest_rate', 'intRate'), 'percent'],
+          ['beneficiary', firstNonEmpty('holder', 'lienHolder', 'beneficiary'), 'text'],
+          ['originalAmount', firstNonEmpty('original_balance', 'originalBalance'), 'currency'],
+          ['principalBalance', firstNonEmpty('current_balance', 'currentBalance'), 'currency'],
+          ['monthlyPayment', firstNonEmpty('regular_payment', 'regularPayment'), 'currency'],
+          ['maturityDate', firstNonEmpty('maturity_date', 'matDate'), 'date'],
+          ['balloonAmount', isYes ? firstNonEmpty('balloon_amount', 'balloonAmount') : '', 'currency'],
+          ['amountOwing', amountOwingVal, 'currency'],
+        ];
+
+        const fieldAliases: Record<string, string[]> = {
+          interestRate: ['interest_rate', 'intRate'],
+          beneficiary: ['lienHolder', 'holder'],
+          maturityDate: ['maturity_date', 'matDate'],
+          amountOwing: ['amount_owing', 'amount', 'owing'],
+        };
+
+        for (const [fieldName, value, dataType] of fields) {
+          const names = [fieldName, ...(fieldAliases[fieldName] ?? [])];
+          for (const name of names) {
+            setField(map, `${tagPrefix}_${name}_${pIdx}_${slot}`, value, dataType);
+            if (slot === 1) setField(map, `${tagPrefix}_${name}_${pIdx}`, value, dataType);
+            if (pIdx === 1 && slot === 1) setField(map, `${tagPrefix}_${name}`, value, dataType);
+          }
+        }
+
+        setBoolEmpty(map, `${tagPrefix}_balloonYes_${pIdx}_${slot}`, isYes);
+        setBoolEmpty(map, `${tagPrefix}_balloonNo_${pIdx}_${slot}`, isNo);
+        setBoolEmpty(map, `${tagPrefix}_balloonUnknown_${pIdx}_${slot}`, isUnknown);
+        if (slot === 1) {
+          setBoolEmpty(map, `${tagPrefix}_balloonYes_${pIdx}`, isYes);
+          setBoolEmpty(map, `${tagPrefix}_balloonNo_${pIdx}`, isNo);
+          setBoolEmpty(map, `${tagPrefix}_balloonUnknown_${pIdx}`, isUnknown);
+        }
+        if (pIdx === 1 && slot === 1) {
+          setBoolEmpty(map, `${tagPrefix}_balloonYes`, isYes);
+          setBoolEmpty(map, `${tagPrefix}_balloonNo`, isNo);
+          setBoolEmpty(map, `${tagPrefix}_balloonUnknown`, isUnknown);
+        }
+      });
+    }
+  };
+
+  publishSection('pr_li_rem', perPropRem);
+  publishSection('pr_li_ant', perPropAnt);
+}
+
+/**
+ * Mirrors generate-document edge RE851D anti-fallback shield (~line 2892).
+ * Ensures every `base_{N}` exists (empty when unpublished) so bare merge keys
+ * like `pr_p_appraiseValue` cannot bleed into property 2..5 blocks/rows.
+ */
+function applyAntiFallbackShield(map: FieldMap): void {
+  const SHIELD_BASES = [
+    'pr_p_address', 'pr_p_street', 'pr_p_city', 'pr_p_state',
+    'pr_p_zip', 'pr_p_county', 'pr_p_country', 'pr_p_apn',
+    'pr_p_owner', 'pr_p_ownerName', 'pr_p_marketValue', 'pr_p_appraiseValue',
+    'pr_p_appraiseDate', 'pr_p_appraiserStreet', 'pr_p_appraiserCity',
+    'pr_p_appraiserState', 'pr_p_appraiserZip', 'pr_p_appraiserPhone',
+    'pr_p_appraiserEmail', 'pr_p_legalDescri', 'pr_p_yearBuilt',
+    'pr_p_squareFeet', 'pr_p_lotSize', 'pr_p_numberOfUni',
+    'pr_p_propertyTyp', 'pr_p_propertyType', 'pr_p_occupancySt',
+    'pr_p_occupanc', 'pr_p_remainingSenior', 'pr_p_expectedSenior',
+    'ln_p_expectedEncumbrance', 'ln_p_remainingEncumbrance',
+    'pr_p_totalSenior', 'pr_p_totalEncumbrance', 'pr_p_totalSeniorPlusLoan',
+    'ln_p_totalEncumbrance', 'ln_p_totalWithLoan', 'property_number',
+    'pr_p_construcType', 'pr_p_purchasePrice', 'pr_p_downPayme',
+    'pr_p_protectiveEquity', 'pr_p_descript', 'pr_p_ltv', 'pr_p_cltv',
+    'pr_p_zoning', 'pr_p_floodZone', 'pr_p_pledgedEquity',
+    'pr_p_delinquHowMany', 'pr_p_performedBy', 'pr_p_performeBy',
+    'pr_p_appraiserName', 'pr_p_appraiserAddress',
+    'pr_p_netMonthlyIncome', 'pr_p_incomeGenerating', 'pr_p_grossAnnualIncome',
+    'ln_p_amountOfEquity', 'ln_p_equitySecuringLoan', 'ln_p_loanToValueRatio',
+    'propertytax_annual_payment', 'propertytax.annual_payment',
+    'propertytax_delinquent', 'propertytax.delinquent',
+    'propertytax_delinquent_amount', 'propertytax.delinquent_amount',
+    'propertytax_source_of_information', 'propertytax.source_of_information',
+    'pr_pt_annualTaxes', 'pr_pt_actual', 'pr_pt_estimated',
+    'pr_pt_actual_glyph', 'pr_pt_estimated_glyph',
+    'property_type_sfr_owner', 'property_type_sfr_non_owner',
+    'property_type_sfr_zoned', 'property_type_commercial',
+    'property_type_land_zoned', 'property_type_land_income',
+    'property_type_other', 'property_type_other_text',
+    'pr_li_encumbranceOfRecord', 'pr_li_encumbranceOfRecord_yes', 'pr_li_encumbranceOfRecord_no',
+    'pr_li_encumbranceOfRecord_yes_glyph', 'pr_li_encumbranceOfRecord_no_glyph',
+    'pr_li_delinqu60day', 'pr_li_delinqu60day_yes', 'pr_li_delinqu60day_no',
+    'pr_li_delinqu60day_yes_glyph', 'pr_li_delinqu60day_no_glyph',
+    'pr_li_currentDelinqu', 'pr_li_currentDelinqu_yes', 'pr_li_currentDelinqu_no',
+    'pr_li_currentDelinqu_yes_glyph', 'pr_li_currentDelinqu_no_glyph',
+    'pr_li_delinquencyPaidByLoan', 'pr_li_delinquencyPaidByLoan_yes', 'pr_li_delinquencyPaidByLoan_no',
+    'pr_li_delinquencyPaidByLoan_yes_glyph', 'pr_li_delinquencyPaidByLoan_no_glyph',
+    'pr_li_delinquHowMany', 'pr_li_sourceOfPayment',
+    'pr_li_sourceInfoBroker', 'pr_li_sourceInfoBroker_glyph',
+    'pr_li_sourceInfoBorrower', 'pr_li_sourceInfoBorrower_glyph',
+    'pr_li_sourceInfoOther', 'pr_li_sourceInfoOther_glyph',
+    'pr_li_sourceInfoOtherText', 'pr_li_sourceOfInformation',
+  ];
+
+  const GLYPH_DEFAULTS_NO_CHECKED: Record<string, string> = {
+    pr_li_encumbranceOfRecord_yes_glyph: '☐',
+    pr_li_encumbranceOfRecord_no_glyph: '☑',
+    pr_li_delinqu60day_yes_glyph: '☐',
+    pr_li_delinqu60day_no_glyph: '☑',
+    pr_li_currentDelinqu_yes_glyph: '☐',
+    pr_li_currentDelinqu_no_glyph: '☑',
+    pr_li_delinquencyPaidByLoan_yes_glyph: '☐',
+    pr_li_delinquencyPaidByLoan_no_glyph: '☑',
+    pr_li_sourceInfoBroker_glyph: '☐',
+    pr_li_sourceInfoBorrower_glyph: '☐',
+    pr_li_sourceInfoOther_glyph: '☐',
+  };
+
+  const MIDDLE_INDEX_SUFFIXES = ['_yes_glyph', '_no_glyph', '_glyph', '_yes', '_no'];
+
+  for (let idx = 1; idx <= MAX_PROPERTIES; idx++) {
+    for (const base of SHIELD_BASES) {
+      const middleSuffix = MIDDLE_INDEX_SUFFIXES.find((s) => base.endsWith(s));
+      const key = middleSuffix
+        ? `${base.slice(0, -middleSuffix.length)}_${idx}${middleSuffix}`
+        : `${base}_${idx}`;
+
+      if (map.has(key)) continue;
+
+      const glyphDefault = GLYPH_DEFAULTS_NO_CHECKED[base];
+      if (glyphDefault !== undefined) {
+        setField(map, key, glyphDefault, 'text');
+      } else {
+        setField(map, key, '', 'text');
+      }
+    }
+  }
+
+  // Prevent bare performBy from leaking property #1 into every {{#properties}} row.
+  for (const bareKey of ['pr_p_performeBy', 'pr_p_performedBy']) {
+    setField(map, bareKey, '', 'text');
+  }
+}
+
 /**
  * Publishes RE851D per-property indexed merge keys (internal; used to build properties[]).
  */
 export function applyRe851dBridges(fieldValues: FieldMap): void {
+  autoComputePropertyAddresses(fieldValues);
   const allIndices = discoverPropertyIndices(fieldValues);
   const realIndices = realPropertyIndices(fieldValues, allIndices);
 
-  for (const idx of allIndices) {
+  for (const idx of realIndices) {
     bridgePropertyFields(fieldValues, idx);
   }
+  publishEncumbranceSections(fieldValues, allIndices);
   rollupSeniorEncumbrances(fieldValues, allIndices);
+  applyAntiFallbackShield(fieldValues);
   publishMultiplePropertiesGlyphs(fieldValues, realIndices);
 }
 

@@ -31,7 +31,7 @@ export interface DocumentPayloadPreviewResult {
   templateName: string;
   fieldCount: number;
   totalKeysInMap: number;
-  data: Record<string, string>;
+  data: Record<string, unknown>;
   /** v2 only: conditionals from docxtemplater inspect. */
   templateConditions?: TemplateConditionV2[];
 }

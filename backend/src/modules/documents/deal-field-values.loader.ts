@@ -1,5 +1,5 @@
 import { PrismaService } from '../../prisma/prisma.service';
-import { applyRe851dBridges } from './re851d-properties.builder';
+import { applyRe851dBridges, PR_KEY_TO_SUFFIX } from './re851d-properties.builder';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,6 +80,8 @@ export class DealFieldValuesLoader {
             setValue(dict.field_key, raw, dataType);
           }
         }
+
+        this.bridgeCompositeSectionKey(key, dict.field_key, raw, dataType, setValue);
       }
     }
 
@@ -350,6 +352,34 @@ export class DealFieldValuesLoader {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Bridge composite section keys (property1::uuid, propertytax2::uuid) to indexed
+   * propertyN.suffix keys — mirrors generate-document edge so legacy property1 rows
+   * without indexed_key still populate property1.street, property1.city, etc.
+   */
+  private bridgeCompositeSectionKey(
+    compositeKey: string,
+    fieldKey: string,
+    raw: string | number | null,
+    dataType: string,
+    setValue: (key: string, raw: string | number | null, dataType: string) => void,
+  ): void {
+    if (!compositeKey.includes('::')) return;
+    const entityPrefix = compositeKey.split('::')[0];
+    if (/^property\d+$/i.test(entityPrefix)) {
+      const suffix = PR_KEY_TO_SUFFIX[fieldKey];
+      if (suffix) setValue(`${entityPrefix}.${suffix}`, raw, dataType);
+      if (fieldKey.startsWith('property1.') && entityPrefix.toLowerCase() !== 'property1') {
+        setValue(`${entityPrefix}.${fieldKey.slice('property1.'.length)}`, raw, dataType);
+      }
+      return;
+    }
+    if (/^propertytax\d+$/i.test(entityPrefix) && fieldKey.startsWith('propertytax.')) {
+      const suffix = fieldKey.slice('propertytax.'.length);
+      if (suffix) setValue(`${entityPrefix}.${suffix}`, raw, dataType);
     }
   }
 

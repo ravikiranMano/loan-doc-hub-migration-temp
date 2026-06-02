@@ -41,7 +41,7 @@ export function parseConditionExpression(expression: string): Pick<
   TemplateConditionInfo,
   'driverField' | 'operator' | 'compareValue'
 > {
-  const expr = expression.trim();
+  const expr = normalizeSectionKey(expression);
   const quoted = expr.match(
     /^([A-Za-z][A-Za-z0-9_.]*)\s*(===|!==|==|!=)\s*'([^']*)'\s*$/,
   );
@@ -61,12 +61,28 @@ export function parseConditionExpression(expression: string): Pick<
   return { driverField: null, operator: null, compareValue: null };
 }
 
+function isNestedTagContainer(value: unknown): value is Record<string, unknown> {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length > 0
+  );
+}
+
+/** Strip docxtemplater section prefix (# loop, ^ inverted). */
+function normalizeSectionKey(key: string): string {
+  return key.trim().replace(/^[#^]/, '');
+}
+
 function collectMergeKeysUnder(node: Record<string, unknown>, out: Set<string>): void {
   for (const [key, value] of Object.entries(node)) {
     const trimmed = key.trim();
-    if (isMergeFieldKey(trimmed)) out.add(trimmed);
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      collectMergeKeysUnder(value as Record<string, unknown>, out);
+    const isNestedContainer = isNestedTagContainer(value);
+    // Loop/section parents (e.g. `properties` under {{#properties}}) are containers, not merge keys.
+    if (isMergeFieldKey(trimmed) && !isNestedContainer) out.add(trimmed);
+    if (isNestedContainer) {
+      collectMergeKeysUnder(value, out);
     }
   }
 }
@@ -77,22 +93,34 @@ export function extractConditionsFromTagTree(
 ): TemplateConditionInfo[] {
   const byExpression = new Map<string, Set<string>>();
 
+  const registerSection = (expression: string, value: Record<string, unknown>) => {
+    const fields = new Set<string>();
+    collectMergeKeysUnder(value, fields);
+    const existing = byExpression.get(expression) ?? new Set<string>();
+    fields.forEach((f) => existing.add(f));
+    byExpression.set(expression, existing);
+  };
+
   const walk = (node: Record<string, unknown>) => {
     for (const [key, value] of Object.entries(node)) {
-      if (!isConditionExpression(key)) {
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          walk(value as Record<string, unknown>);
-        }
+      const trimmed = key.trim();
+      const loopKey = normalizeSectionKey(trimmed);
+
+      if (isNestedTagContainer(value) && isMergeFieldKey(loopKey)) {
+        // {{#properties}} — driver name is a valid identifier but has nested merge keys.
+        registerSection(loopKey, value);
+        walk(value);
         continue;
       }
-      const expr = key.trim();
-      const fields = new Set<string>();
-      if (value && typeof value === 'object' && !Array.isArray(value)) {
-        collectMergeKeysUnder(value as Record<string, unknown>, fields);
+
+      if (!isConditionExpression(key)) {
+        if (isNestedTagContainer(value)) walk(value);
+        continue;
       }
-      const existing = byExpression.get(expr) ?? new Set<string>();
-      fields.forEach((f) => existing.add(f));
-      byExpression.set(expr, existing);
+      const expr = trimmed;
+      if (isNestedTagContainer(value)) {
+        registerSection(expr, value);
+      }
     }
   };
 

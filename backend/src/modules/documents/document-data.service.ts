@@ -143,21 +143,30 @@ export class DocumentDataService {
 
     for (const key of [...keysToInclude].sort()) {
       const trimmedKey = key.trim();
-      const val =
-        fieldData.data[trimmedKey] ??
-        fieldData.data[key];
+      const val = fieldData.data[trimmedKey] ?? fieldData.data[key];
+      if (Array.isArray(val)) {
+        scoped[trimmedKey] = val;
+        if (val.length > 0) templateResolvedCount++;
+        continue;
+      }
+      if (val != null && typeof val === 'object') {
+        scoped[trimmedKey] = val;
+        if (Object.keys(val as Record<string, unknown>).length > 0) templateResolvedCount++;
+        continue;
+      }
       const resolved = val != null && String(val).trim() !== '' ? String(val) : '';
       scoped[trimmedKey] = resolved;
       if (resolved) templateResolvedCount++;
     }
 
     const templateConditions = inspect.conditions.map((cond) => {
-      const driverValue =
-        cond.driverField != null ? String(fieldData.data[cond.driverField] ?? '').trim() : '';
+      const rawDriver =
+        cond.driverField != null ? fieldData.data[cond.driverField] : undefined;
+      const driverValue = this.formatConditionDriverValue(rawDriver);
       return {
         ...cond,
         driverValue,
-        driverResolved: driverValue !== '',
+        driverResolved: this.isConditionDriverResolved(rawDriver),
         matchesCompare:
           cond.operator != null &&
           cond.compareValue != null &&
@@ -173,6 +182,12 @@ export class DocumentDataService {
       if (Array.isArray(loopVal)) scoped[cond.driverField] = loopVal;
     }
 
+    // RE851D: always expose properties[] in inspect when built (even if template uses flat _N tags).
+    const properties = fieldData.data['properties'];
+    if (Array.isArray(properties) && properties.length > 0) {
+      scoped['properties'] = properties;
+    }
+
     return {
       data: scoped,
       metadata: {
@@ -184,6 +199,25 @@ export class DocumentDataService {
         resolvedCount: templateResolvedCount,
       },
     };
+  }
+
+  private formatConditionDriverValue(value: unknown): string {
+    if (value == null) return '';
+    if (Array.isArray(value)) {
+      if (value.length === 0) return '';
+      return JSON.stringify(value);
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+    return String(value).trim();
+  }
+
+  private isConditionDriverResolved(value: unknown): boolean {
+    if (value == null) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+    return String(value).trim() !== '';
   }
 
   private conditionMatches(operator: string, actual: string, expected: string): boolean {
