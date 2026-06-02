@@ -702,12 +702,16 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
       });
       if (collected.length >= lienSlots.length) break;
     }
+    // IMPORTANT: only PUSH lien data into a slot when we actually have a matching
+    // payoff lien. Never clear existing values — those may be manual entries or
+    // hydrated from a prior save, and clearing them would wipe persisted data.
     lienSlots.forEach((slot, i) => {
       const entry = collected[i];
-      const lbl = entry ? entry.label : '';
-      const amt = entry && entry.amount > 0 ? formatCurrencyDisplay(entry.amount.toFixed(2)) : '';
-      if (getValue(slot.labelKey) !== lbl) setValue(slot.labelKey, lbl);
-      if (getValue(slot.amtKey) !== amt) setValue(slot.amtKey, amt);
+      if (!entry) return;
+      const lbl = entry.label;
+      const amt = entry.amount > 0 ? formatCurrencyDisplay(entry.amount.toFixed(2)) : '';
+      if (lbl && getValue(slot.labelKey) !== lbl) setValue(slot.labelKey, lbl);
+      if (amt && getValue(slot.amtKey) !== amt) setValue(slot.amtKey, amt);
     });
   }, [lienKeysSignature]);
 
