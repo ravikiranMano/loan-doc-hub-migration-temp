@@ -810,7 +810,9 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
             {totalVal && <span className="text-muted-foreground ml-1">= ${formatCurrencyDisplay(totalVal)}</span>}
           </div>
           {commentKey ? (
-            <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            <DirtyFieldWrapper fieldKey={commentKey}>
+              <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            </DirtyFieldWrapper>
           ) : <div />}
           <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
