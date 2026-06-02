@@ -4093,6 +4093,38 @@ export function replaceMergeTags(
     }
   }
 
+  // RE851A Part 7 — financial statement Yes/No alignment cleanup.
+  // The live template places the right-column "No" answers for the CPA/PA and
+  // addendum rows in separate paragraphs. One authored "No" paragraph also
+  // carries a leading manual line break; after checkbox SDT conversion, Word
+  // renders that break as a stray checked box at the lower-left of the section.
+  // Strictly within this financial-statement window, remove manual breaks/page
+  // markers only from paragraphs whose visible text is just checkbox + "No".
+  if (is851A && result.includes("Financial Statements have been audited by CPA or PA") && result.includes("Additional information is included on an attached addendum")) {
+    const winStart = result.indexOf("Financial Statements have been audited by CPA or PA");
+    const part8Idx = result.indexOf("PART 8", winStart);
+    const winEnd = part8Idx > winStart ? part8Idx : Math.min(result.length, winStart + 8000);
+    let windowXml = result.substring(winStart, winEnd);
+    let cleanedNoOnlyRows = 0;
+
+    windowXml = windowXml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (para) => {
+      const plain = para.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+      if (!/^[☐☑☒]?\s*No$/i.test(plain)) return para;
+      if (!/<w:br\b|<w:lastRenderedPageBreak\/>/.test(para)) return para;
+
+      const cleaned = para
+        .replace(/<w:lastRenderedPageBreak\/>/g, "")
+        .replace(/<w:r\b[^>]*>\s*(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:br\b[^>]*\/>\s*<\/w:r>/g, "");
+      if (cleaned !== para) cleanedNoOnlyRows++;
+      return cleaned;
+    });
+
+    if (cleanedNoOnlyRows > 0) {
+      result = result.substring(0, winStart) + windowXml + result.substring(winEnd);
+      console.log(`[tag-parser] RE851A financial statement alignment cleanup removed manual breaks from ${cleanedNoOnlyRows} No-only row(s)`);
+    }
+  }
+
   __mark('postReplaceCleanup');
 
   // Glyph standardization: replace any ballot-box-with-X (☒) with check
