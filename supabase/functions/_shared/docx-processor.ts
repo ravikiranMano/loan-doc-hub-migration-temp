@@ -284,9 +284,6 @@ export async function processDocx(
   }
   const tAfterParts = performance.now();
 
-  const compressed = fflate.zipSync(processedFiles);
-  const tAfterZip = performance.now();
-
   // Per-stage timing summary. Highlights the slowest XML part so future
   // CPU-budget regressions are immediately visible in production logs.
   try {
@@ -298,7 +295,7 @@ export async function processDocx(
       `[docx-processor] timings: unzip=${Math.round(tUnzip - t0)}ms ` +
       `partsTotal=${Math.round(tAfterParts - tUnzip)}ms ` +
       `(replaceMs=${totalReplaceMs} across ${partTimings.length} parts) ` +
-      `zip=${Math.round(tAfterZip - tAfterParts)}ms` +
+      `zip=pending ` +
       (slowest ? ` slowestPart=${slowest.part} (${slowest.bytes}B, replace=${slowest.replaceMs}ms)` : "")
     );
     if (is885) {
@@ -346,8 +343,40 @@ export async function processDocx(
     );
 
     for (const partName of contentPartNames) {
-      const xml = getPartXml(partName);
+      let xml = getPartXml(partName);
       if (!xml) continue;
+
+      // Defensive auto-repair: some uploaded templates ship header/footer/
+      // footnotes/endnotes parts whose root close tag is missing (Word still
+      // opens them via its tolerant parser, but our strict integrity check
+      // — and Google Docs — reject them). When the root open tag is present
+      // and the close tag is absent, append the close tag rather than failing
+      // the whole generation. Never applied to word/document.xml (truncation
+      // there indicates real corruption that must be surfaced).
+      let rootCloseRepair: string | null = null;
+      let rootOpenName: string | null = null;
+      if (partName.startsWith("word/header")) { rootCloseRepair = "</w:hdr>"; rootOpenName = "w:hdr"; }
+      else if (partName.startsWith("word/footer")) { rootCloseRepair = "</w:ftr>"; rootOpenName = "w:ftr"; }
+      else if (partName.startsWith("word/footnotes")) { rootCloseRepair = "</w:footnotes>"; rootOpenName = "w:footnotes"; }
+      else if (partName.startsWith("word/endnotes")) { rootCloseRepair = "</w:endnotes>"; rootOpenName = "w:endnotes"; }
+      if (rootCloseRepair && rootOpenName) {
+        const trimmed = xml.trim();
+        const hasOpen = new RegExp(`<${rootOpenName}\\b`).test(trimmed);
+        const selfClosedRootRe = new RegExp(`(<${rootOpenName}\\b[\\s\\S]*?)\\s*/>\\s*$`);
+        if (hasOpen && selfClosedRootRe.test(trimmed)) {
+          console.warn(`[docx-processor] auto-repairing ${partName}: expanded self-closing ${rootOpenName} root`);
+          xml = trimmed.replace(selfClosedRootRe, `$1>${rootCloseRepair}`);
+          processedFiles[partName] = [encoder.encode(xml), { level: PROCESSED_XML_COMPRESSION_LEVEL }];
+        } else if (hasOpen && !trimmed.endsWith(rootCloseRepair)) {
+          console.warn(
+            `[docx-processor] auto-repairing ${partName}: appended missing ${rootCloseRepair} ` +
+            `(last 120 chars before repair: ${JSON.stringify(trimmed.slice(-120))})`,
+          );
+          xml = trimmed + rootCloseRepair;
+          processedFiles[partName] = [encoder.encode(xml), { level: PROCESSED_XML_COMPRESSION_LEVEL }];
+        }
+      }
+
       validateContentXmlPart(partName, xml);
     }
   } catch (err) {
@@ -357,6 +386,10 @@ export async function processDocx(
     }
     throw err;
   }
+
+  const compressed = fflate.zipSync(processedFiles);
+  const tAfterZip = performance.now();
+  console.log(`[docx-processor] zip complete: ${Math.round(tAfterZip - tAfterParts)}ms`);
 
   return compressed;
 }
@@ -386,7 +419,11 @@ export function validateContentXmlPart(partName: string, xml: string): void {
   else if (partName.startsWith("word/endnotes")) rootClose = "</w:endnotes>";
 
   if (rootClose && !trimmed.endsWith(rootClose)) {
-    throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+    const rootName = rootClose.slice(2, -1);
+    const selfClosedRootRe = new RegExp(`<${rootName}\\b[\\s\\S]*?/>\\s*$`);
+    if (!selfClosedRootRe.test(trimmed)) {
+      throw new Error(`DOCX_INTEGRITY: ${partName} is truncated (missing ${rootClose})`);
+    }
   }
 
   const parsed = new DOMParser().parseFromString(trimmed, "application/xml");

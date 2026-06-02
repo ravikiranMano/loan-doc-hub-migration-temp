@@ -331,6 +331,11 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
     const tFastSimple = Date.now();
     result = consolidateFragmentedSimpleTagsFast(result);
     __nwxLog('fastSimpleFragmentedTags', tFastSimple);
+    const tParaSafety = Date.now();
+    if (hasFragmentedMergeTagCandidates(result)) {
+      result = consolidateFragmentedTagsInParagraphs(result);
+      __nwxLog('fastParagraphSafety', tParaSafety);
+    }
     console.log(
       `[tag-parser] normalizeWordXml RE885 fast-path: skipped heavy fragmented suite (${xmlContent.length}B, total=${Date.now() - __nwxStart}ms)`
     );
@@ -2941,8 +2946,43 @@ export function replaceMergeTags(
   if (tagReplacementMap.size > 0) {
     const tagScanRe = /\{\{[^{}\n]{1,400}?\}\}|«[^«»\n]{1,400}?»/g;
     result = result.replace(tagScanRe, (match, offset: number) => {
-      const replacement = tagReplacementMap.get(match);
+      let replacement = tagReplacementMap.get(match);
       if (replacement === undefined) return match;
+      if (/885/i.test(__tplName) && !replacement.includes('\n')) {
+        const paragraphStart = result.lastIndexOf("<w:p", offset);
+        const paragraphEnd = result.indexOf("</w:p>", offset);
+        const paragraphXml = paragraphStart !== -1 && paragraphEnd !== -1
+          ? result.slice(paragraphStart, paragraphEnd + 6)
+          : "";
+        const isBrokerSignatureValueLine =
+          paragraphXml.includes("bk_p_brokerLicens") ||
+          paragraphXml.includes("bk_p_firstName") ||
+          paragraphXml.includes("bk_p_lastName");
+        if (isBrokerSignatureValueLine && /^\{\{\s*bk_p_(?:company|brokerLicens|lastName)\s*\}\}$/.test(match)) {
+          const displayPad = Math.max(0, match.length - replacement.length);
+          if (displayPad > 0) replacement = replacement + " ".repeat(displayPad);
+        }
+      }
+      if (!replacement.includes('\n')) return replacement;
+      if (/885/i.test(__tplName)) {
+        const previousText = result.slice(0, offset).match(/<w:t[^>]*>([\s\S]*?)$/)?.[1] || "";
+        const nextTextStart = result.slice(offset).match(/^[\s\S]*?\}\}([\s\S]*?)<\/w:t>/)?.[1] || "";
+        const leadingNewlineCount = (replacement.match(/^\n+/)?.[0].length || 0);
+        const trailingNewlineCount = (replacement.match(/\n+$/)?.[0].length || 0);
+        let trimmedLeadingNewlines = 0;
+        let trimmedTrailingNewlines = 0;
+        if (previousText.trim() === "" && leadingNewlineCount > 0) {
+          trimmedLeadingNewlines = leadingNewlineCount;
+          replacement = replacement.replace(/^\n+/, "");
+        }
+        if (nextTextStart.trim() === "" && trailingNewlineCount > 0) {
+          trimmedTrailingNewlines = trailingNewlineCount;
+          replacement = replacement.replace(/\n+$/, "");
+        }
+        if (trimmedLeadingNewlines || trimmedTrailingNewlines) {
+          debugLog(`[tag-parser] Trimmed RE885 boundary newlines around ${match}: leading=${trimmedLeadingNewlines}, trailing=${trimmedTrailingNewlines}`);
+        }
+      }
       if (!replacement.includes('\n')) return replacement;
       // Context-aware newline handling: only emit Word's in-run break form
       // when we're substituting inside an open <w:t> element. Otherwise the
@@ -4050,6 +4090,32 @@ export function replaceMergeTags(
       console.log(
         `[generate-document] Forced RE851A servicing-agent glyphs: agent="${agent}", lender=${lenderGlyph}, broker=${brokerGlyph}, other=${otherGlyph}`,
       );
+    }
+  }
+
+  // Template-agnostic checkbox-row break cleanup.
+  // Some authored templates place a right-column "Yes" or "No" answer in its
+  // own paragraph that carries a leading manual line break (<w:br/>) or a
+  // stale <w:lastRenderedPageBreak/>. After checkbox SDT conversion, Word
+  // renders that break as a stray checked box at the lower-left of the row.
+  // Rule: for ANY paragraph whose entire visible text is just an optional
+  // checkbox glyph (☐/☑/☒) followed by Yes or No (case-insensitive), strip
+  // manual line breaks and rendered-page-break markers. Strict shape match
+  // ensures no body content is ever affected.
+  {
+    let cleanedRows = 0;
+    result = result.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (para) => {
+      if (!/<w:br\b|<w:lastRenderedPageBreak\/>/.test(para)) return para;
+      const plain = para.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+      if (!/^[☐☑☒]?\s*(Yes|No)$/i.test(plain)) return para;
+      const cleaned = para
+        .replace(/<w:lastRenderedPageBreak\/>/g, "")
+        .replace(/<w:r\b[^>]*>\s*(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:br\b[^>]*\/>\s*<\/w:r>/g, "");
+      if (cleaned !== para) cleanedRows++;
+      return cleaned;
+    });
+    if (cleanedRows > 0) {
+      console.log(`[tag-parser] Checkbox-row alignment cleanup removed manual breaks from ${cleanedRows} Yes/No-only row(s)`);
     }
   }
 

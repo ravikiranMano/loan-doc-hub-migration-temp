@@ -206,7 +206,7 @@ async function generateSingleDocument(
       const CACHE_TTL_MS = 5 * 60 * 1000;
       const cacheCutoffIso = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
-      if (isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "") || /Note\s+Purchaser\s+Qualification(?:\s+Checklist)?/i.test(template.name || "") || /ADDENDUM\s+TO\s+NOTE.*DEFAULT/i.test(template.name || "")) {
+      if (isTemplate885 || isTemplate851D || isTemplate870 || /851a/i.test(template.name || "") || /guaranty/i.test(template.name || "") || /Note\s+Purchaser\s+Qualification(?:\s+Checklist)?/i.test(template.name || "") || /ADDENDUM\s+TO\s+NOTE.*DEFAULT/i.test(template.name || "")) {
         throw new Error("Template cache bypassed so runtime field publisher fixes always regenerate the DOCX");
       }
 
@@ -2495,9 +2495,12 @@ async function generateSingleDocument(
           }
           if (matched.length > 0) {
             matched.sort((a, b) => a.lienIdx - b.lienIdx);
-            const joined = matched.map(e => e.value).join("\n");
+            // Drop blanks so the joined value never starts with "\n"
+            // (avoids a stray <w:br/> at the cell start during merge).
+            const nonBlank = matched.filter(e => e.value !== null && e.value !== undefined && String(e.value).trim() !== "");
+            const joined = nonBlank.map(e => e.value).join("\n");
             fieldValues.set(`pr_p_currentBalanc_${idx}`, { rawValue: joined, dataType: "currency" });
-            debugLog(`[generate-document] Published pr_p_currentBalanc_${idx} (${matched.length} liens)`);
+            debugLog(`[generate-document] Published pr_p_currentBalanc_${idx} (${nonBlank.length}/${matched.length} liens)`);
           }
         }
 
@@ -4171,7 +4174,12 @@ async function generateSingleDocument(
         // "2nd\n2nd" for pr_li_lienPrioriNow). Drop the index-0 entry whenever
         // any indexed lien (>=1) is present, regardless of value match.
         const hasIndexed = entries.some(e => e.index >= 1);
-        const dedupedEntries = hasIndexed ? entries.filter(e => e.index >= 1) : entries;
+        const dedupedEntries = (hasIndexed ? entries.filter(e => e.index >= 1) : entries)
+          // Drop blank/whitespace-only entries so they don't produce a leading
+          // or in-list "\n" that the docx renderer turns into a stray <w:br/>
+          // inside the lien table cell (breaks RE885 §XVI lien-row alignment
+          // because the column placeholders share a single paragraph).
+          .filter(e => e.value !== null && e.value !== undefined && String(e.value).trim() !== "");
         const isCurrencyField = (field === "current_balance" || field === "original_balance" ||
                           field === "regular_payment" || field === "balance_after" ||
                           field === "anticipated_amount" || field === "existing_paydown_amount" ||
@@ -4436,17 +4444,23 @@ async function generateSingleDocument(
           };
 
           if (orderedIdx.length > 0) {
-            const holderLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.holder));
-            const cbLines = orderedIdx.map((i) => fmtAmt(perLienAll[i]?.cb));
-            const prioNowLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.prioNow));
-            const prioAfterLines = orderedIdx.map((i) => fmtText(perLienAll[i]?.prioAfter));
-            const antLines = orderedIdx.map((i) => {
+            const lienRows = orderedIdx.map((i) => {
               const rec = perLienAll[i] || {};
-              // Only output anticipated amount on rows whose lien is flagged
-              // anticipated; otherwise blank to keep the row aligned.
-              if (!isTrueLocal(rec.ant)) return "";
-              return fmtAmt(rec.nrb) || fmtAmt(rec.antAmt);
-            });
+              const antLine = isTrueLocal(rec.ant) ? (fmtAmt(rec.nrb) || fmtAmt(rec.antAmt)) : "";
+              return {
+                holder: fmtText(rec.holder),
+                cb: fmtAmt(rec.cb),
+                prioNow: fmtText(rec.prioNow),
+                prioAfter: fmtText(rec.prioAfter),
+                ant: antLine,
+              };
+            }).filter((row) => row.holder || row.cb || row.prioNow || row.prioAfter || row.ant);
+
+            const holderLines = lienRows.map((row) => row.holder);
+            const cbLines = lienRows.map((row) => row.cb);
+            const prioNowLines = lienRows.map((row) => row.prioNow);
+            const prioAfterLines = lienRows.map((row) => row.prioAfter);
+            const antLines = lienRows.map((row) => row.ant);
 
             fieldValues.set("pr_li_lienHolder", {
               rawValue: holderLines.join("\n"),
@@ -4469,7 +4483,7 @@ async function generateSingleDocument(
               dataType: "text",
             });
             debugLog(
-              `[generate-document] RE885 row-aligned Section XVI lien table: ${orderedIdx.length} rows; ` +
+              `[generate-document] RE885 row-aligned Section XVI lien table: ${lienRows.length}/${orderedIdx.length} visible rows; ` +
               `pr_li_lienHolder=[${holderLines.map((s) => s || "·").join("|")}] ` +
               `pr_p_currentBalanc=[${cbLines.map((s) => s || "·").join("|")}] ` +
               `pr_li_lienPrioriNow=[${prioNowLines.map((s) => s || "·").join("|")}] ` +
@@ -5903,6 +5917,21 @@ async function generateSingleDocument(
       fieldValues.set('of_fe_subtotalOthers', { rawValue: totalOthers.toFixed(2), dataType: 'currency' });
       fieldValues.set('of_fe_subtotalJ', { rawValue: totalBroker.toFixed(2), dataType: 'currency' });
       fieldValues.set('of_fe_totalJ', { rawValue: grandTotal.toFixed(2), dataType: 'currency' });
+      if (isTemplate885) {
+        const grandTotalData = { rawValue: grandTotal.toFixed(2), dataType: 'currency' as const };
+        fieldValues.set('of_re_initialFeesPage1', grandTotalData);
+        fieldValues.set('origination_fees.re885_initial_fees_page1', grandTotalData);
+
+        const loanDocFee = fieldValues.get('of_fe_loanDocumeFeeD')
+          || fieldValues.get('origination_fees.loan_documentation_fee_d');
+        const otherObligations = fieldValues.get('of_re_creditLifeInsurance')
+          || fieldValues.get('origination_fees.re885_other_obligations');
+        if ((!otherObligations || otherObligations.rawValue == null || String(otherObligations.rawValue).trim() === '') && loanDocFee?.rawValue != null && String(loanDocFee.rawValue).trim() !== '') {
+          const loanDocFeeData = { rawValue: loanDocFee.rawValue, dataType: loanDocFee.dataType || 'currency' };
+          fieldValues.set('of_re_creditLifeInsurance', loanDocFeeData);
+          fieldValues.set('origination_fees.re885_other_obligations', loanDocFeeData);
+        }
+      }
       debugLog(`[generate-document] Auto-computed HUD totals: Others=${totalOthers.toFixed(2)} (${dynamicOthersKeys.size} keys), Broker=${totalBroker.toFixed(2)} (${dynamicBrokerKeys.size} keys), Grand=${grandTotal.toFixed(2)}`);
     }
 
