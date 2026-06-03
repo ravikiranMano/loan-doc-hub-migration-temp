@@ -1147,6 +1147,8 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                       </>
                     )}
                   </Button>
+                  {/* Dev / alternate generation paths — hidden in UI, kept for debugging */}
+                  <div className="hidden flex flex-col gap-2">
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <Button
                       type="button"
@@ -1201,7 +1203,6 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                       )}
                     </Button>
                   </div>
-                </div>
 
                 {/* v2 docxtemplater test row */}
                 <div className="flex flex-col gap-2 pt-2 border-t border-border">
@@ -1241,6 +1242,8 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
                     )}
                   </Button>
                 </div>
+                </div>
+                  </div>
                 </div>
               </div>
             </div>
