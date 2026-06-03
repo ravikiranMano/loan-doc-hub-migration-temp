@@ -432,6 +432,14 @@ export class DealsRepository {
     return this.prisma.event_journal.findUnique({ where: { id } });
   }
 
+  findUserDisplayNames(ids: string[]) {
+    if (!ids.length) return [];
+    return this.prisma.users.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, full_name: true, email: true },
+    });
+  }
+
   // ─── Magic Links ─────────────────────────────────────────────────────────────
 
   findMagicLinks(participantId: string) {

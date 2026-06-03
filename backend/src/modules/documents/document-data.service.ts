@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DealFieldValuesLoader } from './deal-field-values.loader';
+import { buildAdditionalLendersArray } from './lenders.builder';
 import { buildRe851dPropertiesArray } from './re851d-properties.builder';
 import { TemplateConditionInfo, TemplateInspectResult } from './template-inspect.util';
 
@@ -46,9 +47,10 @@ export class DocumentDataService {
     if (!template.file_path) throw new NotFoundException(`Template ${templateId} has no DOCX file uploaded`);
 
     // ── 2. Load field values (deal_section_values — same as generate-document edge) ──
-    const fieldValuesByKey = await this.dealFieldLoader.loadByFieldKey(dealId, {
-      borrower_name: deal.borrower_name,
-    });
+    const { fieldValues: fieldValuesByKey, lenders } = await this.dealFieldLoader.loadByFieldKey(
+      dealId,
+      { borrower_name: deal.borrower_name },
+    );
 
     // ── 3. Load transform rules from template_field_maps ─────────────────────
     // For _vDT copies (no field maps yet), fall back to the original template.
@@ -106,6 +108,14 @@ export class DocumentDataService {
     const properties = buildRe851dPropertiesArray(fieldValuesByKey);
     if (properties.length > 0) {
       data['properties'] = properties;
+    }
+
+    if (lenders.length > 0) {
+      data['lenders'] = lenders;
+      const additionalLenders = buildAdditionalLendersArray(lenders);
+      if (additionalLenders.length > 0) {
+        data['additionalLenders'] = additionalLenders;
+      }
     }
 
     // ── 7. Build dot-notation nested objects ─────────────────────────────────
@@ -186,6 +196,15 @@ export class DocumentDataService {
     const properties = fieldData.data['properties'];
     if (Array.isArray(properties) && properties.length > 0) {
       scoped['properties'] = properties;
+    }
+
+    const lenders = fieldData.data['lenders'];
+    if (Array.isArray(lenders) && lenders.length > 0) {
+      scoped['lenders'] = lenders;
+    }
+    const additionalLenders = fieldData.data['additionalLenders'];
+    if (Array.isArray(additionalLenders) && additionalLenders.length > 0) {
+      scoped['additionalLenders'] = additionalLenders;
     }
 
     return {

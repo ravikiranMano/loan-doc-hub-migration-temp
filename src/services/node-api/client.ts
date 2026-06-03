@@ -65,6 +65,8 @@ export async function apiFetch(
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
+    // Avoid browser conditional GET (304) — Express etag + empty 304 body breaks JSON parsing.
+    cache: 'no-store',
     headers,
   });
 
@@ -92,6 +94,12 @@ async function request<T>(
     },
     isRetry,
   );
+
+  // Express may return 304 when If-None-Match matches etag; fetch treats 304 as !ok with no body.
+  if (res.status === 304 && method === 'GET' && !isRetry) {
+    const sep = path.includes('?') ? '&' : '?';
+    return request<T>(method, `${path}${sep}_=${Date.now()}`, body, true);
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));

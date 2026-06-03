@@ -101,7 +101,7 @@ export class GenerationService {
     });
 
     try {
-      const rawFieldValues = await this.fieldLoader.loadByFieldKey(dealId, {
+      const { fieldValues: rawFieldValues } = await this.fieldLoader.loadByFieldKey(dealId, {
         borrower_name: (deal as any).borrower_name,
       });
 

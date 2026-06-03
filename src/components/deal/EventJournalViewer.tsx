@@ -75,7 +75,8 @@ const PAGE_SIZE = 10;
 
 export const EventJournalViewer: React.FC<EventJournalViewerProps> = ({ dealId, disabled = false, active = true }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const { data: paginatedResult, isLoading } = usePaginatedEventJournalEntries(dealId, currentPage, PAGE_SIZE);
+  const { data: paginatedResult, isLoading, isError, error, refetch } =
+    usePaginatedEventJournalEntries(dealId, currentPage, PAGE_SIZE);
   // Keep the full query for export only
   const { data: allEntries } = useEventJournalEntries(dealId);
   const [selectedEntry, setSelectedEntry] = useState<EventJournalEntry | null>(null);
@@ -112,6 +113,22 @@ export const EventJournalViewer: React.FC<EventJournalViewerProps> = ({ dealId, 
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <p className="text-muted-foreground">Loading event journal…</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <div className="text-center space-y-3">
+          <p className="text-destructive font-medium">Could not load event journal</p>
+          <p className="text-sm text-muted-foreground">
+            {(error as Error)?.message || 'Request failed'}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }

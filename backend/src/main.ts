@@ -19,6 +19,14 @@ async function bootstrap() {
   app.use(cookieParser());
   app.setGlobalPrefix(apiPrefix);
 
+  // API responses must not use Express etag/304 — the SPA client expects a JSON body on every GET.
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('etag', false);
+  expressApp.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    next();
+  });
+
   app.enableCors({
     origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

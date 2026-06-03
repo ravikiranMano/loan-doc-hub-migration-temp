@@ -233,9 +233,28 @@ export class DealsService {
 
   listJournal(dealId: string, page?: number, limit?: number) {
     if (page != null && limit != null) {
-      return this.repo.findEventJournalPaginated(dealId, page, limit);
+      return this.repo.findEventJournalPaginated(dealId, page, limit).then(async (result) => ({
+        entries: await this.enrichJournalEntries(result.entries),
+        count: result.count,
+      }));
     }
-    return this.repo.findEventJournal(dealId, page, limit);
+    return this.repo.findEventJournal(dealId, page, limit).then((entries) =>
+      this.enrichJournalEntries(entries),
+    );
+  }
+
+  /** Attach display names from public.users (journal stores actor_user_id only). */
+  private async enrichJournalEntries<T extends { actor_user_id: string }>(entries: T[]) {
+    if (!entries.length) return entries;
+    const ids = [...new Set(entries.map((e) => e.actor_user_id))];
+    const users = await this.repo.findUserDisplayNames(ids);
+    const nameById = new Map(
+      users.map((u) => [u.id, u.full_name || u.email || 'Unknown'] as const),
+    );
+    return entries.map((e) => ({
+      ...e,
+      actor_name: nameById.get(e.actor_user_id) ?? 'Unknown',
+    }));
   }
 
   createJournalEntry(payload: Record<string, unknown>) {
@@ -245,7 +264,8 @@ export class DealsService {
   async getJournalEntry(id: string) {
     const entry = await this.repo.findEventJournalEntry(id);
     if (!entry) throw new NotFoundException(`Journal entry '${id}' not found`);
-    return entry;
+    const [enriched] = await this.enrichJournalEntries([entry]);
+    return enriched;
   }
 
   // ─── Magic Links ─────────────────────────────────────────────────────────────

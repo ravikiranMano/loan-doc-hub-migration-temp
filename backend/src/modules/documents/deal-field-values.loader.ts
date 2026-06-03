@@ -1,5 +1,11 @@
 import { PrismaService } from '../../prisma/prisma.service';
+import { loadDealLenders, publishLenderAliases, type LenderLoopRow } from './lenders.builder';
 import { applyRe851dBridges, PR_KEY_TO_SUFFIX } from './re851d-properties.builder';
+
+export interface DealFieldsLoadResult {
+  fieldValues: Map<string, ResolvedDealField>;
+  lenders: LenderLoopRow[];
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,7 +30,10 @@ type JsonbCell = {
 export class DealFieldValuesLoader {
   constructor(private readonly prisma: PrismaService) {}
 
-  async loadByFieldKey(dealId: string, deal?: { borrower_name?: string | null }): Promise<Map<string, ResolvedDealField>> {
+  async loadByFieldKey(
+    dealId: string,
+    deal?: { borrower_name?: string | null },
+  ): Promise<DealFieldsLoadResult> {
     const fieldValues = new Map<string, ResolvedDealField>();
 
     const sectionValues = await this.prisma.deal_section_values.findMany({
@@ -118,12 +127,13 @@ export class DealFieldValuesLoader {
       }
     }
 
-    await this.applyLenderBridges(dealId, fieldValues);
+    const lenders = await loadDealLenders(this.prisma, dealId, fieldValues);
+    publishLenderAliases(fieldValues, lenders);
     this.applyBasicBridges(fieldValues, deal);
     this.applyRe885Bridges(fieldValues);
     applyRe851dBridges(fieldValues);
 
-    return fieldValues;
+    return { fieldValues, lenders };
   }
 
   /**
@@ -219,102 +229,6 @@ export class DealFieldValuesLoader {
       setIfEmpty('of_re_vfullyIndexedRate', vFully);
       setIfEmpty('of_re_vFullyIndexedRate', vFully);
     }
-  }
-
-  /**
-   * Primary lender: deal_participants → contacts (CSR Lender Info).
-   * Loads contact values into merge keys. Does NOT clear vesting for Individual — v2
-   * templates use {{#}} / {{^}} sections so docxtemplater decides what prints at runtime.
-   * (v1 generate-document still blanks ld_p_vesting for Individual for legacy flat tags.)
-   */
-  private async applyLenderBridges(
-    dealId: string,
-    fieldValues: Map<string, ResolvedDealField>,
-  ): Promise<void> {
-    const lenderParticipants = await this.prisma.deal_participants.findMany({
-      where: { deal_id: dealId, role: 'lender' },
-      orderBy: [{ sequence_order: 'asc' }, { created_at: 'asc' }],
-      select: { contact_id: true, sequence_order: true },
-    });
-
-    const ordered = [...lenderParticipants].sort((a, b) => {
-      const aSeq =
-        typeof a.sequence_order === 'number' ? a.sequence_order : Number.MAX_SAFE_INTEGER;
-      const bSeq =
-        typeof b.sequence_order === 'number' ? b.sequence_order : Number.MAX_SAFE_INTEGER;
-      return aSeq - bSeq;
-    });
-
-    const primaryContactId = ordered.find((p) => p.contact_id)?.contact_id;
-    if (!primaryContactId) return;
-
-    const contactRows = await this.prisma.contacts.findMany({
-      where: { id: { in: ordered.map((p) => p.contact_id).filter(Boolean) as string[] } },
-      select: { id: true, first_name: true, last_name: true, contact_data: true },
-    });
-    const contactById = new Map(contactRows.map((c) => [c.id, c]));
-    const contact = contactById.get(primaryContactId);
-    if (!contact) return;
-
-    /** Same rule as generate-document setIfEmpty: fill only when missing or empty. */
-    const setIfEmpty = (key: string, raw: string) => {
-      if (!raw) return;
-      const existing = fieldValues.get(key)?.rawValue;
-      if (existing != null && String(existing).trim() !== '') return;
-      fieldValues.set(key, { rawValue: raw, dataType: 'text' });
-    };
-
-    const cd = (contact.contact_data ?? {}) as Record<string, unknown>;
-    const first = String(cd.first_name ?? contact.first_name ?? '').trim();
-    const middle = String(cd.middle_initial ?? cd.middle_name ?? '').trim();
-    const last = String(cd.last_name ?? contact.last_name ?? '').trim();
-    const fullName =
-      [first, middle, last].filter(Boolean).join(' ') || String(cd.full_name ?? '').trim();
-
-    setIfEmpty('ld_p_firstName', first);
-    setIfEmpty('ld_p_middleName', middle);
-    setIfEmpty('ld_p_lastName', last);
-    setIfEmpty('ld_p_lenderName', fullName);
-    setIfEmpty('lender.name', fullName);
-
-    setIfEmpty('ld_p_lenderType', String(cd.type ?? '').trim());
-
-    // Contact vesting → merge keys (generate-document inject ~860–869); visibility is template-driven in v2
-    const primaryVesting = cd.vesting != null ? String(cd.vesting).trim() : '';
-    const fallbackVesting = ordered
-      .map((p) => {
-        if (!p.contact_id) return '';
-        const c = contactById.get(p.contact_id);
-        const v = (c?.contact_data as Record<string, unknown> | null)?.vesting;
-        return v != null ? String(v).trim() : '';
-      })
-      .find((v) => v !== '');
-    const lVesting = primaryVesting || fallbackVesting || '';
-    if (lVesting) {
-      setIfEmpty('ld_p_vesting', lVesting);
-      setIfEmpty('ld_p_vestin', lVesting);
-      setIfEmpty('lender.vesting', lVesting);
-      setIfEmpty('lender1.vesting', lVesting);
-    }
-
-    // Template aliases for IQ-style tags (names only — spacing for {{first}}{{middle}}{{last}} layout)
-    const firstRaw = (fieldValues.get('ld_p_firstName')?.rawValue ?? '').toString();
-    const middleRaw = (fieldValues.get('ld_p_middleName')?.rawValue ?? '').toString();
-    const lastRaw = (fieldValues.get('ld_p_lastName')?.rawValue ?? '').toString();
-    const withTrailingSpace = (v: string) => {
-      const t = v.trim();
-      return t ? `${t} ` : '';
-    };
-
-    fieldValues.set('ld_p_firstIfEntityUse', {
-      rawValue: withTrailingSpace(firstRaw),
-      dataType: 'text',
-    });
-    fieldValues.set('ld_p_middle', { rawValue: withTrailingSpace(middleRaw), dataType: 'text' });
-    fieldValues.set('ld_p_last', { rawValue: lastRaw.trim(), dataType: 'text' });
-
-    const finalVesting = (fieldValues.get('ld_p_vesting')?.rawValue ?? '').toString();
-    fieldValues.set('ld_p_vestin', { rawValue: finalVesting, dataType: 'text' });
   }
 
   /** Mirrors generate-document br_p_fullName auto-compute (simplified). */

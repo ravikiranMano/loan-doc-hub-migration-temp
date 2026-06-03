@@ -27,6 +27,36 @@ export interface EventJournalEntry {
 
 let cachedIp: string | null = null;
 
+async function resolveActorNames(actorIds: string[]): Promise<Record<string, string>> {
+  const profileMap: Record<string, string> = {};
+  if (!actorIds.length) return profileMap;
+  try {
+    const profiles = await fetchProfilesByUserIds(actorIds);
+    (profiles || []).forEach((p) => {
+      profileMap[p.user_id] = p.full_name || p.email || 'Unknown';
+    });
+  } catch (err) {
+    console.warn('Event journal: could not load actor names (entries still shown):', err);
+  }
+  return profileMap;
+}
+
+function mapJournalRow(e: Record<string, unknown>, profileMap: Record<string, string>): EventJournalEntry {
+  const actorId = String(e.actor_user_id ?? '');
+  const actorNameFromApi = typeof e.actor_name === 'string' ? e.actor_name : null;
+  return {
+    id: String(e.id),
+    deal_id: String(e.deal_id),
+    event_number: Number(e.event_number ?? 0),
+    actor_user_id: actorId,
+    actor_name: actorNameFromApi || profileMap[actorId] || 'Unknown',
+    section: String(e.section ?? ''),
+    details: (e.details || []) as FieldChange[],
+    created_at: typeof e.created_at === 'string' ? e.created_at : String(e.created_at ?? ''),
+    ip_address: (e.ip_address as string | null) ?? null,
+  };
+}
+
 async function getClientIp(): Promise<string> {
   if (cachedIp) return cachedIp;
   try {
@@ -71,32 +101,17 @@ export function useEventJournalEntries(dealId: string | null) {
   return useQuery({
     queryKey: ['event-journal', dealId],
     enabled: !!dealId,
+    staleTime: 0,
     queryFn: async () => {
       if (!dealId) return [];
 
       const entries = await listEventJournal(dealId);
-
-      const actorIds = [...new Set((entries || []).map((e: any) => e.actor_user_id))];
-      let profileMap: Record<string, string> = {};
-
-      if (actorIds.length > 0) {
-        const profiles = await fetchProfilesByUserIds(actorIds);
-        (profiles || []).forEach((p: any) => {
-          profileMap[p.user_id] = p.full_name || p.email || 'Unknown';
-        });
-      }
-
-      return (entries || []).map((e: any): EventJournalEntry => ({
-        id: e.id,
-        deal_id: e.deal_id,
-        event_number: e.event_number,
-        actor_user_id: e.actor_user_id,
-        actor_name: profileMap[e.actor_user_id] || 'Unknown',
-        section: e.section,
-        details: (e.details || []) as FieldChange[],
-        created_at: e.created_at,
-        ip_address: e.ip_address || null,
-      }));
+      const rows = (entries || []) as Record<string, unknown>[];
+      const needsProfiles = rows.some((e) => !e.actor_name);
+      const profileMap = needsProfiles
+        ? await resolveActorNames([...new Set(rows.map((e) => String(e.actor_user_id)))])
+        : {};
+      return rows.map((e) => mapJournalRow(e, profileMap));
     },
   });
 }
@@ -114,32 +129,17 @@ export function usePaginatedEventJournalEntries(
   return useQuery({
     queryKey: ['event-journal-paginated', dealId, page, pageSize],
     enabled: !!dealId,
+    staleTime: 0,
     queryFn: async (): Promise<PaginatedEventJournalResult> => {
       if (!dealId) return { entries: [], totalCount: 0 };
 
       const { entries, count } = await listEventJournalPaginated(dealId, page, pageSize);
-
-      const actorIds = [...new Set((entries || []).map((e: any) => e.actor_user_id))];
-      let profileMap: Record<string, string> = {};
-
-      if (actorIds.length > 0) {
-        const profiles = await fetchProfilesByUserIds(actorIds);
-        (profiles || []).forEach((p: any) => {
-          profileMap[p.user_id] = p.full_name || p.email || 'Unknown';
-        });
-      }
-
-      const mapped = (entries || []).map((e: any): EventJournalEntry => ({
-        id: e.id,
-        deal_id: e.deal_id,
-        event_number: e.event_number,
-        actor_user_id: e.actor_user_id,
-        actor_name: profileMap[e.actor_user_id] || 'Unknown',
-        section: e.section,
-        details: (e.details || []) as FieldChange[],
-        created_at: e.created_at,
-        ip_address: e.ip_address || null,
-      }));
+      const rows = (entries || []) as Record<string, unknown>[];
+      const needsProfiles = rows.some((e) => !e.actor_name);
+      const profileMap = needsProfiles
+        ? await resolveActorNames([...new Set(rows.map((e) => String(e.actor_user_id)))])
+        : {};
+      const mapped = rows.map((e) => mapJournalRow(e, profileMap));
 
       return { entries: mapped, totalCount: count || 0 };
     },
