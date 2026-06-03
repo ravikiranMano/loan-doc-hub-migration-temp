@@ -222,7 +222,7 @@ export const FieldMapEditorPage: React.FC = () => {
     updates: { required_flag?: boolean; transform_rule?: string | null }
   ) => {
     try {
-      await updateTemplateFieldMap(fieldMapId, updates);
+      await updateTemplateFieldMap(fieldMapId, { ...updates, template_id: selectedTemplateId });
 
       setFieldMaps((prev) =>
         prev.map((fm) => (fm.id === fieldMapId ? { ...fm, ...updates } : fm))

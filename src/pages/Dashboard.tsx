@@ -315,7 +315,7 @@ export const Dashboard: React.FC = () => {
     <div className="page-container">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">
-          Welcome back{user?.user_metadata?.full_name ? `, ${user.user_metadata.full_name}` : ''}
+          Welcome back{user?.full_name ? `, ${user.full_name}` : ''}
         </h1>
         <p className="text-muted-foreground mt-1">
           {role === 'admin' 

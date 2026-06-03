@@ -76,6 +76,13 @@ export class DocxtemplaterService {
     return this.inspectTemplate(buffer, templateName);
   }
 
+  async getDocumentText(filePath: string): Promise<string> {
+    const buffer = await this.downloadTemplate(filePath);
+    const zip = new PizZip(buffer);
+    const xml = zip.files['word/document.xml']?.asText() ?? '';
+    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   private async downloadTemplate(filePath: string): Promise<Buffer> {
     const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
     const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');

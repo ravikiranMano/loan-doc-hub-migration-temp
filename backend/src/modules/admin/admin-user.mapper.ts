@@ -8,6 +8,7 @@ export function toProfileCompat(user: {
   created_at?: Date | string | null;
   phone?: string | null;
   company?: string | null;
+  license_number?: string | null;
 }) {
   return {
     user_id: user.id,
@@ -19,6 +20,7 @@ export function toProfileCompat(user: {
     created_at: user.created_at ?? null,
     phone: user.phone ?? null,
     company: user.company ?? null,
+    license_number: user.license_number ?? null,
   };
 }
 
