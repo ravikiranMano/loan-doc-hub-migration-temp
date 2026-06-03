@@ -562,23 +562,36 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
     ? (loanAmountUpstream * (loanRateUpstream / 100) / 365)
     : 0;
 
+  // Per-day auto: write when upstream produces a positive rate, otherwise
+  // CLEAR any stale value so cleared/zeroed Loan Amount or Note Rate
+  // doesn't leave a phantom "$/day" silently inflating the row + section
+  // 900 subtotal + grand total + APR total + subtotal_j / total_j merge tags.
   useEffect(() => {
-    if (perDayAuto > 0) {
-      const formatted = formatCurrencyDisplay(perDayAuto.toFixed(2));
-      if (getValue(FIELD_KEYS.interestForDays_perDay) !== formatted) {
-        setValue(FIELD_KEYS.interestForDays_perDay, formatted);
+    const next = perDayAuto > 0 ? formatCurrencyDisplay(perDayAuto.toFixed(2)) : '';
+    if (getValue(FIELD_KEYS.interestForDays_perDay) !== next) {
+      setValue(FIELD_KEYS.interestForDays_perDay, next);
+    }
+    // Also clear the user-entered Days input when upstream drivers go to zero,
+    // so a stale "# of days" can't combine with a re-introduced per-day later
+    // and silently revive the 901 row total.
+    if (perDayAuto <= 0) {
+      const currentDays = getValue(FIELD_KEYS.interestForDays_days);
+      if (currentDays !== '' && currentDays != null) {
+        setValue(FIELD_KEYS.interestForDays_days, '');
       }
     }
   }, [perDayAuto]);
 
+  // Row total auto: days × per-day. Clear when either driver is zero so the
+  // computed "Paid to Others" cell doesn't keep a stale value after the user
+  // zeros days or upstream loan inputs.
   useEffect(() => {
     const days = parseNumber(getValue(FIELD_KEYS.interestForDays_days));
-    if (days > 0 && perDayAuto > 0) {
-      const total = days * perDayAuto;
-      const formatted = formatCurrencyDisplay(total.toFixed(2));
-      if (getValue(FIELD_KEYS.interestForDays_others) !== formatted) {
-        setValue(FIELD_KEYS.interestForDays_others, formatted);
-      }
+    const next = (days > 0 && perDayAuto > 0)
+      ? formatCurrencyDisplay((days * perDayAuto).toFixed(2))
+      : '';
+    if (getValue(FIELD_KEYS.interestForDays_others) !== next) {
+      setValue(FIELD_KEYS.interestForDays_others, next);
     }
   }, [perDayAuto, values[FIELD_KEYS.interestForDays_days]]);
 
@@ -744,14 +757,18 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         <div style={GRID_STYLE} className="py-1 border-b border-border/50">
           <div className="text-xs font-medium text-foreground">{hudNumber}</div>
           {labelKey ? (
-            <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs" />
+            <DirtyFieldWrapper fieldKey={labelKey}>
+              <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs" />
+            </DirtyFieldWrapper>
           ) : descriptionNode ? (
             <div className="text-xs text-foreground">{descriptionNode}</div>
           ) : (
             <div className="text-xs text-foreground">{description}</div>
           )}
           {commentKey ? (
-            <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            <DirtyFieldWrapper fieldKey={commentKey}>
+              <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            </DirtyFieldWrapper>
           ) : <div />}
           <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
@@ -793,7 +810,9 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
             {totalVal && <span className="text-muted-foreground ml-1">= ${formatCurrencyDisplay(totalVal)}</span>}
           </div>
           {commentKey ? (
-            <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            <DirtyFieldWrapper fieldKey={commentKey}>
+              <Input value={getValue(commentKey)} onChange={(e) => setValue(commentKey, e.target.value)} disabled={disabled} placeholder="Enter Description" className="h-7 text-xs" />
+            </DirtyFieldWrapper>
           ) : <div />}
           <div className="relative">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
@@ -812,19 +831,21 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
 
   // Simple row for bottom sections (label + amount only)
   const renderSimpleRow = (label: string, dKey: string, labelKey?: string) => (
-    <DirtyFieldWrapper fieldKey={dKey}>
-      <div className="flex items-center gap-2 py-1 border-b border-border/50">
-        {labelKey ? (
+    <div className="flex items-center gap-2 py-1 border-b border-border/50">
+      {labelKey ? (
+        <DirtyFieldWrapper fieldKey={labelKey}>
           <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs flex-1" />
-        ) : (
-          <div className="text-xs text-foreground flex-1">{label}</div>
-        )}
+        </DirtyFieldWrapper>
+      ) : (
+        <div className="text-xs text-foreground flex-1">{label}</div>
+      )}
+      <DirtyFieldWrapper fieldKey={dKey}>
         <div className="relative w-28">
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
           <Input inputMode="decimal" value={getValue(dKey)} onChange={(e) => setValue(dKey, unformatCurrencyDisplay(e.target.value))} onKeyDown={numericKeyDown} onPaste={(e) => numericPaste(e, (val) => setValue(dKey, val))} onBlur={() => { const raw = getValue(dKey); if (raw) setValue(dKey, formatCurrencyDisplay(raw)); }} onFocus={() => { const raw = getValue(dKey); if (raw) setValue(dKey, unformatCurrencyDisplay(raw)); }} disabled={disabled} placeholder="0.00" className="h-7 text-xs text-right pl-5" />
         </div>
-      </div>
-    </DirtyFieldWrapper>
+      </DirtyFieldWrapper>
+    </div>
   );
 
   // Dynamic description for 901 (per-day auto-computed, read-only)
