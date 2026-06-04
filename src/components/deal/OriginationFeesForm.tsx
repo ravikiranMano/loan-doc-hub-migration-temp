@@ -486,6 +486,12 @@ const GRID_STYLE: React.CSSProperties = {
   alignItems: 'center',
 };
 
+const TOTALS_GRID_STYLE: React.CSSProperties = {
+  ...GRID_STYLE,
+  gap: '8px 4px',
+  alignItems: 'center',
+};
+
 export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   values,
   onValueChange,
@@ -557,15 +563,16 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         : (values['loan_terms.term_years'] ? 'years' : 'months'));
 
 
-  // ─── 901 Prepaid Interest: per-day = loan_amount × (rate/100/365); row total = days × per-day
+  // ─── 901 Prepaid Interest: per-day = loan_amount × (rate/100/360); row total = days × per-day
+  // Rounded to 2dp at source so the row-total multiplication (days × perDayAuto) is also 2dp-consistent.
   const perDayAuto = loanAmountUpstream > 0 && loanRateUpstream > 0
-    ? (loanAmountUpstream * (loanRateUpstream / 100) / 365)
+    ? parseFloat((loanAmountUpstream * (loanRateUpstream / 100) / 360).toFixed(2))
     : 0;
 
   // Per-day auto: write when upstream produces a positive rate, otherwise
   // CLEAR any stale value so cleared/zeroed Loan Amount or Note Rate
   // doesn't leave a phantom "$/day" silently inflating the row + section
-  // 900 subtotal + grand total + APR total + subtotal_j / total_j merge tags.
+  // 900 subtotal + grand total + subtotal_j / subtotal_others / total_j merge tags.
   useEffect(() => {
     const next = perDayAuto > 0 ? formatCurrencyDisplay(perDayAuto.toFixed(2)) : '';
     if (getValue(FIELD_KEYS.interestForDays_perDay) !== next) {
@@ -596,8 +603,12 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   }, [perDayAuto, values[FIELD_KEYS.interestForDays_days]]);
 
   // ─── Section subtotals + Grand Total (Paid to Others + Paid to Broker across all rows)
+  const sumOthersKeys = (rows: { others: string; broker: string }[]) =>
+    rows.reduce((acc, r) => acc + parseNumber(getValue(r.others)), 0);
+  const sumBrokerKeys = (rows: { others: string; broker: string }[]) =>
+    rows.reduce((acc, r) => acc + parseNumber(getValue(r.broker)), 0);
   const sumRowKeys = (rows: { others: string; broker: string }[]) =>
-    rows.reduce((acc, r) => acc + parseNumber(getValue(r.others)) + parseNumber(getValue(r.broker)), 0);
+    sumOthersKeys(rows) + sumBrokerKeys(rows);
 
   const section800Rows = [
     { others: FIELD_KEYS.lendersLoanOriginationFee_others, broker: FIELD_KEYS.lendersLoanOriginationFee_broker },
@@ -638,9 +649,11 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   const section1200Rows = [
     { others: FIELD_KEYS.recordingFees_others, broker: FIELD_KEYS.recordingFees_broker },
     { others: FIELD_KEYS.cityCountyTaxStamps_others, broker: FIELD_KEYS.cityCountyTaxStamps_broker },
+    { others: FIELD_KEYS.customItem1200_others, broker: FIELD_KEYS.customItem1200_broker },
   ];
   const section1300Rows = [
     { others: FIELD_KEYS.pestInspection_others, broker: FIELD_KEYS.pestInspection_broker },
+    { others: FIELD_KEYS.customItem1300_1_others, broker: FIELD_KEYS.customItem1300_1_broker },
   ];
 
   const section800Total = sumRowKeys(section800Rows);
@@ -649,26 +662,23 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   const section1100Total = sumRowKeys(section1100Rows);
   const section1200Total = sumRowKeys(section1200Rows);
   const section1300Total = sumRowKeys(section1300Rows);
-  const grandTotal = section800Total + section900Total + section1000Total + section1100Total + section1200Total + section1300Total;
-
-  // ─── APR Total — sum of (others+broker) for every row whose APR checkbox is checked
-  const allAprRows = [
+  const allFeeRows = [
     ...section800Rows, ...section900Rows, ...section1000Rows,
     ...section1100Rows, ...section1200Rows, ...section1300Rows,
   ];
-  const aprKeyForRow = (othersKey: string) => othersKey.replace(/_others$/, '_apr');
-  const aprTotal = allAprRows.reduce((acc, r) => {
-    const aprChecked = getBoolValue(aprKeyForRow(r.others));
-    if (!aprChecked) return acc;
-    return acc + parseNumber(getValue(r.others)) + parseNumber(getValue(r.broker));
-  }, 0);
+  const othersTotal = sumOthersKeys(allFeeRows);
+  const brokerTotal = sumBrokerKeys(allFeeRows);
+  const grandTotal = othersTotal + brokerTotal;
 
   // Persist computed subtotal/total so document merge-tags resolve
   useEffect(() => {
-    const f = formatCurrencyDisplay(grandTotal.toFixed(2));
-    if (getValue(FIELD_KEYS.subtotal_j) !== f) setValue(FIELD_KEYS.subtotal_j, f);
-    if (getValue(FIELD_KEYS.total_j) !== f) setValue(FIELD_KEYS.total_j, f);
-  }, [grandTotal]);
+    const othersF = formatCurrencyDisplay(othersTotal.toFixed(2));
+    const brokerF = formatCurrencyDisplay(brokerTotal.toFixed(2));
+    const totalF = formatCurrencyDisplay(grandTotal.toFixed(2));
+    if (getValue(FIELD_KEYS.subtotal_others) !== othersF) setValue(FIELD_KEYS.subtotal_others, othersF);
+    if (getValue(FIELD_KEYS.subtotal_j) !== brokerF) setValue(FIELD_KEYS.subtotal_j, brokerF);
+    if (getValue(FIELD_KEYS.total_j) !== totalF) setValue(FIELD_KEYS.total_j, totalF);
+  }, [othersTotal, brokerTotal, grandTotal]);
 
   // ─── Auto-fill Payment to Existing Liens from the Lien Management data.
   // Source of truth: lien{N}.* (NOT property{N}.lien_*). A lien flows into the
@@ -833,9 +843,11 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
   const renderSimpleRow = (label: string, dKey: string, labelKey?: string) => (
     <div className="flex items-center gap-2 py-1 border-b border-border/50">
       {labelKey ? (
-        <DirtyFieldWrapper fieldKey={labelKey}>
-          <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs flex-1" />
-        </DirtyFieldWrapper>
+        <div className="flex-1">
+          <DirtyFieldWrapper fieldKey={labelKey}>
+            <Input value={getValue(labelKey)} onChange={(e) => setValue(labelKey, e.target.value)} disabled={disabled} placeholder="Enter description" className="h-7 text-xs w-full" />
+          </DirtyFieldWrapper>
+        </div>
       ) : (
         <div className="text-xs text-foreground flex-1">{label}</div>
       )}
@@ -854,7 +866,7 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
       <span>Interest for</span>
       <Input type="number" inputMode="numeric" value={getValue(FIELD_KEYS.interestForDays_days)} onChange={(e) => setValue(FIELD_KEYS.interestForDays_days, e.target.value)} disabled={disabled} placeholder="0" className="h-6 text-xs text-right w-12 inline-flex" />
       <span>days at $</span>
-      <Input inputMode="decimal" value={getValue(FIELD_KEYS.interestForDays_perDay)} readOnly disabled placeholder="0.00" title="Auto: Loan Amount × (Interest Rate ÷ 365)" className="h-6 text-xs text-right w-20 inline-flex bg-muted/50" />
+      <Input inputMode="decimal" value={getValue(FIELD_KEYS.interestForDays_perDay)} readOnly disabled placeholder="0.00" title="Auto: Loan Amount × (Interest Rate ÷ 360)" className="h-6 text-xs text-right w-20 inline-flex bg-muted/50" />
       <span>per day</span>
     </div>
   );
@@ -886,7 +898,7 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('810', 'Processing Fee', { others: FIELD_KEYS.processingFee_others, broker: FIELD_KEYS.processingFee_broker, apr: FIELD_KEYS.processingFee_apr, paidToCompany: FIELD_KEYS.processingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.processingFee_d)}
         {renderFeeRow('811', 'Underwriting Fee', { others: FIELD_KEYS.underwritingFee_others, broker: FIELD_KEYS.underwritingFee_broker, apr: FIELD_KEYS.underwritingFee_apr, paidToCompany: FIELD_KEYS.underwritingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.underwritingFee_d)}
         {renderFeeRow('812', 'Wire Transfer Fee', { others: FIELD_KEYS.wireTransferFee_others, broker: FIELD_KEYS.wireTransferFee_broker, apr: FIELD_KEYS.wireTransferFee_apr, paidToCompany: FIELD_KEYS.wireTransferFee_paid_to_company }, undefined, undefined, FIELD_KEYS.wireTransferFee_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud800_custom1_others, broker: FIELD_KEYS.hud800_custom1_broker, apr: FIELD_KEYS.hud800_custom1_apr, paidToCompany: FIELD_KEYS.hud800_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud800_custom1_description)}
+        {renderFeeRow('813', 'BROKER REFERRAL', { others: FIELD_KEYS.hud800_custom1_others, broker: FIELD_KEYS.hud800_custom1_broker, apr: FIELD_KEYS.hud800_custom1_apr, paidToCompany: FIELD_KEYS.hud800_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud800_custom1_description)}
         {renderFeeRow('', '', { others: FIELD_KEYS.hud800_custom2_others, broker: FIELD_KEYS.hud800_custom2_broker, apr: FIELD_KEYS.hud800_custom2_apr, paidToCompany: FIELD_KEYS.hud800_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud800_custom2_description)}
       </div>
 
@@ -898,7 +910,7 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('903', 'Hazard Insurance Premiums', { others: FIELD_KEYS.hazardInsurancePremiums_others, broker: FIELD_KEYS.hazardInsurancePremiums_broker, apr: FIELD_KEYS.hazardInsurancePremiums_apr, paidToCompany: FIELD_KEYS.hazardInsurancePremiums_paid_to_company }, undefined, undefined, FIELD_KEYS.hazardInsurancePremiums_d)}
         {renderFeeRow('904', 'County Property Taxes', { others: FIELD_KEYS.countyPropertyTaxes_others, broker: FIELD_KEYS.countyPropertyTaxes_broker, apr: FIELD_KEYS.countyPropertyTaxes_apr, paidToCompany: FIELD_KEYS.countyPropertyTaxes_paid_to_company }, undefined, undefined, FIELD_KEYS.countyPropertyTaxes_d)}
         {renderFeeRow('905', 'VA Funding Fee', { others: FIELD_KEYS.vaFundingFee_others, broker: FIELD_KEYS.vaFundingFee_broker, apr: FIELD_KEYS.vaFundingFee_apr, paidToCompany: FIELD_KEYS.vaFundingFee_paid_to_company }, undefined, undefined, FIELD_KEYS.vaFundingFee_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker, apr: FIELD_KEYS.hud900_custom1_apr, paidToCompany: FIELD_KEYS.hud900_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom1_description)}
+        {renderFeeRow('906', '6 Months Prepaid Interest', { others: FIELD_KEYS.hud900_custom1_others, broker: FIELD_KEYS.hud900_custom1_broker, apr: FIELD_KEYS.hud900_custom1_apr, paidToCompany: FIELD_KEYS.hud900_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom1_description)}
         {renderFeeRow('', '', { others: FIELD_KEYS.hud900_custom2_others, broker: FIELD_KEYS.hud900_custom2_broker, apr: FIELD_KEYS.hud900_custom2_apr, paidToCompany: FIELD_KEYS.hud900_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud900_custom2_description)}
       </div>
 
@@ -917,7 +929,7 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         {renderFeeRow('1105', 'Document Preparation Fee', { others: FIELD_KEYS.docPreparationFee_others, broker: FIELD_KEYS.docPreparationFee_broker, apr: FIELD_KEYS.docPreparationFee_apr, paidToCompany: FIELD_KEYS.docPreparationFee_paid_to_company }, undefined, undefined, FIELD_KEYS.docPreparationFee_d)}
         {renderFeeRow('1106', 'Notary Fee', { others: FIELD_KEYS.notaryFee_others, broker: FIELD_KEYS.notaryFee_broker, apr: FIELD_KEYS.notaryFee_apr, paidToCompany: FIELD_KEYS.notaryFee_paid_to_company }, undefined, undefined, FIELD_KEYS.notaryFee_d)}
         {renderFeeRow('1108', 'Title Insurance', { others: FIELD_KEYS.titleInsurance_others, broker: FIELD_KEYS.titleInsurance_broker, apr: FIELD_KEYS.titleInsurance_apr, paidToCompany: FIELD_KEYS.titleInsurance_paid_to_company }, undefined, undefined, FIELD_KEYS.titleInsurance_d)}
-        {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom1_others, broker: FIELD_KEYS.hud1100_custom1_broker, apr: FIELD_KEYS.hud1100_custom1_apr, paidToCompany: FIELD_KEYS.hud1100_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud1100_custom1_description)}
+        {renderFeeRow('1109', 'Recording SVC, Messenger, Sub Escrow Wire, Endorsement, Title Exam', { others: FIELD_KEYS.hud1100_custom1_others, broker: FIELD_KEYS.hud1100_custom1_broker, apr: FIELD_KEYS.hud1100_custom1_apr, paidToCompany: FIELD_KEYS.hud1100_custom1_paid_to_company }, undefined, undefined, FIELD_KEYS.hud1100_custom1_description)}
         {renderFeeRow('', '', { others: FIELD_KEYS.hud1100_custom2_others, broker: FIELD_KEYS.hud1100_custom2_broker, apr: FIELD_KEYS.hud1100_custom2_apr, paidToCompany: FIELD_KEYS.hud1100_custom2_paid_to_company }, undefined, undefined, FIELD_KEYS.hud1100_custom2_description)}
       </div>
 
@@ -926,38 +938,50 @@ export const OriginationFeesForm: React.FC<OriginationFeesFormProps> = ({
         <h3 className="font-semibold text-sm text-foreground underline mb-1">1200 – Government Recording and Transfer Charges</h3>
         {renderFeeRow('1201', 'Recording Fees', { others: FIELD_KEYS.recordingFees_others, broker: FIELD_KEYS.recordingFees_broker, apr: FIELD_KEYS.recordingFees_apr, paidToCompany: FIELD_KEYS.recordingFees_paid_to_company }, undefined, undefined, FIELD_KEYS.recordingFees_d)}
         {renderFeeRow('1202', 'City/County Tax/Stamps', { others: FIELD_KEYS.cityCountyTaxStamps_others, broker: FIELD_KEYS.cityCountyTaxStamps_broker, apr: FIELD_KEYS.cityCountyTaxStamps_apr, paidToCompany: FIELD_KEYS.cityCountyTaxStamps_paid_to_company }, undefined, undefined, FIELD_KEYS.cityCountyTaxStamps_d)}
+        {renderFeeRow('1203', 'SB2 Recording Fees', { others: FIELD_KEYS.customItem1200_others, broker: FIELD_KEYS.customItem1200_broker, apr: FIELD_KEYS.customItem1200_apr, paidToCompany: FIELD_KEYS.customItem1200_paid_to_company }, undefined, undefined, FIELD_KEYS.customItem1200_d)}
       </div>
 
       {/* 1300 Additional Settlement Charges */}
       <div className="space-y-0">
         <h3 className="font-semibold text-sm text-foreground underline mb-1">1300 – Additional Settlement Charges</h3>
         {renderFeeRow('1302', 'Pest Inspection', { others: FIELD_KEYS.pestInspection_others, broker: FIELD_KEYS.pestInspection_broker, apr: FIELD_KEYS.pestInspection_apr, paidToCompany: FIELD_KEYS.pestInspection_paid_to_company }, undefined, undefined, FIELD_KEYS.pestInspection_d)}
+        {renderFeeRow('1303', 'Special Courier/Federal Express', { others: FIELD_KEYS.customItem1300_1_others, broker: FIELD_KEYS.customItem1300_1_broker, apr: FIELD_KEYS.customItem1300_1_apr, paidToCompany: FIELD_KEYS.customItem1300_1_paid_to_company }, undefined, undefined, FIELD_KEYS.customItem1300_1_d)}
       </div>
 
       {/* Subtotal and Total (auto-computed, read-only) */}
-      <div className="space-y-1 pt-4 border-t-2 border-foreground">
-        <div className="flex items-center gap-2 py-1">
-          <div className="text-sm font-semibold text-foreground flex-1">Subtotal</div>
-          <div className="relative w-28">
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
-            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 bg-muted/50" />
+      <div className="pt-4 mt-1 border-t-2 border-foreground space-y-2">
+        <div style={TOTALS_GRID_STYLE} className="py-1.5">
+          <div
+            className="text-xs font-semibold text-foreground leading-snug pr-4"
+            style={{ gridColumn: '1 / 4' }}
+          >
+            Subtotals of Initial Fees, Commissions, Costs and Expenses
           </div>
+          <div className="relative w-full" style={{ gridColumn: 4 }}>
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+            <Input inputMode="decimal" value={formatCurrencyDisplay(othersTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 w-full text-xs text-right pl-5 bg-muted/50" />
+          </div>
+          <div className="relative w-full" style={{ gridColumn: 5 }}>
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
+            <Input inputMode="decimal" value={formatCurrencyDisplay(brokerTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 w-full text-xs text-right pl-5 bg-muted/50" />
+          </div>
+          <div style={{ gridColumn: 6 }} aria-hidden />
+          <div style={{ gridColumn: 7 }} aria-hidden />
         </div>
-        <div className="flex items-center gap-2 py-1">
-          <div className="text-sm font-bold text-foreground flex-1">Total</div>
-          <div className="relative w-28">
+        <div style={TOTALS_GRID_STYLE} className="py-1.5">
+          <div
+            className="text-xs font-bold text-foreground leading-snug pr-4"
+            style={{ gridColumn: '1 / 4' }}
+          >
+            Total of Initial Fees, Commissions, Costs and Expenses
+          </div>
+          <div className="relative w-full" style={{ gridColumn: 4 }}>
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold pointer-events-none">$</span>
-            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 font-bold bg-muted/50" />
+            <Input inputMode="decimal" value={formatCurrencyDisplay(grandTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 w-full text-xs text-right pl-5 font-bold bg-muted/50" />
           </div>
-        </div>
-        <div className="flex items-center gap-2 py-1">
-          <div className="text-sm font-semibold text-foreground flex-1" title="Sum of Paid to Others + Paid to Broker across all rows where 'Include in APR' is checked">
-            APR Total <span className="text-xs font-normal text-muted-foreground">(checked items)</span>
-          </div>
-          <div className="relative w-28">
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
-            <Input inputMode="decimal" value={formatCurrencyDisplay(aprTotal.toFixed(2))} readOnly disabled placeholder="0.00" className="h-7 text-xs text-right pl-5 bg-muted/50" />
-          </div>
+          <div style={{ gridColumn: 5 }} aria-hidden />
+          <div style={{ gridColumn: 6 }} aria-hidden />
+          <div style={{ gridColumn: 7 }} aria-hidden />
         </div>
       </div>
 

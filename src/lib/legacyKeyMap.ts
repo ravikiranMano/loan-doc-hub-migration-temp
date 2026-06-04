@@ -1374,9 +1374,7 @@ export const LEGACY_TO_DB_KEY: Record<string, string> = {
   'origination_fees.re885_impound_other_desc': 'of_re_impoundOtherDesc',
   'origination_fees.re885_impound_approx_amount': 'of_re_impoundApproxAmount',
 
-  // Other Origination Fee fields (Interest, Hazard, Mortgage Ins, Property Taxes)
-  'origination_fees.interest_days': 'of_int_days',
-  'origination_fees.interest_per_day': 'of_int_pd',
+  // Other Origination Fee fields (Hazard, Mortgage Ins, Property Taxes)
   'origination_fees.hazard_insurance_months': 'of_haz_mon',
   'origination_fees.hazard_insurance_monthly_amount': 'of_haz_amt',
   'origination_fees.mortgage_insurance_months': 'of_mi_mon',

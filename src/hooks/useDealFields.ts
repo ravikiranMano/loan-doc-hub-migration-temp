@@ -331,6 +331,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
   const dealLoadKeyRef = useRef('');
   const valuesRef = useRef<Record<string, string>>({});
   const savedValuesSnapshotRef = useRef<Record<string, string>>({});
+  const dirtyFieldKeysRef = useRef<Set<string>>(new Set());
   const { logFieldChanges } = useEventJournalLogger();
 
   // Fetch resolved fields and values - deferred until active; re-run when deal, packet, or dictionary cache changes
@@ -635,6 +636,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
       setValues(valuesMap);
       valuesRef.current = valuesMap;
       setDirtyFieldKeys(new Set());
+      dirtyFieldKeysRef.current = new Set();
       setIsDirty(false);
     } catch (err: any) {
       console.error('Error fetching deal fields:', err);
@@ -658,6 +660,10 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
       // Update sessionStorage cache with current unsaved state
       const savedValue = savedValuesSnapshotRef.current[fieldKey] ?? '';
       const newIsDirty = value !== savedValue;
+
+      // Keep ref in sync — saveDraft reads this ref (not the state) to avoid stale closure
+      if (newIsDirty) dirtyFieldKeysRef.current.add(fieldKey);
+      else dirtyFieldKeysRef.current.delete(fieldKey);
 
       setDirtyFieldKeys(prevDirty => {
         const nextDirty = new Set(prevDirty);
@@ -855,10 +861,15 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
           })()
         : latestValues;
 
-      // Get all field keys that have values
-      const fieldKeysToSave = Object.keys(finalValues).filter(key => 
-        finalValues[key] !== undefined && finalValues[key] !== ''
-      );
+      // Save fields that have a value, plus any that were explicitly cleared by the user
+      // (dirtyFieldKeysRef tracks exactly what changed — it's a ref so it's never stale here).
+      const dirty = dirtyFieldKeysRef.current;
+      const fieldKeysToSave = Object.keys(finalValues).filter(key => {
+        if (finalValues[key] === undefined) return false;
+        if (finalValues[key] !== '') return true;
+        // Empty string: include only if the user explicitly cleared this field
+        return dirty.has(key);
+      });
 
       // Group values by section and build JSONB structure
       if (fieldKeysToSave.length > 0) {
@@ -1119,6 +1130,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
       setDeletedPrefixes([]);
       clearSessionCache(dealId);
       setDirtyFieldKeys(new Set());
+      dirtyFieldKeysRef.current = new Set();
       setIsDirty(false);
 
       // --- Event Journal: compute diff and log changes ---
@@ -1219,6 +1231,7 @@ export function useDealFields(dealId: string, packetId: string | null, active: b
   const resetDirty = useCallback(() => {
     setIsDirty(false);
     setDirtyFieldKeys(new Set());
+    dirtyFieldKeysRef.current = new Set();
     setRequiredFieldChanged(false);
     clearSessionCache(dealId);
   }, [dealId]);
