@@ -1,5 +1,3 @@
-import { getUser } from '@/services/supabase/auth';
-import { fetchProfileByUserId } from '@/services/admin/profiles.service';
 import { getContactContactData, updateContactRow } from '@/services/contacts/contacts.service';
 
 export interface ContactFieldChange {
@@ -45,19 +43,7 @@ export async function logContactEvent(
   if (!contactDbId || !changes.length) return;
 
   try {
-    // Get current user name if not provided
-    let actorName = userName;
-    if (!actorName) {
-      const { data: { user } } = await getUser();
-      if (user) {
-        try {
-          const profile = await fetchProfileByUserId(user.id);
-          actorName = profile?.full_name || profile?.email || 'Unknown';
-        } catch {
-          actorName = 'Unknown';
-        }
-      }
-    }
+    const actorName = userName ?? 'Unknown';
 
     const ipAddress = await getContactClientIp();
 

@@ -35,7 +35,6 @@ import {
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getSession } from '@/services/supabase/auth';
 import { validateTemplate as invokeValidateTemplate } from '@/services/documents/template-validate.service';
 import {
   listMergeTagAliasesByTagNames,
@@ -128,31 +127,7 @@ export const TemplateDocumentViewerDialog: React.FC<TemplateDocumentViewerDialog
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch validation result with document text and field dictionary info
-      const { data: { session } } = await getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-template`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ 
-            templateId, 
-            includeDocumentText: true,
-            includeFieldDictionary: true,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch template data');
-      }
-
-      const validationResult = await response.json();
+      const validationResult = await invokeValidateTemplate(templateId) as unknown as ValidationResult;
       setResult(validationResult);
 
       // Fetch all relevant merge tag aliases for tags in this template
