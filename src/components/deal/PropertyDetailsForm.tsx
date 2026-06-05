@@ -110,8 +110,6 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   const estValueRaw = values[FIELD_KEYS.appraisedValue] || '';
   const currentPrincipalRaw = values['loan_terms.principal'] || '';
   const purchasePriceRaw = values[FIELD_KEYS.purchasePrice] || '';
-  const liensBalanceForEquity = liensCurrentBalanceTotal;
-
   const loanAmountNum = resolveLoanAmount(values);
   const estValueNum = parseNumericField(estValueRaw);
   const currentPrincipalNum = resolveCurrentPrincipal(values);
@@ -130,11 +128,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     };
 
     // Persist computed current balance from liens into property field (legacy field)
-    writeIfChanged('property1.lien_current_balance', roundDollarForStorage(liensBalanceForEquity));
+    writeIfChanged('property1.lien_current_balance', roundDollarForStorage(liensCurrentBalanceTotal));
 
-    // Protective Equity = Estimate of Value − Current Balance (from liens)
-    if (!isNaN(estValueNum) && !isNaN(liensBalanceForEquity)) {
-      writeIfChanged(FIELD_KEYS.protectiveEquity, roundDollarForStorage(estValueNum - liensBalanceForEquity));
+    // Protective Equity = Estimate of Value − Post-payoff Lien Balances − New Loan Amount
+    // Uses existingLiensTotal (prefers new_remaining_balance) so liens being paid off at
+    // closing contribute $0 — same source as CLTV (per CA DRE RE 882 standard).
+    if (!isNaN(estValueNum) && !isNaN(loanAmountNum)) {
+      writeIfChanged(FIELD_KEYS.protectiveEquity, roundDollarForStorage(estValueNum - existingLiensTotal - loanAmountNum));
     }
 
     // Pledged Equity = Estimate of Value − Loan Amount
@@ -147,9 +147,14 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     const loanAmountValid = Number.isFinite(loanAmountNum) && loanAmountNum >= 0;
     const principalValid = Number.isFinite(currentPrincipalNum) && currentPrincipalNum >= 0;
 
-    // CLTV (sum of all liens / Estimate of Value)
-    if (estValueValid) {
-      const cltv = computeLtv(existingLiensTotal, estValueNum);
+    // CLTV = (Existing Liens + New Loan Amount) / Estimate of Value × 100
+    // The new loan being originated is held in loan_terms (not in the lien list), so
+    // we must add loanAmountNum explicitly so the combined-LTV includes this loan.
+    // For a 1st TD with no prior liens this equals Original LTV; for junior liens it
+    // shows the full stack including the senior balance(s).
+    if (estValueValid && loanAmountValid) {
+      const cltvNumerator = existingLiensTotal + loanAmountNum;
+      const cltv = computeLtv(cltvNumerator, estValueNum);
       writeIfChanged(FIELD_KEYS.cltv, cltv ?? '');
     } else {
       writeIfChanged(FIELD_KEYS.cltv, '');
@@ -163,7 +168,13 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.ltv, '');
     }
 
-    // Origination LTV — now user-editable; no auto-calc.
+    // Original LTV = Loan Amount / Estimate of Value × 100 (always recomputed, read-only)
+    if (estValueValid && loanAmountValid) {
+      const origLtv = computeLtv(loanAmountNum, estValueNum);
+      writeIfChanged(FIELD_KEYS.originationLtv, origLtv ?? '');
+    } else {
+      writeIfChanged(FIELD_KEYS.originationLtv, '');
+    }
 
 
     // Principal Paid = Loan Amount − Current Principal Balance (derived)
@@ -187,7 +198,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       }
       lastAutoDownPaymentRef.current = dp;
     }
-  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, purchasePriceRaw, liensBalanceForEquity, existingLiensTotal, currentBalanceInvalid]);
+  }, [loanAmountRaw, estValueRaw, currentPrincipalRaw, purchasePriceRaw, liensCurrentBalanceTotal, existingLiensTotal, currentBalanceInvalid]);
 
 
   const isCopyBorrower = getFieldValue(FIELD_KEYS.copyBorrowerAddress) === 'true';
@@ -619,19 +630,12 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <Label className="w-[110px] shrink-0 text-xs text-foreground">Original LTV</Label>
               <div className="relative flex-1">
                 <Input
-                  value={getFieldValue(FIELD_KEYS.originationLtv)}
-                  onChange={(e) => {
-                    const cleaned = e.target.value.replace(/[^0-9.]/g, '');
-                    onValueChange(FIELD_KEYS.originationLtv, cleaned);
-                  }}
+                  value={formatLtv(getFieldValue(FIELD_KEYS.originationLtv)) || '—'}
+                  readOnly
                   disabled={disabled}
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  className="h-7 text-xs pr-6"
+                  className="h-7 text-xs bg-muted/40"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
               </div>
-
             </div>
           </DirtyFieldWrapper>
           {(estValueInvalid || loanAmountInvalid) && (

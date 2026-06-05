@@ -118,10 +118,10 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
 
   // Auto-calculate OLTV, Current LTV, CLTV, and Protective Equity from
   // Estimate of Value + loan/lien context. Mirrors PropertyDetailsForm spec:
-  //   Protective Equity = Estimate of Value − Total Current Lien Balance
-  //   Origination LTV   = Loan Amount / Estimate of Value × 100
+  //   Protective Equity = Estimate of Value − Post-payoff Lien Balances − Loan Amount
+  //   Origination LTV   = Loan Amount / Estimate of Value × 100  (auto-seeds blank only)
   //   Current LTV       = Current Principal / Estimate of Value × 100
-  //   CLTV              = Sum of all liens / Estimate of Value × 100
+  //   CLTV              = (Existing Liens + Loan Amount) / Estimate of Value × 100
   useEffect(() => {
     if (!open) return;
     const evRaw = String(formData.appraisedValue || '').replace(/[, $]/g, '');
@@ -137,10 +137,10 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
       return formatCurrencyDisplay(n.toFixed(2));
     };
 
-    const nextProtective = fmtDollar(ev - (liensCurrentBalanceTotal || 0));
+    const nextProtective = fmtDollar(ev - (existingLiensTotal || 0) - (loanAmount || 0));
     const nextOLtv = fmtPct(loanAmount || 0, ev);
     const nextCurLtv = fmtPct(currentPrincipal || 0, ev);
-    const nextCltv = fmtPct(existingLiensTotal || 0, ev);
+    const nextCltv = fmtPct((existingLiensTotal || 0) + (loanAmount || 0), ev);
 
     setFormData(prev => {
       const updates: Partial<PropertyData> = {};
@@ -150,7 +150,7 @@ export const PropertyModal: React.FC<PropertyModalProps> = ({ open, onOpenChange
       if (String(prev.cltv || '') !== nextCltv) updates.cltv = nextCltv;
       return Object.keys(updates).length ? { ...prev, ...updates } : prev;
     });
-  }, [open, formData.appraisedValue, loanAmount, currentPrincipal, existingLiensTotal, liensCurrentBalanceTotal]);
+  }, [open, formData.appraisedValue, loanAmount, currentPrincipal, existingLiensTotal]);
 
   
 

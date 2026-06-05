@@ -132,13 +132,34 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     values[FIELD_KEYS.chargesInterest], values[FIELD_KEYS.unpaidOther],
   ]);
 
-  // Estimated Balloon Payment = Original Principal (Loan Amount) + One Month Interest
+  // Estimated Balloon Payment — varies by amortization method:
+  //   fully_amortized  → 0  (loan self-liquidates; no balloon)
+  //   interest_only    → loan principal (no amortization, full principal due at maturity)
+  //   all others       → principal + one period's interest (conservative upper-bound estimate
+  //                      used when amortization type is unknown or partially_amortized without
+  //                      a user-supplied balloon amount)
+  const PERIODS_PER_YEAR_MAP: Record<string, number> = {
+    monthly: 12, bi_weekly: 26, weekly: 52, quarterly: 4, annually: 1, semi_annually: 2,
+  };
   const calculatedEstimatedBalloon = useMemo(() => {
     const loanAmount = parseNum(FIELD_KEYS.loanAmount);
+    if (!loanAmount) return 0;
+    // amortization lives in LOAN_TERMS_DETAILS_KEYS — access via raw key (same pattern
+    // used by computedRegularPayment above).
+    const amortization = ((values['loan_terms.amortization'] ?? '') as string).toLowerCase();
+    if (amortization === 'fully_amortized') return 0;
+    if (amortization === 'interest_only') return loanAmount;
     const noteRate = parseNum(FIELD_KEYS.noteRate);
-    const oneMonthInterest = loanAmount * (noteRate / 100) / 12;
-    return loanAmount + oneMonthInterest;
-  }, [values[FIELD_KEYS.loanAmount], values[FIELD_KEYS.noteRate]]);
+    if (!noteRate) return loanAmount;
+    const freqKey = (getValue(FIELD_KEYS.paymentFrequency) || 'monthly').toLowerCase();
+    const periods = PERIODS_PER_YEAR_MAP[freqKey] ?? 12;
+    return loanAmount + loanAmount * (noteRate / 100) / periods;
+  }, [
+    values[FIELD_KEYS.loanAmount],
+    values[FIELD_KEYS.noteRate],
+    values['loan_terms.amortization'],
+    values[FIELD_KEYS.paymentFrequency],
+  ]);
 
   // Regular Payment (borrower scheduled installment) — derived live from the
   // loan's principal, note rate, term, payment frequency, and amortization
