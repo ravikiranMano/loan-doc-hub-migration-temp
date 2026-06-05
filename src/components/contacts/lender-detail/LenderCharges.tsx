@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { History, Pencil } from 'lucide-react';
-import { getUser } from '@/services/supabase/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { getContactContactData, patchContactData } from '@/services/contacts/contacts.service';
 import { toast } from 'sonner';
 import { EnhancedCalendar } from '@/components/ui/enhanced-calendar';
@@ -297,14 +297,8 @@ const LenderCharges: React.FC<LenderChargesProps> = ({ contactDbId, disabled }) 
   const [adjustReference, setAdjustReference] = useState<string>('');
   const [adjustDate, setAdjustDate] = useState<string>(format(new Date(), 'MM/dd/yyyy'));
   const [history, setHistory] = useState<ChargeHistoryEntry[]>([]);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string>('Unknown');
-
-  // Resolve current user once for audit trail
-  useEffect(() => {
-    getUser().then(({ data }) => {
-      setCurrentUserEmail(data.user?.email || data.user?.id || 'Unknown');
-    });
-  }, []);
+  const { user } = useAuth();
+  const currentUserEmail = user?.email ?? user?.id ?? 'Unknown';
 
   // Migration helper: backwards-compatible field mapping for legacy rows
   const normalizeRow = (r: any): ChargeRow => ({

@@ -1,5 +1,4 @@
-import { invokeSendMessage } from '@/services/supabase/functions';
-import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
+import { apiClient } from '@/services/node-api/client';
 
 export interface SendMessagePayload {
   message_type: string;
@@ -10,16 +9,13 @@ export interface SendMessagePayload {
   attachments?: Array<{ filename: string; content?: string; size?: number }>;
 }
 
-export async function sendMessage(body: SendMessagePayload): Promise<{ data: unknown | null; error: Error | null }> {
-  if (isNodeApiEnabled('system')) {
-    try {
-      const data = await apiClient.post('/system/messages', body);
-      return { data, error: null };
-    } catch (err) {
-      return { data: null, error: err as Error };
-    }
+export async function sendMessage(
+  body: SendMessagePayload,
+): Promise<{ data: unknown | null; error: Error | null }> {
+  try {
+    const data = await apiClient.post('/system/messages', body);
+    return { data, error: null };
+  } catch (err) {
+    return { data: null, error: err as Error };
   }
-  return invokeSendMessage(body as Record<string, unknown>);
 }
-
-export { invokeSendMessage };

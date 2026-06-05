@@ -385,27 +385,66 @@ export class DocumentsService {
     const allDict = await this.repo.findAllFieldDictionary();
     const dictKeys = new Set(allDict.map((d) => d.field_key));
 
-    const mappedTags: string[] = [];
-    const unmappedTags: string[] = [];
+    type FoundTag = {
+      tag: string;
+      tagName: string;
+      tagType: 'merge_tag' | 'label' | 'f_code' | 'curly_brace';
+      fieldKey: string | null;
+      mapped: boolean;
+      suggestions?: string[];
+    };
+
+    const mappedTags: FoundTag[] = [];
+    const unmappedTags: FoundTag[] = [];
     for (const key of inspect.mergeFieldKeys) {
-      if (dictKeys.has(key)) mappedTags.push(key);
-      else unmappedTags.push(key);
+      if (dictKeys.has(key)) {
+        mappedTags.push({ tag: `{{${key}}}`, tagName: key, tagType: 'curly_brace', fieldKey: key, mapped: true });
+      } else {
+        unmappedTags.push({ tag: `{{${key}}}`, tagName: key, tagType: 'curly_brace', fieldKey: null, mapped: false, suggestions: [] });
+      }
+    }
+
+    // Label-type aliases: search document plain text for known label strings
+    const [aliases, docText] = await Promise.all([
+      this.prisma.merge_tag_aliases.findMany({
+        where: { is_active: true },
+        select: { tag_name: true, field_key: true, tag_type: true },
+      }),
+      this.docxtemplaterService.getDocumentText(template.file_path),
+    ]);
+
+    let labelCount = 0;
+    for (const alias of aliases) {
+      if (alias.tag_type !== 'label') continue;
+      const escaped = alias.tag_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(escaped, 'i').test(docText)) {
+        mappedTags.push({ tag: alias.tag_name, tagName: alias.tag_name, tagType: 'label', fieldKey: alias.field_key, mapped: true });
+        labelCount++;
+      }
     }
 
     const warnings: string[] = [];
     if (unmappedTags.length > 0) {
-      warnings.push(`${unmappedTags.length} tag(s) not found in field dictionary: ${unmappedTags.slice(0, 5).join(', ')}${unmappedTags.length > 5 ? '…' : ''}`);
+      warnings.push(`${unmappedTags.length} tag(s) not found in field dictionary: ${unmappedTags.slice(0, 5).map((t) => t.tagName).join(', ')}${unmappedTags.length > 5 ? '…' : ''}`);
     }
 
+    const totalFound = inspect.mergeFieldKeys.length + labelCount;
     return {
       valid: unmappedTags.length === 0,
-      totalTagsFound: inspect.mergeFieldKeys.length,
+      totalTagsFound: totalFound,
       mappedTags,
       unmappedTags,
       warnings,
       errors: [],
       conditions: inspect.conditions,
-      summary: `Found ${inspect.mergeFieldKeys.length} tag(s): ${mappedTags.length} mapped, ${unmappedTags.length} unmapped`,
+      summary: {
+        mergeTagCount: 0,
+        labelCount,
+        fCodeCount: 0,
+        curlyBraceCount: inspect.mergeFieldKeys.length,
+        mappedCount: mappedTags.length,
+        unmappedCount: unmappedTags.length,
+      },
     };
   }
 

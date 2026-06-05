@@ -1,7 +1,5 @@
-import { supabase } from '@/services/supabase/client';
-import { invokeValidateMagicLink } from '@/services/supabase/functions';
 import { fetchSystemSettingsByKeys } from '@/services/system/settings.service';
-import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
+import { apiClient } from '@/services/node-api/client';
 
 export interface MagicLinkSettings {
   expiryHours: number;
@@ -29,17 +27,10 @@ export interface MagicLinkValidationResult {
   sessionToken?: string;
 }
 
-function useNodeMagicLinks(): boolean {
-  return isNodeApiEnabled('deals') || isNodeApiEnabled('system');
-}
-
 export async function getMagicLinkSettings(): Promise<MagicLinkSettings> {
   let data: { setting_key: string; setting_value: string | null }[] = [];
   try {
-    data = await fetchSystemSettingsByKeys([
-      'magic_link_expiry_hours',
-      'magic_link_max_uses',
-    ]);
+    data = await fetchSystemSettingsByKeys(['magic_link_expiry_hours', 'magic_link_max_uses']);
   } catch (error) {
     console.error('Error fetching magic link settings:', error);
     return { expiryHours: 72, maxUses: 5 };
@@ -50,7 +41,7 @@ export async function getMagicLinkSettings(): Promise<MagicLinkSettings> {
       acc[setting_key] = setting_value;
       return acc;
     },
-    {} as Record<string, string | null>
+    {} as Record<string, string | null>,
   );
 
   return {
@@ -60,70 +51,39 @@ export async function getMagicLinkSettings(): Promise<MagicLinkSettings> {
 }
 
 export async function createMagicLinkRecord(payload: Record<string, unknown>) {
-  const participantId = payload.deal_participant_id as string;
-  if (useNodeMagicLinks() && participantId) {
-    const { deal_participant_id, ...body } = payload;
-    const data = await apiClient.post<MagicLinkData>(
-      `/deals/participants/${participantId}/magic-links`,
-      body,
-    );
-    return data;
-  }
-  const { data, error } = await supabase
-    .from('magic_links')
-    .insert(payload)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as MagicLinkData;
+  const { deal_participant_id, ...body } = payload;
+  return apiClient.post<MagicLinkData>(
+    `/deals/participants/${deal_participant_id}/magic-links`,
+    body,
+  );
 }
 
 export async function validateMagicLinkToken(token: string): Promise<MagicLinkValidationResult> {
-  if (isNodeApiEnabled('system') || isNodeApiEnabled('deals')) {
-    try {
-      return await apiClient.post<MagicLinkValidationResult>('/deals/magic-links/validate', { token });
-    } catch (err) {
-      return { isValid: false, error: (err as Error).message };
-    }
+  try {
+    return await apiClient.post<MagicLinkValidationResult>('/deals/magic-links/validate', {
+      token,
+    });
+  } catch (err) {
+    return { isValid: false, error: (err as Error).message };
   }
-  const response = await invokeValidateMagicLink(token);
-  if (response.error) {
-    return { isValid: false, error: response.error.message } as MagicLinkValidationResult;
-  }
-  return response.data as MagicLinkValidationResult;
 }
 
 export async function revokeMagicLink(magicLinkId: string) {
-  if (useNodeMagicLinks()) {
-    try {
-      await apiClient.patch(`/deals/magic-links/${magicLinkId}/revoke`, {});
-      return { error: null };
-    } catch (err) {
-      return { error: err as Error };
-    }
+  try {
+    await apiClient.patch(`/deals/magic-links/${magicLinkId}/revoke`, {});
+    return { error: null };
+  } catch (err) {
+    return { error: err as Error };
   }
-  const { error } = await supabase
-    .from('magic_links')
-    .update({ max_uses: 0 })
-    .eq('id', magicLinkId);
-  return { error: error as Error | null };
 }
 
 export async function listMagicLinksForParticipant(dealParticipantId: string) {
-  if (useNodeMagicLinks()) {
-    try {
-      const data = await apiClient.get<MagicLinkData[]>(
-        `/deals/participants/${dealParticipantId}/magic-links`,
-      );
-      return { data: data || [], error: null };
-    } catch (err) {
-      return { data: [], error: err as Error };
-    }
+  try {
+    const data = await apiClient.get<MagicLinkData[]>(
+      `/deals/participants/${dealParticipantId}/magic-links`,
+    );
+    return { data: data || [], error: null };
+  } catch (err) {
+    return { data: [], error: err as Error };
   }
-  const { data, error } = await supabase
-    .from('magic_links')
-    .select('*')
-    .eq('deal_participant_id', dealParticipantId)
-    .order('created_at', { ascending: false });
-  return { data: (data || []) as MagicLinkData[], error: error as Error | null };
 }

@@ -1,238 +1,98 @@
-import { supabase } from '@/services/supabase/client';
-import { fetchAllRows } from '@/services/supabase/pagination';
-import type { Database } from '@/services/supabase/types';
-import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
-
-type FieldSection = Database['public']['Enums']['field_section'];
+import { apiClient } from '@/services/node-api/client';
 
 export async function fetchSectionValuesByDeal(dealId: string) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('deal_section_values')
-    .select('section, field_values')
-    .eq('deal_id', dealId);
-  if (error) throw error;
-  return data || [];
+  return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
 }
 
 export async function fetchSectionValuesByDealWithUpdatedAt(dealId: string) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('deal_section_values')
-    .select('section, field_values, updated_at')
-    .eq('deal_id', dealId);
-  if (error) throw error;
-  return data || [];
+  return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
 }
 
 export async function fetchLoanTermsSectionRows(dealId: string) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/deals/${dealId}/sections/loan_terms`).then((r) => r ? [r] : []);
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('deal_section_values')
-    .select('id, field_values, version')
-    .eq('deal_id', dealId)
-    .eq('section', 'loan_terms');
-  if (error) throw error;
-  return data || [];
+  return apiClient
+    .get<unknown[]>(`/deals/${dealId}/sections/loan_terms`)
+    .then((r) => (r ? [r] : []));
 }
 
 export async function insertLoanTermsSectionRow(
   dealId: string,
-  fieldValues: Record<string, unknown>
+  fieldValues: Record<string, unknown>,
 ) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.patch(`/deals/${dealId}/sections/loan_terms`, { field_values: fieldValues });
-  }
-  // — Supabase (keep unchanged) —
-  const { error } = await supabase.from('deal_section_values').insert({
-    deal_id: dealId,
-    section: 'loan_terms',
-    field_values: fieldValues,
-    version: 1,
-  });
-  if (error) throw error;
+  return apiClient.patch(`/deals/${dealId}/sections/loan_terms`, { field_values: fieldValues });
 }
 
 export async function fetchSectionValuesWithVersion(dealId: string) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('deal_section_values')
-    .select('id, section, field_values, version')
-    .eq('deal_id', dealId);
-  if (error) throw error;
-  return data || [];
+  return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);
 }
 
-export async function fetchSectionValueByDealAndSection(
-  dealId: string,
-  section: string
-) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown>(`/deals/${dealId}/sections/${section}`);
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('deal_section_values')
-    .select('id, field_values')
-    .eq('deal_id', dealId)
-    .eq('section', section)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+export async function fetchSectionValueByDealAndSection(dealId: string, section: string) {
+  return apiClient.get<unknown>(`/deals/${dealId}/sections/${section}`);
 }
 
 export async function updateSectionValueById(
-  id: string,
+  _id: string,
   payload: Record<string, unknown>,
   ctx?: { dealId?: string; section?: string },
 ) {
-  if (isNodeApiEnabled('deals')) {
-    const dealId = (payload['deal_id'] as string | undefined) ?? ctx?.dealId;
-    const section = (payload['section'] as string | undefined) ?? ctx?.section;
-    if (dealId && section) {
-      return apiClient.patch(
-        `/deals/${dealId}/sections/${encodeURIComponent(section)}`,
-        { field_values: payload['field_values'] },
-      );
-    }
-    throw new Error('Section update requires deal_id and section when using Node API');
+  const dealId = (payload['deal_id'] as string | undefined) ?? ctx?.dealId;
+  const section = (payload['section'] as string | undefined) ?? ctx?.section;
+  if (!dealId || !section) {
+    throw new Error('Section update requires deal_id and section');
   }
-  // — Supabase (keep unchanged) —
-  const { error } = await supabase.from('deal_section_values').update(payload).eq('id', id);
-  if (error) throw error;
+  return apiClient.patch(`/deals/${dealId}/sections/${encodeURIComponent(section)}`, {
+    field_values: payload['field_values'],
+  });
 }
 
 export async function insertSectionValues(rows: Record<string, unknown>[]) {
-  if (isNodeApiEnabled('deals')) {
-    return Promise.all(
-      rows.map((row) =>
-        apiClient.patch(`/deals/${row['deal_id']}/sections/${encodeURIComponent(String(row['section']))}`, {
-          field_values: row['field_values'],
-        })
-      )
-    );
-  }
-  // — Supabase (keep unchanged) —
-  const { error } = await supabase.from('deal_section_values').insert(rows);
-  if (error) throw error;
+  return Promise.all(
+    rows.map((row) =>
+      apiClient.patch(
+        `/deals/${row['deal_id']}/sections/${encodeURIComponent(String(row['section']))}`,
+        { field_values: row['field_values'] },
+      ),
+    ),
+  );
 }
 
 export async function upsertParticipantsSectionValues(
   dealId: string,
-  fieldValues: Record<string, unknown>
+  fieldValues: Record<string, unknown>,
 ) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.patch(`/deals/${dealId}/sections/participants`, { field_values: fieldValues });
-  }
-  // — Supabase (keep unchanged) —
-  const existing = await fetchSectionValueByDealAndSection(dealId, 'participants');
-  if ((existing as { id?: string })?.id) {
-    await updateSectionValueById((existing as { id: string }).id, {
-      deal_id: dealId,
-      section: 'participants',
-      field_values: fieldValues,
-      updated_at: new Date().toISOString(),
-    });
-  } else {
-    await insertSectionValues([{ deal_id: dealId, section: 'participants', field_values: fieldValues }]);
-  }
+  return apiClient.patch(`/deals/${dealId}/sections/participants`, {
+    field_values: fieldValues,
+  });
 }
 
-export async function fetchFieldDictionaryTmoSections(sections: FieldSection[]) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/admin/fields?sections=${sections.join(',')}`);
-  }
-  return fetchAllRows((client) =>
-    client
-      .from('field_dictionary')
-      .select(
-        'id, field_key, label, section, data_type, description, default_value, is_calculated, is_repeatable, validation_rule, calculation_formula, calculation_dependencies'
-      )
-      .in('section', sections)
-  );
+export async function fetchFieldDictionaryTmoSections(sections: string[]) {
+  return apiClient.get<unknown[]>(`/admin/fields?sections=${sections.join(',')}`);
 }
 
 export async function fetchFieldDictionaryByIds(ids: string[]) {
-  if (isNodeApiEnabled('deals')) {
-    if (!ids.length) return [];
-    return apiClient.post<unknown[]>('/admin/fields/by-ids', { ids });
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('field_dictionary')
-    .select('id, field_key, data_type')
-    .in('id', ids);
-  if (error) throw error;
-  return data || [];
+  if (!ids.length) return [];
+  return apiClient.post<unknown[]>('/admin/fields/by-ids', { ids });
 }
 
 export async function fetchFieldDictionaryByFieldKeys(keys: string[]) {
-  if (isNodeApiEnabled('deals')) {
-    if (!keys.length) return [];
-    return apiClient.post<unknown[]>('/admin/fields/by-keys', { field_keys: keys });
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('field_dictionary')
-    .select('id, field_key, section, data_type')
-    .in('field_key', keys);
-  if (error) throw error;
-  return data || [];
+  if (!keys.length) return [];
+  return apiClient.post<unknown[]>('/admin/fields/by-keys', { field_keys: keys });
 }
 
-export async function fetchFieldDictionarySelect(columns: string) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>('/admin/fields');
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase.from('field_dictionary').select(columns);
-  if (error) throw error;
-  return data || [];
+export async function fetchFieldDictionarySelect(_columns: string) {
+  return apiClient.get<unknown[]>('/admin/fields');
 }
 
 export async function fetchSectionValuesBySection(section: string) {
-  if (isNodeApiEnabled('deals')) {
-    return apiClient.get<unknown[]>(`/deals/sections/by-section/${section}`);
-  }
-  // — Supabase (keep unchanged) —
-  const { data, error } = await supabase
-    .from('deal_section_values')
-    .select('deal_id, field_values')
-    .eq('section', section);
-  if (error) throw error;
-  return data || [];
+  return apiClient.get<unknown[]>(`/deals/sections/by-section/${section}`);
 }
 
 export async function fetchSectionValuesForDeals(
   dealIds: string[],
-  options?: { section?: string; sections?: string[] }
+  options?: { section?: string; sections?: string[] },
 ) {
-  if (isNodeApiEnabled('deals') && dealIds.length > 0) {
-    const params = new URLSearchParams({ dealIds: dealIds.join(',') });
-    if (options?.section) params.set('section', options.section);
-    if (options?.sections?.length) params.set('sections', options.sections.join(','));
-    return apiClient.get<unknown[]>(`/deals/sections?${params}`);
-  }
-  // — Supabase (keep unchanged) —
-  let query = supabase
-    .from('deal_section_values')
-    .select('deal_id, field_values, section')
-    .in('deal_id', dealIds);
-  if (options?.section) query = query.eq('section', options.section);
-  if (options?.sections?.length) query = query.in('section', options.sections);
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
+  if (!dealIds.length) return [];
+  const params = new URLSearchParams({ dealIds: dealIds.join(',') });
+  if (options?.section) params.set('section', options.section);
+  if (options?.sections?.length) params.set('sections', options.sections.join(','));
+  return apiClient.get<unknown[]>(`/deals/sections?${params}`);
 }
