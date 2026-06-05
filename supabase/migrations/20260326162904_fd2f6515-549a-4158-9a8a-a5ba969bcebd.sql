@@ -1,1 +1,0 @@
-UPDATE field_dictionary SET data_type = 'text' WHERE field_key IN ('pr_li_lienPrioriNow', 'pr_li_lienPrioriAfter');

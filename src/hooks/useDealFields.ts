@@ -31,10 +31,7 @@ import {
   type CalculatedField,
   type CalculationResult
 } from '@/lib/calculationEngine';
-import type { Database } from '@/integrations/supabase/types';
-
-type FieldSection = Database['public']['Enums']['field_section'];
-type FieldDataType = Database['public']['Enums']['field_data_type'];
+import type { FieldSection, FieldDataType } from '@/types';
 
 // Re-export types for convenience
 export type { ResolvedField as FieldDefinition, ResolvedFieldSet };

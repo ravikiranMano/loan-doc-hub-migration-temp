@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { $Enums, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { DealFieldValuesLoader } from '../documents/deal-field-values.loader';
@@ -94,15 +95,15 @@ export class GenerationService {
         requested_by: requestedBy,
         request_type: 'single_doc',
         template_id: templateId,
-        output_type: outputType as any,
+        output_type: outputType as $Enums.output_type,
         status: 'running',
         started_at: new Date(),
-      } as any,
+      } as unknown as Prisma.generation_jobsUncheckedCreateInput,
     });
 
     try {
       const { fieldValues: rawFieldValues } = await this.fieldLoader.loadByFieldKey(dealId, {
-        borrower_name: (deal as any).borrower_name,
+        borrower_name: deal.borrower_name,
       });
 
       const fieldValues = new Map<string, FieldValueData>();
@@ -116,8 +117,8 @@ export class GenerationService {
       });
       const fieldTransforms = new Map<string, string>();
       for (const fm of fieldMaps) {
-        if (fm.transform_rule && (fm as any).field_dictionary?.field_key) {
-          fieldTransforms.set((fm as any).field_dictionary.field_key, fm.transform_rule);
+        if (fm.transform_rule && fm.field_dictionary?.field_key) {
+          fieldTransforms.set(fm.field_dictionary.field_key, fm.transform_rule);
         }
       }
 
@@ -137,7 +138,7 @@ export class GenerationService {
       );
 
       const safeBase = template.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `${safeBase}_${(deal as any).deal_number}_v1.docx`;
+      const filename = `${safeBase}_${deal.deal_number}_v1.docx`;
       const storagePath = `${dealId}/${filename}`;
 
       await this.storage.upload(
@@ -155,17 +156,17 @@ export class GenerationService {
           deal_id: dealId,
           template_id: templateId,
           output_docx_path: storagePath,
-          output_type: outputType as any,
+          output_type: outputType as $Enums.output_type,
           generation_status: 'success',
           template_name: template.name,
           created_by: requestedBy,
           generation_batch_id: job.id,
-        } as any,
+        } as unknown as Prisma.generated_documentsUncheckedCreateInput,
       });
 
       await this.prisma.generation_jobs.update({
         where: { id: job.id },
-        data: { status: 'success', completed_at: new Date() } as any,
+        data: { status: 'success', completed_at: new Date() } as unknown as Prisma.generation_jobsUncheckedUpdateInput,
       });
 
       await this.prisma.activity_log.create({
@@ -178,8 +179,8 @@ export class GenerationService {
             templateName: template.name,
             documentId: doc.id,
             engine: 'v1',
-          },
-        } as any,
+          } as Prisma.InputJsonValue,
+        } as unknown as Prisma.activity_logUncheckedCreateInput,
       });
 
       return { success: true, documentId: doc.id, docxUrl, templateName: template.name };
@@ -190,7 +191,7 @@ export class GenerationService {
           status: 'failed',
           completed_at: new Date(),
           error_message: (err as Error).message,
-        } as any,
+        } as unknown as Prisma.generation_jobsUncheckedUpdateInput,
       });
       throw new BadRequestException((err as Error).message ?? 'Document generation failed');
     }

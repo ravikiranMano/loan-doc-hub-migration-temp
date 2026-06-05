@@ -3,10 +3,9 @@ import {
   fetchFormPermissionsByRole,
   fetchUserFormPermissionsSummary,
   fetchUserFormPermissionsOrdered,
-  insertUserFormPermissions,
   updateUserFormPermissionById,
 } from '@/services/admin/form-permissions.service';
-import { isNodeApiEnabled } from '@/services/node-api/client';
+
 import { listCsrUsersForPermissions } from '@/services/admin/users.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -162,7 +161,7 @@ export function useFormPermissionsAdmin() {
   const selectedUserRef = useRef<string>('');
   const { toast } = useToast();
 
-  // Fetch all CSR users (public.users.role = csr via Node or Supabase)
+  // Fetch all CSR users
   useEffect(() => {
     const fetchCsrUsers = async () => {
       try {
@@ -209,23 +208,7 @@ export function useFormPermissionsAdmin() {
     const job = (async () => {
       try {
         setPermLoading(true);
-        let data = await fetchUserFormPermissionsOrdered(userId);
-
-        // Supabase path: client-side seed (Node API seeds on GET in admin.service).
-        if (!isNodeApiEnabled('admin')) {
-          const existingKeys = new Set((data || []).map((d: { form_key: string }) => d.form_key));
-          const missingKeys = FORM_KEYS.filter((fk) => !existingKeys.has(fk));
-          if (missingKeys.length > 0) {
-            await insertUserFormPermissions(
-              missingKeys.map((fk) => ({
-                user_id: userId,
-                form_key: fk,
-                access_mode: 'view_only',
-              })),
-            );
-            data = await fetchUserFormPermissionsOrdered(userId);
-          }
-        }
+        const data = await fetchUserFormPermissionsOrdered(userId);
 
         if (selectedUserRef.current === userId) {
           setUserPermissions((data || []) as Array<{ id: string; form_key: string; access_mode: string }>);

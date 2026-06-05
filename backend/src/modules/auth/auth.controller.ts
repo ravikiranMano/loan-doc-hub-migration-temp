@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto, UpdateMeDto } from './dto/auth.dto';
@@ -29,6 +30,7 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })  // 10 attempts / 60 s per IP
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const meta = this.extractMeta(req);
     return this.authService.login(req.user as users, res, meta);
@@ -36,6 +38,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })   // 5 registrations / 60 s per IP
   async register(
     @Body() dto: RegisterDto,
     @Req() req: Request,
@@ -48,12 +51,14 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })  // 30 refreshes / 60 s per IP
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const rawToken = (req.cookies as Record<string, string>)?.[COOKIE_REFRESH_TOKEN];
     const meta = this.extractMeta(req);
     return this.authService.refresh(rawToken, res, meta);
   }
 
+  @SkipThrottle()
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)

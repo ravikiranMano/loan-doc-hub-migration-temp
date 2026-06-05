@@ -14,7 +14,7 @@ export class SystemService {
     return this.repo.findAll();
   }
 
-  /** Resolve by UUID id (Supabase path) or setting_key. */
+  /** Resolve by UUID id or setting_key. */
   private async findByIdOrKey(identifier: string) {
     if (UUID_RE.test(identifier)) {
       const byId = await this.repo.findById(identifier);

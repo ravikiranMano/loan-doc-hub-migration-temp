@@ -40,7 +40,7 @@ export class AdminService {
     return this.repo.findAllFields(options?.page, options?.limit);
   }
 
-  /** Mirrors Supabase `.in('id', ids)` — safe for large id lists (chunked in DB). */
+  /** Lookup fields by ids — safe for large id lists (chunked in DB). */
   async lookupFieldsByIds(ids: string[]) {
     const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
     if (!unique.length) return [];
@@ -54,7 +54,7 @@ export class AdminService {
     return rows;
   }
 
-  /** Mirrors Supabase `.in('field_key', keys)` — safe for large key lists (chunked in DB). */
+  /** Lookup fields by keys — safe for large key lists (chunked in DB). */
   async lookupFieldsByKeys(fieldKeys: string[]) {
     const unique = [...new Set(fieldKeys.map((k) => k.trim()).filter(Boolean))];
     if (!unique.length) return [];

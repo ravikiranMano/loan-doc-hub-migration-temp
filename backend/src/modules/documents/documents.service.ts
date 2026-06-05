@@ -177,23 +177,12 @@ export class DocumentsService {
 
   // ─── Documents & Generation ──────────────────────────────────────────────────
   //
-  // Four independent document generation approaches:
+  // Four independent document generation routes:
   //
   //  generate        NestJS · docxtemplater engine · persists job + document records.
-  //                  The primary NestJS generation path using DocxtemplaterService.
-  //
-  //  generate-api    NestJS · raw XML merge-tag engine (GenerationService).
-  //                  Port of the Supabase edge function running entirely in NestJS.
-  //                  Uses fflate ZIP manipulation + regex-based merge-tag replacement.
-  //                  Persists job + document records.
-  //
-  //  generate-edge   Supabase · proxies to the generate-document edge function.
-  //                  The original Deno implementation; use for comparison or fallback.
-  //
-  //  generate-v2     NestJS · docxtemplater engine · streams DOCX directly.
-  //                  Same engine as "generate" but returns the file as a download
-  //                  with no DB writes. Separate track experimenting with docxtemplater
-  //                  as a drop-in replacement for the raw XML approach.
+  //  generate-api    NestJS · raw XML merge-tag engine · persists job + document records.
+  //  generate-edge   Deno edge function proxy · use for comparison or fallback.
+  //  generate-v2     NestJS · docxtemplater engine · streams DOCX, no DB writes.
 
   async listGeneratedDocuments(dealId: string) {
     const docs = await this.repo.findGeneratedDocuments(dealId);
@@ -298,23 +287,14 @@ export class DocumentsService {
     }
   }
 
-  /**
-   * Generate Document (API) — NestJS · raw XML merge-tag engine.
-   * Delegates to GenerationService which runs the ported Supabase edge function
-   * pipeline (fflate ZIP + regex merge-tag replacement) entirely within NestJS.
-   * Persists generation_job + generated_document records.
-   */
+  /** Generate Document (API) — NestJS · raw XML merge-tag engine · persists records. */
   generateDocumentApi(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
     if (!requestedBy) throw new BadRequestException('Authentication required');
     if (!dto.templateId) throw new BadRequestException('templateId is required');
     return this.generationService.generate(dealId, dto.templateId, requestedBy, dto.outputType);
   }
 
-  /**
-   * Generate Document (Edge) — Supabase edge function proxy.
-   * Forwards the request verbatim to the generate-document Deno edge function.
-   * Use for direct comparison against the NestJS ports or as a fallback.
-   */
+  /** Generate Document (Edge) — proxies to the generate-document Deno edge function. */
   async generateDocumentEdge(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
     if (!requestedBy) throw new BadRequestException('Authentication required');
 

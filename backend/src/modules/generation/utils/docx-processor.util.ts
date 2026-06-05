@@ -691,7 +691,7 @@ export function repairStraySdtClosingPair(xml: string): { xml: string; repaired:
 export function repairTableCellParagraphs(xml: string): { xml: string; repaired: number } {
   let repaired = 0;
   const out = xml.replace(/<w:tc(\s[^>]*)?>([\s\S]*?)<\/w:tc>/g, (full, _attrs, inner) => {
-    if (/<w:p[\s>\/]/.test(inner)) return full;
+    if (/<w:p[\s>/]/.test(inner)) return full;
     repaired++;
     return full.replace(/<\/w:tc>$/, '<w:p/></w:tc>');
   });

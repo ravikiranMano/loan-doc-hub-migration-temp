@@ -42,7 +42,7 @@ export class UpdatePacketDto {
   @IsOptional() states?: string[];
 }
 
-/** Mirrors Supabase packet_templates Insert (packet_id also set from URL param). */
+/** DTO for creating a packet template (packet_id also set from URL param). */
 export class CreatePacketTemplateDto {
   @IsString() @IsOptional() packet_id?: string;
   @IsString() @IsNotEmpty() template_id: string;
@@ -50,7 +50,7 @@ export class CreatePacketTemplateDto {
   @IsBoolean() @IsOptional() is_required?: boolean;
 }
 
-/** Mirrors Supabase template_field_maps Insert (template_id also set from URL param). */
+/** DTO for creating a template field map (template_id also set from URL param). */
 export class CreateTemplateFieldMapDto {
   @IsString() @IsOptional() template_id?: string;
   @IsString() @IsOptional() field_dictionary_id?: string | null;
@@ -59,7 +59,7 @@ export class CreateTemplateFieldMapDto {
   @IsNumber() @IsOptional() display_order?: number | null;
 }
 
-/** Mirrors Supabase template_field_maps Update. */
+/** DTO for updating a template field map. */
 export class UpdateTemplateFieldMapDto {
   @IsString() @IsOptional() template_id?: string;
   @IsString() @IsOptional() field_dictionary_id?: string | null;
@@ -86,7 +86,7 @@ export class UpdateMergeTagDto {
   @IsString() @IsOptional() description?: string;
 }
 
-/** Matches Supabase edge `generate-document` request body (camelCase). */
+/** Request body for document generation endpoints. */
 export class GenerateDocumentDto {
   @IsString() @IsOptional() templateId?: string;
   @IsString() @IsOptional() packetId?: string;

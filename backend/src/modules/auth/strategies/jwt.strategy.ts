@@ -15,6 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: (req: Request) => extractAccessToken(req),
       ignoreExpiration: false,
       secretOrKey: secret,
+      algorithms: ['HS256'],  // pin to HS256 — prevents algorithm-confusion attacks
     });
   }
 

@@ -1,4 +1,4 @@
-/** Maps Prisma template_field_maps rows to the Supabase PostgREST response shape. */
+/** Maps Prisma template_field_maps rows to the API response shape. */
 export function toTemplateFieldMapCompat(row: {
   id: string;
   template_id: string;

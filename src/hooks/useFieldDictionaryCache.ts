@@ -9,10 +9,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { fetchAllFieldDictionary } from '@/services/admin/field-dictionary.service';
 import type { FieldVisibility } from '@/lib/accessControl';
-import type { Database } from '@/integrations/supabase/types';
-
-type FieldSection = Database['public']['Enums']['field_section'];
-type FieldDataType = Database['public']['Enums']['field_data_type'];
+import type { FieldSection, FieldDataType } from '@/types';
 
 export interface CachedFieldDictEntry {
   id: string;

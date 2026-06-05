@@ -1,14 +1,14 @@
 import {
   fetchSectionValueByDealAndSection,
 } from '@/services/deals/section-values.service';
-import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
+import { apiClient } from '@/services/node-api/client';
 import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import {
   STORAGE_BUCKETS,
   uploadFile,
   downloadFile,
   removeFiles,
-} from '@/services/supabase/storage';
+} from '@/services/storage';
 
 export const DEAL_ATTACHMENTS_SECTION = 'attachments_grid';
 export const DEAL_ATTACHMENTS_BUCKET = STORAGE_BUCKETS.contactAttachments;
@@ -64,19 +64,9 @@ export async function saveDealAttachmentsGrid(
   dealId: string,
   files: DealAttachmentMeta[],
 ): Promise<void> {
-  if (isNodeApiEnabled('deals')) {
-    await apiClient.patch(`/deals/${dealId}/sections/${DEAL_ATTACHMENTS_SECTION}`, {
-      field_values: { files },
-    });
-    return;
-  }
-  const { error } = await supabase.from('deal_section_values').upsert({
-    deal_id: dealId,
-    section: DEAL_ATTACHMENTS_SECTION,
+  await apiClient.patch(`/deals/${dealId}/sections/${DEAL_ATTACHMENTS_SECTION}`, {
     field_values: { files },
-    version: 1,
   });
-  if (error) throw error;
 }
 
 export async function uploadDealAttachmentFile(dealId: string, file: File): Promise<string> {

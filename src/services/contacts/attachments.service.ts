@@ -3,8 +3,8 @@ import {
   uploadFile,
   downloadFile,
   removeFiles,
-} from '@/services/supabase/storage';
-import type { BorrowerAttachmentRow } from '@/services/supabase/extended-types';
+} from '@/services/storage';
+import type { BorrowerAttachmentRow } from '@/types';
 import { apiClient } from '@/services/node-api/client';
 
 export const CONTACT_ATTACHMENTS_BUCKET = STORAGE_BUCKETS.contactAttachments;

@@ -446,7 +446,7 @@ export class DealsController {
     @Param('pid') pid: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.service.inviteParticipant(pid, body as any);
+    return this.service.inviteParticipant(pid, body as Parameters<typeof this.service.inviteParticipant>[1]);
   }
 
   // POST /api/deals/:id/participants/:pid/invite (frontend path — with dealId)
@@ -455,7 +455,7 @@ export class DealsController {
     @Param('pid') pid: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.service.inviteParticipant(pid, body as any);
+    return this.service.inviteParticipant(pid, body as Parameters<typeof this.service.inviteParticipant>[1]);
   }
 
   // ─── Complete participant section (Phase 3 migration — public, no auth) ───────

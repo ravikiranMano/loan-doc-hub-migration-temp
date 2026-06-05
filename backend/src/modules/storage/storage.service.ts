@@ -2,8 +2,17 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// Bucket allow-list — rejects unknown buckets before any Supabase call.
 const ALLOWED_BUCKETS = new Set(['contact-attachments', 'templates', 'generated-docs']);
 
+/**
+ * Server-side Supabase Storage proxy.
+ *
+ * Uses the service_role key so uploads/downloads bypass RLS — all access
+ * control is enforced by NestJS guards before reaching this service.
+ * autoRefreshToken and persistSession are disabled because this is a
+ * long-lived server process with no browser session to manage.
+ */
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
@@ -12,7 +21,6 @@ export class StorageService {
   constructor(private readonly config: ConfigService) {
     const url = config.getOrThrow<string>('supabase.url');
     const key = config.getOrThrow<string>('supabase.serviceRoleKey');
-    // Service role key bypasses Supabase Auth — never expose to clients
     this.supabase = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false },
     });

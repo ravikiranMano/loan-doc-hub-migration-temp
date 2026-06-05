@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateTemplateDto,
@@ -34,13 +35,13 @@ export class DocumentsRepository {
   }
 
   createTemplate(dto: CreateTemplateDto) {
-    return this.prisma.templates.create({ data: dto as any });
+    return this.prisma.templates.create({ data: dto as unknown as Prisma.templatesUncheckedCreateInput });
   }
 
   updateTemplate(id: string, dto: UpdateTemplateDto) {
     return this.prisma.templates.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.templatesUncheckedUpdateInput,
     });
   }
 
@@ -66,13 +67,13 @@ export class DocumentsRepository {
   }
 
   createPacket(dto: CreatePacketDto) {
-    return this.prisma.packets.create({ data: dto as any });
+    return this.prisma.packets.create({ data: dto as unknown as Prisma.packetsUncheckedCreateInput });
   }
 
   updatePacket(id: string, dto: UpdatePacketDto) {
     return this.prisma.packets.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.packetsUncheckedUpdateInput,
     });
   }
 
@@ -152,7 +153,7 @@ export class DocumentsRepository {
         required_flag: dto.required_flag,
         transform_rule: dto.transform_rule,
         display_order: dto.display_order,
-      } as any,
+      } as unknown as Prisma.template_field_mapsUncheckedCreateInput,
       include: { field_dictionary: true },
     });
   }
@@ -193,13 +194,13 @@ export class DocumentsRepository {
   }
 
   createMergeTag(dto: CreateMergeTagDto) {
-    return this.prisma.merge_tag_aliases.create({ data: dto as any });
+    return this.prisma.merge_tag_aliases.create({ data: dto as unknown as Prisma.merge_tag_aliasesUncheckedCreateInput });
   }
 
   updateMergeTag(id: string, dto: UpdateMergeTagDto) {
     return this.prisma.merge_tag_aliases.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.merge_tag_aliasesUncheckedUpdateInput,
     });
   }
 
@@ -216,7 +217,7 @@ export class DocumentsRepository {
     });
   }
 
-  /** Mirrors Supabase listGeneratedDocumentsByDealIds (.in deal_id, generation_status success). */
+  /** List generated documents filtered by deal IDs with status success. */
   findGeneratedDocumentsByDealIds(dealIds: string[]) {
     if (!dealIds.length) return [];
     return this.prisma.generated_documents.findMany({
@@ -236,19 +237,19 @@ export class DocumentsRepository {
   }
 
   createGenerationJob(data: Record<string, unknown>) {
-    return this.prisma.generation_jobs.create({ data: data as any });
+    return this.prisma.generation_jobs.create({ data: data as unknown as Prisma.generation_jobsUncheckedCreateInput });
   }
 
   updateGenerationJob(id: string, data: Record<string, unknown>) {
-    return this.prisma.generation_jobs.update({ where: { id }, data: data as any });
+    return this.prisma.generation_jobs.update({ where: { id }, data: data as unknown as Prisma.generation_jobsUncheckedUpdateInput });
   }
 
   createGeneratedDocument(data: Record<string, unknown>) {
-    return this.prisma.generated_documents.create({ data: data as any });
+    return this.prisma.generated_documents.create({ data: data as unknown as Prisma.generated_documentsUncheckedCreateInput });
   }
 
   createActivityLog(data: Record<string, unknown>) {
-    return this.prisma.activity_log.create({ data: data as any });
+    return this.prisma.activity_log.create({ data: data as unknown as Prisma.activity_logUncheckedCreateInput });
   }
 
   deleteGeneratedDocumentsByTemplateId(templateId: string) {

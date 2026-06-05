@@ -1,15 +1,23 @@
 /**
- * Generate Document Edge Function
- * 
- * Orchestrates document generation by processing DOCX templates
- * with deal field values. Supports single document and packet generation.
+ * generate-document — Supabase Edge Function
+ *
+ * Called exclusively by NestJS POST /deals/:id/documents/generate-edge.
+ * The NestJS proxy authenticates the user and forwards their ID in the
+ * X-User-Id header; this function trusts that header (no Supabase Auth
+ * cookie verification) and uses the service_role key for DB + Storage access.
+ *
+ * Environment variables required (set in Supabase Dashboard → Edge Functions):
+ *   SUPABASE_URL            — project URL (injected automatically)
+ *   SUPABASE_SERVICE_ROLE_KEY — bypasses RLS; backend-only, never exposed to browser
+ *   DOC_GEN_DEBUG           — set "true" to enable verbose debug logging
+ *
+ * ⚠️  P0: redeploy after any change — `supabase functions deploy generate-document`
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as fflate from "https://esm.sh/fflate@0.8.2";
 
-// Import shared modules
 import type {
   OutputType,
   RequestType,
@@ -131,14 +139,14 @@ async function getValidFieldKeys(supabase: any): Promise<Set<string>> {
   return nextValidFieldKeys;
 }
 
+// Wildcard CORS is safe here: this function is called by the NestJS backend proxy,
+// not directly from the browser. Auth is enforced by NestJS before the call is made.
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-id",
 };
 
-// ============================================
-// Single Document Generation
-// ============================================
+// ── Single Document Generation ───────────────────────────────────────────────
 
 async function generateSingleDocument(
   supabase: any,
@@ -13048,9 +13056,7 @@ async function generateSingleDocument(
   }
 }
 
-// ============================================
-// PDF Conversion
-// ============================================
+// ── PDF Conversion ───────────────────────────────────────────────────────────
 
 async function convertToPdf(
   supabase: any,
@@ -13168,9 +13174,7 @@ async function convertToPdf(
   return null;
 }
 
-// ============================================
-// Main Handler
-// ============================================
+// ── Main Handler ─────────────────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

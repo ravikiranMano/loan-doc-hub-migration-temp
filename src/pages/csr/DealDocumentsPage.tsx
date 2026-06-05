@@ -69,7 +69,7 @@ import {
   listPacketTemplatesWithJoin,
 } from '@/services/documents/packets.service';
 import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
-import { getSignedUrl as getStorageSignedUrl, STORAGE_BUCKETS } from '@/services/supabase/storage';
+import { getSignedUrl as getStorageSignedUrl, STORAGE_BUCKETS } from '@/services/storage';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   ArrowLeft, 

@@ -1,1 +1,0 @@
-UPDATE public.field_dictionary SET is_mandatory = false WHERE field_key = 'origination_ins.carrier_rating_a_minus';

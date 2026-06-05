@@ -20,8 +20,7 @@ export interface JwtPayload {
 }
 
 /**
- * Accepts Nest auth via httpOnly cookie (primary) or Authorization Bearer (legacy /
- * non-browser clients). Supabase JWTs in Bearer are still accepted during migration.
+ * Accepts Nest auth via httpOnly cookie (primary) or Authorization Bearer (legacy / non-browser clients).
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {

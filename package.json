@@ -16,10 +16,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
     "test:e2e:deals": "playwright test e2e/deals",
-    "test:e2e:admin": "playwright test e2e/admin --project=chromium-admin",
-    "db:pull": "prisma db pull",
-    "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "test:e2e:admin": "playwright test e2e/admin --project=chromium-admin"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -51,7 +48,6 @@
     "@radix-ui/react-toggle": "^1.1.9",
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
-    "@supabase/supabase-js": "^2.90.1",
     "@tanstack/react-query": "^5.83.0",
     "@tanstack/react-table": "^8.21.3",
     "@vitejs/plugin-react": "4.2.1",

@@ -9,9 +9,7 @@ import {
   getMagicLinkSession 
 } from '@/lib/magicLink';
 import { getRoleDisplayName } from '@/lib/accessControl';
-import type { Database } from '@/integrations/supabase/types';
-
-type AppRole = Database['public']['Enums']['app_role'];
+import type { AppRole } from '@/types';
 
 export const MagicLinkAccessPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();

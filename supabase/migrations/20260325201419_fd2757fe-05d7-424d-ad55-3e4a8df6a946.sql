@@ -1,1 +1,0 @@
-UPDATE generation_jobs SET status = 'failed', completed_at = now(), error_message = 'Generation timed out (CPU limit exceeded) - cleared by optimization patch' WHERE status = 'running' AND started_at < now() - interval '2 minutes';

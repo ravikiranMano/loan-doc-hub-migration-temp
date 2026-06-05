@@ -1,8 +1,4 @@
-/**
- * Field Resolution Utilities (NestJS port)
- * Ported from supabase/functions/_shared/field-resolver.ts
- * Deno.env → process.env, Supabase → caller-provided data via setters
- */
+/** Field resolution utilities — NestJS port of the edge function field resolver. */
 
 import type {
   FieldValueData,
@@ -184,23 +180,26 @@ export function getFieldData(
   return null;
 }
 
-export function extractRawValueFromJsonb(data: any, dataType: string): string | number | null {
+export function extractRawValueFromJsonb(data: Record<string, unknown>, dataType: string): string | number | null {
+  const asStringOrNumber = (v: unknown): string | number | null =>
+    typeof v === 'string' || typeof v === 'number' ? v : null;
+
   switch (dataType) {
     case "currency":
     case "number":
     case "percentage":
     case "decimal":
     case "integer":
-      return data.value_number ?? data.value_text ?? null;
+      return asStringOrNumber(data.value_number) ?? asStringOrNumber(data.value_text) ?? null;
     case "date":
     case "datetime":
-      return data.value_date ?? data.value_text ?? null;
+      return asStringOrNumber(data.value_date) ?? asStringOrNumber(data.value_text) ?? null;
     case "text":
     case "boolean":
     case "phone":
     case "dropdown":
     default:
-      return data.value_text;
+      return asStringOrNumber(data.value_text);
   }
 }
 

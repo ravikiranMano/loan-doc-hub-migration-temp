@@ -1,1 +1,0 @@
-ALTER TABLE public.deal_participants DROP CONSTRAINT IF EXISTS unique_deal_role;

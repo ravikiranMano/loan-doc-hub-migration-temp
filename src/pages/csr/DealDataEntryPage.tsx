@@ -51,9 +51,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleDisplayName } from "@/lib/accessControl";
-import type { Database } from '@/services/supabase/types';
-
-type FieldSection = Database["public"]["Enums"]["field_section"];
+import type { FieldSection } from '@/types';
 
 interface Deal {
   id: string;
