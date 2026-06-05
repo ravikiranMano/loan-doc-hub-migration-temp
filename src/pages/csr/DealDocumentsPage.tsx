@@ -60,7 +60,7 @@ import {
   listGenerationJobs,
   downloadGeneratedDoc,
 } from '@/services/documents/generation.service';
-import { SessionExpiredError } from '@/services/node-api/client';
+import { SessionExpiredError, refreshSessionSilently } from '@/services/node-api/client';
 import { FieldDataJsonView } from '@/components/documents/FieldDataJsonView';
 import { listTemplates, updateTemplate, uploadTemplateDocx } from '@/services/documents/templates.service';
 import {
@@ -614,6 +614,7 @@ export const DealDocumentsPage: React.FC = () => {
 
   const getSignedUrl = async (path: string): Promise<string | null> => {
     try {
+      await refreshSessionSilently();
       return await getStorageSignedUrl(STORAGE_BUCKETS.generatedDocs, path, 3600);
     } catch (error: unknown) {
       if (error instanceof SessionExpiredError) return null;
@@ -625,13 +626,6 @@ export const DealDocumentsPage: React.FC = () => {
       });
       return null;
     }
-  };
-
-  const buildFileName = (doc: GeneratedDocument, ext: 'pdf' | 'docx'): string => {
-    const base = (doc.template_name || 'document')
-      .replace(/[^\w\-. ]+/g, '_')
-      .trim() || 'document';
-    return `${base}_v${doc.version_number}.${ext}`;
   };
 
   const handleOpenInNewWindow = async (doc: GeneratedDocument) => {
@@ -647,7 +641,19 @@ export const DealDocumentsPage: React.FC = () => {
       if (!url) return;
       const viewer = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}`;
       window.open(viewer, '_blank', 'noopener,noreferrer');
+      toast({
+        title: 'Document opened',
+        description:
+          'If the viewer shows an error after idle, click Open again for a fresh link (do not refresh the viewer tab).',
+      });
     }
+  };
+
+  const buildFileName = (doc: GeneratedDocument, ext: 'pdf' | 'docx'): string => {
+    const base = (doc.template_name || 'document')
+      .replace(/[^\w\-. ]+/g, '_')
+      .trim() || 'document';
+    return `${base}_v${doc.version_number}.${ext}`;
   };
 
   const handlePrintDocument = async (doc: GeneratedDocument) => {
@@ -914,7 +920,10 @@ body{margin:0;font-family:'Times New Roman',serif;background:#f5f5f5;}
     return (
       <div className="page-container text-center py-16">
         <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-        <h2 className="text-xl font-semibold text-foreground mb-2">File Not Found</h2>
+        <h2 className="text-xl font-semibold text-foreground mb-2">Unable to load deal</h2>
+        <p className="text-muted-foreground mb-4">
+          This deal may not exist, or your session may have expired. Try signing in again.
+        </p>
         <Button onClick={() => navigate('/deals')}>Back to Files</Button>
       </div>
     );

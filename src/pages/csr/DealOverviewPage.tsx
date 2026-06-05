@@ -344,8 +344,10 @@ export const DealOverviewPage: React.FC = () => {
     return (
       <div className="page-container text-center py-16">
         <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-        <h2 className="text-xl font-semibold text-foreground mb-2">File Not Found</h2>
-        <p className="text-muted-foreground mb-4">The file you're looking for doesn't exist.</p>
+        <h2 className="text-xl font-semibold text-foreground mb-2">Unable to load deal</h2>
+        <p className="text-muted-foreground mb-4">
+          This deal may not exist, or your session may have expired. Try signing in again.
+        </p>
         <Button onClick={() => navigate('/deals')}>Back to Files</Button>
       </div>
     );

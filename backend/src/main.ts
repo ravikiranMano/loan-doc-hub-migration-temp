@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { json, urlencoded } from 'express';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -21,6 +22,9 @@ async function bootstrap() {
 
   // API responses must not use Express etag/304 — the SPA client expects a JSON body on every GET.
   const expressApp = app.getHttpAdapter().getInstance();
+  // Large deal section JSONB payloads (RE851D, liens, etc.) exceed Express default 100kb.
+  expressApp.use(json({ limit: '10mb' }));
+  expressApp.use(urlencoded({ extended: true, limit: '10mb' }));
   expressApp.set('etag', false);
   expressApp.use((req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

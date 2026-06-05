@@ -51,6 +51,11 @@ async function attemptRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
+/** Proactively refresh session (e.g. when tab regains focus after idle). */
+export async function refreshSessionSilently(): Promise<boolean> {
+  return attemptRefresh();
+}
+
 /** Low-level fetch with cookie auth and automatic token refresh on 401. */
 export async function apiFetch(
   path: string,
