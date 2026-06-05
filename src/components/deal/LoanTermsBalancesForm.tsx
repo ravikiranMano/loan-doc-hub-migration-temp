@@ -1100,7 +1100,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => { /* TODO: confirm Recast Payment workflow with client */ console.log('Recast Payment clicked'); }}
+                onClick={() => { /* Recast Payment — workflow pending client confirmation */ }}
                 disabled={disabled}
                 className={cn(LABEL_CLASS, "text-primary font-medium cursor-pointer hover:underline bg-transparent p-0 border-0 text-left")}
               >
