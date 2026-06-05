@@ -129,11 +129,125 @@ export class DealFieldValuesLoader {
 
     const lenders = await loadDealLenders(this.prisma, dealId, fieldValues);
     publishLenderAliases(fieldValues, lenders);
+    await this.applyBorrowerBridge(fieldValues, dealId);
     this.applyBasicBridges(fieldValues, deal);
     this.applyRe885Bridges(fieldValues);
     applyRe851dBridges(fieldValues);
+    await this.applyAdditionalGuarantorBridge(fieldValues, dealId);
 
     return { fieldValues, lenders };
+  }
+
+  /**
+   * Mirrors the generate-document edge function br_p_fullName publisher.
+   * Loads the primary borrower participant's linked contact and assembles br_p_fullName.
+   * Called before applyBasicBridges so the participant value takes priority.
+   */
+  private async applyBorrowerBridge(
+    fieldValues: Map<string, ResolvedDealField>,
+    dealId: string,
+  ): Promise<void> {
+    if (fieldValues.has('br_p_fullName')) return;
+
+    const participants = await this.prisma.deal_participants.findMany({
+      where: { deal_id: dealId, contact_id: { not: null } },
+      select: { role: true, contact_id: true, sequence_order: true, created_at: true },
+      orderBy: [{ sequence_order: 'asc' }, { created_at: 'asc' }],
+    });
+
+    const borrowers = participants.filter((p) => String(p.role) === 'borrower' && p.contact_id);
+    if (!borrowers.length) return;
+
+    const contactIds = [...new Set(borrowers.map((p) => p.contact_id!))];
+    const contacts = await this.prisma.contacts.findMany({
+      where: { id: { in: contactIds } },
+      select: { id: true, contact_data: true, first_name: true, last_name: true, full_name: true },
+    });
+    const contactById = new Map(contacts.map((c) => [c.id, c]));
+
+    const primary = borrowers.find((p) => {
+      const c = contactById.get(p.contact_id!);
+      const cap = String((c?.contact_data as Record<string, unknown>)?.['capacity'] ?? '').toLowerCase();
+      return cap.includes('primary');
+    }) ?? borrowers[0];
+
+    const c = contactById.get(primary.contact_id!);
+    if (!c) return;
+
+    const cd = (c.contact_data as Record<string, unknown>) ?? {};
+    const first = String(cd['first_name'] ?? c.first_name ?? '').trim();
+    const middle = String(cd['middle_name'] ?? '').trim();
+    const last = String(cd['last_name'] ?? c.last_name ?? '').trim();
+    const assembled = [first, middle, last].filter(Boolean).join(' ');
+    const full = (String(cd['full_name'] ?? '').trim() || assembled || c.full_name || '').trim();
+
+    const set = (key: string, val: string) => {
+      if (val) fieldValues.set(key, { rawValue: val, dataType: 'text' });
+    };
+    set('br_p_fullName', full);
+    set('br_p_first', first);
+    if (middle) set('br_p_middle', middle);
+    set('br_p_last', last);
+  }
+
+  /**
+   * Mirrors the generate-document edge function ag_p_* publisher.
+   * Detects Additional Guarantor participants by contact_type, capacity, or name,
+   * then assembles ag_p_fullName / ag_p_first / ag_p_middle / ag_p_last.
+   */
+  private async applyAdditionalGuarantorBridge(
+    fieldValues: Map<string, ResolvedDealField>,
+    dealId: string,
+  ): Promise<void> {
+    const participants = await this.prisma.deal_participants.findMany({
+      where: { deal_id: dealId, contact_id: { not: null } },
+      select: { name: true, contact_id: true, sequence_order: true, created_at: true },
+      orderBy: [{ sequence_order: 'asc' }, { created_at: 'asc' }],
+    });
+    if (!participants.length) return;
+
+    const contactIds = [...new Set(participants.map((p) => p.contact_id!))];
+    const contacts = await this.prisma.contacts.findMany({
+      where: { id: { in: contactIds } },
+      select: { id: true, contact_type: true, contact_data: true, first_name: true, last_name: true, full_name: true },
+    });
+    const contactById = new Map(contacts.map((c) => [c.id, c]));
+
+    const isAg = (p: { name?: string | null; contact_id?: string | null }) => {
+      const pName = (p.name || '').toLowerCase();
+      if (pName.includes('additional guarantor') || pName.includes('adtn guarantor')) return true;
+      if (!p.contact_id) return false;
+      const c = contactById.get(p.contact_id);
+      if (!c) return false;
+      if ((c.contact_type || '').toLowerCase() === 'additional_guarantor') return true;
+      const cd = (c.contact_data as Record<string, unknown>) ?? {};
+      const cap = String(cd['capacity'] ?? '').toLowerCase();
+      return cap.includes('additional guarantor') || cap.includes('adtn guarantor');
+    };
+
+    const agParticipants = participants.filter(isAg);
+    if (!agParticipants.length) return;
+
+    const publish = (contactId: string | null | undefined, suffix: string) => {
+      const c = contactId ? contactById.get(contactId) : null;
+      if (!c) return;
+      const cd = (c.contact_data as Record<string, unknown>) ?? {};
+      const first = String(cd['first_name'] ?? c.first_name ?? '').trim();
+      const middle = String(cd['middle_name'] ?? '').trim();
+      const last = String(cd['last_name'] ?? c.last_name ?? '').trim();
+      const assembled = [first, middle, last].filter(Boolean).join(' ');
+      const full = (assembled || c.full_name || '').trim();
+      const set = (key: string, val: string) => {
+        if (val) fieldValues.set(key, { rawValue: val, dataType: 'text' });
+      };
+      set(`ag_p_fullName${suffix}`, full);
+      set(`ag_p_first${suffix}`, first);
+      if (middle) set(`ag_p_middle${suffix}`, middle);
+      set(`ag_p_last${suffix}`, last);
+    };
+
+    publish(agParticipants[0].contact_id, '');
+    agParticipants.forEach((p, idx) => publish(p.contact_id, `_${idx + 1}`));
   }
 
   /**
