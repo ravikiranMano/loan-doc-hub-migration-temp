@@ -163,7 +163,7 @@ export function formatPercentage(value: string | number | null, decimals = 4): s
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (isNaN(num)) return "";
   const safeMax = Math.max(2, Math.floor(decimals));
-  let s = num.toFixed(safeMax);
+  const s = num.toFixed(safeMax);
   if (safeMax === 2) return `${s}%`;
   const dotIdx = s.indexOf(".");
   if (dotIdx === -1) return `${s}%`;

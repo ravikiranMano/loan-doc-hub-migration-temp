@@ -1,4 +1,4 @@
-/** Maps public.users rows to the legacy Supabase `profiles` response shape. */
+/** Maps public.users rows to the profiles API response shape. */
 export function toProfileCompat(user: {
   id: string;
   email?: string | null;

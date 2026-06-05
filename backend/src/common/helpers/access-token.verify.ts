@@ -46,6 +46,18 @@ function mapSupabasePayload(payload: JWTPayload | jwt.JwtPayload): JwtPayload {
   };
 }
 
+/**
+ * Verify a token originally issued by Supabase Auth.
+ *
+ * Two-path strategy to handle both key types that may be in circulation:
+ *   1. JWKS (ES256) — preferred; current Supabase projects sign with ECC and
+ *      publish a public JWKS endpoint. Verified remotely.
+ *   2. HS256 legacy — fallback for tokens minted with the old JWT secret
+ *      (SUPABASE_JWT_SECRET). Used during the bearer-to-cookie migration
+ *      while some users still hold legacy Supabase-signed tokens.
+ *
+ * If SUPABASE_URL is absent, both paths are skipped and null is returned.
+ */
 async function verifySupabaseToken(
   token: string,
   config: ConfigService,
@@ -63,6 +75,7 @@ async function verifySupabaseToken(
       });
       return mapSupabasePayload(payload);
     } catch (jwksErr) {
+      // JWKS verification failed — try HS256 legacy secret before giving up.
       if (!jwtSecret) throw jwksErr;
     }
   }
@@ -75,7 +88,7 @@ async function verifySupabaseToken(
   return null;
 }
 
-/** Verify Nest JWT first, then fall back to legacy Supabase JWT (Bearer migration). */
+/** Verify Nest JWT first, then fall back to legacy JWT (Bearer migration). */
 export async function verifyAccessToken(
   token: string,
   config: ConfigService,
@@ -86,7 +99,7 @@ export async function verifyAccessToken(
       const payload = jwt.verify(token, nestSecret, { algorithms: ['HS256'] }) as jwt.JwtPayload;
       if (payload.sub) return mapNestPayload(payload);
     } catch {
-      // try Supabase next
+      // try legacy JWT next
     }
   }
 

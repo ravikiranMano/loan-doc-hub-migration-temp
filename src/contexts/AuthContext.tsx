@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { login, logout, getMe, register, type AuthUser } from '@/services/node-api/auth.service';
+import { refreshSessionSilently } from '@/services/node-api/client';
 
 export type AppRole = 'admin' | 'csr' | 'borrower' | 'broker' | 'lender' | 'other' | null;
 
@@ -40,6 +41,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .then(setUser)
       .finally(() => setLoading(false));
   }, []);
+
+  // Refresh tokens when the tab regains focus after idle (prevents storage/API 401s).
+  useEffect(() => {
+    if (!user) return;
+
+    let lastRefresh = Date.now();
+    const MIN_REFRESH_INTERVAL_MS = 60_000;
+
+    const maybeRefresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastRefresh < MIN_REFRESH_INTERVAL_MS) return;
+      lastRefresh = Date.now();
+      refreshSessionSilently().catch(() => {});
+    };
+
+    document.addEventListener('visibilitychange', maybeRefresh);
+    window.addEventListener('focus', maybeRefresh);
+    return () => {
+      document.removeEventListener('visibilitychange', maybeRefresh);
+      window.removeEventListener('focus', maybeRefresh);
+    };
+  }, [user]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {

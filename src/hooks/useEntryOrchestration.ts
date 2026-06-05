@@ -11,13 +11,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listParticipantsByDealOrdered } from '@/services/deals/participants.service';
 import { subscribeToChanges } from '@/services/node-api/realtime';
-import { invokeCompleteParticipantSection } from '@/services/supabase/functions';
-import { apiClient, isNodeApiEnabled } from '@/services/node-api/client';
+import { apiClient } from '@/services/node-api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMagicLinkSession } from '@/lib/magicLink';
-import type { Database } from '@/integrations/supabase/types';
-
-type ParticipantStatus = Database['public']['Enums']['participant_status'];
+import type { ParticipantStatus } from '@/types';
 
 export interface DealParticipant {
   id: string;
@@ -195,20 +192,10 @@ export function useEntryOrchestration(dealId: string): UseEntryOrchestrationResu
     }
 
     try {
-      let result: { success?: boolean; error?: string; nextParticipant?: unknown } | null;
-      if (isNodeApiEnabled('deals')) {
-        result = await apiClient.post<{ success: boolean; nextParticipant: unknown | null }>(
-          `/deals/${dealId}/participants/${state.currentParticipant.id}/complete`,
-          {},
-        );
-      } else {
-        const { data, error } = await invokeCompleteParticipantSection({
-          participantId: state.currentParticipant.id,
-          dealId,
-        });
-        if (error) throw error;
-        result = data as { success?: boolean; error?: string } | null;
-      }
+      const result = await apiClient.post<{ success: boolean; nextParticipant: unknown | null }>(
+        `/deals/${dealId}/participants/${state.currentParticipant.id}/complete`,
+        {},
+      );
 
       if (!result?.success) {
         throw new Error(result?.error || 'Failed to complete section');

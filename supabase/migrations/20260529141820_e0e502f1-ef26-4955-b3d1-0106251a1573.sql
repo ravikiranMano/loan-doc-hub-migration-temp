@@ -1,1 +1,0 @@
-CREATE POLICY "CSRs can delete deals" ON public.deals FOR DELETE USING (has_role(auth.uid(), 'csr'::app_role) OR has_role(auth.uid(), 'admin'::app_role));

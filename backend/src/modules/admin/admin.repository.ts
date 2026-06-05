@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { $Enums } from '../../generated/prisma/client';
+import { Prisma, $Enums } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateFieldDto,
@@ -46,13 +46,13 @@ export class AdminRepository {
   }
 
   createField(dto: CreateFieldDto) {
-    return this.prisma.field_dictionary.create({ data: dto as any });
+    return this.prisma.field_dictionary.create({ data: dto as unknown as Prisma.field_dictionaryUncheckedCreateInput });
   }
 
   updateField(id: string, dto: UpdateFieldDto) {
     return this.prisma.field_dictionary.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.field_dictionaryUncheckedUpdateInput,
     });
   }
 

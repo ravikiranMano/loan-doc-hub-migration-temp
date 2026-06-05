@@ -1,5 +1,7 @@
-import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -12,7 +14,6 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { GenerationModule } from './modules/generation/generation.module';
-import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import configuration from './config/configuration';
 import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
@@ -24,6 +25,9 @@ import { databaseConfig } from './config/database.config';
       envFilePath: ['.env', '../.env'],
       load: [configuration, appConfig, databaseConfig],
     }),
+    // Global rate limiter: 200 requests / 60 s per IP (generous default for SPA).
+    // Auth endpoints override this with stricter limits via @Throttle().
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     PrismaModule,
     AuthModule,
     HealthModule,
@@ -36,10 +40,10 @@ import { databaseConfig } from './config/database.config';
     GenerationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Apply ThrottlerGuard globally — per-route @Throttle() overrides the default.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(LoggerMiddleware).forRoutes({ path: '*', method: RequestMethod.ALL });
-  }
-}
+export class AppModule {}

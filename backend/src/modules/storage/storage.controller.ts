@@ -30,7 +30,7 @@ export class StorageController {
    * Frontend: POST /api/storage/:bucket/upload?path=folder/file.pdf
    */
   @Post(':bucket/upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   async upload(
     @Param('bucket') bucket: string,
     @Query('path') path: string,
@@ -56,9 +56,10 @@ export class StorageController {
   @Get(':bucket/file/*')
   async download(
     @Param('bucket') bucket: string,
-    @Param('0') path: string,
+    @Param('0') rawPath: string,
     @Res() res: Response,
   ) {
+    const path = normalizeStorageObjectPath(rawPath);
     const { buffer, contentType } = await this.storageService.download(bucket, path);
     const filename = path.split('/').pop() ?? 'download';
 
@@ -96,4 +97,17 @@ export class StorageController {
     if (!body?.paths?.length) throw new BadRequestException('"paths" array is required');
     return this.storageService.remove(bucket, body.paths);
   }
+}
+
+/** Decode legacy %2F-encoded paths and trim leading slashes. */
+function normalizeStorageObjectPath(rawPath: string): string {
+  let path = rawPath ?? '';
+  try {
+    if (path.includes('%')) {
+      path = decodeURIComponent(path);
+    }
+  } catch {
+    // keep raw path when malformed encoding
+  }
+  return path.replace(/^\/+/, '');
 }

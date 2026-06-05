@@ -1,13 +1,14 @@
-# Supabase services layer
+# Services layer
 
-All client-side Supabase access lives under `src/services/`. UI code (pages, components, hooks) must call these services instead of importing `@/integrations/supabase/client`.
+All API access lives under `src/services/`. UI code (pages, components, hooks) must call these services instead of reaching into `@/integrations/` directly.
 
 ## Layout
 
 | Path | Responsibility |
 |------|----------------|
-| `supabase/` | Client re-export, auth, RPC, storage, edge functions, realtime, pagination |
-| `contacts/` | Contacts CRUD, `getContactContactData` / `patchContactData`, attachments |
+| `node-api/` | NestJS API client (`apiClient`), auth refresh, SSE realtime |
+| `storage/` | File upload/download/delete — proxied through NestJS backend |
+| `contacts/` | Contacts CRUD, attachments |
 | `deals/` | Deals, participants, section values, loan history, assignments |
 | `documents/` | Templates, packets, field maps, generation |
 | `admin/` | Field dictionary, permissions, users, profiles, form permissions |
@@ -15,9 +16,11 @@ All client-side Supabase access lives under `src/services/`. UI code (pages, com
 
 ## Import rules
 
-- Allowed: `@/services/...`, `@/services/supabase/types` for types
-- Forbidden outside services: `@/integrations/supabase/client`
+- Domain types: import from `@/types` (enums, row shapes)
+- Storage helpers: import from `@/services/storage`
+- API client: import from `@/services/node-api/client`
+- All other services: import from `@/services/<domain>/...`
 
-## Deprecated
+## What's gone
 
-- `@/lib/supabasePagination` — use `@/services/supabase/pagination`
+The `src/services/supabase/` folder has been removed. All data access goes through the NestJS backend. When the S3 migration happens, only `backend/src/storage/storage.service.ts` changes.

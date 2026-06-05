@@ -12,6 +12,7 @@ import { createHash } from 'crypto';
 import { AuthRepository } from './auth.repository';
 import { RegisterDto, UpdateMeDto } from './dto/auth.dto';
 import { COOKIE_ACCESS_TOKEN, COOKIE_REFRESH_TOKEN, COOKIE_REFRESH_PATH } from '../../common/constants/auth.constants';
+import { parseDurationMs } from '../../common/helpers/parse-duration-ms';
 import type { users } from '../../generated/prisma/client';
 import type { JwtPayload } from '../../common/guards/jwt-auth.guard';
 
@@ -138,17 +139,20 @@ export class AuthService {
 
   private setAuthCookies(res: Response, tokens: IssuedTokens) {
     const isProd = this.config.get('app.nodeEnv') === 'production';
+    // lax (not strict) so refresh works when SPA and API are on different ports/subdomains.
     const base = {
       httpOnly: true,
       secure: isProd,
-      sameSite: (isProd ? 'strict' : 'lax') as 'strict' | 'lax',
+      sameSite: 'lax' as const,
       path: '/',
     };
     const refreshDays = this.config.get<number>('jwt.refreshExpiresInDays', 7);
+    const accessExpiresIn = this.config.get<string>('jwt.expiresIn', '1h') ?? '1h';
+    const accessMaxAge = parseDurationMs(accessExpiresIn, 60 * 60 * 1000);
 
     res.cookie(COOKIE_ACCESS_TOKEN, tokens.accessToken, {
       ...base,
-      maxAge: 15 * 60 * 1000,
+      maxAge: accessMaxAge,
     });
     res.cookie(COOKIE_REFRESH_TOKEN, tokens.rawRefreshToken, {
       ...base,

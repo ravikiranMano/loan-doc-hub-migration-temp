@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface SendMessageDto {
@@ -76,7 +77,7 @@ export class MessagesService {
         let parsedMsg = errText;
         try {
           parsedMsg = (JSON.parse(errText) as { message?: string }).message || errText;
-        } catch {}
+        } catch { /* JSON.parse failed — use raw error text */ }
         status = 'failed';
         if (resendResp.status === 403 && parsedMsg.includes('only send testing emails')) {
           errorMessage =
@@ -91,7 +92,7 @@ export class MessagesService {
     }
 
     try {
-      await (this.prisma.messages as any).create({
+      await this.prisma.messages.create({
         data: {
           sender_id: userId,
           deal_id: deal_id || null,
@@ -99,10 +100,10 @@ export class MessagesService {
           subject: subject || null,
           body: message_body,
           recipients: recipients,
-          attachments: attachments.map((a) => ({ filename: a.filename, size: a.size })),
+          attachments: attachments.map((a) => ({ filename: a.filename, size: a.size })) as Prisma.InputJsonValue,
           status,
           error_message: errorMessage,
-        },
+        } as unknown as Prisma.messagesUncheckedCreateInput,
       });
     } catch (err) {
       this.logger.error('Error storing message record:', err);

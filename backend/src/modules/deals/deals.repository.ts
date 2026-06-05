@@ -12,6 +12,8 @@ export class DealsRepository {
   private buildDealsWhere(options?: {
     status?: string;
     search?: string;
+    state?: string;
+    product_type?: string;
     ids?: string[];
   }): Prisma.dealsWhereInput {
     const where: Prisma.dealsWhereInput = {};
@@ -26,19 +28,34 @@ export class DealsRepository {
         .filter(Boolean) as $Enums.deal_status[];
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
+    if (options?.state) {
+      where.state = options.state;
+    }
+    if (options?.product_type) {
+      where.product_type = options.product_type;
+    }
     if (options?.search?.trim()) {
       const s = options.search.trim();
       where.OR = [
         { deal_number: { contains: s, mode: 'insensitive' } },
         { borrower_name: { contains: s, mode: 'insensitive' } },
+        { property_address: { contains: s, mode: 'insensitive' } },
       ];
     }
 
     return where;
   }
 
-  /** List deals — mirrors Supabase .in('status') when status is comma-separated. */
-  findAll(options?: { status?: string; search?: string; page?: number; limit?: number; ids?: string[] }) {
+  /** List deals — filters by comma-separated status values when provided. */
+  findAll(options?: {
+    status?: string;
+    search?: string;
+    state?: string;
+    product_type?: string;
+    page?: number;
+    limit?: number;
+    ids?: string[];
+  }) {
     const where = this.buildDealsWhere(options);
     const orderBy = options?.status
       ? { created_at: 'desc' as const }
@@ -50,10 +67,12 @@ export class DealsRepository {
     });
   }
 
-  /** Paginated list with count + packets — mirrors listDealsPage Supabase query. */
+  /** Paginated deal list with total count and associated packets. */
   async findAllPaginated(options: {
     status?: string;
     search?: string;
+    state?: string;
+    product_type?: string;
     page: number;
     limit: number;
     ids?: string[];
@@ -79,7 +98,7 @@ export class DealsRepository {
     return this.prisma.deals.findUnique({ where: { id } });
   }
 
-  /** Mirrors Supabase listDealsForDashboard select/order. */
+  /** List deals for dashboard view with selected fields. */
   findForDashboard() {
     return this.prisma.deals.findMany({
       select: {
@@ -99,6 +118,7 @@ export class DealsRepository {
         OR: [
           { deal_number: { contains: query, mode: 'insensitive' } },
           { borrower_name: { contains: query, mode: 'insensitive' } },
+          { property_address: { contains: query, mode: 'insensitive' } },
         ],
       },
       select: { id: true, deal_number: true, borrower_name: true },
@@ -108,13 +128,13 @@ export class DealsRepository {
   }
 
   create(dto: CreateDealDto) {
-    return this.prisma.deals.create({ data: dto as any });
+    return this.prisma.deals.create({ data: dto as unknown as Prisma.dealsUncheckedCreateInput });
   }
 
   update(id: string, dto: UpdateDealDto) {
     return this.prisma.deals.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.dealsUncheckedUpdateInput,
     });
   }
 
@@ -203,14 +223,14 @@ export class DealsRepository {
 
   createParticipant(dealId: string, dto: CreateParticipantDto) {
     return this.prisma.deal_participants.create({
-      data: { deal_id: dealId, ...dto } as any,
+      data: { deal_id: dealId, ...dto } as unknown as Prisma.deal_participantsUncheckedCreateInput,
     });
   }
 
   updateParticipant(id: string, dto: UpdateParticipantDto) {
     return this.prisma.deal_participants.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.deal_participantsUncheckedUpdateInput,
     });
   }
 
@@ -318,14 +338,14 @@ export class DealsRepository {
 
   createLoanHistory(dealId: string, dto: CreateLoanHistoryDto) {
     return this.prisma.loan_history.create({
-      data: { deal_id: dealId, ...dto } as any,
+      data: { deal_id: dealId, ...dto } as unknown as Prisma.loan_historyUncheckedCreateInput,
     });
   }
 
   updateLoanHistory(id: string, dto: UpdateLoanHistoryDto) {
     return this.prisma.loan_history.update({
       where: { id },
-      data: { ...dto, updated_at: new Date() } as any,
+      data: { ...dto, updated_at: new Date() } as unknown as Prisma.loan_historyUncheckedUpdateInput,
     });
   }
 
@@ -394,7 +414,7 @@ export class DealsRepository {
     data: { actor_user_id: string; action_type: string; action_details?: Record<string, unknown> },
   ) {
     return this.prisma.activity_log.create({
-      data: { deal_id: dealId, ...data } as any,
+      data: { deal_id: dealId, ...data } as unknown as Prisma.activity_logUncheckedCreateInput,
     });
   }
 
@@ -425,7 +445,7 @@ export class DealsRepository {
   }
 
   createEventJournal(data: Record<string, unknown>) {
-    return this.prisma.event_journal.create({ data: data as any });
+    return this.prisma.event_journal.create({ data: data as unknown as Prisma.event_journalUncheckedCreateInput });
   }
 
   findEventJournalEntry(id: string) {
@@ -450,7 +470,7 @@ export class DealsRepository {
   }
 
   createMagicLink(data: Record<string, unknown>) {
-    return this.prisma.magic_links.create({ data: data as any });
+    return this.prisma.magic_links.create({ data: data as unknown as Prisma.magic_linksUncheckedCreateInput });
   }
 
   revokeMagicLink(id: string) {

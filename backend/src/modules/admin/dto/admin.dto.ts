@@ -6,7 +6,7 @@ import {
   IsArray,
 } from 'class-validator';
 
-/** Mirrors Supabase field_dictionary Insert — all writable columns. */
+/** DTO for creating a field dictionary entry. */
 export class CreateFieldDto {
   @IsString() @IsNotEmpty() field_key: string;
   @IsString() @IsNotEmpty() label: string;
@@ -26,7 +26,7 @@ export class CreateFieldDto {
   @IsArray() @IsOptional() calculation_dependencies?: string[];
 }
 
-/** Mirrors Supabase field_dictionary Update — partial patch. */
+/** DTO for updating a field dictionary entry. */
 export class UpdateFieldDto {
   @IsString() @IsOptional() field_key?: string;
   @IsString() @IsOptional() label?: string;

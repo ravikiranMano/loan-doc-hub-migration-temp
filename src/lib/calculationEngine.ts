@@ -27,9 +27,6 @@ export interface CalculationResult {
   error?: string;
 }
 
-/**
- * Check if all dependencies have valid values
- */
 function allDependenciesPresent(
   dependencies: string[],
   values: Record<string, string>
@@ -40,12 +37,7 @@ function allDependenciesPresent(
   });
 }
 
-/**
- * Parse a formula and extract the operation type
- * Examples:
- * - "{first_payment_date} + {term_months} months"
- * - "{next_due_date} + {grace_days} + 4 days"
- */
+// Supported patterns — keep in sync with file-level header.
 function parseFormula(formula: string): {
   type: 'date_add_months' | 'date_add_days' | 'arithmetic' | 'arithmetic_chained' | 'unknown';
   baseField: string;

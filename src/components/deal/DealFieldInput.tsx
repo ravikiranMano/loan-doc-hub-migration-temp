@@ -453,9 +453,7 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
       size="sm"
       disabled={isDisabled}
       className="justify-start text-left h-7 py-1 text-xs"
-      onClick={() => {
-        console.log('Template clicked:', field.field_key);
-      }}
+      onClick={() => {}}
     >
       {field.label}
     </Button>
@@ -468,9 +466,7 @@ export const DealFieldInput: React.FC<DealFieldInputProps> = ({
       size="sm"
       disabled={isDisabled}
       className="h-7 text-xs"
-      onClick={() => {
-        console.log('Action clicked:', field.field_key);
-      }}
+      onClick={() => {}}
     >
       {field.label}
     </Button>

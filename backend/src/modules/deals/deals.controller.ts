@@ -37,11 +37,13 @@ export class DealsController {
 
   // ─── Deals ───────────────────────────────────────────────────────────────────
 
-  // GET /api/deals?status=&search=&page=&limit=&ids=
+  // GET /api/deals?status=&search=&state=&product_type=&page=&limit=&ids=
   @Get()
   listDeals(
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('state') state?: string,
+    @Query('product_type') productType?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('ids') ids?: string,
@@ -49,6 +51,8 @@ export class DealsController {
     return this.service.listDeals({
       status,
       search,
+      state,
+      product_type: productType,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       ids: ids ? ids.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
@@ -442,7 +446,7 @@ export class DealsController {
     @Param('pid') pid: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.service.inviteParticipant(pid, body as any);
+    return this.service.inviteParticipant(pid, body as Parameters<typeof this.service.inviteParticipant>[1]);
   }
 
   // POST /api/deals/:id/participants/:pid/invite (frontend path — with dealId)
@@ -451,7 +455,7 @@ export class DealsController {
     @Param('pid') pid: string,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.service.inviteParticipant(pid, body as any);
+    return this.service.inviteParticipant(pid, body as Parameters<typeof this.service.inviteParticipant>[1]);
   }
 
   // ─── Complete participant section (Phase 3 migration — public, no auth) ───────

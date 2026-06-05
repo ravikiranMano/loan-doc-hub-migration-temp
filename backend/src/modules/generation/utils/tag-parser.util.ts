@@ -418,7 +418,7 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
     let p = para;
 
     // Handle fragmented merge fields
-    const fragmentedPattern = /Â«((?:<(?!\/w:p>|w:p[\s>\/])[^>]*>|\s)*?)([A-Za-z0-9_.]+)((?:<(?!\/w:p>|w:p[\s>\/])[^>]*>|\s)*?)Â»/g;
+    const fragmentedPattern = /Â«((?:<(?!\/w:p>|w:p[\s>/])[^>]*>|\s)*?)([A-Za-z0-9_.]+)((?:<(?!\/w:p>|w:p[\s>/])[^>]*>|\s)*?)Â»/g;
     p = p.replace(fragmentedPattern, (match, pre, fieldName, post) => {
       if (pre.includes("<") || post.includes("<")) {
         debugLog(`[tag-parser] Found fragmented merge field: ${fieldName}`);
@@ -472,7 +472,7 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
     } while (p !== prevInstr);
 
     // Handle fragmented curly brace patterns {{...}}
-    const curlyFragmentedPattern = /\{\{((?:[A-Za-z0-9_.| ]|<(?!\/w:p>|w:p[\s>\/])[^>]*>|\s)*?)\}\}/g;
+    const curlyFragmentedPattern = /\{\{((?:[A-Za-z0-9_.| ]|<(?!\/w:p>|w:p[\s>/])[^>]*>|\s)*?)\}\}/g;
     p = p.replace(curlyFragmentedPattern, (match, innerContent) => {
       const cleanText = innerContent.replace(/<[^>]*>/g, '').replace(/\s+/g, '').trim();
       if (!cleanText) return match;
@@ -526,7 +526,7 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
       checkboxIfElsePattern,
       (match, fieldName, midA, glyphTrue, midB, midC, glyphFalse, midD) => {
         // Safety guards: never cross paragraph boundaries.
-        if (/<\/w:p>|<w:p[\s>\/]/.test(match)) return match;
+        if (/<\/w:p>|<w:p[\s>/]/.test(match)) return match;
         // Validate per-branch: each of the 4 inter-marker segments
         // (midA: #ifâ†’glyphTrue, midB: glyphTrueâ†’else, midC: elseâ†’glyphFalse,
         // midD: glyphFalseâ†’/if) must contain NO Handlebars control tags
@@ -568,7 +568,7 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
     p = p.replace(
       checkboxFallbackPattern,
       (match, fieldName, _a, glyphTrue, _b, _c, glyphFalse, _d) => {
-        if (/<\/w:p>|<w:p[\s>\/]/.test(match)) return match;
+        if (/<\/w:p>|<w:p[\s>/]/.test(match)) return match;
         debugLog(
           `[tag-parser] Fallback-consolidated checkbox conditional for ${fieldName} (true=${glyphTrue}, false=${glyphFalse})`
         );
@@ -663,7 +663,7 @@ export function normalizeWordXml(xmlContent: string, templateName = ""): string 
     });
 
     // Final pass: consolidate any remaining fragmented chevron tags
-    const chevronFragmented = /Â«((?:[^Â»<]|<(?!\/w:p>|w:p[\s>\/])[^>]*>)*)Â»/g;
+    const chevronFragmented = /Â«((?:[^Â»<]|<(?!\/w:p>|w:p[\s>/])[^>]*>)*)Â»/g;
     p = p.replace(chevronFragmented, (match, inner) => {
       const cleanText = inner.replace(/<[^>]*>/g, '').replace(/\s+/g, '').trim();
       if (/^[A-Za-z0-9_.]+$/.test(cleanText)) {
@@ -837,7 +837,7 @@ function consolidateFragmentedTagsInParagraphs(xml: string): string {
   let parasSkippedComplete = 0;
   let parasSkippedNoTags = 0;
 
-  // Use indexOf-based paragraph scanning instead of regex /<w:p[\s>\/][\s\S]*?<\/w:p>/g
+  // Use indexOf-based paragraph scanning instead of regex /<w:p[\s>/][\s\S]*?<\/w:p>/g
   // to avoid catastrophic backtracking on large documents (600KB+)
   const result = processParaByPara(xml, (para) => {
     // Quick check: skip paragraphs without potential merge tags
@@ -1240,7 +1240,7 @@ function replaceStaticCheckboxLabel(
 // glyph land in the same logical line.
 function dedupAdjacentCheckboxGlyphs(xml: string): string {
   return xml.replace(
-    /([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>\/]|w:br[\s>\/])[^>]*>)*?)([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>\/]|w:br[\s>\/])[^>]*>)*?)/g,
+    /([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>/]|w:br[\s>/])[^>]*>)*?)([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>/]|w:br[\s>/])[^>]*>)*?)/g,
     (_m, g1, mid, _g2, trail) => `${g1}${mid}${trail}`
   );
 }
@@ -1671,7 +1671,7 @@ function evaluateEqExpression(
     .replace(/&quot;/g, '"')
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2018\u2019]/g, "'");
-  const m = normalizedExpr.match(/^\s*eq\s+([A-Za-z0-9_.]+)\s+(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.\-]+))\s*$/i);
+  const m = normalizedExpr.match(/^\s*eq\s+([A-Za-z0-9_.]+)\s+(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_.-]+))\s*$/i);
   if (!m) return null;
   const fieldKey = m[1];
   const literal = (m[2] ?? m[3] ?? m[4] ?? "").trim();
@@ -1808,7 +1808,7 @@ function findBalancedSexpBlock(
     let i = m.index + m[0].length - 1; // position of '('
     let depth = 0;
     let inStr: string | null = null;
-    let exprStart = i + 1;
+    const exprStart = i + 1;
     let exprEnd = -1;
     while (i < source.length) {
       const ch = source[i];
@@ -2021,8 +2021,8 @@ export function processConditionalBlocks(
     // or a bareword. Word's autocorrect frequently converts straight quotes
     // around the LITERAL into curly quotes (U+201C/U+201D, U+2018/U+2019) â€”
     // without smart-quote support every conditional silently falls through.
-    const eqIfPattern = /\{\{#if\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/if\}\}/;
-    const eqUnlessPattern = /\{\{#unless\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.\-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/unless\}\}/;
+    const eqIfPattern = /\{\{#if\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/if\}\}/;
+    const eqUnlessPattern = /\{\{#unless\s+\(\s*((eq|ne)\s+[A-Za-z0-9_.]+\s+(?:&quot;[^"<]*?&quot;|"[^"]*"|'[^']*'|[\u201C\u201D][^\u201C\u201D<]*?[\u201C\u201D]|[\u2018\u2019][^\u2018\u2019<]*?[\u2018\u2019]|[A-Za-z0-9_.-]+))\s*\)\s*\}\}([\s\S]*?)\{\{\/unless\}\}/;
     const eqIfMatch = hasEqSexp ? eqIfPattern.exec(result) : null;
     const eqUnlessMatch = hasEqSexp ? eqUnlessPattern.exec(result) : null;
     if (eqIfMatch || eqUnlessMatch) {
@@ -2674,11 +2674,11 @@ export function replaceMergeTags(
       // Also consolidate `{{#if (eq FIELD "literal")}}` / `{{#unless (eq ...)}}`
       // helpers split across runs. Restrict the literal to safe characters so we
       // never accidentally swallow unrelated content.
-      if (/^#if\s+\(\s*eq\s+[A-Za-z0-9_.]+\s+(?:"[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+)\s*\)$/.test(cleaned)) {
+      if (/^#if\s+\(\s*eq\s+[A-Za-z0-9_.]+\s+(?:"[^"]*"|'[^']*'|[A-Za-z0-9_.-]+)\s*\)$/.test(cleaned)) {
         debugLog(`[tag-parser] Cross-run consolidated {{${cleaned}}}`);
         return `{{${cleaned}}}`;
       }
-      if (/^#unless\s+\(\s*eq\s+[A-Za-z0-9_.]+\s+(?:"[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+)\s*\)$/.test(cleaned)) {
+      if (/^#unless\s+\(\s*eq\s+[A-Za-z0-9_.]+\s+(?:"[^"]*"|'[^']*'|[A-Za-z0-9_.-]+)\s*\)$/.test(cleaned)) {
         debugLog(`[tag-parser] Cross-run consolidated {{${cleaned}}}`);
         return `{{${cleaned}}}`;
       }
@@ -2926,7 +2926,7 @@ export function replaceMergeTags(
       result.indexOf('\u2612') !== -1
     ) {
       result = result.replace(
-        /([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>\/]|w:br[\s>\/])[^>]*>)*?)([â˜â˜‘â˜’])/g,
+        /([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>/]|w:br[\s>/])[^>]*>)*?)([â˜â˜‘â˜’])/g,
         (_m, g1, mid, _g2) => `${g1}${mid}`
       );
     }
@@ -3001,7 +3001,7 @@ export function replaceMergeTags(
   {
     let cellsRepaired = 0;
     result = result.replace(/<w:tc(\s[^>]*)?>([\s\S]*?)<\/w:tc>/g, (full, _attrs, inner) => {
-      if (/<w:p[\s>\/]/.test(inner)) return full;
+      if (/<w:p[\s>/]/.test(inner)) return full;
       cellsRepaired++;
       return full.replace(/<\/w:tc>$/, '<w:p/></w:tc>');
     });
@@ -3936,7 +3936,7 @@ export function replaceMergeTags(
       // both a static glyph AND a conditionally-rendered glyph on the same
       // A/B line.
       result = result.replace(
-        /([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>\/]|w:br[\s>\/])[^>]*>)*?)([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>\/]|w:br[\s>\/])[^>]*>)*?)(A\.(?:\s|<[^>]+>)*Agent|B\.(?:\s|<[^>]+>)*\*?(?:\s|<[^>]+>)*Principal)/g,
+        /([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>/]|w:br[\s>/])[^>]*>)*?)([â˜â˜‘â˜’])((?:\s|<(?!\/w:p\b|w:p[\s>/]|w:br[\s>/])[^>]*>)*?)(A\.(?:\s|<[^>]+>)*Agent|B\.(?:\s|<[^>]+>)*\*?(?:\s|<[^>]+>)*Principal)/g,
         (_m, g1, mid1, _g2, mid2, labelHead) => `${g1}${mid1}${mid2}${labelHead}`,
       );
     }

@@ -84,13 +84,13 @@ export class ContactsRepository {
   }
 
   create(data: Record<string, unknown>) {
-    return this.prisma.contacts.create({ data: data as any });
+    return this.prisma.contacts.create({ data: data as unknown as Prisma.contactsUncheckedCreateInput });
   }
 
   update(id: string, data: Record<string, unknown>) {
     return this.prisma.contacts.update({
       where: { id },
-      data: { ...data, updated_at: new Date() } as any,
+      data: { ...data, updated_at: new Date() } as unknown as Prisma.contactsUncheckedUpdateInput,
     });
   }
 
@@ -270,7 +270,7 @@ export class ContactsRepository {
   updateAttachment(id: string, dto: UpdateAttachmentDto) {
     return this.prisma.borrower_attachments.update({
       where: { id },
-      data: dto as any,
+      data: dto as unknown as Prisma.borrower_attachmentsUncheckedUpdateInput,
     });
   }
 

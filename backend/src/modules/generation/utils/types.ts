@@ -107,7 +107,7 @@ export interface LenderData {
   isPrimary: boolean;
   contactId: string;
   exists: true;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface LenderResolutionResult {

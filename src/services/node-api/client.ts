@@ -9,21 +9,6 @@ export class SessionExpiredError extends Error {
   }
 }
 
-// Which domains are routed to the Node API.
-// Set VITE_USE_NODE_API="system,admin" or "all" in .env
-const enabledDomains = new Set(
-  (import.meta.env.VITE_USE_NODE_API ?? '')
-    .split(',')
-    .map((s: string) => s.trim())
-    .filter(Boolean),
-);
-
-export type Domain = 'system' | 'admin' | 'contacts' | 'documents' | 'deals';
-
-export function isNodeApiEnabled(domain: Domain): boolean {
-  return enabledDomains.has('all') || enabledDomains.has(domain);
-}
-
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 // Cookies (httpOnly) are sent automatically by the browser.
@@ -49,6 +34,11 @@ async function attemptRefresh(): Promise<boolean> {
     });
 
   return refreshPromise;
+}
+
+/** Proactively refresh session (e.g. when tab regains focus after idle). */
+export async function refreshSessionSilently(): Promise<boolean> {
+  return attemptRefresh();
 }
 
 /** Low-level fetch with cookie auth and automatic token refresh on 401. */
@@ -106,7 +96,7 @@ async function request<T>(
     throw new Error((err as { message?: string }).message ?? `Request failed: ${res.status}`);
   }
 
-  // 204 No Content, or 200/201 with an empty body (mirrors Supabase update calls that return no row).
+  // 204 No Content, or 200/201 with an empty body.
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   if (!text.trim()) return undefined as T;

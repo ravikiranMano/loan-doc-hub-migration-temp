@@ -45,9 +45,27 @@ export async function listDealsByIds(ids: string[], _columns = '*') {
   return apiClient.get<unknown[]>(`/deals?ids=${ids.join(',')}`);
 }
 
-export async function listDealsPage(page: number, pageSize: number) {
+export async function listDealsPage(
+  page: number,
+  pageSize: number,
+  filters?: {
+    search?: string;
+    status?: string;
+    state?: string;
+    productType?: string;
+  },
+) {
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(pageSize),
+  });
+  if (filters?.search) qs.set('search', filters.search);
+  if (filters?.status) qs.set('status', filters.status);
+  if (filters?.state) qs.set('state', filters.state);
+  if (filters?.productType) qs.set('product_type', filters.productType);
+
   const result = await apiClient.get<{ data: unknown[]; count: number } | unknown[]>(
-    `/deals?page=${page}&limit=${pageSize}`,
+    `/deals?${qs}`,
   );
   if (Array.isArray(result)) {
     return { data: result, count: result.length };

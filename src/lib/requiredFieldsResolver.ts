@@ -1,12 +1,8 @@
-import { fetchAllRows } from '@/services/supabase/pagination';
 import { fetchFieldDictionaryBySections, fetchFieldDictionaryByIds } from '@/services/admin/field-dictionary.service';
 import { fetchPacketTemplateIds } from '@/services/documents/packets.service';
 import { fetchFieldMapsByTemplateIds } from '@/services/documents/template-field-maps.service';
 import { resolveDbKeyToLegacy, resolveLegacyKey } from '@/lib/legacyKeyMap';
-import type { Database } from '@/integrations/supabase/types';
-
-type FieldSection = Database['public']['Enums']['field_section'];
-type FieldDataType = Database['public']['Enums']['field_data_type'];
+import type { FieldSection, FieldDataType } from '@/types';
 
 export interface ResolvedField {
   field_dictionary_id: string;

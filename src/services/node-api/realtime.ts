@@ -1,6 +1,17 @@
-import { subscribePostgresChanges } from '@/services/supabase/realtime';
-import type { SubscribePostgresChangesOptions } from '@/services/supabase/realtime';
-import { isNodeApiEnabled, BASE_URL } from '@/services/node-api/client';
+import { BASE_URL } from '@/services/node-api/client';
+
+export interface SubscribePostgresChangesOptions {
+  channelName: string;
+  table: string;
+  schema?: string;
+  event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
+  filter?: string;
+  onChange: (payload?: {
+    eventType: string;
+    new: Record<string, unknown>;
+    old: Record<string, unknown>;
+  }) => void;
+}
 
 function sseUrlFor(options: SubscribePostgresChangesOptions): string | null {
   const { table, filter } = options;
@@ -18,14 +29,12 @@ function sseUrlFor(options: SubscribePostgresChangesOptions): string | null {
 export function subscribeToChanges(
   options: SubscribePostgresChangesOptions,
 ): { unsubscribe: () => void } {
-  if (isNodeApiEnabled('deals')) {
-    const url = sseUrlFor(options);
-    if (url) {
-      const source = new EventSource(url, { withCredentials: true });
-      source.onmessage = () => options.onChange();
-      source.onerror = () => {};
-      return { unsubscribe: () => source.close() };
-    }
+  const url = sseUrlFor(options);
+  if (url) {
+    const source = new EventSource(url, { withCredentials: true });
+    source.onmessage = () => options.onChange();
+    source.onerror = () => {};
+    return { unsubscribe: () => source.close() };
   }
-  return subscribePostgresChanges(options);
+  return { unsubscribe: () => {} };
 }

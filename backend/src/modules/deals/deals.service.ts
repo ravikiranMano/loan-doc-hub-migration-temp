@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   generateDealNumber as generateDealNumberRpc,
@@ -44,11 +45,21 @@ export class DealsService {
 
   // ─── Deals ───────────────────────────────────────────────────────────────────
 
-  listDeals(options?: { status?: string; search?: string; page?: number; limit?: number; ids?: string[] }) {
+  listDeals(options?: {
+    status?: string;
+    search?: string;
+    state?: string;
+    product_type?: string;
+    page?: number;
+    limit?: number;
+    ids?: string[];
+  }) {
     if (options?.page != null && options?.limit != null) {
       return this.repo.findAllPaginated({
         status: options.status,
         search: options.search,
+        state: options.state,
+        product_type: options.product_type,
         page: options.page,
         limit: options.limit,
         ids: options.ids,
@@ -382,7 +393,7 @@ export class DealsService {
         deal_id: dealId,
         actor_user_id: actorId,
         action_type: 'ParticipantCompleted',
-        action_details: { role: participant.role, participantId: participant.id } as any,
+        action_details: { role: participant.role, participantId: participant.id } as Prisma.InputJsonValue,
       },
     }).catch((err: unknown) => this.logger.warn('activity_log insert failed', err));
 
@@ -476,7 +487,7 @@ export class DealsService {
           role: result.role,
           participantId: result.participant_id,
           dealNumber: result.deal_number,
-        } as any,
+        } as Prisma.InputJsonValue,
       },
     }).catch((err: unknown) => this.logger.warn('activity_log insert failed', err));
 

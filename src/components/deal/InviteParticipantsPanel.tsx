@@ -81,10 +81,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { Database } from '@/services/supabase/types';
-
-type AppRole = Database['public']['Enums']['app_role'];
-type ParticipantStatus = Database['public']['Enums']['participant_status'];
+import type { AppRole, ParticipantStatus } from '@/types';
 
 interface Participant {
   id: string;
