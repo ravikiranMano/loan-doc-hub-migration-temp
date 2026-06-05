@@ -126,6 +126,7 @@ export const DealsPage: React.FC = () => {
   const [deals, setDeals] = useState<Deal[]>(cachedState?.deals || []);
   const [loading, setLoading] = useState(!cachedState);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterState, setFilterState] = useState<string>('');
   const [filterProduct, setFilterProduct] = useState<string>('');
@@ -139,12 +140,25 @@ export const DealsPage: React.FC = () => {
   // Use a ref for toast to keep fetchDeals stable and prevent re-fetching on parent re-renders
   const toastRef = React.useRef(toast);
   toastRef.current = toast;
+  const mounted = React.useRef(false);
+  const prevFilters = React.useRef({
+    debouncedSearch,
+    filterStatus,
+    filterState,
+    filterProduct,
+  });
+  const skipNextPageFetch = React.useRef(false);
 
   const fetchDeals = useCallback(async (page: number = 1, options?: { silent?: boolean }) => {
     const silent = options?.silent === true;
     if (!silent) setLoading(true);
     try {
-      const { data, count } = await listDealsPage(page, PAGE_SIZE);
+      const { data, count } = await listDealsPage(page, PAGE_SIZE, {
+        search: debouncedSearch || undefined,
+        status: filterStatus || undefined,
+        state: filterState || undefined,
+        productType: filterProduct || undefined,
+      });
 
       const mappedDeals = (data || []).map((d: any) => ({
         ...d,
@@ -173,20 +187,57 @@ export const DealsPage: React.FC = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [debouncedSearch, filterStatus, filterState, filterProduct]);
 
   useEffect(() => {
-    fetchDeals(currentPage, { silent: !!cachedState });
+    const debounce = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(debounce);
+  }, [searchQuery]);
 
-    // Real-time subscription - refresh current page
+  useEffect(() => {
+    const filtersChanged =
+      prevFilters.current.debouncedSearch !== debouncedSearch ||
+      prevFilters.current.filterStatus !== filterStatus ||
+      prevFilters.current.filterState !== filterState ||
+      prevFilters.current.filterProduct !== filterProduct;
+
+    prevFilters.current = {
+      debouncedSearch,
+      filterStatus,
+      filterState,
+      filterProduct,
+    };
+
+    if (!mounted.current) {
+      mounted.current = true;
+      fetchDeals(currentPage, { silent: !!cachedState });
+      return;
+    }
+
+    if (filtersChanged) {
+      skipNextPageFetch.current = true;
+      setCurrentPage(1);
+      fetchDeals(1);
+      return;
+    }
+
+    if (skipNextPageFetch.current) {
+      skipNextPageFetch.current = false;
+      return;
+    }
+
+    fetchDeals(currentPage);
+  }, [currentPage, debouncedSearch, filterStatus, filterState, filterProduct, fetchDeals]);
+
+  useEffect(() => {
     const { unsubscribe } = subscribeToChanges({
       channelName: 'deals-changes',
       table: 'deals',
-      onChange: () => fetchDeals(1, { silent: true }),
+      onChange: () => fetchDeals(currentPage, { silent: true }),
     });
 
     return unsubscribe;
-  }, [fetchDeals]);
+  }, [fetchDeals, currentPage]);
 
   // Refresh deals when "All Loan Documents" tab is clicked (refreshKey changes)
   useEffect(() => {
@@ -326,16 +377,7 @@ export const DealsPage: React.FC = () => {
     }).format(amount);
   };
 
-  const filteredDeals = deals.filter((deal) => {
-    const matchesSearch =
-      deal.deal_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      deal.borrower_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      deal.property_address?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = !filterStatus || deal.status === filterStatus;
-    const matchesState = !filterState || deal.state === filterState;
-    const matchesProduct = !filterProduct || deal.product_type === filterProduct;
-    return matchesSearch && matchesStatus && matchesState && matchesProduct;
-  });
+  const hasActiveSearch = !!debouncedSearch;
 
   const clearFilters = () => {
     setFilterStatus('');
@@ -343,7 +385,7 @@ export const DealsPage: React.FC = () => {
     setFilterProduct('');
   };
 
-  const hasActiveFilters = filterStatus || filterState || filterProduct;
+  const hasActiveFilters = filterStatus || filterState || filterProduct || hasActiveSearch;
 
   if (loading) {
     return (
@@ -359,7 +401,7 @@ export const DealsPage: React.FC = () => {
         <div>
            <h1 className="text-2xl font-bold text-foreground">Files</h1>
           <p className="text-muted-foreground mt-1">
-            {filteredDeals.length} {filteredDeals.length === 1 ? 'file' : 'files'}
+            {totalCount} {totalCount === 1 ? 'file' : 'files'}
             {hasActiveFilters && ' (filtered)'}
           </p>
         </div>
@@ -446,16 +488,16 @@ export const DealsPage: React.FC = () => {
         </div>
       </div>
 
-      {filteredDeals.length === 0 ? (
+      {deals.length === 0 ? (
         <div className="section-card text-center py-12">
           <FolderOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium text-foreground mb-2">No files found</h3>
           <p className="text-muted-foreground mb-4">
-            {hasActiveFilters || searchQuery
+            {hasActiveFilters
               ? 'Try adjusting your filters or search'
               : 'Create your first file to get started'}
           </p>
-          {!hasActiveFilters && !searchQuery && (
+          {!hasActiveFilters && (
             <Button onClick={handleCreateDeal} disabled={creating}>
               {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
               Create File
@@ -478,7 +520,7 @@ export const DealsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredDeals.map((deal) => (
+                {deals.map((deal) => (
                   <tr
                     key={deal.id}
                     className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"

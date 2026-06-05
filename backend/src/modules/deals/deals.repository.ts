@@ -12,6 +12,8 @@ export class DealsRepository {
   private buildDealsWhere(options?: {
     status?: string;
     search?: string;
+    state?: string;
+    product_type?: string;
     ids?: string[];
   }): Prisma.dealsWhereInput {
     const where: Prisma.dealsWhereInput = {};
@@ -26,11 +28,18 @@ export class DealsRepository {
         .filter(Boolean) as $Enums.deal_status[];
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
+    if (options?.state) {
+      where.state = options.state;
+    }
+    if (options?.product_type) {
+      where.product_type = options.product_type;
+    }
     if (options?.search?.trim()) {
       const s = options.search.trim();
       where.OR = [
         { deal_number: { contains: s, mode: 'insensitive' } },
         { borrower_name: { contains: s, mode: 'insensitive' } },
+        { property_address: { contains: s, mode: 'insensitive' } },
       ];
     }
 
@@ -38,7 +47,15 @@ export class DealsRepository {
   }
 
   /** List deals — mirrors Supabase .in('status') when status is comma-separated. */
-  findAll(options?: { status?: string; search?: string; page?: number; limit?: number; ids?: string[] }) {
+  findAll(options?: {
+    status?: string;
+    search?: string;
+    state?: string;
+    product_type?: string;
+    page?: number;
+    limit?: number;
+    ids?: string[];
+  }) {
     const where = this.buildDealsWhere(options);
     const orderBy = options?.status
       ? { created_at: 'desc' as const }
@@ -54,6 +71,8 @@ export class DealsRepository {
   async findAllPaginated(options: {
     status?: string;
     search?: string;
+    state?: string;
+    product_type?: string;
     page: number;
     limit: number;
     ids?: string[];
@@ -99,6 +118,7 @@ export class DealsRepository {
         OR: [
           { deal_number: { contains: query, mode: 'insensitive' } },
           { borrower_name: { contains: query, mode: 'insensitive' } },
+          { property_address: { contains: query, mode: 'insensitive' } },
         ],
       },
       select: { id: true, deal_number: true, borrower_name: true },

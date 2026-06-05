@@ -44,11 +44,21 @@ export class DealsService {
 
   // ─── Deals ───────────────────────────────────────────────────────────────────
 
-  listDeals(options?: { status?: string; search?: string; page?: number; limit?: number; ids?: string[] }) {
+  listDeals(options?: {
+    status?: string;
+    search?: string;
+    state?: string;
+    product_type?: string;
+    page?: number;
+    limit?: number;
+    ids?: string[];
+  }) {
     if (options?.page != null && options?.limit != null) {
       return this.repo.findAllPaginated({
         status: options.status,
         search: options.search,
+        state: options.state,
+        product_type: options.product_type,
         page: options.page,
         limit: options.limit,
         ids: options.ids,
