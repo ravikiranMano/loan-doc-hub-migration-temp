@@ -6,10 +6,9 @@ import { DocumentDataService } from './document-data.service';
 import { DocxtemplaterService } from './docxtemplater.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
-import { GenerationModule } from '../generation/generation.module';
 
 @Module({
-  imports: [PrismaModule, StorageModule, GenerationModule],
+  imports: [PrismaModule, StorageModule],
   controllers: [DocumentsController],
   providers: [
     DocumentsService,
