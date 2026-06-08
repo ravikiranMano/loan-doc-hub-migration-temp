@@ -16,7 +16,7 @@ import {
   deleteDeal,
 } from '@/services/deals/deals.service';
 import { cloneDeal } from '@/services/deals/deal-clone.service';
-import { subscribeToChanges } from '@/services/node-api/realtime';
+import { subscribeToChanges } from '@/services/realtime';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspaceOptional } from '@/contexts/WorkspaceContext';
 import { MaxFilesDialog } from '@/components/workspace/MaxFilesDialog';

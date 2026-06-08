@@ -1,5 +1,5 @@
 import { downloadFile, STORAGE_BUCKETS } from '@/services/storage';
-import { apiClient, apiFetch } from '@/services/node-api/client';
+import { apiClient, apiFetch } from '@/services/client';
 
 export interface GenerateDocumentBody {
   outputType: 'docx_only' | 'docx_and_pdf';
@@ -15,7 +15,6 @@ export interface GenerateDocumentResult {
   results: Array<{ templateName: string; success: boolean; error?: string }>;
 }
 
-/** Production generate — async edge pipeline (matches Lovable main). */
 export async function generateDocumentsAsync(
   dealId: string,
   body: GenerateDocumentBody,

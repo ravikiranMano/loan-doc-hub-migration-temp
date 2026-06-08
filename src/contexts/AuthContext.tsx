@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { login, logout, getMe, register, type AuthUser } from '@/services/node-api/auth.service';
-import { refreshSessionSilently } from '@/services/node-api/client';
+import { login, logout, getMe, register, type AuthUser } from '@/services/auth-service/auth.service';
+import { refreshSessionSilently } from '@/services/client';
 
 export type AppRole = 'admin' | 'csr' | 'borrower' | 'broker' | 'lender' | 'other' | null;
 

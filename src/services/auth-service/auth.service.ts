@@ -1,4 +1,4 @@
-import { BASE_URL } from './client';
+import { BASE_URL } from '@/services/client';
 
 export interface AuthUser {
   id: string;

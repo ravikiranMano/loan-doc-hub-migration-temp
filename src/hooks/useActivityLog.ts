@@ -4,7 +4,7 @@
  * Provides functions to log deal-related activities for accountability.
  */
 
-import { getMe } from '@/services/node-api/auth.service';
+import { getMe } from '@/services/auth-service/auth.service';
 import { insertActivityLog } from '@/services/system/activity-log.service';
 
 export type ActionType = 

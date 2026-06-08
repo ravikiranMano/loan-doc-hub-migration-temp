@@ -45,7 +45,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { subscribeToChanges } from '@/services/node-api/realtime';
+import { subscribeToChanges } from '@/services/realtime';
 import { fetchDealById } from '@/services/deals/deals.service';
 import {
   generateDocumentsAsync,
@@ -60,7 +60,7 @@ import {
   listGenerationJobs,
   downloadGeneratedDoc,
 } from '@/services/documents/generation.service';
-import { SessionExpiredError, refreshSessionSilently } from '@/services/node-api/client';
+import { SessionExpiredError, refreshSessionSilently } from '@/services/client';
 import { FieldDataJsonView } from '@/components/documents/FieldDataJsonView';
 import { listTemplates, updateTemplate, uploadTemplateDocx } from '@/services/documents/templates.service';
 import {

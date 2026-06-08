@@ -1,5 +1,5 @@
 import { fetchSystemSettingsByKeys } from '@/services/system/settings.service';
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export interface MagicLinkSettings {
   expiryHours: number;

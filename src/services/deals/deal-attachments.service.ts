@@ -1,7 +1,7 @@
 import {
   fetchSectionValueByDealAndSection,
 } from '@/services/deals/section-values.service';
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 import { fetchProfilesByUserIds } from '@/services/admin/profiles.service';
 import {
   STORAGE_BUCKETS,

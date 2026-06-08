@@ -5,7 +5,7 @@ import {
   removeFiles,
 } from '@/services/storage';
 import type { BorrowerAttachmentRow } from '@/types';
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export const CONTACT_ATTACHMENTS_BUCKET = STORAGE_BUCKETS.contactAttachments;
 

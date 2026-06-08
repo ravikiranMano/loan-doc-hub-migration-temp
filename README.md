@@ -1,73 +1,73 @@
-# Welcome to your Lovable project
+# Loan Doc Hub
 
-## Project info
+A React frontend for managing loan deals, document generation, and participant collaboration. Communicates exclusively with a NestJS backend API.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Tech Stack
 
-## How can I edit this code?
+- **React 18** + **TypeScript**
+- **Vite** (dev server + build)
+- **Tailwind CSS** + **shadcn/ui** components
+- **TanStack Query** for server state
+- **React Router v6** for routing
+- **Vitest** for unit tests
 
-There are several ways of editing your application.
+## Prerequisites
 
-**Use Lovable**
+- Node.js 18+
+- npm
+- NestJS backend running at `http://localhost:3000` (separate repo)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Setup
 
-Changes made via Lovable will be committed automatically to this repo.
+```bash
+# Install dependencies
+npm install
 
-**Use your preferred IDE**
+# Copy and configure environment
+cp .env.example .env
+# Set VITE_NODE_API_URL=http://localhost:3000/api
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start dev server → http://localhost:8080
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Scripts
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+| Command | Description |
+|---|---|
+| `npm run dev` | Vite dev server on port 8080 |
+| `npm run build` | Production build to `dist/` |
+| `npm run lint` | ESLint |
+| `npm run test` | Vitest unit tests (single run) |
+| `npm run test:watch` | Vitest watch mode |
 
-**Use GitHub Codespaces**
+## Project Structure
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```
+src/
+  services/
+    client.ts          # HTTP client — apiClient, cookie auth, auto token refresh
+    realtime.ts        # SSE subscription wrapper
+    auth-service/      # login, register, logout, getMe
+    contacts/          # Contacts API
+    deals/             # Deals, participants, field values, loan history
+    documents/         # Templates, packets, generation
+    admin/             # Field dictionary, users, permissions
+    system/            # Settings, activity log, messages
+    storage/           # File upload/download proxy
+  components/          # Shared UI components (shadcn-based)
+  pages/               # Route-level pages
+  contexts/            # AuthContext, ThemeContext
+  hooks/               # Custom React hooks
+  lib/                 # Pure utilities (calculationEngine, cn)
+```
 
-## What technologies are used for this project?
+## Authentication
 
-This project is built with:
+Sessions are managed via httpOnly cookies issued by the NestJS backend. The frontend never handles tokens directly — `apiClient` in `src/services/client.ts` attaches cookies automatically and handles 401 → token refresh → retry transparently.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Environment Variables
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+| Variable | Description |
+|---|---|
+| `VITE_NODE_API_URL` | NestJS API base URL (e.g. `http://localhost:3000/api`) |

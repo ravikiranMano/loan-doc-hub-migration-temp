@@ -1,4 +1,4 @@
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export async function fetchSectionValuesByDeal(dealId: string) {
   return apiClient.get<unknown[]>(`/deals/${dealId}/sections`);

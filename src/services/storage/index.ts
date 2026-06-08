@@ -1,4 +1,4 @@
-import { uploadFile as apiUpload, apiFetch } from '@/services/node-api/client';
+import { uploadFile as apiUpload, apiFetch } from '@/services/client';
 
 export const STORAGE_BUCKETS = {
   contactAttachments: 'contact-attachments',

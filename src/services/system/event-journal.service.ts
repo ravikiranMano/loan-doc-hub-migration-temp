@@ -1,4 +1,4 @@
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 import type { EventJournalRow } from '@/types';
 
 export async function listEventJournal(dealId: string) {

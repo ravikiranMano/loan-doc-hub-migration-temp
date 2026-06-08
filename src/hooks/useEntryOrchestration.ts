@@ -10,8 +10,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { listParticipantsByDealOrdered } from '@/services/deals/participants.service';
-import { subscribeToChanges } from '@/services/node-api/realtime';
-import { apiClient } from '@/services/node-api/client';
+import { subscribeToChanges } from '@/services/realtime';
+import { apiClient } from '@/services/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { getMagicLinkSession } from '@/lib/magicLink';
 import type { ParticipantStatus } from '@/types';

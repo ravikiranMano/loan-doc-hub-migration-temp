@@ -1,4 +1,4 @@
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 /** Coalesce concurrent GET /templates/:id/field-maps (same template). */
 const fieldMapsInflight = new Map<string, Promise<Record<string, unknown>[]>>();

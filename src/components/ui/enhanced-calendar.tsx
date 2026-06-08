@@ -301,25 +301,25 @@ function EnhancedCalendar({
               months: "flex flex-col",
               month: "space-y-2",
               // Hide the built-in caption — we render our own anchored header above.
-              caption: "hidden",
+              month_caption: "hidden",
               nav: "hidden",
-              table: "w-full border-collapse",
-              head_row: "flex",
-              head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
+              month_grid: "w-full border-collapse",
+              weekdays: "flex",
+              weekday: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
               // Reserve 6 week rows so 4/5-row months don't collapse.
-              tbody: "min-h-[216px] block",
-              row: "flex w-full mt-1",
-              cell: "h-8 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-              day: cn(buttonVariants({ variant: "ghost" }), "h-8 w-9 p-0 font-normal aria-selected:opacity-100"),
-              day_range_end: "day-range-end",
-              day_selected:
+              weeks: "min-h-[216px] block",
+              week: "flex w-full mt-1",
+              day: "h-8 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+              day_button: cn(buttonVariants({ variant: "ghost" }), "h-8 w-9 p-0 font-normal aria-selected:opacity-100"),
+              range_end: "day-range-end",
+              selected:
                 "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-              day_today: "bg-accent text-accent-foreground",
-              day_outside:
+              today: "bg-accent text-accent-foreground",
+              outside:
                 "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
-              day_disabled: "text-muted-foreground opacity-50",
-              day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
-              day_hidden: "invisible",
+              disabled: "text-muted-foreground opacity-50",
+              range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
+              hidden: "invisible",
               ...classNames,
             }}
             {...props}

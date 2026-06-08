@@ -1,4 +1,4 @@
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export async function fetchFieldDictionaryBySections(sections: string[]) {
   return apiClient.get<unknown[]>(`/admin/fields?sections=${sections.join(',')}`);

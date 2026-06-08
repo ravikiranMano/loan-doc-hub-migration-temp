@@ -1,4 +1,4 @@
-import { BASE_URL } from '@/services/node-api/client';
+import { BASE_URL } from '@/services/client';
 
 export interface SubscribePostgresChangesOptions {
   channelName: string;

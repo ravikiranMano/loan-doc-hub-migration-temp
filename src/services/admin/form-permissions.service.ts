@@ -1,4 +1,4 @@
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export async function listFormPermissions() {
   return apiClient.get<unknown[]>('/admin/permissions/forms');

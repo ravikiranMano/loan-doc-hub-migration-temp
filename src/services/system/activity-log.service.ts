@@ -1,4 +1,4 @@
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export async function insertActivityLog(payload: Record<string, unknown>) {
   const dealId = payload.deal_id as string;

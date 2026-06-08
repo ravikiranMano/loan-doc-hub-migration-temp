@@ -1,5 +1,5 @@
 import type { AppRole } from '@/contexts/AuthContext';
-import { apiClient } from '@/services/node-api/client';
+import { apiClient } from '@/services/client';
 
 export interface FieldPermission {
   field_key: string;

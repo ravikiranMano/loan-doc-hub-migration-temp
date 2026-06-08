@@ -46,7 +46,7 @@ import {
   deleteParticipant,
 } from '@/services/deals/participants.service';
 import { getContactsByIds } from '@/services/contacts/contacts.service';
-import { subscribeToChanges } from '@/services/node-api/realtime';
+import { subscribeToChanges } from '@/services/realtime';
 import { sendParticipantInvite } from '@/services/deals/participants-invite.service';
 import { useAuth } from '@/contexts/AuthContext';
 import { createMagicLink, revokeMagicLink, getMagicLinksForParticipant } from '@/lib/magicLink';
