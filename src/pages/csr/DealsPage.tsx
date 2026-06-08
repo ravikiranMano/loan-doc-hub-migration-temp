@@ -125,6 +125,7 @@ export const DealsPage: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [deals, setDeals] = useState<Deal[]>(cachedState?.deals || []);
   const [loading, setLoading] = useState(!cachedState);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -137,28 +138,63 @@ export const DealsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(cachedState?.currentPage || 1);
   const [totalCount, setTotalCount] = useState(cachedState?.totalCount || 0);
 
-  // Use a ref for toast to keep fetchDeals stable and prevent re-fetching on parent re-renders
   const toastRef = React.useRef(toast);
   toastRef.current = toast;
-  const mounted = React.useRef(false);
-  const prevFilters = React.useRef({
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const fetchRequestIdRef = React.useRef(0);
+  const mountedRef = React.useRef(false);
+  const skipPageFetchRef = React.useRef(false);
+  const currentPageRef = React.useRef(currentPage);
+  currentPageRef.current = currentPage;
+  const lastFetchedFiltersRef = React.useRef({
+    debouncedSearch: '',
+    filterStatus: '',
+    filterState: '',
+    filterProduct: '',
+  });
+  const filtersRef = React.useRef({
     debouncedSearch,
     filterStatus,
     filterState,
     filterProduct,
   });
-  const skipNextPageFetch = React.useRef(false);
+  filtersRef.current = { debouncedSearch, filterStatus, filterState, filterProduct };
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery]);
 
   const fetchDeals = useCallback(async (page: number = 1, options?: { silent?: boolean }) => {
+    const requestId = ++fetchRequestIdRef.current;
     const silent = options?.silent === true;
-    if (!silent) setLoading(true);
+    const isInitialLoad = !mountedRef.current && !cachedState;
+
+    if (isInitialLoad) {
+      setLoading(true);
+    } else if (!silent) {
+      setRefreshing(true);
+    }
+
     try {
+      const {
+        debouncedSearch: search,
+        filterStatus: status,
+        filterState: state,
+        filterProduct: productType,
+      } = filtersRef.current;
+
       const { data, count } = await listDealsPage(page, PAGE_SIZE, {
-        search: debouncedSearch || undefined,
-        status: filterStatus || undefined,
-        state: filterState || undefined,
-        productType: filterProduct || undefined,
+        search: search || undefined,
+        status: status || undefined,
+        state: state || undefined,
+        productType: productType || undefined,
       });
+
+      if (requestId !== fetchRequestIdRef.current) return;
 
       const mappedDeals = (data || []).map((d: any) => ({
         ...d,
@@ -167,7 +203,6 @@ export const DealsPage: React.FC = () => {
 
       setDeals(mappedDeals);
       setTotalCount(count || 0);
-      setCurrentPage(page);
 
       try {
         sessionStorage.setItem(
@@ -178,6 +213,7 @@ export const DealsPage: React.FC = () => {
         // ignore cache write errors
       }
     } catch (error) {
+      if (requestId !== fetchRequestIdRef.current) return;
       console.error('Error fetching deals:', error);
       toastRef.current({
         title: 'Error',
@@ -185,72 +221,71 @@ export const DealsPage: React.FC = () => {
         variant: 'destructive',
       });
     } finally {
-      if (!silent) setLoading(false);
+      if (requestId !== fetchRequestIdRef.current) return;
+      if (isInitialLoad) setLoading(false);
+      else if (!silent) setRefreshing(false);
+      mountedRef.current = true;
     }
-  }, [debouncedSearch, filterStatus, filterState, filterProduct]);
-
-  useEffect(() => {
-    const debounce = setTimeout(() => setDebouncedSearch(searchQuery), 300);
-    return () => clearTimeout(debounce);
-  }, [searchQuery]);
+  }, []);
 
   useEffect(() => {
     const filtersChanged =
-      prevFilters.current.debouncedSearch !== debouncedSearch ||
-      prevFilters.current.filterStatus !== filterStatus ||
-      prevFilters.current.filterState !== filterState ||
-      prevFilters.current.filterProduct !== filterProduct;
-
-    prevFilters.current = {
-      debouncedSearch,
-      filterStatus,
-      filterState,
-      filterProduct,
-    };
-
-    if (!mounted.current) {
-      mounted.current = true;
-      fetchDeals(currentPage, { silent: !!cachedState });
-      return;
-    }
+      lastFetchedFiltersRef.current.debouncedSearch !== debouncedSearch ||
+      lastFetchedFiltersRef.current.filterStatus !== filterStatus ||
+      lastFetchedFiltersRef.current.filterState !== filterState ||
+      lastFetchedFiltersRef.current.filterProduct !== filterProduct;
 
     if (filtersChanged) {
-      skipNextPageFetch.current = true;
-      setCurrentPage(1);
+      lastFetchedFiltersRef.current = {
+        debouncedSearch,
+        filterStatus,
+        filterState,
+        filterProduct,
+      };
+      if (currentPage !== 1) {
+        skipPageFetchRef.current = true;
+        setCurrentPage(1);
+      }
       fetchDeals(1);
       return;
     }
 
-    if (skipNextPageFetch.current) {
-      skipNextPageFetch.current = false;
+    if (skipPageFetchRef.current) {
+      skipPageFetchRef.current = false;
       return;
     }
 
-    fetchDeals(currentPage);
+    if (!mountedRef.current) {
+      fetchDeals(currentPage, { silent: !!cachedState });
+      return;
+    }
+
+    fetchDeals(currentPage, { silent: true });
   }, [currentPage, debouncedSearch, filterStatus, filterState, filterProduct, fetchDeals]);
 
   useEffect(() => {
     const { unsubscribe } = subscribeToChanges({
       channelName: 'deals-changes',
       table: 'deals',
-      onChange: () => fetchDeals(currentPage, { silent: true }),
+      onChange: () => fetchDeals(currentPageRef.current, { silent: true }),
     });
 
     return unsubscribe;
-  }, [fetchDeals, currentPage]);
+  }, [fetchDeals]);
 
   // Refresh deals when "All Loan Documents" tab is clicked (refreshKey changes)
   useEffect(() => {
-    if (refreshKey) {
-      fetchDeals(1);
-    }
+    if (!refreshKey) return;
+    skipPageFetchRef.current = true;
+    setCurrentPage(1);
+    fetchDeals(1, { silent: true });
   }, [refreshKey, fetchDeals]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
-      fetchDeals(page);
+      setCurrentPage(page);
     }
   };
 
@@ -380,6 +415,7 @@ export const DealsPage: React.FC = () => {
   const hasActiveSearch = !!debouncedSearch;
 
   const clearFilters = () => {
+    setSearchQuery('');
     setFilterStatus('');
     setFilterState('');
     setFilterProduct('');
@@ -406,8 +442,14 @@ export const DealsPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => fetchDeals(currentPage)} title="Refresh">
-            <RefreshCw className="h-4 w-4" />
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => fetchDeals(currentPage)}
+            title="Refresh"
+            disabled={refreshing}
+          >
+            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
           </Button>
           <Button onClick={handleCreateDeal} disabled={creating} className="gap-2">
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -425,8 +467,11 @@ export const DealsPage: React.FC = () => {
                 placeholder="Search by file #, borrower, or address..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-10 pr-10"
               />
+              {refreshing && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+              )}
             </div>
             <Button
               variant={showFilters ? 'secondary' : 'outline'}
