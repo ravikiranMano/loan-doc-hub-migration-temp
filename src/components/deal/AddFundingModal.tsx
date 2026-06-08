@@ -658,11 +658,30 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
     formData.maturityLender, formData.maturityCompany, formData.maturityBroker,
   ]);
 
-  // Auto-compute company and vendor totals
+  // Auto-compute company and vendor totals.
+  // Minimum and Maximum are floor/ceiling CONSTRAINTS applied after computing the raw
+  // sum — they are NOT additive fee amounts. Standard US loan servicing fee schedule:
+  //   raw   = BaseFee + AdditionalServices + NrSitSplit
+  //   total = clamp(raw, minimum, maximum)
   React.useEffect(() => {
-    const sum = (vals: (string | undefined)[]) => vals.reduce((s, v) => s + (parseFloat((v || '').replace(/[$,]/g, '')) || 0), 0);
-    const companyTotal = sum([formData.companyBaseFee, formData.companyAdditionalServices, formData.companyMinimum, formData.companyMaximum, formData.companyNrSitSplit]);
-    const vendorTotal = sum([formData.vendorBaseFee, formData.vendorAdditionalServices, formData.vendorMinimum, formData.vendorMaximum, formData.vendorNrSitSplit]);
+    const toNum = (v: string | undefined) => parseFloat((v || '').replace(/[$,]/g, '')) || 0;
+    const clampFee = (base: number, additional: number, nrSit: number, min: string | undefined, max: string | undefined): number => {
+      const raw = base + additional + nrSit;
+      const minVal = min ? toNum(min) : 0;
+      const maxVal = max ? toNum(max) : 0;
+      let total = raw;
+      if (minVal > 0 && total < minVal) total = minVal;
+      if (maxVal > 0 && total > maxVal) total = maxVal;
+      return total;
+    };
+    const companyTotal = clampFee(
+      toNum(formData.companyBaseFee), toNum(formData.companyAdditionalServices), toNum(formData.companyNrSitSplit),
+      formData.companyMinimum, formData.companyMaximum,
+    );
+    const vendorTotal = clampFee(
+      toNum(formData.vendorBaseFee), toNum(formData.vendorAdditionalServices), toNum(formData.vendorNrSitSplit),
+      formData.vendorMinimum, formData.vendorMaximum,
+    );
     setFormData(prev => ({
       ...prev,
       companyTotal: companyTotal > 0 ? formatCurrencyDisplay(companyTotal.toFixed(2)) : '',
@@ -840,14 +859,15 @@ export const AddFundingModal: React.FC<AddFundingModalProps> = ({
   const toggleDisbCol = (key: keyof typeof disbColVisibility) =>
     setDisbColVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Lender share values for disbursement calculation
+  // Lender share values for disbursement calculation.
+  // Under Model A (per-row daily accrual): payment = amount × rate × days / 360.
+  // The entire lender payment for the initial period IS interest — no principal
+  // reduction occurs in this model. Using a hardcoded monthly formula (/12) would
+  // produce a different number than the actual regularPayment and cause disbursements
+  // based on "Interest" to silently mismatch the lender's real payment.
   const paymentShareNum = parseFloat((formData.regularPayment || '').replace(/[$,]/g, '')) || 0;
-  // Interest share is derived from the lender's Original (Funding) Amount —
-  // not Principal/Current Balance — so funding-side math stays consistent.
-  const originalAmtForInterest = parseFloat((formData.fundingAmount || '').replace(/[$,]/g, '')) || 0;
-  const lenderRateNum = parseFloat(formData.lenderRate || '0') || 0;
-  const interestShareNum = originalAmtForInterest > 0 && lenderRateNum > 0 ? (originalAmtForInterest * lenderRateNum) / 12 / 100 : 0;
-  const principalShareNum = Math.max(paymentShareNum - interestShareNum, 0);
+  const interestShareNum = paymentShareNum;  // Model A: full payment is interest
+  const principalShareNum = 0;              // Model A: no principal paid in initial period
 
   const handleDeleteDisbursement = (index: number) => {
     setFormData(prev => {

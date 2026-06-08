@@ -117,38 +117,55 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     values[FIELD_KEYS.unpaidOther],
   ]);
 
+  // Total Amount Due = full payoff figure — every outstanding balance component.
+  // Matches Amount to Reinstate component-for-component per US RESPA payoff
+  // statement rules (12 CFR § 1026.36(c)(3)): all fees and charges must be
+  // included in any payoff quote, including late charges and default interest.
   const calculatedTotalBalanceDue = useMemo(() => {
     return (
       parseNum(FIELD_KEYS.principal) +
+      parseNum(FIELD_KEYS.unpaidLateCharges) +
+      parseNum(FIELD_KEYS.accruedLateCharges) +
       parseNum(FIELD_KEYS.unpaidInterest) +
       parseNum(FIELD_KEYS.accruedInterest) +
+      parseNum(FIELD_KEYS.interestGuarantee) +
+      parseNum(FIELD_KEYS.unpaidDefaultInterest) +
+      parseNum(FIELD_KEYS.accruedDefaultInterest) +
       parseNum(FIELD_KEYS.chargesOwed) +
       parseNum(FIELD_KEYS.chargesInterest) +
       parseNum(FIELD_KEYS.unpaidOther)
     );
   }, [
-    values[FIELD_KEYS.principal], values[FIELD_KEYS.unpaidInterest],
-    values[FIELD_KEYS.accruedInterest], values[FIELD_KEYS.chargesOwed],
-    values[FIELD_KEYS.chargesInterest], values[FIELD_KEYS.unpaidOther],
+    values[FIELD_KEYS.principal], values[FIELD_KEYS.unpaidLateCharges],
+    values[FIELD_KEYS.accruedLateCharges], values[FIELD_KEYS.unpaidInterest],
+    values[FIELD_KEYS.accruedInterest], values[FIELD_KEYS.interestGuarantee],
+    values[FIELD_KEYS.unpaidDefaultInterest], values[FIELD_KEYS.accruedDefaultInterest],
+    values[FIELD_KEYS.chargesOwed], values[FIELD_KEYS.chargesInterest],
+    values[FIELD_KEYS.unpaidOther],
   ]);
 
   // Estimated Balloon Payment — varies by amortization method:
-  //   fully_amortized  → 0  (loan self-liquidates; no balloon)
-  //   interest_only    → loan principal (no amortization, full principal due at maturity)
-  //   all others       → principal + one period's interest (conservative upper-bound estimate
-  //                      used when amortization type is unknown or partially_amortized without
-  //                      a user-supplied balloon amount)
+  //   fully_amortized     → 0  (loan self-liquidates; no balloon)
+  //   interest_only       → loan principal (full principal due at maturity)
+  //   partially_amortized → user-entered balloon amount (the same value fed into the payment
+  //                         formula); falls back to loanAmount when not yet entered
+  //   all others          → principal + one period's interest (conservative upper-bound estimate
+  //                         for unknown/custom amortization types)
   const PERIODS_PER_YEAR_MAP: Record<string, number> = {
     monthly: 12, bi_weekly: 26, weekly: 52, quarterly: 4, annually: 1, semi_annually: 2,
   };
   const calculatedEstimatedBalloon = useMemo(() => {
     const loanAmount = parseNum(FIELD_KEYS.loanAmount);
     if (!loanAmount) return 0;
-    // amortization lives in LOAN_TERMS_DETAILS_KEYS — access via raw key (same pattern
-    // used by computedRegularPayment above).
     const amortization = ((values['loan_terms.amortization'] ?? '') as string).toLowerCase();
     if (amortization === 'fully_amortized') return 0;
     if (amortization === 'interest_only') return loanAmount;
+    if (amortization === 'partially_amortized') {
+      const userBalloon = parseFloat(
+        (getValue(FIELD_KEYS.estimatedBalloonPayment) ?? '').toString().replace(/[$,\s]/g, ''),
+      );
+      return Number.isFinite(userBalloon) && userBalloon >= 0 ? userBalloon : loanAmount;
+    }
     const noteRate = parseNum(FIELD_KEYS.noteRate);
     if (!noteRate) return loanAmount;
     const freqKey = (getValue(FIELD_KEYS.paymentFrequency) || 'monthly').toLowerCase();
@@ -159,6 +176,7 @@ export const LoanTermsBalancesForm: React.FC<LoanTermsBalancesFormProps> = ({
     values[FIELD_KEYS.noteRate],
     values['loan_terms.amortization'],
     values[FIELD_KEYS.paymentFrequency],
+    values[FIELD_KEYS.estimatedBalloonPayment],
   ]);
 
   // Regular Payment (borrower scheduled installment) — derived live from the
