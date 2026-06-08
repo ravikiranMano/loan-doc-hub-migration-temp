@@ -19,6 +19,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { StorageService } from './storage.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { MAX_UPLOAD_FILE_BYTES } from '../../common/constants/limits.constants';
+import { DEFAULT_SIGNED_URL_TTL_SECONDS } from '../../common/constants/storage.constants';
+import { parseOptionalPositiveInt } from '../../common/helpers/query-params';
 
 @Controller('storage')
 @UseGuards(JwtAuthGuard)
@@ -30,7 +33,7 @@ export class StorageController {
    * Frontend: POST /api/storage/:bucket/upload?path=folder/file.pdf
    */
   @Post(':bucket/upload')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_FILE_BYTES } }))
   async upload(
     @Param('bucket') bucket: string,
     @Query('path') path: string,
@@ -82,7 +85,7 @@ export class StorageController {
     @Query('expires') expires?: string,
   ) {
     if (!path) throw new BadRequestException('Query param "path" is required');
-    const expiresIn = expires ? parseInt(expires, 10) : 3600;
+    const expiresIn = parseOptionalPositiveInt(expires) ?? DEFAULT_SIGNED_URL_TTL_SECONDS;
     const url = await this.storageService.getSignedUrl(bucket, path, expiresIn);
     return { url };
   }

@@ -12,6 +12,8 @@ import {
   generateDealNumber as generateDealNumberRpc,
   generateContactId as generateContactIdRpc,
 } from '../../common/helpers/db-sequences';
+import { DEAL_MODE, DEAL_STATUS } from '../../common/constants';
+import { DEFAULT_SEARCH_LIMIT } from '../../common/constants/limits.constants';
 import {
   CLEAN_FUNDING_HISTORY_KEYS,
   FUNDING_OPERATIONAL_FIELD_KEYS,
@@ -82,7 +84,7 @@ export class DealsService {
     return this.repo.findForDashboard();
   }
 
-  searchDeals(query: string, limit?: number) {
+  searchDeals(query: string, limit: number = DEFAULT_SEARCH_LIMIT) {
     return this.repo.search(query, limit);
   }
 
@@ -548,8 +550,8 @@ export class DealsService {
           deal_number: dealNumber,
           state: src.state || 'TBD',
           product_type: src.product_type || 'TBD',
-          mode: (src.mode as 'doc_prep' | 'servicing_only') || 'doc_prep',
-          status: 'draft',
+          mode: (src.mode as 'doc_prep' | 'servicing_only') || DEAL_MODE.DOC_PREP,
+          status: DEAL_STATUS.DRAFT,
           packet_id: src.packet_id,
           loan_amount: src.loan_amount,
           property_address: src.property_address,

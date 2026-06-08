@@ -23,9 +23,13 @@ import {
   UpdateUserFormPermissionDto,
 } from './dto/admin.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards';
+import { Roles } from '../../common/decorators';
+import { INTERNAL_STAFF_ROLES, ROLES } from '../../common/constants';
+import { parseCommaSeparated, parsePaginationQuery } from '../../common/helpers/query-params';
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminController {
   constructor(private readonly service: AdminService) {}
 
@@ -39,15 +43,17 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    const pagination = parsePaginationQuery(page, limit);
     return this.service.listFields({
-      sections: sections ? sections.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
-      ids: ids ? ids.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      sections: parseCommaSeparated(sections),
+      ids: parseCommaSeparated(ids),
+      page: pagination.page,
+      limit: pagination.limit,
     });
   }
 
   @Post('fields')
+  @Roles(ROLES.ADMIN)
   createField(@Body() dto: CreateFieldDto) {
     return this.service.createField(dto);
   }
@@ -77,12 +83,14 @@ export class AdminController {
   }
 
   @Patch('fields/:id')
+  @Roles(ROLES.ADMIN)
   updateField(@Param('id') id: string, @Body() dto: UpdateFieldDto) {
     return this.service.updateField(id, dto);
   }
 
   @Delete('fields/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(ROLES.ADMIN)
   deleteField(@Param('id') id: string) {
     return this.service.deleteField(id);
   }
@@ -91,6 +99,7 @@ export class AdminController {
 
   /** GET /api/admin/users/management-list — User Management page (internal staff). */
   @Get('users/management-list')
+  @Roles(ROLES.ADMIN)
   listUsersForManagement() {
     return this.service.listUsersForManagement();
   }
@@ -106,9 +115,7 @@ export class AdminController {
     @Query('ascending') ascending?: string,
     @Query('userIds') userIds?: string,
   ) {
-    const ids = userIds
-      ? userIds.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined;
+    const ids = parseCommaSeparated(userIds);
     if (ids?.length) {
       return this.service.listUsersByIds(ids);
     }
@@ -116,10 +123,11 @@ export class AdminController {
     if (!hasPagination) {
       return this.service.listUsers();
     }
+    const pagination = parsePaginationQuery(page, limit);
     return this.service.listUsersPaginated({
       userType,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
       search,
       orderBy: orderBy ? { column: orderBy, ascending: ascending === 'true' } : undefined,
     });
@@ -127,9 +135,7 @@ export class AdminController {
 
   @Get('user-roles')
   listUserRoles(@Query('userIds') userIds?: string) {
-    const ids = userIds
-      ? userIds.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined;
+    const ids = parseCommaSeparated(userIds);
     if (ids?.length) return this.service.listRolesForUserIds(ids);
     return this.service.listUserRoles();
   }
@@ -140,6 +146,7 @@ export class AdminController {
   }
 
   @Get('csr-users')
+  @Roles(...INTERNAL_STAFF_ROLES)
   listCsrUsersForPermissions() {
     return this.service.listCsrUsersForPermissions();
   }
@@ -155,6 +162,7 @@ export class AdminController {
   }
 
   @Post('users/:userId/role')
+  @Roles(ROLES.ADMIN)
   assignRole(@Param('userId') userId: string, @Body() dto: AssignRoleDto) {
     return this.service.assignRole(userId, dto);
   }
@@ -165,6 +173,7 @@ export class AdminController {
   }
 
   @Patch('users/:userId/profile')
+  @Roles(ROLES.ADMIN)
   updateProfile(@Param('userId') userId: string, @Body() dto: UpdateProfileDto) {
     return this.service.updateUser(userId, dto);
   }
@@ -194,6 +203,7 @@ export class AdminController {
   }
 
   @Post('users/:userId/form-permissions')
+  @Roles(ROLES.ADMIN)
   createUserFormPermissions(
     @Param('userId') userId: string,
     @Body() rows: CreateUserFormPermissionDto[],
@@ -202,6 +212,7 @@ export class AdminController {
   }
 
   @Patch('users/:userId/form-permissions/:formKey')
+  @Roles(ROLES.ADMIN)
   upsertUserFormPermission(
     @Param('userId') userId: string,
     @Param('formKey') formKey: string,
@@ -212,15 +223,17 @@ export class AdminController {
 
   @Delete('users/:userId/form-permissions')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles(ROLES.ADMIN)
   deleteUserFormPermissions(
     @Param('userId') userId: string,
     @Query('formIds') formIds?: string,
   ) {
-    const parsed = formIds ? formIds.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+    const parsed = parseCommaSeparated(formIds);
     return this.service.deleteUserFormPermissions(userId, parsed);
   }
 
   @Patch('form-permissions/:id')
+  @Roles(ROLES.ADMIN)
   updateFormPermissionById(
     @Param('id') id: string,
     @Body() dto: UpdateUserFormPermissionDto,

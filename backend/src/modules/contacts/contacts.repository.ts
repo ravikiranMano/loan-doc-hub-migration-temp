@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginate } from '../../common/helpers';
 import { CreateAttachmentDto, UpdateAttachmentDto } from './dto/contact.dto';
 
 @Injectable()
@@ -54,12 +55,12 @@ export class ContactsRepository {
     search?: string;
   }) {
     const where = this.buildContactsWhere({ type: options.type, search: options.search });
-    const skip = (options.page - 1) * options.pageSize;
+    const { skip, take } = paginate(options.page, options.pageSize);
     const [contacts, totalCount] = await Promise.all([
       this.prisma.contacts.findMany({
         where,
         skip,
-        take: options.pageSize,
+        take,
         orderBy: { created_at: 'desc' },
       }),
       this.prisma.contacts.count({ where }),

@@ -18,6 +18,11 @@ import {
   UpdateMergeTagDto,
   GenerateDocumentDto,
 } from './dto/documents.dto';
+import {
+  DOCX_MIME_TYPE,
+  DEFAULT_SIGNED_URL_TTL_SECONDS,
+  STORAGE_BUCKETS,
+} from '../../common/constants/storage.constants';
 
 @Injectable()
 export class DocumentsService {
@@ -241,9 +246,19 @@ export class DocumentsService {
       );
 
       const storagePath = `${dealId}/${filename}`;
-      await this.storageService.upload('generated-docs', storagePath, buffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', true);
+      await this.storageService.upload(
+        STORAGE_BUCKETS.GENERATED_DOCS,
+        storagePath,
+        buffer,
+        DOCX_MIME_TYPE,
+        true,
+      );
 
-      const docxUrl = await this.storageService.getSignedUrl('generated-docs', storagePath, 3600);
+      const docxUrl = await this.storageService.getSignedUrl(
+        STORAGE_BUCKETS.GENERATED_DOCS,
+        storagePath,
+        DEFAULT_SIGNED_URL_TTL_SECONDS,
+      );
 
       const doc = await this.repo.createGeneratedDocument({
         deal_id: dealId,

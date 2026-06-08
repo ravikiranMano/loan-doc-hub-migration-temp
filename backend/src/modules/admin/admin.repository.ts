@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, $Enums } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ROLES, USER_TYPE } from '../../common/constants';
+import { paginate } from '../../common/helpers';
 import {
   CreateFieldDto,
   UpdateFieldDto,
@@ -16,8 +18,9 @@ export class AdminRepository {
 
   findAllFields(page?: number, limit?: number, section?: string) {
     const where = section ? { section: section as $Enums.field_section } : undefined;
-    const skip = page && limit ? (page - 1) * limit : undefined;
-    const take = limit ?? undefined;
+    const pagination =
+      page != null && limit != null ? paginate(page, limit) : { skip: undefined, take: undefined };
+    const { skip, take } = pagination;
     return this.prisma.field_dictionary.findMany({
       where,
       skip,
@@ -83,7 +86,7 @@ export class AdminRepository {
 
   findInternalUsers() {
     return this.prisma.users.findMany({
-      where: { user_type: 'internal' },
+      where: { user_type: USER_TYPE.INTERNAL },
       orderBy: { email: 'asc' },
       select: {
         id: true,
@@ -115,11 +118,11 @@ export class AdminRepository {
 
     const orderColumn = options?.orderBy?.column ?? 'created_at';
     const orderDir = options?.orderBy?.ascending ? 'asc' : 'desc';
-    const skip =
+    const pagination =
       options?.page != null && options?.limit != null
-        ? (options.page - 1) * options.limit
-        : undefined;
-    const take = options?.limit ?? undefined;
+        ? paginate(options.page, options.limit)
+        : { skip: undefined, take: undefined };
+    const { skip, take } = pagination;
 
     const [data, count] = await Promise.all([
       this.prisma.users.findMany({ where, skip, take, orderBy: { [orderColumn]: orderDir } }),
@@ -184,7 +187,7 @@ export class AdminRepository {
         data: { role: appRole, updated_at: new Date() },
       });
 
-      if (appRole === 'csr') {
+      if (appRole === ROLES.CSR) {
         await tx.user_permission_levels.upsert({
           where: { user_id: userId },
           create: { user_id: userId, permission_level: permissionLevel },
@@ -200,7 +203,7 @@ export class AdminRepository {
 
   findCsrUsers() {
     return this.prisma.users.findMany({
-      where: { role: 'csr' },
+      where: { role: ROLES.CSR },
       select: { id: true, email: true, full_name: true },
     });
   }

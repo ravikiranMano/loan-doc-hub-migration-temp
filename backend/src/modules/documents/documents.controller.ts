@@ -33,6 +33,8 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators';
 import { JwtPayload } from '../../common/guards/jwt-auth.guard';
+import { parseCommaSeparated } from '../../common/helpers/query-params';
+import { DOCX_MIME_TYPE } from '../../common/constants/storage.constants';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -43,8 +45,7 @@ export class DocumentsController {
 
   @Get('templates')
   listTemplates(@Query('active') active?: string, @Query('ids') ids?: string) {
-    const parsed = ids ? ids.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-    return this.service.listTemplates(active === 'true', parsed);
+    return this.service.listTemplates(active === 'true', parseCommaSeparated(ids));
   }
 
   @Post('templates')
@@ -59,8 +60,7 @@ export class DocumentsController {
 
   @Get('templates/field-maps/batch')
   listFieldMapsBatch(@Query('templateIds') templateIds: string) {
-    const ids = templateIds.split(',').map((s) => s.trim()).filter(Boolean);
-    return this.service.listFieldMapsByTemplateIds(ids);
+    return this.service.listFieldMapsByTemplateIds(parseCommaSeparated(templateIds) ?? []);
   }
 
   // ─── Template Field Maps (register before templates/:id) ─────────────────────
@@ -94,8 +94,7 @@ export class DocumentsController {
 
   @Get('packets/templates/batch')
   listPacketTemplatesBatch(@Query('packetIds') packetIds: string) {
-    const ids = packetIds.split(',').map((s) => s.trim()).filter(Boolean);
-    return this.service.listPacketTemplatesByPacketIds(ids);
+    return this.service.listPacketTemplatesByPacketIds(parseCommaSeparated(packetIds) ?? []);
   }
 
   @Delete('packet-templates/:rowId')
@@ -200,8 +199,7 @@ export class DocumentsController {
     @Query('names') names?: string,
     @Query('templateId') templateId?: string,
   ) {
-    const tagNames = names ? names.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-    return this.service.listMergeTags(tagNames, templateId);
+    return this.service.listMergeTags(parseCommaSeparated(names), templateId);
   }
 
   @Post('merge-tags')
@@ -225,10 +223,7 @@ export class DocumentsController {
   // GET /api/documents/generated?dealIds=id1,id2
   @Get('documents/generated')
   listGeneratedByDealIds(@Query('dealIds') dealIds: string) {
-    const ids = dealIds
-      ? dealIds.split(',').map((s) => s.trim()).filter(Boolean)
-      : [];
-    return this.service.listGeneratedDocumentsByDealIds(ids);
+    return this.service.listGeneratedDocumentsByDealIds(parseCommaSeparated(dealIds) ?? []);
   }
 
   @Get('deals/:dealId/documents')
@@ -302,7 +297,7 @@ export class DocumentsController {
     if (!user?.sub) throw new BadRequestException('Authentication required');
     const { buffer, filename } = await this.service.generateDocumentV2(dealId, dto.templateId);
     res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Type': DOCX_MIME_TYPE,
       'Content-Disposition': `attachment; filename="${filename}"`,
     });
     return new StreamableFile(Readable.from(buffer));

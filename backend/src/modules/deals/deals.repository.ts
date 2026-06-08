@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, $Enums } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paginate } from '../../common/helpers';
+import { parseCommaSeparated } from '../../common/helpers/query-params';
+import { DEFAULT_SEARCH_LIMIT } from '../../common/constants/limits.constants';
 import { CreateDealDto, UpdateDealDto, CreateParticipantDto, UpdateParticipantDto, CreateLoanHistoryDto, UpdateLoanHistoryDto, CreateAssignmentDto } from './dto/deals.dto';
 
 @Injectable()
@@ -21,11 +24,8 @@ export class DealsRepository {
     if (options?.ids?.length) {
       where.id = { in: options.ids };
     }
-    if (options?.status) {
-      const statuses = options.status
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean) as $Enums.deal_status[];
+    const statuses = parseCommaSeparated(options?.status) as $Enums.deal_status[] | undefined;
+    if (statuses?.length) {
       where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
     if (options?.state) {
@@ -78,13 +78,13 @@ export class DealsRepository {
     ids?: string[];
   }) {
     const where = this.buildDealsWhere(options);
-    const skip = (options.page - 1) * options.limit;
+    const { skip, take } = paginate(options.page, options.limit);
 
     const [data, count] = await Promise.all([
       this.prisma.deals.findMany({
         where,
         skip,
-        take: options.limit,
+        take,
         orderBy: { updated_at: 'desc' },
         include: { packets: { select: { name: true } } },
       }),
@@ -112,18 +112,14 @@ export class DealsRepository {
     });
   }
 
-  search(query: string, limit = 50) {
+  search(query: string, limit = DEFAULT_SEARCH_LIMIT) {
+    const where = this.buildDealsWhere({ search: query });
+    const { take } = paginate(1, limit);
     return this.prisma.deals.findMany({
-      where: {
-        OR: [
-          { deal_number: { contains: query, mode: 'insensitive' } },
-          { borrower_name: { contains: query, mode: 'insensitive' } },
-          { property_address: { contains: query, mode: 'insensitive' } },
-        ],
-      },
+      where,
       select: { id: true, deal_number: true, borrower_name: true },
       orderBy: { deal_number: 'desc' },
-      take: limit,
+      take,
     });
   }
 
@@ -419,8 +415,10 @@ export class DealsRepository {
   }
 
   findEventJournal(dealId: string, page?: number, limit?: number) {
-    const skip = page && limit ? (page - 1) * limit : undefined;
-    const take = limit ?? undefined;
+    const pagination =
+      page != null && limit != null ? paginate(page, limit) : undefined;
+    const skip = pagination?.skip;
+    const take = pagination?.take;
     return this.prisma.event_journal.findMany({
       where: { deal_id: dealId },
       orderBy: { event_number: 'desc' },
@@ -430,14 +428,14 @@ export class DealsRepository {
   }
 
   async findEventJournalPaginated(dealId: string, page: number, limit: number) {
-    const skip = (page - 1) * limit;
+    const { skip, take } = paginate(page, limit);
     const where = { deal_id: dealId };
     const [entries, count] = await Promise.all([
       this.prisma.event_journal.findMany({
         where,
         orderBy: { event_number: 'desc' },
         skip,
-        take: limit,
+        take,
       }),
       this.prisma.event_journal.count({ where }),
     ]);

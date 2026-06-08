@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsIn,
 } from 'class-validator';
+import { ROLE_VALUES, USER_TYPE } from '../../../common/constants';
 
 export class LoginDto {
   @IsEmail()
@@ -40,12 +41,12 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['internal', 'external'])
+  @IsIn([USER_TYPE.INTERNAL, USER_TYPE.EXTERNAL])
   user_type?: string;
 
   @IsOptional()
   @IsString()
-  @IsIn(['admin', 'csr', 'borrower', 'broker', 'lender', 'other'])
+  @IsIn(ROLE_VALUES)
   role?: string;
 }
 

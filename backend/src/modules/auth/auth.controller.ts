@@ -19,6 +19,12 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators';
 import { Public } from '../../common/decorators';
 import { COOKIE_REFRESH_TOKEN } from '../../common/constants/auth.constants';
+import {
+  AUTH_LOGIN_THROTTLE_LIMIT,
+  AUTH_REFRESH_THROTTLE_LIMIT,
+  AUTH_REGISTER_THROTTLE_LIMIT,
+  THROTTLE_TTL_MS,
+} from '../../common/constants/throttle.constants';
 import type { JwtPayload } from '../../common/guards/jwt-auth.guard';
 import type { users } from '../../generated/prisma/client';
 
@@ -30,7 +36,7 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })  // 10 attempts / 60 s per IP
+  @Throttle({ default: { limit: AUTH_LOGIN_THROTTLE_LIMIT, ttl: THROTTLE_TTL_MS } })
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const meta = this.extractMeta(req);
     return this.authService.login(req.user as users, res, meta);
@@ -38,7 +44,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })   // 5 registrations / 60 s per IP
+  @Throttle({ default: { limit: AUTH_REGISTER_THROTTLE_LIMIT, ttl: THROTTLE_TTL_MS } })
   async register(
     @Body() dto: RegisterDto,
     @Req() req: Request,
@@ -51,7 +57,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })  // 30 refreshes / 60 s per IP
+  @Throttle({ default: { limit: AUTH_REFRESH_THROTTLE_LIMIT, ttl: THROTTLE_TTL_MS } })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const rawToken = (req.cookies as Record<string, string>)?.[COOKIE_REFRESH_TOKEN];
     const meta = this.extractMeta(req);

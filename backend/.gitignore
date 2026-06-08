@@ -1,32 +1,78 @@
-# Compiled output
-/dist
+# =============================================================================
+# Loan Doc Hub — NestJS Backend (.gitignore)
+# Standalone repo: copy .env.example → .env (never commit secrets).
+# After clone: npm install && npm run db:generate
+# =============================================================================
 
-scripts/
-# Dependencies
-/node_modules
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
 
-# Generated Prisma client (rebuild with npm run db:generate)
-/src/generated
+# ── Build output ─────────────────────────────────────────────────────────────
+dist/
+*.tsbuildinfo
 
-supabase/.temp
-supabase/.temp/*
-# Environment files — copy from .env.example
-# .env
+# ── Generated Prisma client (rebuild: npm run db:generate) ───────────────────
+src/generated/
+
+# ── Environment & secrets (NEVER commit) ─────────────────────────────────────
+.env
 .env.local
 .env.*.local
+!.env.example
 
-# Logs
-logs
+# Keys, certs, local credential dumps
+*.pem
+*.key
+*.p12
+credentials.json
+secrets.json
+
+# ── Logs & runtime ───────────────────────────────────────────────────────────
+logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# OS
+# ── Test & coverage ──────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+junit.xml
+
+# ── One-off script artifacts (keep scripts/*.ts source) ───────────────────────
+scripts/**/output/
+scripts/**/*.docx
+scripts/**/*.xml
+!scripts/**/README.md
+
+# ── Temp & cache ─────────────────────────────────────────────────────────────
+tmp/
+temp/
+.cache/
+.eslintcache
+
+# ── Supabase CLI (if edge functions / local stack added later) ───────────────
+supabase/.temp/
+supabase/.branches/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# IDE
+# ── Editors & local AI tooling ─────────────────────────────────────────────
 .vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
 .idea/
+*.swp
+*.swo
+*~
 
-# Test coverage
-/coverage
+.claude/
+.cursor/
+
+# ── Accidental / editor junk at repo root ────────────────────────────────────
+prismaschema.prisma:*

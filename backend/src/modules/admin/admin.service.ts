@@ -9,24 +9,13 @@ import {
   CreateUserFormPermissionDto,
   UpdateUserFormPermissionDto,
 } from './dto/admin.dto';
+import { ROLES } from '../../common/constants';
+import { BATCH_CHUNK_SIZE } from '../../common/constants/limits.constants';
+import { assertFound } from '../../common/helpers/assert-found';
+import { chunkArray } from '../../common/helpers/chunk-array';
+import { DEFAULT_CSR_FORM_KEYS } from './admin.constants';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const DEFAULT_CSR_FORM_KEYS = [
-  'borrower',
-  'co_borrower',
-  'property',
-  'loan_terms',
-  'lender',
-  'broker',
-  'charges',
-  'notes',
-  'insurance',
-  'liens',
-  'origination',
-  'trust_ledger',
-  'participants',
-] as const;
 
 @Injectable()
 export class AdminService {
@@ -45,11 +34,9 @@ export class AdminService {
     const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
     if (!unique.length) return [];
 
-    const CHUNK = 200;
     const rows = [];
-    for (let i = 0; i < unique.length; i += CHUNK) {
-      const batch = await this.repo.findFieldsByIds(unique.slice(i, i + CHUNK));
-      rows.push(...batch);
+    for (const batch of chunkArray(unique, BATCH_CHUNK_SIZE)) {
+      rows.push(...(await this.repo.findFieldsByIds(batch)));
     }
     return rows;
   }
@@ -59,20 +46,16 @@ export class AdminService {
     const unique = [...new Set(fieldKeys.map((k) => k.trim()).filter(Boolean))];
     if (!unique.length) return [];
 
-    const CHUNK = 200;
     const rows = [];
-    for (let i = 0; i < unique.length; i += CHUNK) {
-      const batch = await this.repo.findFieldsByFieldKeys(unique.slice(i, i + CHUNK));
-      rows.push(...batch);
+    for (const batch of chunkArray(unique, BATCH_CHUNK_SIZE)) {
+      rows.push(...(await this.repo.findFieldsByFieldKeys(batch)));
     }
     return rows;
   }
 
   async getField(id: string) {
     const fields = await this.repo.findFieldsByIds([id]);
-    const field = fields[0];
-    if (!field) throw new NotFoundException(`Field '${id}' not found`);
-    return field;
+    return assertFound(fields[0], 'Field', id);
   }
 
   createField(dto: CreateFieldDto) {
@@ -114,7 +97,7 @@ export class AdminService {
       email: u.email,
       full_name: u.full_name,
       created_at: u.created_at,
-      role: u.role === 'admin' || u.role === 'csr' ? u.role : null,
+      role: u.role === ROLES.ADMIN || u.role === ROLES.CSR ? u.role : null,
       permission_level: permMap.get(u.id) ?? null,
     }));
   }

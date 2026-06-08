@@ -12,11 +12,10 @@ import { createHash } from 'crypto';
 import { AuthRepository } from './auth.repository';
 import { RegisterDto, UpdateMeDto } from './dto/auth.dto';
 import { COOKIE_ACCESS_TOKEN, COOKIE_REFRESH_TOKEN, COOKIE_REFRESH_PATH } from '../../common/constants/auth.constants';
+import { BCRYPT_ROUNDS } from '../../common/constants/limits.constants';
 import { parseDurationMs } from '../../common/helpers/parse-duration-ms';
 import type { users } from '../../generated/prisma/client';
 import type { JwtPayload } from '../../common/guards/jwt-auth.guard';
-
-const BCRYPT_ROUNDS = 12;
 
 interface TokenMeta {
   ip: string;

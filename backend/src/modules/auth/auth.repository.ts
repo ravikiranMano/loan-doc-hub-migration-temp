@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { $Enums } from '../../generated/prisma/client';
+import { ROLES, USER_TYPE } from '../../common/constants';
 import type { users, refresh_tokens } from '../../generated/prisma/client';
 
 interface CreateUserData {
@@ -43,8 +44,8 @@ export class AuthRepository {
         phone: data.phone,
         company: data.company,
         license_number: data.license_number,
-        user_type: data.user_type ?? 'internal',
-        role: (data.role as $Enums.app_role) ?? 'other',
+        user_type: data.user_type ?? USER_TYPE.INTERNAL,
+        role: (data.role as $Enums.app_role) ?? ROLES.OTHER,
       },
     });
   }

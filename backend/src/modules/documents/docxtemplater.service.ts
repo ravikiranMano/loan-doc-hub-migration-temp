@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createClient } from '@supabase/supabase-js';
 import PizZip from 'pizzip';
+import { STORAGE_BUCKETS } from '../../common/constants/storage.constants';
+import { StorageService } from '../storage/storage.service';
 import Docxtemplater from 'docxtemplater';
 import { DocumentDataService, TemplateFieldData } from './document-data.service';
 import {
@@ -40,7 +40,7 @@ export class DocxtemplaterService {
 
   constructor(
     private readonly dataService: DocumentDataService,
-    private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   async generate(dealId: string, templateId: string): Promise<GeneratedDocxResult> {
@@ -84,19 +84,15 @@ export class DocxtemplaterService {
   }
 
   private async downloadTemplate(filePath: string): Promise<Buffer> {
-    const supabaseUrl = this.config.getOrThrow<string>('supabase.url');
-    const serviceRoleKey = this.config.getOrThrow<string>('supabase.serviceRoleKey');
-    const storage = createClient(supabaseUrl, serviceRoleKey).storage;
-
-    const { data, error } = await storage.from('templates').download(filePath);
-
-    if (error || !data) {
+    try {
+      const { buffer } = await this.storage.download(STORAGE_BUCKETS.TEMPLATES, filePath);
+      return buffer;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'download failed';
       throw new InternalServerErrorException(
-        `Failed to download template file "${filePath}": ${error?.message ?? 'no data'}`,
+        `Failed to download template file "${filePath}": ${message}`,
       );
     }
-
-    return Buffer.from(await data.arrayBuffer());
   }
 
   /** Tag/condition schema via docxtemplater InspectModule (no hand-written XML parsing). */

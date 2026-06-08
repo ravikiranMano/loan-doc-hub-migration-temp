@@ -29,6 +29,12 @@ import {
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, Public } from '../../common/decorators';
 import { JwtPayload } from '../../common/guards/jwt-auth.guard';
+import {
+  parseCommaSeparated,
+  parseOptionalPositiveInt,
+  parsePaginationQuery,
+  parseSearchLimit,
+} from '../../common/helpers/query-params';
 
 @Controller('deals')
 @UseGuards(JwtAuthGuard)
@@ -48,14 +54,15 @@ export class DealsController {
     @Query('limit') limit?: string,
     @Query('ids') ids?: string,
   ) {
+    const pagination = parsePaginationQuery(page, limit);
     return this.service.listDeals({
       status,
       search,
       state,
       product_type: productType,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      ids: ids ? ids.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
+      ids: parseCommaSeparated(ids),
     });
   }
 
@@ -71,7 +78,7 @@ export class DealsController {
 
   @Get('search')
   searchDeals(@Query('q') q?: string, @Query('limit') limit?: string) {
-    return this.service.searchDeals(q || '', limit ? parseInt(limit, 10) : undefined);
+    return this.service.searchDeals(q || '', parseSearchLimit(limit));
   }
 
   @Get('count')
@@ -102,18 +109,16 @@ export class DealsController {
     @Query('section') section?: string,
     @Query('sections') sections?: string,
   ) {
-    const ids = dealIds.split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = parseCommaSeparated(dealIds) ?? [];
     return this.service.listSectionsForDeals(ids, {
       section,
-      sections: sections ? sections.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      sections: parseCommaSeparated(sections),
     });
   }
 
   @Get('loan-history/lenders')
   listLoanHistoryLenders(@Query('historyIds') historyIds: string) {
-    const ids = historyIds
-      ? historyIds.split(',').map((s) => s.trim()).filter(Boolean)
-      : [];
+    const ids = parseCommaSeparated(historyIds) ?? [];
     return this.service.listLoanHistoryLenders(ids);
   }
 
@@ -128,7 +133,7 @@ export class DealsController {
     @Query('orderColumn') orderColumn?: string,
     @Query('ascending') ascending?: string,
   ) {
-    const ids = dealIds.split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = parseCommaSeparated(dealIds) ?? [];
     const col =
       orderColumn === 'date_received' ? 'date_received' : ('date_due' as const);
     return this.service.listLoanHistoryByDealIds(ids, col, ascending === 'true');
@@ -137,7 +142,7 @@ export class DealsController {
   @Delete('participants/by-contact')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteParticipantsByContact(@Query('contactIds') contactIds: string) {
-    const ids = contactIds.split(',').map((s) => s.trim()).filter(Boolean);
+    const ids = parseCommaSeparated(contactIds) ?? [];
     return this.service.deleteParticipantsByContactIds(ids);
   }
 
@@ -176,9 +181,9 @@ export class DealsController {
     return this.service.listParticipantsFiltered({
       contactId,
       role,
-      dealIds: dealIds ? dealIds.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      dealIds: parseCommaSeparated(dealIds),
       search,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      limit: parseOptionalPositiveInt(limit),
     });
   }
 
@@ -280,7 +285,7 @@ export class DealsController {
   ) {
     return this.service.listParticipants(id, {
       role,
-      roles: roles ? roles.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      roles: parseCommaSeparated(roles),
       sort,
       include,
     });
@@ -392,7 +397,7 @@ export class DealsController {
 
   @Get(':id/activity')
   listActivity(@Param('id') id: string, @Query('limit') limit?: string) {
-    return this.service.listActivity(id, limit ? parseInt(limit, 10) : undefined);
+    return this.service.listActivity(id, parseOptionalPositiveInt(limit));
   }
 
   @Get(':id/journal')
@@ -401,11 +406,8 @@ export class DealsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.service.listJournal(
-      id,
-      page ? parseInt(page, 10) : undefined,
-      limit ? parseInt(limit, 10) : undefined,
-    );
+    const pagination = parsePaginationQuery(page, limit);
+    return this.service.listJournal(id, pagination.page, pagination.limit);
   }
 
   @Post(':id/journal')

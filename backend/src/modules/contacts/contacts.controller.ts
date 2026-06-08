@@ -16,6 +16,12 @@ import { CreateContactDto, UpdateContactDto, CreateAttachmentDto, UpdateAttachme
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators';
 import { JwtPayload } from '../../common/guards/jwt-auth.guard';
+import {
+  parseCommaSeparated,
+  parseOptionalPositiveInt,
+  parsePaginationQuery,
+  parseSearchLimit,
+} from '../../common/helpers/query-params';
 
 @Controller('contacts')
 @UseGuards(JwtAuthGuard)
@@ -40,16 +46,16 @@ export class ContactsController {
     @Query('pageSize') pageSize?: string,
   ) {
     if (ids) {
-      const idList = ids.split(',').map((s) => s.trim()).filter(Boolean);
-      return this.service.getContactsByIds(idList);
+      return this.service.getContactsByIds(parseCommaSeparated(ids) ?? []);
     }
+    const pagination = parsePaginationQuery(page, limit, pageSize);
     return this.service.listContacts({
       type,
-      types: types ? types.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      types: parseCommaSeparated(types),
       search,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      page: page ? parseInt(page, 10) : undefined,
-      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      limit: pagination.limit,
+      page: pagination.page,
+      pageSize: parseOptionalPositiveInt(pageSize),
     });
   }
 
@@ -63,9 +69,9 @@ export class ContactsController {
   ) {
     return this.service.listContacts({
       type,
-      types: types ? types.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+      types: parseCommaSeparated(types),
       search: q,
-      limit: limit ? parseInt(limit, 10) : 50,
+      limit: parseSearchLimit(limit),
     });
   }
 
@@ -104,8 +110,7 @@ export class ContactsController {
   @Delete('bulk')
   @HttpCode(HttpStatus.NO_CONTENT)
   removeBulk(@Query('ids') ids: string) {
-    const parsed = ids.split(',').map((s) => s.trim()).filter(Boolean);
-    return this.service.deleteContacts(parsed);
+    return this.service.deleteContacts(parseCommaSeparated(ids) ?? []);
   }
 
   @Delete(':id')

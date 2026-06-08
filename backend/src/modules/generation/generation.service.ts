@@ -6,6 +6,11 @@ import { DealFieldValuesLoader } from '../documents/deal-field-values.loader';
 import { processDocx } from './utils/docx-processor.util';
 import { setMergeTagMappingsCache, setFieldKeyMappingsCache } from './utils/field-resolver.util';
 import type { FieldValueData, LabelMapping } from './utils/types';
+import {
+  DOCX_MIME_TYPE,
+  DEFAULT_SIGNED_URL_TTL_SECONDS,
+  STORAGE_BUCKETS,
+} from '../../common/constants/storage.constants';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -125,7 +130,10 @@ export class GenerationService {
       const allDict = await this.prisma.field_dictionary.findMany({ select: { field_key: true } });
       const validFieldKeys = new Set(allDict.map((d) => d.field_key));
 
-      const { buffer: templateBuffer } = await this.storage.download('templates', template.file_path);
+      const { buffer: templateBuffer } = await this.storage.download(
+        STORAGE_BUCKETS.TEMPLATES,
+        template.file_path,
+      );
 
       const outputBuffer = await processDocx(
         new Uint8Array(templateBuffer),
@@ -142,14 +150,18 @@ export class GenerationService {
       const storagePath = `${dealId}/${filename}`;
 
       await this.storage.upload(
-        'generated-docs',
+        STORAGE_BUCKETS.GENERATED_DOCS,
         storagePath,
         Buffer.from(outputBuffer),
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        DOCX_MIME_TYPE,
         true,
       );
 
-      const docxUrl = await this.storage.getSignedUrl('generated-docs', storagePath, 3600);
+      const docxUrl = await this.storage.getSignedUrl(
+        STORAGE_BUCKETS.GENERATED_DOCS,
+        storagePath,
+        DEFAULT_SIGNED_URL_TTL_SECONDS,
+      );
 
       const doc = await this.prisma.generated_documents.create({
         data: {

@@ -1,9 +1,10 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// Bucket allow-list — rejects unknown buckets before any Supabase call.
-const ALLOWED_BUCKETS = new Set(['contact-attachments', 'templates', 'generated-docs']);
+import {
+  ALLOWED_STORAGE_BUCKETS,
+  DEFAULT_SIGNED_URL_TTL_SECONDS,
+} from '../../common/constants/storage.constants';
 
 /**
  * Server-side Supabase Storage proxy.
@@ -27,7 +28,7 @@ export class StorageService {
   }
 
   private validateBucket(bucket: string) {
-    if (!ALLOWED_BUCKETS.has(bucket)) {
+    if (!ALLOWED_STORAGE_BUCKETS.has(bucket)) {
       throw new BadRequestException(`Unknown storage bucket: ${bucket}`);
     }
   }
@@ -79,7 +80,11 @@ export class StorageService {
     }
   }
 
-  async getSignedUrl(bucket: string, path: string, expiresInSeconds = 3600): Promise<string> {
+  async getSignedUrl(
+    bucket: string,
+    path: string,
+    expiresInSeconds = DEFAULT_SIGNED_URL_TTL_SECONDS,
+  ): Promise<string> {
     this.validateBucket(bucket);
 
     const { data, error } = await this.supabase.storage

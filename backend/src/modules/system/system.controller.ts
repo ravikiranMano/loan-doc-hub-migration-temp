@@ -5,6 +5,7 @@ import {
 import { SystemService } from './system.service';
 import { CreateSettingDto, UpdateSettingDto } from './dto/system-setting.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { parseCommaSeparated } from '../../common/helpers/query-params';
 
 @Controller('system/settings')
 @UseGuards(JwtAuthGuard)
@@ -15,8 +16,7 @@ export class SystemController {
   // GET /api/system/settings?keys=key1,key2
   @Get()
   list(@Query('keys') keys?: string) {
-    const parsed = keys ? keys.split(',').map((k) => k.trim()).filter(Boolean) : undefined;
-    return this.service.listSettings(parsed);
+    return this.service.listSettings(parseCommaSeparated(keys));
   }
 
   // GET /api/system/settings/:key

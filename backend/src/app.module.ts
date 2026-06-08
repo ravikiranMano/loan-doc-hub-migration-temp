@@ -17,6 +17,7 @@ import { GenerationModule } from './modules/generation/generation.module';
 import configuration from './config/configuration';
 import { appConfig } from './config/app.config';
 import { databaseConfig } from './config/database.config';
+import { GLOBAL_THROTTLE_LIMIT, THROTTLE_TTL_MS } from './common/constants/throttle.constants';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { databaseConfig } from './config/database.config';
     }),
     // Global rate limiter: 200 requests / 60 s per IP (generous default for SPA).
     // Auth endpoints override this with stricter limits via @Throttle().
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
+    ThrottlerModule.forRoot([{ ttl: THROTTLE_TTL_MS, limit: GLOBAL_THROTTLE_LIMIT }]),
     PrismaModule,
     AuthModule,
     HealthModule,

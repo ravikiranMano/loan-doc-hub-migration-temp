@@ -8,6 +8,7 @@ import * as morgan from 'morgan';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { JSON_BODY_LIMIT } from './common/constants/limits.constants';
 
 async function bootstrap() {
   // Disable NestJS built-in body parser so we register it once with our limit.
@@ -23,8 +24,8 @@ async function bootstrap() {
   // ── 1. Body parsing ────────────────────────────────────────────────────────
   // Registered first so downstream middleware always sees a parsed body.
   // 10 mb covers large deal JSONB payloads (RE851D, liens, origination fees).
-  app.use(json({ limit: '10mb' }));
-  app.use(urlencoded({ extended: true, limit: '10mb' }));
+  app.use(json({ limit: JSON_BODY_LIMIT }));
+  app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
   // ── 2. Security headers (Helmet) ───────────────────────────────────────────
   app.use(helmet({
