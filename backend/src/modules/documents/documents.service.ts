@@ -4,7 +4,6 @@ import { DocumentsRepository } from './documents.repository';
 import { DocumentDataService } from './document-data.service';
 import { DocxtemplaterService } from './docxtemplater.service';
 import { StorageService } from '../storage/storage.service';
-import { GenerationService } from '../generation/generation.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toTemplateFieldMapCompat } from './template-field-map.mapper';
 import {
@@ -31,7 +30,6 @@ export class DocumentsService {
     private readonly documentDataService: DocumentDataService,
     private readonly docxtemplaterService: DocxtemplaterService,
     private readonly storageService: StorageService,
-    private readonly generationService: GenerationService,
   ) {}
 
   // ─── Templates ───────────────────────────────────────────────────────────────
@@ -285,13 +283,6 @@ export class DocumentsService {
       });
       throw new BadRequestException((err as Error).message ?? 'Document generation failed');
     }
-  }
-
-  /** Generate Document (API) — NestJS · raw XML merge-tag engine · persists records. */
-  generateDocumentApi(dealId: string, dto: GenerateDocumentDto, requestedBy?: string) {
-    if (!requestedBy) throw new BadRequestException('Authentication required');
-    if (!dto.templateId) throw new BadRequestException('templateId is required');
-    return this.generationService.generate(dealId, dto.templateId, requestedBy, dto.outputType);
   }
 
   /** Generate Document (Edge) — proxies to the generate-document Deno edge function. */

@@ -255,10 +255,7 @@ export class DocumentsController {
 
   // ─── Document Generation ──────────────────────────────────────────────────────
   //
-  // Four independent generation routes targeting the same output:
-  //
   //  generate        NestJS · docxtemplater engine · persists records.
-  //  generate-api    NestJS · raw XML merge-tag engine · persists records.
   //  generate-edge   Deno edge function proxy · use for comparison or fallback.
   //  generate-v2     NestJS · docxtemplater engine · streams DOCX, no DB writes.
 
@@ -270,16 +267,6 @@ export class DocumentsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.generateDocument(dealId, dto, user?.sub);
-  }
-
-  /** Generate Document (API) — NestJS · raw XML merge-tag engine · persists records. */
-  @Post('deals/:dealId/documents/generate-api')
-  generateDocumentApi(
-    @Param('dealId') dealId: string,
-    @Body() dto: GenerateDocumentDto,
-    @CurrentUser() user: JwtPayload,
-  ) {
-    return this.service.generateDocumentApi(dealId, dto, user?.sub);
   }
 
   /** Generate Document (Edge) — Deno edge function proxy. */
