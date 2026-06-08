@@ -137,9 +137,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       writeIfChanged(FIELD_KEYS.protectiveEquity, roundDollarForStorage(estValueNum - existingLiensTotal - loanAmountNum));
     }
 
-    // Pledged Equity = Estimate of Value − Loan Amount
+    // Pledged Equity = Estimate of Value − Existing Liens (post-payoff) − Loan Amount
+    // Same encumbrance stack as Protective Equity so the two fields are internally
+    // consistent and correct for junior-lien positions (CA DRE RE 882).
     if (!isNaN(estValueNum) && !isNaN(loanAmountNum)) {
-      writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValueNum - loanAmountNum));
+      writeIfChanged(FIELD_KEYS.pledgedEquity, roundDollarForStorage(estValueNum - existingLiensTotal - loanAmountNum));
     }
 
     // Skip-condition flags per LTV display spec.

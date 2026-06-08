@@ -683,8 +683,15 @@ export const PROPERTY_LIENS_KEYS = {
   phone: 'property1.lien_phone',
   originalBalance: 'property1.lien_original_balance',
   currentBalance: 'property1.lien_current_balance',
+  interestRate: 'property1.lien_interest_rate',
   regularPayment: 'property1.lien_regular_payment',
+  existingPayoff: 'property1.lien_existing_payoff',
+  newRemainingBalance: 'property1.lien_new_remaining_balance',
   lastChecked: 'property1.lien_last_checked',
+  // Auto-calculated outputs
+  lienLtv: 'property1.lien_ltv',
+  lienEquity: 'property1.lien_protective_equity',
+  monthlyInterest: 'property1.lien_monthly_interest',
 } as const;
 
 export const PROPERTY_TAX_KEYS = {
