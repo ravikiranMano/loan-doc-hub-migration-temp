@@ -288,8 +288,11 @@ export const LienSectionContent: React.FC<LienSectionContentProps> = ({
     const total = equity.totalEquity ? equity.totalEquity.toFixed(2) : '';
     const seniorT = equity.seniorTotal ? equity.seniorTotal.toFixed(2) : '';
     const juniorT = equity.juniorTotal ? equity.juniorTotal.toFixed(2) : '';
-    if ((values[`${equityKey}protective_equity`] || '') !== protective) {
-      updates.push([`${equityKey}protective_equity`, protective]);
+    // Write to lien_protective_equity (lien-engine concept: Est Value − senior liens)
+    // to avoid overwriting the authoritative protective_equity field controlled by
+    // PropertyDetailsForm (Est Value − all liens − new loan, per CA DRE RE 882).
+    if ((values[`${equityKey}lien_protective_equity`] || '') !== protective) {
+      updates.push([`${equityKey}lien_protective_equity`, protective]);
     }
     if ((values[`${equityKey}total_equity`] || '') !== total) {
       updates.push([`${equityKey}total_equity`, total]);

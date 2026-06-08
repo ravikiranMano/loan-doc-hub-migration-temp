@@ -45,7 +45,9 @@ export function sumLienField(values: Record<string, string>, fieldSuffix: string
   return total;
 }
 
-/** CLTV numerator: prefer new_remaining_balance, fall back to current_balance per lien. */
+/** CLTV numerator: prefer new_remaining_balance, fall back to current_balance per lien.
+ *  A new_remaining_balance of 0 means the lien is being paid off — treat as 0, not a
+ *  missing value, so paid-off liens don't inflate the CLTV numerator. */
 export function sumExistingLiensTotal(values: Record<string, string>): number {
   let total = 0;
   const prefixes = new Set<string>();
@@ -56,7 +58,9 @@ export function sumExistingLiensTotal(values: Record<string, string>): number {
   prefixes.forEach((prefix) => {
     const newBal = parseNumericField(values[`${prefix}.new_remaining_balance`]);
     const curBal = parseNumericField(values[`${prefix}.current_balance`]);
-    const n = Number.isFinite(newBal) && newBal > 0 ? newBal : curBal;
+    // Use new_remaining_balance whenever it is a valid finite number (including 0 = payoff).
+    // Only fall back to current_balance when new_remaining_balance is absent/NaN.
+    const n = Number.isFinite(newBal) ? newBal : curBal;
     if (Number.isFinite(n)) total += n;
   });
   return total;
