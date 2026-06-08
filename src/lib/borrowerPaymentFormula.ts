@@ -89,12 +89,24 @@ export function computeBorrowerScheduledPayment(
       ? termMonthsDec.div(12).mul(periodsPerYear)
       : null;
 
-  // Interest-only / add-on-interest / unknown amortization → per-period interest on full principal.
-  // Spec: interest_only payment = P × rate / periods. add_on_interest and `other`/empty fall back here
-  // so the field is never blank when amortization is unset.
+  // Add-on interest: total interest is pre-computed over the full term and added to
+  // the principal upfront, then divided into equal payments (principal IS fully retired).
+  //   TotalInterest  = P × (annualRate / 100) × (termMonths / 12)
+  //   TotalRepayable = P + TotalInterest
+  //   PMT            = TotalRepayable / n
+  // Requires a known term; returns null when term is missing.
+  if (amort === 'add_on_interest') {
+    if (!n || !termMonthsDec || termMonthsDec.lte(0)) return null;
+    const termYears = termMonthsDec.div(12);
+    const totalInterest = P.mul(ratePct.div(100)).mul(termYears);
+    const totalRepayable = P.plus(totalInterest);
+    return round2(totalRepayable.div(n));
+  }
+
+  // Interest-only / unknown amortization → per-period interest on full principal.
+  // `other`/empty fall back here so the field is never blank when amortization is unset.
   if (
     amort === 'interest_only' ||
-    amort === 'add_on_interest' ||
     amort === '' ||
     amort === 'other' ||
     !n

@@ -198,9 +198,9 @@ export const RE885ProposedLoanTerms: React.FC<RE885Props> = ({
     return !Number.isFinite(n) || n === 0;
   };
 
-  // ─── Seed Proposed Loan Amount from Loan tab if empty/zero
+  // ─── Continuously sync Proposed Loan Amount from Loan → Terms & Balances → Original Loan Amount
   React.useEffect(() => {
-    if (upstreamLoanAmount > 0 && isEmptyOrZero(getValue(FK.proposed_loan_amount))) {
+    if (upstreamLoanAmount > 0) {
       setValue(FK.proposed_loan_amount, formatCurrencyDisplay(upstreamLoanAmount.toFixed(2)));
     }
   }, [upstreamLoanAmount]);
