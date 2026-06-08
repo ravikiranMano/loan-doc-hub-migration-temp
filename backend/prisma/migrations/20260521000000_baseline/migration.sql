@@ -1,1 +1,0 @@
--- Baseline: existing DB state before Prisma migration management

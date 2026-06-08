@@ -1,7 +1,0 @@
-export const THROTTLE_TTL_MS = 60_000;
-
-export const GLOBAL_THROTTLE_LIMIT = 200;
-
-export const AUTH_LOGIN_THROTTLE_LIMIT = 10;
-export const AUTH_REGISTER_THROTTLE_LIMIT = 5;
-export const AUTH_REFRESH_THROTTLE_LIMIT = 30;
