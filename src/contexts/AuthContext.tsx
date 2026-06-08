@@ -38,7 +38,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // The access_token cookie is sent automatically by the browser.
   useEffect(() => {
     getMe()
-      .then(setUser)
+      // Do not overwrite a user already set by login if /auth/me ran without cookies yet.
+      .then((me) => setUser((current) => me ?? current))
       .finally(() => setLoading(false));
   }, []);
 
